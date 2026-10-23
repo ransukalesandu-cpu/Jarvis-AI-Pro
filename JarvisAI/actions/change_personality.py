@@ -64,7 +64,7 @@ def change_personality(parameters: dict, **context) -> str:
             },
         }
         save_voice_personality(settings)
-        save_voice("Kore")
+        save_voice("Aoede")
         apply_voice = context.get("apply_voice_change")
         if callable(apply_voice):
             apply_voice()
@@ -72,7 +72,7 @@ def change_personality(parameters: dict, **context) -> str:
             apply_change = context.get("apply_personality")
             if callable(apply_change):
                 apply_change()
-        return "Bihansa mode is on. I switched to the Bihansa caring companion style and selected the Kore female voice. If your Live session does not reconnect, restart JARVIS."
+        return "Bihansa mode is on. I switched to the Bihansa caring companion style and selected the Aoede female voice. If your Live session does not reconnect, restart JARVIS."
     if mode == "jarvis":
         memory = load_memory()
         previous = memory.pop("bihansa_previous_profile", None)

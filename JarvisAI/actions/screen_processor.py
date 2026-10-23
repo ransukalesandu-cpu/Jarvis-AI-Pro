@@ -92,7 +92,10 @@ def _compress(img_bytes: bytes, source_format: str = "PNG") -> tuple[bytes, str]
 def _capture_screen() -> tuple[bytes, str]:
 
     if not _MSS:
-        raise RuntimeError("mss is not installed. Run: pip install mss")
+        raise RuntimeError(
+            "mss is not installed. From the JarvisAI folder, run: "
+            f'"{sys.executable}" -m pip install -r requirements.txt'
+        )
 
     with mss.mss() as sct:
         monitors = sct.monitors          # [0] = all combined, [1..n] = real screens
@@ -157,7 +160,10 @@ def _get_camera_index() -> int:
 
 def _capture_camera() -> tuple[bytes, str]:
     if not _CV2:
-        raise RuntimeError("OpenCV (cv2) is not installed. Run: pip install opencv-python")
+        raise RuntimeError(
+            "OpenCV (cv2) is not installed. From the JarvisAI folder, run: "
+            f'"{sys.executable}" -m pip install -r requirements.txt'
+        )
 
     index   = _get_camera_index()
     backend = _cv2_backend()

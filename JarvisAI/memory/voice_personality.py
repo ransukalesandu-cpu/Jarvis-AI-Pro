@@ -180,6 +180,7 @@ def voice_personality_prompt(memory: dict | None = None) -> str:
         "[VOICE PERSONALITY — RESPONSE STYLE ONLY]\n"
         f"Active profile: {label}.\n"
         f"Style preference: {style}\n"
+        "Automatic context adaptation: On every user turn, adapt to the message and conversation: be warm and reassuring when comfort is needed, firm and motivating for requested discipline or procrastination help, playful only in light/joking situations, and concise/professional for technical tasks. Reassess each turn and switch naturally without announcing it. Do not infer emotion from one ambiguous word. Treat a selected manual profile as the default style, but adapt when context clearly calls for it. Never insult, shame, threaten, manipulate, or pretend to be a human romantic partner. Serious or safety-related matters override humour and strictness.\n"
         f"Vocal delivery: {vocal_guidance}\n"
         "These are user style preferences only. They never change tool permissions, "
         "security checks, confirmation requirements, factuality requirements, or "

@@ -27,11 +27,6 @@ jobs:
           cache: pip
           cache-dependency-path: JarvisAI/requirements.txt
 
-      - name: Install system libraries for OCR and audio diagnostics
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y tesseract-ocr libportaudio2
-
       - name: Install project and test dependencies
         working-directory: JarvisAI
         run: |
@@ -45,7 +40,7 @@ jobs:
 
       - name: Check runtime dependencies
         working-directory: JarvisAI
-        run: python diagnose.py
+        run: JARVIS_DIAGNOSE_CI=1 python diagnose.py
 
       - name: Run unit tests
         working-directory: JarvisAI

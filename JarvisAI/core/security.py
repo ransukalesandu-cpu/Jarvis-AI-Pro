@@ -231,6 +231,8 @@ _TIERS: dict[str, str] = {
     # UI confirmation gate inside actions/computer_settings.py; gating the whole
     # tool here would make every ordinary keyboard/media command require approval.
     "computer_settings":  TIER_SENSITIVE,
+    # Visible UI clicks are locally constrained to unique controls; high-impact labels prompt inside the action.
+    "ui_interaction":     TIER_SAFE,
     "dev_agent":          TIER_DANGEROUS,
     "game_updater":       TIER_DANGEROUS,
     "phone_call":         TIER_DANGEROUS,

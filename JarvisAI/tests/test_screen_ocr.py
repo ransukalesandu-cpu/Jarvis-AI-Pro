@@ -1,7 +1,10 @@
-"""Unit tests for OCR phrase matching without requiring a screen or Tesseract."""
+"""Unit tests for OCR phrase matching and Tesseract path resolution."""
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from actions.screen_ocr import find_text_matches
+from actions.screen_ocr import _configure_tesseract, find_text_matches
 
 
 def word(text, x, y=10, confidence=90, line=(1, 1, 1), w=None):
@@ -37,6 +40,23 @@ class ScreenOCRMatchingTests(unittest.TestCase):
 
     def test_empty_target_returns_no_matches(self):
         self.assertEqual(find_text_matches("  ", [word("Save", 10)]), [])
+
+    @patch("actions.screen_ocr.shutil.which", return_value="C:/Tools/tesseract.exe")
+    def test_path_install_is_preferred(self, _which):
+        fake = SimpleNamespace(pytesseract=SimpleNamespace(tesseract_cmd="tesseract"))
+        _configure_tesseract(fake)
+        self.assertEqual(fake.pytesseract.tesseract_cmd, "tesseract")
+
+    @patch("actions.screen_ocr.Path.is_file", return_value=True)
+    @patch("actions.screen_ocr.shutil.which", return_value=None)
+    @patch("actions.screen_ocr.platform.system", return_value="Windows")
+    def test_standard_windows_installer_path_is_used(self, _system, _which, _is_file):
+        fake = SimpleNamespace(pytesseract=SimpleNamespace(tesseract_cmd="tesseract"))
+        _configure_tesseract(fake)
+        self.assertEqual(
+            fake.pytesseract.tesseract_cmd,
+            str(Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")),
+        )
 
 
 if __name__ == "__main__":

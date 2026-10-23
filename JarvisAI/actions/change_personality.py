@@ -155,10 +155,14 @@ TOOL = {
         "change, or use a different personality/mode/style. Supported modes: "
         "conversational (natural/warm), concise (short answers), technical (precise "
         "technical explanations), emergency (calm safety-first guidance), research "
-        "(evidence-led), system (operational status/diagnostics), and custom. "
+        "(evidence-led), system (operational status/diagnostics), custom, Bihansa, and Jarvis. "
+        "When the user says 'switch to Bihansa', 'Bihansa mode', or asks for the caring "
+        "female companion style, select mode bihansa; this selects the Aoede voice and "
+        "applies the saved Bihansa companion style. When the user says 'switch to Jarvis', "
+        "select mode jarvis to restore the previously saved personality and voice. "
         "Map natural/normal to conversational, short/brief to concise, expert to "
         "technical, researcher to research, and operator to system. This changes "
-        "response style only; it must never alter permissions or safety checks. "
+        "response style and voice only; it must never alter permissions or safety checks. "
         "Do not call this unless the user explicitly asks to change personality."
     ),
     "parameters": {

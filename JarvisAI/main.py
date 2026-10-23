@@ -2283,7 +2283,11 @@ class JarvisLive:
                     # EchoGuard compares the mic's speech-band energies with
                     # recent output. Require sustained evidence (more blocks in
                     # difficult rooms) to avoid stopping for a single noise.
-                    if not self.ui.muted and not self._phone_active:
+                    if (
+                        not self.ui.muted
+                        and not self._phone_active
+                        and (not self._ptt_enabled or self._ptt_held)
+                    ):
                         try:
                             is_user_voice = self._echo.is_user_speech(
                                 indata, SEND_SAMPLE_RATE, _pcm_level(indata)

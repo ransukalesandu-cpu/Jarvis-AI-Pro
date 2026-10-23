@@ -52,7 +52,8 @@ from core.hud_workspace import HudWorkspace
 from core.jarvis_logo_overlay import JarvisLogoOverlay
 
 try:
-    from core.avatar import HoloAvatar
+    # Synthetic robotic hologram; shares the existing viseme/audio interface.
+    from core.artificial_avatar import HoloAvatar
 except Exception:      # pragma: no cover — HUD must never die over cosmetics
     HoloAvatar = None
 

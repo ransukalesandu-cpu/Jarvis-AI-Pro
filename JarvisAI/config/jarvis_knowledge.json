@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "facts": [
+    {
+      "topic": "assistant_identity",
+      "key": "assistant_name",
+      "value": "My name is JARVIS, a voice-first desktop AI assistant.",
+      "source": "project configuration"
+    },
+    {
+      "topic": "project_lineage",
+      "key": "original_upstream",
+      "value": "This project is based on the open-source Jarvis-AI project by GitHub user Ninja2007S: https://github.com/Ninja2007S/Jarvis-AI . The original project uses the CC BY-NC 4.0 license; check that license and obtain permission before any commercial use.",
+      "source": "upstream repository"
+    },
+    {
+      "topic": "project_identity",
+      "key": "customized_repository",
+      "value": "The customized repository is https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro . Its GitHub account owner is ransukalesandu-cpu; do not claim that one person wrote every part of the code.",
+      "source": "GitHub repository address"
+    },
+    {
+      "topic": "capabilities",
+      "key": "voice_identity",
+      "value": "The project contains an optional local speaker-verification module in core/voice_id.py. It needs its optional dependencies, an enrolled voice profile, and Voice ID enabled. Voice matching is not proof of liveness and should not be the only protection for sensitive actions.",
+      "source": "project source code"
+    },
+    {
+      "topic": "capabilities",
+      "key": "long_term_memory",
+      "value": "The project has a local long-term memory system in memory/memory_manager.py. Facts should only be saved when the user explicitly asks or clearly agrees.",
+      "source": "project source code"
+    }
+  ]
+}

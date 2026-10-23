@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 
 from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import QColor, QBrush, QPainterPath, QPen, QPolygonF, QRadialGradient
+from PyQt6.QtGui import QColor, QBrush, QPainter, QPainterPath, QPen, QPolygonF, QRadialGradient
 
 
 def _with_alpha(color: QColor, alpha: int) -> QColor:
@@ -114,7 +114,7 @@ class HoloAvatar:
               primary: QColor, accent: QColor, bg: QColor) -> None:
         r = max(1.0, float(r))
         p.save()
-        p.setRenderHint(p.RenderHint.Antialiasing, True)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         # Atmospheric rings and a subtle vertical hologram scan.
         halo = QRadialGradient(QPointF(cx, cy - 0.03 * r), r * 1.18)

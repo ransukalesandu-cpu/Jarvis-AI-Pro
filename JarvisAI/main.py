@@ -37,6 +37,7 @@ for _stream in ("stdout", "stderr"):
 import asyncio
 
 from core import self_repair
+from core.audio_callback_guard import guarded_audio_callback
 import re
 import threading
 import time
@@ -2239,7 +2240,7 @@ class JarvisLive:
         print("[JARVIS] 🎤 Mic started")
         loop = asyncio.get_event_loop()
 
-        def callback(indata, frames, time_info, status):
+        def _callback_impl(indata, frames, time_info, status):
             self._capture_voice_id_enrollment(indata, frames)
             # ── Wake-word gate ───────────────────────────────────────────────
             # While asleep, the mic audio NEVER goes to Gemini (nothing is
@@ -2380,6 +2381,20 @@ class JarvisLive:
                     pass
             else:
                 self._expire_voice_id_audio()
+        
+        def callback(indata, frames, time_info, status):
+            # PortAudio callbacks must not leak Python exceptions back into the
+            # native audio thread. Keep listening and record a rate-limited,
+            # redacted diagnostic instead of flooding the log on every block.
+            guarded_audio_callback(
+                "voice:audio_callback",
+                _callback_impl,
+                indata, frames, time_info, status,
+                on_error=lambda exc, operation: self_repair.record_error(
+                    exc, operation=operation
+                ),
+            )
+
 
         try:
             def _open_mic(dev):

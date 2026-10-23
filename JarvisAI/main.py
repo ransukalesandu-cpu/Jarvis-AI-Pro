@@ -1138,7 +1138,9 @@ class JarvisLive:
         is that it restores the voice with it — which would make the picker
         appear to do nothing. Losing context here is acceptable because changing
         voice is a deliberate, rare act; losing it on a dropped packet was not."""
-        self.request_reconnect(keep_context=False, reason="new voice")
+        selected_voice = get_voice()
+        self.ui.write_log(f"SYS: Applying voice '{selected_voice}' — starting a fresh Live session.")
+        self.request_reconnect(keep_context=False, reason=f"new voice: {selected_voice}")
 
     def _on_audio_device_change(self):
         """Microphone or speaker changed. Both streams are opened inside the

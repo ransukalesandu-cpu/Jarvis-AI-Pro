@@ -9,6 +9,7 @@ It never prints API keys or modifies configuration.
 from __future__ import annotations
 
 import importlib.util
+import os
 import platform
 import shutil
 import subprocess
@@ -116,28 +117,33 @@ def main() -> int:
         if not ok:
             missing_python.append(label)
 
-    tesseract = _find_tesseract()
-    if tesseract:
-        try:
-            result = subprocess.run(
-                [str(tesseract), "--version"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=False,
-            )
-            version_line = (result.stdout or result.stderr).splitlines()
-            if result.returncode == 0 and version_line:
-                print(f"[OK] Tesseract OCR engine: {version_line[0]} ({tesseract})")
-            else:
-                print(f"[WARN] Tesseract was found but version check failed: {tesseract}")
-        except (OSError, subprocess.SubprocessError) as exc:
-            print(f"[WARN] Tesseract was found but could not run: {type(exc).__name__}: {exc}")
+    ci_mode = os.environ.get("JARVIS_DIAGNOSE_CI") == "1"
+    tesseract = None
+    if ci_mode:
+        print("[SKIP] Tesseract executable and physical audio devices (CI mode)")
     else:
-        print("[MISSING] Tesseract OCR engine (separate desktop install required)")
-        print("  Windows installer: https://github.com/UB-Mannheim/tesseract/wiki")
+        tesseract = _find_tesseract()
+        if tesseract:
+            try:
+                result = subprocess.run(
+                    [str(tesseract), "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=False,
+                )
+                version_line = (result.stdout or result.stderr).splitlines()
+                if result.returncode == 0 and version_line:
+                    print(f"[OK] Tesseract OCR engine: {version_line[0]} ({tesseract})")
+                else:
+                    print(f"[WARN] Tesseract was found but version check failed: {tesseract}")
+            except (OSError, subprocess.SubprocessError) as exc:
+                print(f"[WARN] Tesseract was found but could not run: {type(exc).__name__}: {exc}")
+        else:
+            print("[MISSING] Tesseract OCR engine (separate desktop install required)")
+            print("  Windows installer: https://github.com/UB-Mannheim/tesseract/wiki")
 
-    _print_audio_diagnostics()
+        _print_audio_diagnostics()
 
     print("\nAPI configuration:")
     try:
@@ -153,16 +159,19 @@ def main() -> int:
         print("\nMissing Python packages detected.")
         print("From this directory, install them into the same Python environment JARVIS uses:")
         print(f'  "{sys.executable}" -m pip install -r requirements.txt')
-    if not tesseract:
+    if not ci_mode and not tesseract:
         print("\nTesseract is not a pip package. Install the desktop engine separately,")
         print("then reopen CMD/JARVIS so the updated PATH is picked up.")
 
-    if missing_python or not tesseract:
+    if missing_python or (not ci_mode and not tesseract):
         return 1
 
-    print("\nPreflight dependency checks passed. If audio warnings appeared, choose a valid")
-    print("microphone/speaker in Windows sound settings or JARVIS audio settings.")
-    print("This does not replace testing live microphone capture, playback, API access, or web search.")
+    print("\nPreflight Python dependency checks passed.")
+    if ci_mode:
+        print("Hardware-specific Tesseract/audio checks were skipped for CI; run python diagnose.py locally.")
+    else:
+        print("If audio warnings appeared, choose a valid microphone/speaker in system or JARVIS settings.")
+        print("This does not replace testing live microphone capture, playback, API access, or web search.")
     return 0
 
 

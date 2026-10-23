@@ -37,6 +37,7 @@ class HoloAvatar:
         self._speaking = False
         self._muted = False
         self._expression = 0.0
+        self._expression_target = 0.0
         self._look_x = 0.0
         self._look_y = 0.0
         self._look_target = (0.0, 0.0)
@@ -49,12 +50,16 @@ class HoloAvatar:
 
     def react_to_text(self, text: str) -> None:
         raw = str(text or "").casefold()
-        if any(k in raw for k in ("hello", "hi ", "hey", "ayubowan", "ආයුබෝවන්")):
-            self._expression = 0.8
+        if any(k in raw for k in ("hello", "hi ", "hey", "ayubowan", "ආයුබෝවන්", "great", "thanks", "thank you", "හොඳයි", "ස්තුතියි")):
+            self._expression_target = 0.82
+        elif any(k in raw for k in ("sorry", "sad", "අවුල්", "කණගාටු", "වැරදි")):
+            self._expression_target = -0.62
+        elif any(k in raw for k in ("warning", "danger", "error", "careful", "අවදානම්", "ප්‍රවේශම්")):
+            self._expression_target = -0.92
         elif "?" in raw:
-            self._expression = 0.35
+            self._expression_target = 0.38
         else:
-            self._expression = 0.0
+            self._expression_target = 0.0
 
     def step(self, dt: float, amp: float, speaking: bool = False,
              muted: bool = False, state: str = "",
@@ -66,6 +71,14 @@ class HoloAvatar:
         self._state = str(state or "IDLE").upper()
         self._speaking = bool(speaking and not muted)
         self._muted = bool(muted)
+        # Whole-face expression and hologram geometry keep moving even in idle.
+        if self._state in ("THINKING", "PROCESSING"):
+            self._expression_target = max(self._expression_target, 0.30)
+        elif self._state == "LISTENING":
+            self._expression_target = max(self._expression_target, 0.12)
+        elif not self._speaking and self._state in ("IDLE", "READY"):
+            self._expression_target *= 0.985
+        self._expression += (self._expression_target - self._expression) * (1.0 - math.exp(-dt * 3.2))
 
         # Consume every scheduled viseme frame. This preserves short lip
         # closures (M/B/P) even when the UI timer skips a render frame.
@@ -116,132 +129,231 @@ class HoloAvatar:
 
     def paint(self, p, cx: float, cy: float, r: float,
               primary: QColor, accent: QColor, bg: QColor) -> None:
+        """Render an always-moving, blue-line holographic face."""
         r = max(1.0, float(r))
+        t = self._time
+        mood = max(-1.0, min(1.0, self._expression))
+        speaking = self._speaking
+        listening = self._state == "LISTENING"
+        thinking = self._state in ("THINKING", "PROCESSING")
+        pulse = 0.5 + 0.5 * math.sin(t * (4.4 if speaking else 2.0))
+        breathe = math.sin(t * 1.25) * 0.012
+        shift_x = math.sin(t * 0.72) * 0.012 + self._look_x * 0.018
+        shift_y = math.sin(t * 0.91) * 0.009 + self._look_y * 0.012
+        blink = max(0.035, 1.0 - self._blink)
+        energy = max(self._energy, pulse * 0.18)
+
         p.save()
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
-        # Atmospheric rings and a subtle vertical hologram scan.
-        halo = QRadialGradient(QPointF(cx, cy - 0.03 * r), r * 1.18)
-        halo.setColorAt(0.0, _with_alpha(primary, int(23 + self._energy * 24)))
-        halo.setColorAt(0.65, _with_alpha(primary, 10))
-        halo.setColorAt(1.0, _with_alpha(primary, 0))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QBrush(halo))
-        p.drawEllipse(QRectF(cx - r * 1.15, cy - r * 1.15, r * 2.3, r * 2.3))
-
-        for k, alpha in ((1.02, 70), (1.10, 35), (1.18, 18)):
-            p.setBrush(Qt.BrushStyle.NoBrush)
-            p.setPen(QPen(_with_alpha(primary, int(alpha * (0.6 + self._energy))), max(1.0, r * 0.008)))
-            p.drawEllipse(QRectF(cx-r*k, cy-r*k, 2*r*k, 2*r*k))
-
-        # Angular helmet silhouette — unmistakably manufactured, not a human
-        # portrait. Coordinates are normalized to the supplied HUD radius.
         def pt(x: float, y: float) -> QPointF:
-            return QPointF(cx + x * r, cy + y * r)
+            # Slight coordinated drift makes the complete line-built face feel alive.
+            return QPointF(cx + (x + shift_x) * r, cy + (y + shift_y + breathe) * r)
 
-        outline = QPolygonF([
-            pt(-0.64, -0.70), pt(-0.40, -0.94), pt(0.40, -0.94),
-            pt(0.64, -0.70), pt(0.76, -0.12), pt(0.62, 0.52),
-            pt(0.30, 0.82), pt(-0.30, 0.82), pt(-0.62, 0.52),
-            pt(-0.76, -0.12)
-        ])
-        face_path = QPainterPath()
-        face_path.addPolygon(outline)
-        face_path.closeSubpath()
-        shell = QRadialGradient(pt(0.0, -0.25), r * 1.15)
-        shell.setColorAt(0.0, QColor(18, 62, 83, 235))
-        shell.setColorAt(0.65, QColor(8, 26, 40, 245))
-        shell.setColorAt(1.0, QColor(4, 13, 25, 250))
-        p.setBrush(QBrush(shell))
-        p.setPen(QPen(_with_alpha(primary, 210), max(1.4, r * 0.018)))
-        p.drawPath(face_path)
+        def line(a, b, alpha=210, width=0.009):
+            p.setPen(QPen(_with_alpha(primary, int(max(0, min(255, alpha)))),
+                          max(1.0, r * width), Qt.PenStyle.SolidLine,
+                          Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawLine(pt(a[0], a[1]), pt(b[0], b[1]))
 
-        # Forehead armour and temple plates.
-        p.setBrush(_with_alpha(primary, 25))
-        p.setPen(QPen(_with_alpha(primary, 125), max(1.0, r * 0.009)))
-        p.drawPolygon(QPolygonF([pt(-0.39,-0.82), pt(-0.23,-0.90), pt(0.23,-0.90),
-                                 pt(0.39,-0.82), pt(0.22,-0.70), pt(-0.22,-0.70)]))
-        for side in (-1, 1):
-            plate = QPolygonF([pt(side*0.62,-0.55), pt(side*0.48,-0.43),
-                               pt(side*0.52,0.20), pt(side*0.66,0.34),
-                               pt(side*0.70,-0.10)])
-            p.setBrush(_with_alpha(accent, 22))
-            p.drawPolygon(plate)
-            # Thin circuit tracks on both temples.
-            p.setPen(QPen(_with_alpha(primary, 145), max(1.0, r*0.008)))
-            p.drawLine(pt(side*0.56,-0.34), pt(side*0.43,-0.24))
-            p.drawLine(pt(side*0.43,-0.24), pt(side*0.48,-0.08))
-            p.drawLine(pt(side*0.48,-0.08), pt(side*0.39,0.04))
-            p.setBrush(_with_alpha(accent, 210))
+        def poly(points, alpha=210, width=0.009, closed=False):
+            path = QPainterPath()
+            path.moveTo(pt(points[0][0], points[0][1]))
+            for x, y in points[1:]:
+                path.lineTo(pt(x, y))
+            if closed:
+                path.closeSubpath()
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(_with_alpha(primary, int(max(0, min(255, alpha)))),
+                          max(1.0, r * width), Qt.PenStyle.SolidLine,
+                          Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            p.drawPath(path)
+
+        def node(x, y, radius=0.018, alpha=220):
+            q = pt(x, y)
+            rr = r * radius * (0.8 + pulse * 0.45)
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(_with_alpha(primary, alpha), max(1.0, r * 0.007)))
+            p.drawEllipse(QRectF(q.x()-rr, q.y()-rr, rr*2, rr*2))
             p.setPen(Qt.PenStyle.NoPen)
-            p.drawEllipse(pt(side*0.56,-0.34), r*0.022, r*0.022)
+            p.setBrush(_with_alpha(primary, int(alpha * 0.20)))
+            p.drawEllipse(QRectF(q.x()-rr*0.35, q.y()-rr*0.35, rr*0.7, rr*0.7))
 
-        # Brow visor and luminous eyes; gaze moves slightly with glance cues.
+        # Ambient blue aura; the face itself remains a wireframe, not a filled mask.
+        aura = QRadialGradient(QPointF(cx, cy), r * 1.18)
+        aura.setColorAt(0.0, _with_alpha(primary, int(18 + energy * 24)))
+        aura.setColorAt(0.58, _with_alpha(primary, 7))
+        aura.setColorAt(1.0, _with_alpha(primary, 0))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(aura))
+        p.drawEllipse(QRectF(cx-r*1.18, cy-r*1.18, r*2.36, r*2.36))
+
+        # Rotating orbital rings and segmented perimeter marks.
+        for idx, (scale, alpha) in enumerate(((0.93, 45), (1.04, 75), (1.15, 28))):
+            rect = QRectF(cx-r*scale, cy-r*scale, 2*r*scale, 2*r*scale)
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(_with_alpha(primary, int(alpha * (0.55 + pulse*0.45))),
+                          max(1.0, r*0.004)))
+            p.drawArc(rect, int((t*35 + idx*72) % 360 * 16), 248*16)
+        for i in range(48):
+            a = (i / 48.0) * math.tau + t * 0.16
+            inner = 1.07 if i % 4 else 1.045
+            outer = 1.10 if i % 4 else 1.135
+            line((math.cos(a)*inner, math.sin(a)*inner),
+                 (math.cos(a)*outer, math.sin(a)*outer), 75 if i % 4 else 155, 0.004)
+
+        # Outer head contour: every segment softly ripples in a synchronized wave.
+        contour = [
+            (-0.61,-0.62), (-0.48,-0.82), (-0.25,-0.91), (0.0,-0.94),
+            (0.25,-0.91), (0.48,-0.82), (0.61,-0.62), (0.70,-0.34),
+            (0.72,-0.05), (0.65,0.30), (0.50,0.59), (0.27,0.78),
+            (0.0,0.85), (-0.27,0.78), (-0.50,0.59), (-0.65,0.30),
+            (-0.72,-0.05), (-0.70,-0.34)
+        ]
+        moving_contour = []
+        for i, (x, y) in enumerate(contour):
+            wave = math.sin(t*1.8 + i*0.77) * 0.006
+            moving_contour.append((x + math.copysign(wave, x if x else 1), y + wave))
+        poly(moving_contour, 235, 0.015, True)
+
+        # Cross-grid curves and animated scan bands define the face planes.
+        for row, y in enumerate((-0.77,-0.66,-0.53,-0.40,-0.18,0.04,0.24,0.44,0.62,0.73)):
+            half = 0.20 + 0.48 * math.sqrt(max(0.05, 1.0 - ((y+0.02)/0.98)**2))
+            points = []
+            for j in range(13):
+                x = -half + 2*half*j/12
+                yy = y + math.sin(x*7.0 + t*1.65 + row) * (0.008 + pulse*0.004)
+                points.append((x, yy))
+            poly(points, 62 if row % 2 else 112, 0.0045)
+        for col in range(-4, 5):
+            x0 = col * 0.125
+            points = []
+            for j in range(13):
+                y = -0.80 + j * 0.125
+                x = x0 + math.sin(y*5.2 + t*1.35 + col) * 0.012
+                points.append((x, y))
+            poly(points, 48 if col % 2 else 85, 0.004)
+
+        # Forehead circuit paths with traveling highlight nodes.
         for side in (-1, 1):
-            ex = side * 0.31 + self._look_x * 0.035
-            ey = -0.28 + self._look_y * 0.025
-            eye = QPolygonF([pt(ex-side*0.20, ey-0.055), pt(ex-side*0.12, ey-0.105),
-                             pt(ex+side*0.16, ey-0.075), pt(ex+side*0.20, ey+0.005),
-                             pt(ex+side*0.07, ey+0.065), pt(ex-side*0.16, ey+0.035)])
-            p.setBrush(_with_alpha(primary, 34))
-            p.setPen(QPen(_with_alpha(primary, 190), max(1.0, r*0.010)))
-            p.drawPolygon(eye)
-            eye_h = r * (0.035 + 0.035 * (1.0 - self._blink))
-            p.setPen(QPen(_with_alpha(primary, 245), max(2.0, r*0.025), Qt.PenStyle.SolidLine,
-                          Qt.PenCapStyle.RoundCap))
-            p.drawLine(pt(ex-side*0.12, ey), pt(ex+side*0.12, ey))
-            p.setPen(QPen(_with_alpha(accent, 180), max(1.0, r*0.008)))
-            p.drawLine(pt(ex-side*0.07, ey+eye_h), pt(ex+side*0.07, ey+eye_h))
-            glow = QRadialGradient(pt(ex, ey), r*0.20)
-            glow.setColorAt(0.0, _with_alpha(primary, 100))
-            glow.setColorAt(1.0, _with_alpha(primary, 0))
-            p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(QBrush(glow))
-            p.drawEllipse(QRectF(cx+(ex-0.20)*r, cy+(ey-0.20)*r, r*0.40, r*0.40))
+            poly([(side*0.08,-0.83),(side*0.22,-0.78),(side*0.29,-0.68),
+                  (side*0.43,-0.64),(side*0.49,-0.54)], 170, 0.008)
+            poly([(side*0.56,-0.42),(side*0.48,-0.34),(side*0.51,-0.20),
+                  (side*0.43,-0.10),(side*0.48,0.02)], 190, 0.009)
+            poly([(side*0.58,0.20),(side*0.48,0.28),(side*0.43,0.42),
+                  (side*0.31,0.50)], 145, 0.007)
+            idx = int((t*5 + (0 if side < 0 else 3)) % 5)
+            nodes = [(-0.29,-0.68),(-0.49,-0.54),(-0.51,-0.20),(-0.48,0.02),(-0.43,0.42)]
+            nx, ny = nodes[idx]
+            node(nx if side < 0 else -nx, ny, 0.014, 210)
 
-        # Geometric nose sensor and cheek seams.
-        p.setPen(QPen(_with_alpha(primary, 155), max(1.0, r*0.010)))
-        p.drawLine(pt(0,-0.16), pt(-0.045,0.10))
-        p.drawLine(pt(-0.045,0.10), pt(0.0,0.14))
-        p.drawLine(pt(0.0,0.14), pt(0.045,0.10))
+        # Eyebrows rotate into expressive angles instead of staying fixed.
+        brow_raise = mood * 0.055 + (0.018 if thinking else 0.0)
+        brow_tilt = mood * 0.11
         for side in (-1, 1):
-            p.drawLine(pt(side*0.19,0.18), pt(side*0.39,0.25))
-            p.drawLine(pt(side*0.39,0.25), pt(side*0.34,0.38))
+            inner_x = side * 0.10
+            outer_x = side * 0.52
+            inner_y = -0.405 - brow_raise + brow_tilt * side
+            outer_y = -0.435 - brow_raise - brow_tilt * side
+            poly([(outer_x,outer_y),(side*0.38,inner_y-0.015),
+                  (side*0.24,inner_y+0.012),(inner_x,inner_y+0.035)],
+                 235, 0.014)
+            # Eye sockets and lids respond to blinking, listening and emotion.
+            eye_y = -0.285 + mood*0.012
+            eye_h = (0.045 + (0.018 if listening else 0.0)) * blink
+            poly([(side*0.09,eye_y),(side*0.18,eye_y-eye_h),
+                  (side*0.33,eye_y-eye_h*1.12),(side*0.47,eye_y),
+                  (side*0.34,eye_y+eye_h),(side*0.19,eye_y+eye_h*0.92)],
+                 235, 0.011, True)
+            # Iris and pupil drift with gaze; iris rings pulse while listening.
+            ix = side*0.29 + self._look_x*0.035
+            iy = eye_y + self._look_y*0.018
+            q = pt(ix, iy)
+            ir = r * (0.036 if blink > 0.22 else 0.012)
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(_with_alpha(primary, 235), max(1.0,r*0.009)))
+            p.drawEllipse(QRectF(q.x()-ir,q.y()-ir,q.x()+ir-(q.x()-ir),q.y()+ir-(q.y()-ir)))
+            line((ix-ir/r*0.35,iy),(ix+ir/r*0.35,iy),255,0.008)
+            poly([(side*0.16,eye_y+eye_h+0.035),(side*0.29,eye_y+eye_h+0.05),
+                  (side*0.43,eye_y+eye_h+0.025)], 100, 0.005)
 
-        # Voice-synced mouth: a mechanical aperture opens with the scheduled
-        # viseme/audio envelope, changes width for rounded vs spread vowels,
-        # and closes fully for silence and plosive consonants.
-        my = 0.48
-        mw = 0.19 + 0.055 * max(-1.0, self._mouth_width)
-        mh = 0.018 + 0.105 * self._mouth
-        mouth_rect = QRectF(cx-mw*r, cy+(my-mh/2)*r, 2*mw*r, max(2.0, mh*r))
-        p.setBrush(QColor(1, 7, 14, 245))
-        p.setPen(QPen(_with_alpha(primary, 235), max(1.2, r*0.014)))
-        p.drawRoundedRect(mouth_rect, r*0.035, r*0.035)
-        if self._mouth > 0.07:
-            p.setClipRect(mouth_rect.adjusted(r*0.012, r*0.006, -r*0.012, -r*0.006))
-            p.setPen(QPen(_with_alpha(primary, int(100 + 130*self._mouth)), max(1.0, r*0.009)))
-            rows = max(1, int(1 + self._mouth * 4))
-            for row in range(rows):
-                yy = mouth_rect.top() + (row+1)*mouth_rect.height()/(rows+1)
-                p.drawLine(QPointF(mouth_rect.left()+r*0.025, yy),
-                           QPointF(mouth_rect.right()-r*0.025, yy))
-            p.setClipping(False)
+        # Cheek plates, cheek contours and jaw hinges subtly shift with expression.
+        cheek_lift = mood * 0.025
+        for side in (-1, 1):
+            poly([(side*0.12,0.04),(side*0.23,0.09+cheek_lift),
+                  (side*0.40,0.12+cheek_lift),(side*0.53,0.08)],
+                 185, 0.009)
+            poly([(side*0.17,0.18),(side*0.31,0.22+cheek_lift),
+                  (side*0.43,0.27),(side*0.39,0.39),(side*0.27,0.46)],
+                 220, 0.010)
+            poly([(side*0.54,0.39),(side*0.48,0.52),(side*0.34,0.65),
+                  (side*0.19,0.73)], 145, 0.008)
+            node(side*0.52, 0.19 + math.sin(t*2.2+side)*0.012, 0.012, 190)
 
-        # Chin module, lower jaw seams and animated scanning line.
-        p.setBrush(_with_alpha(accent, 28))
-        p.setPen(QPen(_with_alpha(primary, 145), max(1.0, r*0.009)))
-        p.drawPolygon(QPolygonF([pt(-0.27,0.63), pt(-0.18,0.75), pt(0.18,0.75),
-                                 pt(0.27,0.63), pt(0.16,0.58), pt(-0.16,0.58)]))
-        p.drawLine(pt(-0.10,0.67), pt(0.10,0.67))
-        scan_y = -0.86 + ((self._time * 0.42) % 1.0) * 1.60
-        p.setClipPath(face_path)
-        p.setPen(QPen(_with_alpha(primary, 36), max(1.0, r*0.012)))
-        p.drawLine(pt(-0.70, scan_y), pt(0.70, scan_y))
-        p.setClipping(False)
+        # Nose is a multi-line sensor, with a tiny animated bridge highlight.
+        poly([(0.0,-0.20),(-0.025,-0.06),(-0.065,0.075),(0.0,0.12),
+              (0.065,0.075),(0.025,-0.06),(0.0,-0.20)], 225, 0.010)
+        line((-0.10,0.105),(-0.045,0.14),170,0.007)
+        line((0.045,0.14),(0.10,0.105),170,0.007)
+        node(0.0, -0.055 + math.sin(t*3.0)*0.008, 0.010, 225)
 
-        # Status marker under the face.
-        p.setPen(QPen(_with_alpha(primary, 150), max(1.0, r*0.008)))
-        p.setBrush(_with_alpha(primary, int(35 + 70*self._energy)))
-        p.drawRoundedRect(QRectF(cx-r*0.22, cy+r*0.90, r*0.44, r*0.055), r*0.02, r*0.02)
+        # Mouth line becomes a smile, neutral line or frown; voice adds a pulsing aperture.
+        mouth_y = 0.405
+        mouth_open = self._mouth if speaking else 0.0
+        mouth_half = 0.235 + 0.025 * max(0.0, mood) + 0.025 * self._mouth_width
+        smile = mood * 0.075
+        mouth_path = QPainterPath()
+        mouth_path.moveTo(pt(-mouth_half, mouth_y + smile))
+        mouth_path.quadTo(pt(-mouth_half*0.50, mouth_y - smile*0.38 - mouth_open*0.07),
+                          pt(0.0, mouth_y - mouth_open*(0.045+0.10*mouth_open)))
+        mouth_path.quadTo(pt(mouth_half*0.50, mouth_y - smile*0.38 - mouth_open*0.07),
+                          pt(mouth_half, mouth_y + smile))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(_with_alpha(primary, 250), max(1.4,r*0.014),
+                      Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        p.drawPath(mouth_path)
+        if mouth_open > 0.10:
+            mouth_inner = QPainterPath()
+            mouth_inner.moveTo(pt(-mouth_half*0.80,mouth_y+0.005))
+            mouth_inner.quadTo(pt(0,mouth_y+mouth_open*0.15),
+                               pt(mouth_half*0.80,mouth_y+0.005))
+            p.setPen(QPen(_with_alpha(primary,int(100+140*mouth_open)),max(1.0,r*0.007)))
+            p.drawPath(mouth_inner)
+            for k in range(1, 1 + int(mouth_open*3)):
+                yy = mouth_y + k*0.018
+                line((-mouth_half*0.65,yy),(mouth_half*0.65,yy),100+int(100*mouth_open),0.004)
+
+        # Chin/jaw lines move with speech and emotion.
+        jaw_drop = mouth_open * 0.035
+        poly([(-0.32,0.54),(-0.22,0.66-jaw_drop),(0.0,0.72-jaw_drop),
+              (0.22,0.66-jaw_drop),(0.32,0.54)], 210, 0.010)
+        poly([(-0.17,0.59),(-0.10,0.63),(0.0,0.64),(0.10,0.63),(0.17,0.59)],
+             145, 0.007)
+        line((-0.07,0.69),(0.07,0.69),170,0.006)
+
+        # Moving horizontal scanner clips visually to the head region.
+        scan_y = -0.84 + ((t * (0.68 if thinking else 0.48)) % 1.0) * 1.62
+        scan_wave = math.sin(t*5.0) * 0.025
+        line((-0.62,scan_y),(0.62,scan_y+scan_wave),int(90+110*pulse),0.008)
+        line((-0.58,scan_y+0.018),(0.58,scan_y+0.018+scan_wave),55,0.004)
+
+        # Traveling sparks run around the facial contour and give constant motion.
+        for i in range(6):
+            pos = (t*0.12 + i/6.0) % 1.0
+            idxf = pos * len(moving_contour)
+            idx = int(idxf) % len(moving_contour)
+            frac = idxf - int(idxf)
+            a = moving_contour[idx]
+            b = moving_contour[(idx+1) % len(moving_contour)]
+            sx = a[0] + (b[0]-a[0])*frac
+            sy = a[1] + (b[1]-a[1])*frac
+            node(sx, sy, 0.009 + pulse*0.003, 185)
+
+        # Tiny status waveform below the chin changes with the assistant's state.
+        status_y = 0.91
+        for i in range(19):
+            x = -0.22 + i*0.024
+            wave = math.sin(t*5.0+i*0.72) * (0.012 + (0.035 if speaking or thinking else 0.012))
+            line((x,status_y-wave),(x,status_y+wave),150 if i%3 else 235,0.005)
         p.restore()

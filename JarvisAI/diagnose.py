@@ -1,4 +1,4 @@
-""""Preflight diagnostics for JARVIS AI.
+"""Preflight diagnostics for JARVIS AI.
 
 Run from the JarvisAI directory:
     python diagnose.py

@@ -14,6 +14,8 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -376,6 +378,63 @@ class DevAgentTests(unittest.TestCase):
         from actions import dev_agent as da
         msg = da._install_dependencies(["--index-url=http://evil/"], Path(tempfile.mkdtemp()))
         self.assertIn("unsafe", msg.lower())
+
+
+class MultiSpeakerVoiceIDTests(unittest.TestCase):
+    def test_identify_returns_stranger_when_unaware_or_no_profiles(self):
+        from core import voice_id
+        speaker, score = voice_id.identify(np.zeros(16000 * 2, dtype=np.int16))
+        self.assertEqual(speaker, "stranger")
+
+    def test_multi_speaker_enrollment_and_identification(self):
+        from core import voice_id
+        tmp_dir = Path(tempfile.mkdtemp())
+        old_file = voice_id.PROFILE_FILE
+        voice_id.PROFILE_FILE = tmp_dir / "voice_id.dat"
+
+        # Create mock embeddings for owner and sister
+        owner_audio = np.random.randn(16000 * 2).astype(np.float32)
+        sister_audio = np.random.randn(16000 * 2).astype(np.float32)
+
+        def fake_embedding(audio):
+            if np.array_equal(audio, owner_audio):
+                v = np.ones(128, dtype=np.float32)
+            elif np.array_equal(audio, sister_audio):
+                v = np.ones(128, dtype=np.float32)
+                v[:64] = -1.0
+            else:
+                v = np.zeros(128, dtype=np.float32)
+                v[0] = 1.0
+            return v / np.linalg.norm(v)
+
+        fake_key = b"0" * 32
+        try:
+            with patch("core.voice_id._embedding", side_effect=fake_embedding), \
+                 patch("core.voice_id.backend_ready", return_value=True), \
+                 patch("core.voice_id.is_enabled", return_value=True), \
+                 patch("core.voice_id._profile_key", return_value=fake_key):
+                voice_id.enroll(owner_audio, speaker_name="owner")
+                voice_id.enroll(sister_audio, speaker_name="sister")
+
+                spk, sc = voice_id.identify(owner_audio)
+                self.assertEqual(spk, "owner")
+                self.assertGreaterEqual(sc, 0.9)
+
+                spk_sis, sc_sis = voice_id.identify(sister_audio)
+                self.assertEqual(spk_sis, "sister")
+                self.assertGreaterEqual(sc_sis, 0.9)
+
+                unknown_audio = np.random.randn(16000 * 2).astype(np.float32)
+                spk_str, _ = voice_id.identify(unknown_audio)
+                self.assertEqual(spk_str, "stranger")
+
+                verified_owner, _ = voice_id.verify(owner_audio)
+                self.assertTrue(verified_owner)
+
+                verified_sister, _ = voice_id.verify(sister_audio)
+                self.assertFalse(verified_sister)
+        finally:
+            voice_id.PROFILE_FILE = old_file
 
 
 if __name__ == "__main__":

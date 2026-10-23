@@ -1247,15 +1247,14 @@ class JarvisLive:
                 self.ui.set_voice_id_enabled(True)
                 return "Voice ID enabled. Sensitive actions and spoken approvals will check your speaker profile."
 
-            if action == "enroll":
+            if action.startswith("enroll"):
+                parts = action.split(":", 1)
+                speaker_target = parts[1].strip().lower() if len(parts) > 1 and parts[1].strip() else "owner"
                 if not voice_id.backend_ready():
                     return ("Voice ID is unavailable. Install requirements-voice-id.txt, "
                             "and ensure your OS credential store is unlocked and available, "
                             "then restart JARVIS.")
-                # The challenge is transcribed by the existing Live session.
-                # A deliberate enrollment click may therefore wake a sleeping
-                # session so the already-open mic can validate the sentence.
-                self.wake(reason="Voice ID enrollment")
+                self.wake(reason=f"Voice ID enrollment for {speaker_target}")
                 challenge = secrets.choice((
                     "Copper leaves drift past the harbor before sunrise.",
                     "Please verify my voice before Jarvis changes anything.",
@@ -1264,6 +1263,7 @@ class JarvisLive:
                 ))
                 with self._voice_id_enroll_lock:
                     self._voice_id_enroll_active = True
+                    self._voice_id_enroll_speaker = speaker_target
                     self._voice_id_enroll_chunks = []
                     self._voice_id_enroll_samples = 0
                     self._voice_id_enroll_challenge = challenge
@@ -1271,8 +1271,9 @@ class JarvisLive:
                     self._voice_id_enroll_transcript = ""
                     self._voice_id_enroll_candidate = None
                 self.ui.show_content(
-                    "VOICE ID ENROLLMENT",
+                    f"VOICE ID ENROLLMENT ({speaker_target.upper()})",
                     f"Read this sentence twice, clearly, after starting enrollment:\n\n{challenge}\n\n"
+                    f"Enrolling speaker profile for: {speaker_target}\n"
                     "Keep the microphone close and JARVIS quiet until enrollment finishes. "
                     "Only clear voiced audio is used; raw audio is discarded after the local profile is created. "
                     "The encryption key stays in this device's OS credential store.",
@@ -1280,7 +1281,7 @@ class JarvisLive:
                 threading.Timer(
                     60.0, self._expire_voice_id_enrollment, args=(challenge,),
                 ).start()
-                return f"Enrollment started. Read the sentence twice, clearly: {challenge}"
+                return f"Enrollment started for {speaker_target}. Read the sentence twice, clearly: {challenge}"
 
             if action == "remove":
                 voice_id.remove_profile()
@@ -1373,12 +1374,13 @@ class JarvisLive:
             self._begin_voice_id_save(ready_sample)
 
     def _begin_voice_id_save(self, pcm: bytes) -> None:
+        speaker_target = getattr(self, "_voice_id_enroll_speaker", "owner") or "owner"
         def save_profile():
             try:
-                voice_id.enroll(np.frombuffer(pcm, dtype=np.int16))
+                voice_id.enroll(np.frombuffer(pcm, dtype=np.int16), speaker_name=speaker_target)
                 self._voice_id_enabled = voice_id.is_enabled()
                 self.ui.set_voice_id_enabled(self._voice_id_enabled)
-                self.ui.write_log("SEC: Voice ID enrollment complete. Raw recording discarded; encrypted speaker profile stored locally.")
+                self.ui.write_log(f"SEC: Voice ID enrollment complete for '{speaker_target}'. Raw recording discarded; encrypted profile stored locally.")
             except Exception as exc:
                 self.ui.write_log(f"SEC: Voice ID enrollment failed: {type(exc).__name__}: {exc}")
         threading.Thread(target=save_profile, name="voice-id-enrollment", daemon=True).start()
@@ -1417,18 +1419,23 @@ class JarvisLive:
             elif recent:
                 self._voice_id_turn_audio = (self._voice_id_turn_audio + recent)[-192000:]
 
-    def _verify_voice_id_for_current_turn(self) -> bool:
+    def _identify_voice_id_for_current_turn(self) -> tuple[str, float]:
         if not self._voice_id_enabled or not voice_id.is_enabled():
-            return not voice_id.is_enabled()
+            return "stranger", 0.0
         with self._voice_id_audio_lock:
             pcm = self._voice_id_turn_audio
         if len(pcm) < int(SEND_SAMPLE_RATE * voice_id.MIN_AUDIO_SECONDS * 2):
-            self.ui.write_log("SEC: Voice ID needs more clear speech; spoken approval denied.")
+            return "stranger", 0.0
+        return voice_id.identify(np.frombuffer(pcm, dtype=np.int16))
+
+    def _verify_voice_id_for_current_turn(self) -> bool:
+        if not self._voice_id_enabled or not voice_id.is_enabled():
+            return not voice_id.is_enabled()
+        speaker, score = self._identify_voice_id_for_current_turn()
+        if speaker != "owner":
+            self.ui.write_log(f"SEC: Speaker identified as '{speaker}' (score {score:.2f}); owner approval required for sensitive action.")
             return False
-        matched, score = voice_id.verify(np.frombuffer(pcm, dtype=np.int16))
-        if not matched:
-            self.ui.write_log(f"SEC: Voice ID did not match (score {score:.2f}); spoken approval denied.")
-        return matched
+        return True
 
     def _on_text_command(self, text: str):
         if not self._loop or not self.session:
@@ -2654,12 +2661,22 @@ class JarvisLive:
 
                             full_in = " ".join(in_buf).strip()
                             if full_in:
+                                # Prepend identified speaker identity when Voice ID is active
+                                if self._voice_id_enabled and voice_id.is_enabled():
+                                    speaker, _score = self._identify_voice_id_for_current_turn()
+                                    full_in_with_speaker = f"[SPEAKER: {speaker}] {full_in}"
+                                else:
+                                    speaker = "user"
+                                    full_in_with_speaker = full_in
+
+                                in_buf = [full_in_with_speaker]
+
                                 # A fresh user turn supersedes any previous
                                 # locally handled Holo-open request.
                                 holo_open_request_pending = self._route_holo_news_voice(full_in)
                                 self._last_out_logged = ""   # new exchange
-                                self.ui.write_log(f"You: {full_in}")
-                                self._session_log.append(f"User: {full_in}")
+                                self.ui.write_log(f"You ({speaker}): {full_in}")
+                                self._session_log.append(f"User ({speaker}): {full_in}")
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
                                         "type": "log", "speaker": "user",

@@ -296,25 +296,58 @@ def _profile_key(*, create: bool = True) -> bytes:
     return key
 
 
-def _load_profile() -> np.ndarray:
+def _load_profiles() -> dict[str, np.ndarray]:
+    if not PROFILE_FILE.is_file():
+        return {}
     raw = _unprotect(PROFILE_FILE.read_bytes())
     record = json.loads(raw.decode("utf-8"))
-    if record.get("version") != 1:
+    version = record.get("version")
+    profiles = {}
+
+    if version == 1 and "embedding" in record:
+        vector = np.asarray(record.get("embedding", []), dtype=np.float32)
+        norm = float(np.linalg.norm(vector))
+        if vector.size >= 32 and norm:
+            profiles["owner"] = vector / norm
+    elif version == 2 and "profiles" in record:
+        for name, emb in record.get("profiles", {}).items():
+            vector = np.asarray(emb, dtype=np.float32)
+            norm = float(np.linalg.norm(vector))
+            if vector.size >= 32 and norm:
+                profiles[str(name).lower().strip()] = vector / norm
+    else:
         raise ValueError("The saved Voice ID profile has an unknown format.")
-    vector = np.asarray(record.get("embedding", []), dtype=np.float32)
-    norm = float(np.linalg.norm(vector))
-    if vector.size < 32 or not norm:
+
+    if not profiles:
         raise ValueError("The saved Voice ID profile is invalid.")
-    return vector / norm
+    return profiles
 
 
-def enroll(audio) -> None:
-    """Create an encrypted speaker embedding; raw enrollment audio is discarded."""
+def enroll(audio, speaker_name: str = "owner") -> None:
+    """Create or update an encrypted speaker embedding; raw enrollment audio is discarded."""
+    speaker_name = str(speaker_name or "owner").lower().strip()
+    if not speaker_name:
+        speaker_name = "owner"
+
     embedding = _embedding(audio)
+    existing_profiles = {}
+    if PROFILE_FILE.is_file():
+        try:
+            existing_profiles = _load_profiles()
+        except Exception:
+            existing_profiles = {}
+
+    existing_profiles[speaker_name] = embedding / float(np.linalg.norm(embedding))
+
+    profiles_dict = {
+        name: emb.tolist() for name, emb in existing_profiles.items()
+    }
+
     record = json.dumps({
-        "version": 1,
-        "embedding": embedding.tolist(),
+        "version": 2,
+        "profiles": profiles_dict,
     }).encode("utf-8")
+
     PROFILE_FILE.parent.mkdir(parents=True, exist_ok=True)
     protected = _protect(record)
     temp_path = PROFILE_FILE.with_suffix(".tmp")
@@ -329,18 +362,33 @@ def enroll(audio) -> None:
     _set_enabled(True)
 
 
-def verify(audio) -> tuple[bool, float]:
-    """Return (match, similarity); fail closed on any model/profile error."""
+def identify(audio) -> tuple[str, float]:
+    """Identify the speaker ('owner', 'sister', ..., or 'stranger')."""
     if not is_enabled() or not backend_ready():
-        return False, 0.0
+        return "stranger", 0.0
     try:
         with _inference_lock:
-            template = _load_profile()
+            profiles = _load_profiles()
         sample = _embedding(audio)
-        if sample.shape != template.shape:
-            return False, 0.0
-        score = float(np.dot(sample, template))
-        return score >= SIMILARITY_THRESHOLD, score
+        best_speaker = "stranger"
+        best_score = 0.0
+
+        for speaker_name, template in profiles.items():
+            if sample.shape != template.shape:
+                continue
+            score = float(np.dot(sample, template))
+            if score > best_score:
+                best_score = score
+                if score >= SIMILARITY_THRESHOLD:
+                    best_speaker = speaker_name
+
+        return best_speaker, best_score
     except Exception as e:
-        print(f"[Voice ID] Verification unavailable: {e}")
-        return False, 0.0
+        print(f"[Voice ID] Identification unavailable: {e}")
+        return "stranger", 0.0
+
+
+def verify(audio) -> tuple[bool, float]:
+    """Return (match_owner, similarity); fail closed on any model/profile error."""
+    speaker, score = identify(audio)
+    return speaker == "owner", score

@@ -447,7 +447,7 @@ def add_message(caller_name: str, caller_number: str, transcript: str, audio_b64
             messages = []
 
         # len(messages)+1 repeated an id after any deletion or trimming.
-        msg_id = f"msg_{int(time.time())}_{secrets.token_hex(2)}"
+        msg_id = f"msg_{int(time.time())}_{secrets.token_hex(8)}"
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
 
         message = {

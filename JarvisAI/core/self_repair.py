@@ -172,3 +172,44 @@ def health_snapshot() -> dict[str, Any]:
             "automatic_code_editing": False,
             "arbitrary_shell_execution": False,
         }
+
+
+def install_global_exception_hooks() -> Callable[[], None]:
+    """Log uncaught main/thread exceptions, then delegate to Python's handlers.
+
+    Returns an uninstall callback for tests or controlled shutdown. The hook
+    never attempts to restart threads or silently swallow an exception.
+    """
+    import sys
+
+    previous_sys_hook = sys.excepthook
+    previous_thread_hook = getattr(threading, "excepthook", None)
+
+    def main_hook(exc_type: type[BaseException], exc: BaseException, tb: Any) -> None:
+        try:
+            record_error(exc, operation="runtime:uncaught_main_thread")
+        except Exception:
+            pass
+        previous_sys_hook(exc_type, exc, tb)
+
+    def thread_hook(args: Any) -> None:
+        try:
+            record_error(args.exc_value, operation=f"runtime:uncaught_thread:{args.thread.name if args.thread else 'unknown'}")
+        except Exception:
+            pass
+        if previous_thread_hook is not None:
+            previous_thread_hook(args)
+
+    sys.excepthook = main_hook
+    if previous_thread_hook is not None:
+        threading.excepthook = thread_hook
+
+    def uninstall() -> None:
+        # Restore only if our hooks are still installed; don't overwrite a
+        # handler another library may have installed afterward.
+        if sys.excepthook is main_hook:
+            sys.excepthook = previous_sys_hook
+        if previous_thread_hook is not None and threading.excepthook is thread_hook:
+            threading.excepthook = previous_thread_hook
+
+    return uninstall

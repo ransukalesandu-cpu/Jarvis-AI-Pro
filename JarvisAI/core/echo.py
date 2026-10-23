@@ -200,7 +200,10 @@ class EchoGuard:
         filtering keeps the conservative default.
         """
         try:
-            if level < _MIN_LEVEL:
+            # During active barge-in, allow quieter user voices through; the
+            # echo residual test below still guards against the speaker's own sound.
+            min_level = 0.012 if fast else _MIN_LEVEL
+            if level < min_level:
                 # We are playing and the microphone hears nothing back:
                 # this setup returns no echo at all (headphones, or a mic
                 # far from the speaker). Record that, or the window stays
@@ -259,6 +262,12 @@ class EchoGuard:
             # thing it is watching for.
             warming = len(self._residuals) < _WARMUP
             thr = self.threshold
+            if fast:
+                # The adaptive echo ceiling is deliberately conservative for
+                # tail filtering, but can hide a person speaking over JARVIS.
+                # Cap it for barge-in while retaining a residual floor and the
+                # two-consecutive-block confirmation in the microphone callback.
+                thr = max(0.06, min(thr, 0.10))
             speech = (fast or not warming) and best_res >= thr
 
             if speech:

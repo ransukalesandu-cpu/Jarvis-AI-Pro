@@ -75,6 +75,19 @@ def _preflight() -> tuple[str, str, str]:
     return origin, branch, local_sha
 
 
+def _backup_ref_for(commit_sha: str) -> str | None:
+    """Find an existing backup branch that points at the requested commit."""
+    output = _git(
+        "for-each-ref", "--format=%(refname:short) %(objectname)",
+        "refs/heads/jarvis-backup-",
+    )
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1] == commit_sha:
+            return parts[0]
+    return None
+
+
 def _remote_sha() -> str:
     output = _git("ls-remote", "origin", "refs/heads/main", timeout=30)
     if not output:
@@ -175,14 +188,18 @@ def self_update(parameters: dict, **_kwargs) -> str:
             if current_sha != old_sha:
                 # The update began, but did not validate. Checkout was proven clean
                 # before touching it, so resetting to the exact prior commit is safe.
-                stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-                backup_branch = f"jarvis-backup-{stamp}"
-                try:
-                    _git("branch", backup_branch, old_sha)
-                except UpdateError:
-                    # A backup with the same timestamp may already exist; old SHA
-                    # remains available through reflog and is reported below.
-                    backup_branch = f"previous-commit-{old_sha[:12]}"
+                backup_branch = _backup_ref_for(old_sha)
+                if backup_branch is None:
+                    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                    backup_branch = f"jarvis-backup-{stamp}-{old_sha[:8]}"
+                    try:
+                        _git("branch", backup_branch, old_sha)
+                    except UpdateError as backup_exc:
+                        return (
+                            f"Update failed: {exc}. Could not create a named backup: "
+                            f"{backup_exc}. Previous commit: {old_sha}. "
+                            "Do not restart until the repository state is reviewed."
+                        )
                 try:
                     _git("reset", "--hard", old_sha)
                 except UpdateError as rollback_exc:

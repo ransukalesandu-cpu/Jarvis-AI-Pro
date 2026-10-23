@@ -408,3 +408,15 @@ class RoutineConfirmationTierTests(unittest.TestCase):
                     security.TIER_DANGEROUS,
                 )
 
+class SelfUpdateTierTests(unittest.TestCase):
+    def test_update_check_is_read_only_but_applying_update_is_dangerous(self):
+        from core import security
+        self.assertEqual(
+            security.tier_for("self_update", {"operation": "check"}),
+            security.TIER_SAFE,
+        )
+        self.assertEqual(
+            security.tier_for("self_update", {"operation": "update"}),
+            security.TIER_DANGEROUS,
+        )
+

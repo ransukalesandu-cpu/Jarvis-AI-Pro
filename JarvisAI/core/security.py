@@ -465,6 +465,8 @@ def tier_for(name: str, params: dict | None = None) -> str:
     operation = str((params or {}).get("operation", "")).strip().lower()
     if name == "self_heal" and operation == "check":
         return TIER_SAFE
+    if name == "self_update":
+        return TIER_SAFE if operation == "check" else TIER_DANGEROUS
     if name == "open_app":
         app_name = str((params or {}).get("app_name", "")).strip().casefold()
         safe_apps = {

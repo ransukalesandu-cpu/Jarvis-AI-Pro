@@ -27,6 +27,9 @@ jobs:
           cache: pip
           cache-dependency-path: JarvisAI/requirements.txt
 
+      - name: Install PortAudio runtime for audio-module tests
+        run: sudo apt-get install -y libportaudio2
+
       - name: Install project and test dependencies
         working-directory: JarvisAI
         run: |

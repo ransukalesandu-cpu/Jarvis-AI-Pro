@@ -86,16 +86,16 @@ class SelfRepairTests(unittest.TestCase):
         try:
             sys.excepthook = lambda *args: main_calls.append(args)
             threading.excepthook = lambda args: thread_calls.append(args)
-            with tempfile.TemporaryDirectory() as temp, \\
-                    unittest.mock.patch.object(sr, "record_error") as record:
-                uninstall = sr.install_global_exception_hooks()
-                try:
-                    error = RuntimeError("main boom")
-                    sys.excepthook(type(error), error, error.__traceback__)
-                    args = threading.ExceptHookArgs((type(error), error, error.__traceback__, threading.current_thread()))
-                    threading.excepthook(args)
-                finally:
-                    uninstall()
+            with tempfile.TemporaryDirectory() as temp:
+                with patch.object(sr, "record_error") as record:
+                    uninstall = sr.install_global_exception_hooks()
+                    try:
+                        error = RuntimeError("main boom")
+                        sys.excepthook(type(error), error, error.__traceback__)
+                        args = threading.ExceptHookArgs((type(error), error, error.__traceback__, threading.current_thread()))
+                        threading.excepthook(args)
+                    finally:
+                        uninstall()
             self.assertEqual(len(main_calls), 1)
             self.assertEqual(len(thread_calls), 1)
             self.assertEqual(record.call_count, 2)

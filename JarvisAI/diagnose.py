@@ -24,6 +24,8 @@ MODULES = {
     "Edge TTS (default speech engine)": "edge_tts",
     "miniaudio (speech playback decoder)": "miniaudio",
 }
+if sys.version_info >= (3, 13):
+    MODULES["audioop compatibility (Python 3.13+)"] = "audioop"
 
 
 def _available(module: str) -> bool:

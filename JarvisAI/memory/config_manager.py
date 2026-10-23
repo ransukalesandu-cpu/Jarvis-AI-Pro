@@ -197,8 +197,8 @@ def get_hud_style() -> str:
     Presentation choice only; all three modes render in the same software
     painter. Defaults to the neural field, and the selection survives a restart.
     """
-    v = str(load_api_keys().get("hud_style", "neural")).strip().lower()
-    return v if v in HUD_STYLES else "neural"
+    v = str(load_api_keys().get("hud_style", "face")).strip().lower()
+    return v if v in HUD_STYLES else "face"
 
 
 def save_hud_style(style: str) -> None:

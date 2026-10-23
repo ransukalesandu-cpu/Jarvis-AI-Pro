@@ -12,11 +12,26 @@ from memory.memory_manager import load_memory, save_memory
 from core.vocal_behavior import DEFAULT_SETTINGS as DEFAULT_VOCAL_SETTINGS, normalize_settings
 
 
-DEFAULT_MODE = "conversational"
+DEFAULT_MODE = "auto"
 MAX_CUSTOM_NAME = 40
 MAX_INSTRUCTIONS = 1200
 
 MODE_DEFINITIONS = {
+    "auto": {
+        "label": "Auto Adaptive",
+        "description": "Automatically adapt warmth, seriousness, humour, and brevity to the user's words and situation on every turn.",
+        "prompt": (
+            "Automatically adapt your communication style to the current user message and the ongoing conversation. "
+            "Use affectionate warmth and reassurance when the user seeks comfort or speaks warmly; use firm, strict, motivating "
+            "coaching when they ask for discipline, procrastination help, or study/work accountability; use playful humour only "
+            "when the user is clearly joking or the situation is light; use concise, calm, professional language for technical tasks; "
+            "use calm and supportive language when the user seems upset. Reassess every turn and switch naturally without announcing "
+            "the mode unless asked. Do not infer emotions from one ambiguous word alone. Never insult, shame, threaten, manipulate, "
+            "claim to be human, or pretend to be the user's romantic partner. Serious, safety-related, or high-stakes topics always "
+            "override humour or strictness. Style adaptation never changes security checks, permissions, confirmation requirements, "
+            "or factuality."
+        ),
+    },
     "conversational": {
         "label": "Conversational",
         "description": "Natural, grounded, and warm, without filler.",

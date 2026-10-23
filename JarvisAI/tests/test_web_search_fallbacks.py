@@ -28,6 +28,14 @@ class WebSearchFallbackTests(unittest.TestCase):
         self.assertIn("test product", result)
         self.assertIn("API quota", result)
 
+    def test_handler_records_unexpected_error_without_exposing_secret(self):
+        with patch.object(ws, "_search", side_effect=RuntimeError("api_key=super-secret")), \\
+                patch.object(ws.self_repair, "record_error", wraps=ws.self_repair.record_error) as record:
+            result = ws.web_search({"query": "test"})
+        self.assertIn("Search failed:", result)
+        self.assertNotIn("super-secret", result)
+        record.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

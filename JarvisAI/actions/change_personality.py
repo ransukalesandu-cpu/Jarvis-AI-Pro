@@ -85,9 +85,9 @@ def change_personality(parameters: dict, **context) -> str:
                 "vocal": previous.get("vocal", {}),
             }
             save_voice_personality(settings)
-            # JARVIS mode keeps the original default voice. Aoede is selected
-            # only for Bihansa mode, even if an older saved profile captured it.
-            save_voice("Charon")
+            # Restore the exact voice that was active before Bihansa mode.
+            # Fall back to the established JARVIS voice for older saved profiles.
+            save_voice(str(previous.get("voice") or "Charon"))
             save_memory(memory)
         else:
             settings = {

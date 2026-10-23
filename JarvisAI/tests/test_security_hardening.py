@@ -395,7 +395,7 @@ class RoutineConfirmationTierTests(unittest.TestCase):
 
     def test_known_gui_apps_do_not_require_confirmation_but_unknown_apps_do(self):
         from core import security
-        for app in ("Chrome", "Spotify", "Calculator", "VS Code"):
+        for app in ("Chrome", "Spotify", "Calculator", "VSCode"):
             with self.subTest(app=app):
                 self.assertEqual(
                     security.tier_for("open_app", {"app_name": app}),

@@ -22,6 +22,10 @@ def _with_alpha(color: QColor, alpha: int) -> QColor:
 class HoloAvatar:
     """Angular synthetic face with audio/viseme-driven mouth animation."""
 
+    # Normalized vertical extent used by HudCanvas when sizing/centering the head.
+    # Drawing spans approximately -0.94r through +0.955r, including the status bar.
+    SPAN = 1.90
+
     def __init__(self) -> None:
         self._time = 0.0
         self._mouth = 0.0

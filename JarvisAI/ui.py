@@ -453,7 +453,7 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
             from memory.config_manager import get_hud_style
             self.hud_style = get_hud_style()
         except Exception:
-            self.hud_style = "neural"
+            self.hud_style = "face"
         self._core_phase = 0.0
         self._neural_phase = 0.0
         self._neural_energy = 0.12

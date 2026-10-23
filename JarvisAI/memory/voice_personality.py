@@ -87,7 +87,7 @@ def get_voice_personality(memory: dict | None = None) -> dict:
     # any custom profile or personality the user has deliberately configured.
     if (
         mode == "conversational"
-        and stored_name in ("", "My profile")
+        and (stored_name in ("", "My profile") or "custom_name" not in raw)
         and not _read_value(raw.get("custom_instructions")).strip()
         and not any(_read_value(raw.get(f"tuning_{mode_id}")).strip() for mode_id in MODE_DEFINITIONS)
     ):

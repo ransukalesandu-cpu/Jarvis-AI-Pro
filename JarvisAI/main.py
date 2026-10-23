@@ -1,6 +1,32 @@
 import platform as _platform
 import subprocess as _subprocess
 import os
+import sys
+import threading
+from PyQt5.QtWidgets import QApplication
+
+# Import your new upgrade modules
+from JarvisAI.voice.voice_engine import JarvisVoiceEngine
+from JarvisAI.voice.persona import JARVIS_SPOKEN_SYSTEM_PROMPT
+from JarvisAI.voice.fillers import get_filler_phrase
+from JarvisAI.core.self_healing_v2 import SelfHealingSentinel
+from JarvisAI.core.screen_agent import ScreenAgent
+from JarvisAI.services.phone_controller import AndroidPhoneController
+
+# 1. Initialize Subsystems
+voice_engine = JarvisVoiceEngine(voice="en-GB-RyanNeural")
+phone = AndroidPhoneController(device_ip=os.getenv("PHONE_IP"))
+screen_agent = ScreenAgent(security_check_cb=lambda title, msg: True) # Or link to your HUD popup
+
+# 2. Start Self-Healing Sentinel in Background
+sentinel = SelfHealingSentinel()
+sentinel.start(interval_sec=5.0)
+
+# 3. Connect Voice Interruption (Barge-In)
+# When the microphone detects user speech while Jarvis is talking, call:
+# voice_engine.interrupt()
+
+print("[JARVIS] All enhanced modules online and ready.")
 from JarvisAI.services.phone_controller import AndroidPhoneController
 
 # Set your phone's local Wi-Fi IP in your .env or pass it directly:

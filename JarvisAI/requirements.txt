@@ -34,6 +34,7 @@ pygetwindow
 pillow>=10,<13
 opencv-python>=4.8,<5
 mss>=9,<11
+pytesseract>=0.3.10,<1       # local OCR bridge; Tesseract OCR engine must also be installed separately
 
 # ── System, files & documents ─────────────────────────────────────────────────
 psutil>=5.9,<8

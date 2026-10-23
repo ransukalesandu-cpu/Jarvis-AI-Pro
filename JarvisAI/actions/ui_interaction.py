@@ -112,12 +112,66 @@ def _click_coordinates(x, y) -> str:
         return f"Coordinate click failed: {type(exc).__name__}: {exc}"
 
 
+def _ocr_action(label: str, click: bool) -> str:
+    from actions.screen_ocr import read_screen_words, find_text_matches
+    try:
+        words = read_screen_words()
+        matches = find_text_matches(label, words)
+    except Exception as exc:
+        return str(exc)
+    if not matches:
+        sample = ", ".join(w["text"] for w in words[:25])
+        return f"OCR could not find visible text '{label}'. Visible text sample: {sample or 'none detected'}."
+    if len(matches) != 1:
+        positions = ", ".join(f"({m['x']}, {m['y']})" for m in matches[:5])
+        return f"Found '{label}' in {len(matches)} screen locations: {positions}. Nothing was clicked; specify which one."
+    match = matches[0]
+    if not click:
+        return (
+            f"OCR found '{match['text']}' near x={match['x']}, y={match['y']} "
+            f"with {match['confidence']:.0f}% confidence. This is detected text, not guaranteed button semantics."
+        )
+    if match["confidence"] < 55:
+        return f"OCR confidence for '{label}' is too low ({match['confidence']:.0f}%). Nothing was clicked."
+
+    def perform() -> str:
+        try:
+            import pyautogui
+            pyautogui.FAILSAFE = True
+            pyautogui.click(match["x"], match["y"])
+            return (
+                f"Clicked near OCR-detected text '{match['text']}' at x={match['x']}, y={match['y']}. "
+                "The click targets the text centre; custom layouts may need manual adjustment."
+            )
+        except ImportError:
+            return "PyAutoGUI is not installed in JARVIS's Python environment."
+        except Exception as exc:
+            return f"OCR click failed: {type(exc).__name__}: {exc}"
+
+    if _HIGH_IMPACT.search(label):
+        return confirm_gate.request(
+            key="ui-ocr-click-high-impact",
+            title=f"Click near '{label}'?",
+            detail=(
+                f"Local OCR found '{match['text']}' at x={match['x']}, y={match['y']} "
+                f"with {match['confidence']:.0f}% confidence. This may be a sensitive action. "
+                "Confirm on the JARVIS screen before clicking."
+            ),
+            run=perform,
+        )
+    return perform()
+
+
 def ui_interaction(parameters: dict, **_kwargs) -> str:
     operation = str(parameters.get("operation", "click_button")).strip().lower()
-    if operation == "click_button":
+    if operation in ("click_button", "find_text", "click_visual"):
         label = _clean_label(parameters.get("label"))
         if not label:
-            return "Say the exact visible button or control name. Nothing was clicked."
+            return "Say the exact visible button/control name or text. Nothing was clicked."
+        if operation == "find_text":
+            return _ocr_action(label, click=False)
+        if operation == "click_visual":
+            return _ocr_action(label, click=True)
         return _click_named_control(label)
     if operation == "click_coordinates":
         return _click_coordinates(parameters.get("x"), parameters.get("y"))
@@ -126,12 +180,12 @@ def ui_interaction(parameters: dict, **_kwargs) -> str:
             import pyautogui
             size = pyautogui.size()
             return (
-                f"Screen size is {size.width}x{size.height}. For exact-name control discovery, "
-                "Windows UI Automation must be available."
+                f"Screen size is {size.width}x{size.height}. Windows UI Automation can find accessible controls; "
+                "local OCR can find visible text when Tesseract is installed."
             )
         except ImportError:
             return "PyAutoGUI is not installed, so screen dimensions cannot be read."
-    return "Choose click_button, click_coordinates, or describe."
+    return "Choose click_button, click_coordinates, find_text, click_visual, or describe."
 
 
 TOOL = {
@@ -140,7 +194,7 @@ TOOL = {
         "Interact with visible app buttons and controls from voice requests. Prefer click_button "
         "with the exact accessible name, e.g. 'Settings', 'Save', or 'Bluetooth'. On Windows this "
         "uses UI Automation, requires a unique visible enabled control, and reports ambiguity rather "
-        "than clicking a guess. Sensitive labels such as Delete, Send, Submit, Purchase, Reset, or "
+        "than clicking a guess. Custom-drawn controls can use find_text for local OCR detection or click_visual to click unique visible text. OCR requires pytesseract plus the separately installed Tesseract OCR engine; screenshots are processed locally. Sensitive labels such as Delete, Send, Submit, Purchase, Reset, or "
         "Allow require the user's confirmation. For other operating systems use click_coordinates "
         "only when the user explicitly gives screen coordinates. Use computer_settings action "
         "open_settings to open system settings; use this tool to click controls inside apps. "
@@ -151,11 +205,11 @@ TOOL = {
         "properties": {
             "operation": {
                 "type": "STRING",
-                "enum": ["click_button", "click_coordinates", "describe"],
+                "enum": ["click_button", "click_coordinates", "find_text", "click_visual", "describe"],
             },
             "label": {
                 "type": "STRING",
-                "description": "Exact visible accessible name of a button/control.",
+                "description": "Exact visible accessible name or OCR-visible text of a button/control.",
             },
             "x": {"type": "INTEGER", "description": "Screen X coordinate, only for explicit coordinate requests."},
             "y": {"type": "INTEGER", "description": "Screen Y coordinate, only for explicit coordinate requests."},

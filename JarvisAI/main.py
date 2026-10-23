@@ -4040,19 +4040,9 @@ def main():
 
         threading.Thread(target=runner, daemon=False).start()
 
-    try:
-        from core.startup_video import create_startup_splash
-        splash = create_startup_splash()
-    except Exception as exc:
-        print(f"[Startup] Intro splash disabled: {exc}")
-        splash = None
-
-    startup["splash"] = splash
-    if splash is not None:
-        splash.finished.connect(launch_jarvis)
-        splash.start()
-    else:
-        QTimer.singleShot(0, launch_jarvis)
+    # Startup intro video/logo splash disabled: open the main JARVIS HUD directly.
+    startup["splash"] = None
+    QTimer.singleShot(0, launch_jarvis)
 
     app.exec()
 

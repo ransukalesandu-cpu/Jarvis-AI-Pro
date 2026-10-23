@@ -742,6 +742,10 @@ class JarvisLive:
         # to disk.
         self._wake_interrupt_audio = deque(maxlen=24)  # ~1.5 s at 16 kHz
         self._wake_interrupt_lock = threading.Lock()
+        # Voice barge-in: classify mic frames against the audio JARVIS is
+        # actually playing, then require sustained evidence before stopping it.
+        self._voice_barge_in_run = 0
+        self._voice_barge_in_pending = threading.Event()
         # Transcript-driven mouth shapes for the avatar. Fed from the receive
         # loop as words arrive, drained by the playback loop against the audio.
         self._visemes              = VisemeStream()
@@ -920,6 +924,9 @@ class JarvisLive:
 
     def _on_wake_detected(self) -> None:
         """Interrupt speech or wake only on the local 'Hey Jarvis' detection."""
+        # A voice-barge-in callback is already queued; avoid a duplicate stop.
+        if self._voice_barge_in_pending.is_set():
+            return
         with self._speaking_lock:
             speaking = self._is_speaking
         if speaking or self._assistant_turn_pending or self._briefing_active:
@@ -945,6 +952,26 @@ class JarvisLive:
         # re-arm after a previous barge-in, but must not start a second briefing.
         if not self._awake:
             self.wake(reason="wake word", announce=True)
+
+    def _on_voice_barge_in(self) -> None:
+        """Stop JARVIS when sustained user speech is distinguished from speaker echo."""
+        with self._speaking_lock:
+            speaking = self._is_speaking
+        if not (speaking or self._assistant_turn_pending or self._briefing_active):
+            self._voice_barge_in_pending.clear()
+            self._voice_barge_in_run = 0
+            return
+
+        # Treat the interruption as user activity and preserve the last ~1.5 s
+        # of mic audio so the beginning of the spoken request reaches Gemini.
+        self._last_user_speech = time.monotonic()
+        self._barge_in_until = time.monotonic() + 3.0
+        with self._wake_interrupt_lock:
+            replay = list(self._wake_interrupt_audio)
+            self._wake_interrupt_audio.clear()
+        print("[Voice] User speech detected during JARVIS playback; interrupting.")
+        self.ui.write_log("SYS: Voice detected — interrupting JARVIS.")
+        self._interrupt_on_loop(replay)
 
     def _on_double_clap_detected(self) -> None:
         """The clap worker calls from its own thread; marshal state changes."""
@@ -2243,31 +2270,53 @@ class JarvisLive:
                 det.feed(indata)
 
             if response_active:
-                # Keep the local wake detector available for the whole assistant
-                # turn, including the quiet gap while news is being fetched. Only
-                # the detector can interrupt; ambient audio is never sent to Live.
-                # If speech is actually playing, keep the mic local even when
-                # wake detection is unavailable so JARVIS cannot hear its own
-                # output. In a silent briefing-fetch gap, allow normal mic input
-                # as a fallback when no local detector can run.
-                if detector_can_interrupt:
-                    # Keep only a short in-memory mic pre-roll while local
-                    # wake recognition catches up. No audio is sent upstream
-                    # unless the local detector actually recognizes its wake
-                    # phrase.
+                if jarvis_speaking:
+                    # Keep a short, local-only pre-roll while JARVIS speaks. The
+                    # mic remains closed to Gemini until the echo-aware detector
+                    # confirms that a person (not the speaker echo) is talking.
                     try:
                         with self._wake_interrupt_lock:
                             self._wake_interrupt_audio.append(indata.tobytes())
                     except Exception:
                         pass
-                # During a silent model/tool gap, an unavailable or disabled
-                # wake detector must not keep the mic closed indefinitely. The
-                # detector still gates all audio while speech is audible, and
-                # gates the quiet gap whenever it is ready.
+
+                    # EchoGuard compares the mic's speech-band energies with
+                    # recent output. Require sustained evidence (more blocks in
+                    # difficult rooms) to avoid stopping for a single noise.
+                    if not self.ui.muted and not self._phone_active:
+                        try:
+                            is_user_voice = self._echo.is_user_speech(
+                                indata, SEND_SAMPLE_RATE, _pcm_level(indata)
+                            )
+                            if is_user_voice:
+                                self._voice_barge_in_run += 1
+                                if (
+                                    self._voice_barge_in_run >= self._echo.required_blocks
+                                    and not self._voice_barge_in_pending.is_set()
+                                ):
+                                    self._voice_barge_in_pending.set()
+                                    loop.call_soon_threadsafe(self._on_voice_barge_in)
+                            else:
+                                self._voice_barge_in_run = 0
+                        except Exception:
+                            self._voice_barge_in_run = 0
+                elif detector_can_interrupt:
+                    # During a silent model/tool gap, retain pre-roll for the
+                    # local wake detector; no audio is sent unless it triggers.
+                    try:
+                        with self._wake_interrupt_lock:
+                            self._wake_interrupt_audio.append(indata.tobytes())
+                    except Exception:
+                        pass
+
+                # Do not stream JARVIS's own speaker echo back to the model.
+                # In a silent tool gap, the local wake detector still gates input.
                 if jarvis_speaking or detector_can_interrupt:
                     self._expire_voice_id_audio()
                     return
             else:
+                self._voice_barge_in_run = 0
+                self._voice_barge_in_pending.clear()
                 with self._wake_interrupt_lock:
                     self._wake_interrupt_audio.clear()
 

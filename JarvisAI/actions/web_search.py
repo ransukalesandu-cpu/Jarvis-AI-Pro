@@ -581,11 +581,21 @@ def _search(query: str) -> str:
             e,
         )
 
-        results = _ddg_search(query)
+        try:
+            results = _ddg_search(query)
+        except Exception as ddg_error:
+            print(f"[WebSearch] ⚠️ DuckDuckGo search unavailable: {ddg_error}")
+            results = []
 
-        return _format_ddg(
-            query,
-            results,
+        if results:
+            return _format_ddg(query, results)
+
+        # Never let a secondary provider/import/network failure crash the action.
+        # The caller can retry once connectivity or provider access is restored.
+        return (
+            f"Web search is temporarily unavailable for: {query}. "
+            "Gemini grounding and DuckDuckGo both failed or returned no results. "
+            "Check internet access, API quota, and that requirements.txt was installed."
         )
 
 

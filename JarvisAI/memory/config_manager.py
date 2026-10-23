@@ -230,7 +230,7 @@ def save_neural_render_scale(scale: float) -> None:
 
 def get_startup_video_enabled() -> bool:
     """Whether to show the optional intro video before the desktop HUD."""
-    return bool(load_api_keys().get("startup_video_enabled", True))
+    return bool(load_api_keys().get("startup_video_enabled", False))
 
 
 def save_startup_video_enabled(enabled: bool) -> None:

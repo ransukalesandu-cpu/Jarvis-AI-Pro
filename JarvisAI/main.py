@@ -2136,7 +2136,8 @@ class JarvisLive:
                     )
                 _ctx = {"player": self.ui, "speak": self.speak,
                         "response": None, "session_memory": None,
-                        "apply_personality": self._on_voice_personality_change}
+                        "apply_personality": self._on_voice_personality_change,
+                        "apply_voice_change": self._on_voice_change}
                 r = await loop.run_in_executor(
                     None, _guard_action
                 )

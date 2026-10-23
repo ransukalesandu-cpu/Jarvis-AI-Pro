@@ -533,11 +533,19 @@ def _gemini_headlines(
     if response is None:
         return [], ""
 
-    raw = ""
+    # Providers can return blocked, empty, or partially populated responses.
+    # Treat those as an empty result so callers can use their normal fallback.
+    candidates = getattr(response, "candidates", None) or []
+    if not candidates:
+        return [], ""
+    content = getattr(candidates[0], "content", None)
+    parts = getattr(content, "parts", None) or []
 
-    for part in response.candidates[0].content.parts:
-        if hasattr(part, "text") and part.text:
-            raw += part.text
+    raw = ""
+    for part in parts:
+        text_part = getattr(part, "text", None)
+        if isinstance(text_part, str) and text_part:
+            raw += text_part
 
     headlines = []
 

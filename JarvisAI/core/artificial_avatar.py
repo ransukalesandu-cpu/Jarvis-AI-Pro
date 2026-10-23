@@ -184,7 +184,16 @@ class HoloAvatar:
             p.setBrush(_with_alpha(primary, int(alpha * 0.20)))
             p.drawEllipse(QRectF(q.x()-rr*0.35, q.y()-rr*0.35, rr*0.7, rr*0.7))
 
-        # Ambient blue aura; the face itself remains a wireframe, not a filled mask.
+        def plate(points, fill_alpha=52, edge_alpha=145):
+            """Draw a restrained translucent dark-metal face plate."""
+            polygon = QPolygonF([pt(x, y) for x, y in points])
+            p.setBrush(_with_alpha(QColor(38, 19, 8), fill_alpha))
+            p.setPen(QPen(_with_alpha(accent, edge_alpha), max(1.0, r * 0.006),
+                          Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
+                          Qt.PenJoinStyle.RoundJoin))
+            p.drawPolygon(polygon)
+
+        # Ambient amber aura; the face itself remains a wireframe, not a filled mask.
         aura = QRadialGradient(QPointF(cx, cy), r * 1.18)
         aura.setColorAt(0.0, _with_alpha(primary, int(18 + energy * 24)))
         aura.setColorAt(0.58, _with_alpha(primary, 7))
@@ -193,8 +202,10 @@ class HoloAvatar:
         p.setBrush(QBrush(aura))
         p.drawEllipse(QRectF(cx-r*1.18, cy-r*1.18, r*2.36, r*2.36))
 
-        # Radar sweep and floating amber data nodes outside the face.
-        radar_angle = (t * 72.0) % 360.0
+        # Radar responds to the assistant state: quicker while processing,
+        # with a distinct cadence while listening.
+        radar_speed = 118.0 if thinking else (88.0 if listening else 58.0 if self._muted else 72.0)
+        radar_angle = (t * radar_speed) % 360.0
         radar_rect = QRectF(cx-r*1.16, cy-r*1.16, 2*r*1.16, 2*r*1.16)
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.setPen(QPen(_with_alpha(accent, int(65+45*pulse)), max(1.0, r*0.006)))
@@ -219,6 +230,16 @@ class HoloAvatar:
             outer = 1.10 if i % 4 else 1.135
             line((math.cos(a)*inner, math.sin(a)*inner),
                  (math.cos(a)*outer, math.sin(a)*outer), 75 if i % 4 else 155, 0.004)
+
+        # Translucent titanium cheek/temple plates add depth without hiding the lattice.
+        plate([(-0.61,-0.36),(-0.51,-0.48),(-0.43,-0.20),(-0.48,0.05),
+               (-0.58,0.16),(-0.64,-0.05)], 38, 125)
+        plate([(0.61,-0.36),(0.51,-0.48),(0.43,-0.20),(0.48,0.05),
+               (0.58,0.16),(0.64,-0.05)], 38, 125)
+        plate([(-0.47,0.27),(-0.36,0.42),(-0.27,0.55),(-0.18,0.63),
+               (-0.25,0.72),(-0.43,0.57)], 30, 95)
+        plate([(0.47,0.27),(0.36,0.42),(0.27,0.55),(0.18,0.63),
+               (0.25,0.72),(0.43,0.57)], 30, 95)
 
         # Outer head contour: every segment softly ripples in a synchronized wave.
         contour = [
@@ -390,11 +411,20 @@ class HoloAvatar:
              145, 0.007)
         line((-0.07,0.69),(0.07,0.69),170,0.006)
 
-        # Moving horizontal scanner clips visually to the head region.
+        # Clip the scanner to the animated head silhouette so it never crosses
+        # the orbital rings or draws outside the face.
+        head_clip = QPainterPath()
+        head_clip.moveTo(pt(moving_contour[0][0], moving_contour[0][1]))
+        for x, y in moving_contour[1:]:
+            head_clip.lineTo(pt(x, y))
+        head_clip.closeSubpath()
+        p.save()
+        p.setClipPath(head_clip, Qt.ClipOperation.IntersectClip)
         scan_y = -0.84 + ((t * (0.68 if thinking else 0.48)) % 1.0) * 1.62
         scan_wave = math.sin(t*5.0) * 0.025
         line((-0.62,scan_y),(0.62,scan_y+scan_wave),int(90+110*pulse),0.008)
         line((-0.58,scan_y+0.018),(0.58,scan_y+0.018+scan_wave),55,0.004)
+        p.restore()
 
         # Traveling sparks run around the facial contour and give constant motion.
         for i in range(6):
@@ -408,10 +438,14 @@ class HoloAvatar:
             sy = a[1] + (b[1]-a[1])*frac
             node(sx, sy, 0.009 + pulse*0.003, 185)
 
-        # Tiny status waveform below the chin changes with the assistant's state.
+        # Status waveform reacts to speaking, listening, processing and mute.
         status_y = 0.91
+        wave_speed = 8.0 if thinking else (3.5 if listening else 5.0)
+        wave_gain = 0.040 if speaking or thinking else (0.030 if listening else 0.012)
+        wave_alpha = 85 if self._muted else 150
         for i in range(19):
             x = -0.22 + i*0.024
-            wave = math.sin(t*5.0+i*0.72) * (0.012 + (0.035 if speaking or thinking else 0.012))
-            line((x,status_y-wave),(x,status_y+wave),150 if i%3 else 235,0.005)
+            wave = math.sin(t*wave_speed+i*0.72) * wave_gain
+            line((x,status_y-wave),(x,status_y+wave),
+                 wave_alpha if i%3 else min(245, wave_alpha+85),0.005)
         p.restore()

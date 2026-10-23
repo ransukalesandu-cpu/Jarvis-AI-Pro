@@ -474,14 +474,22 @@ def tier_for(name: str, params: dict | None = None) -> str:
             if target == "browser":
                 return TIER_DANGEROUS
             return TIER_DANGEROUS  # fail closed when the target cannot be verified
+    action = str((params or {}).get("action", "")).strip().lower()
+    # Explicitly dangerous operations always require approval, even for tools
+    # whose routine read-only operations are allowed without a prompt.
+    if action in _DANGEROUS_ACTIONS.get(name, set()):
+        return TIER_DANGEROUS
+    # Honor the explicit read-only allowlist BEFORE the tool-wide default tier.
+    # Previously, the early TIER_DANGEROUS return made these entries unreachable
+    # for email_gmail, instagram_account, desktop, file_controller, etc., causing
+    # confirmation banners even for routine read/list/search actions.
+    if action in _SAFE_ACTIONS.get(name, set()):
+        return TIER_SAFE
     base = _TIERS.get(name, TIER_SENSITIVE)
     if base == TIER_DANGEROUS:
         return base
-    action = str((params or {}).get("action", "")).strip().lower()
-    if action in _DANGEROUS_ACTIONS.get(name, set()):
-        return TIER_DANGEROUS
     # Unknown operations on broad-control tools fail closed to confirmation.
-    if name in _DANGEROUS_ACTIONS and action and action not in _SAFE_ACTIONS.get(name, set()):
+    if name in _DANGEROUS_ACTIONS and action:
         return TIER_DANGEROUS
     return base
 

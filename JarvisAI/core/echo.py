@@ -202,7 +202,7 @@ class EchoGuard:
         try:
             # During active barge-in, allow quieter user voices through; the
             # echo residual test below still guards against the speaker's own sound.
-            min_level = 0.012 if fast else _MIN_LEVEL
+            min_level = 0.002 if fast else _MIN_LEVEL
             if level < min_level:
                 # We are playing and the microphone hears nothing back:
                 # this setup returns no echo at all (headphones, or a mic

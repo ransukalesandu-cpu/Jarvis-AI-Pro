@@ -5953,7 +5953,7 @@ class MainWindow(QMainWindow):
         self._hud_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._hud_btn.addItem("HUD: VISUALIZATION 1", "neural")
         self._hud_btn.addItem("HUD: VISUALIZATION 2", "neural_orb")
-        self._hud_btn.addItem("HUD: FACE MESH", "face")
+        self._hud_btn.addItem("HUD: AI HOLOGRAM", "face")
         self._hud_btn.addItem("HUD: JARVIS LOGO", "core")
         self._hud_btn.currentIndexChanged.connect(self._on_hud_style_selected)
         lay.addWidget(self._hud_btn)

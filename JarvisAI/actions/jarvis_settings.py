@@ -7,6 +7,7 @@ changes are persisted and take effect when the Live session reconnects.
 from __future__ import annotations
 
 from memory import config_manager as cfg
+from core import confirm as confirm_gate
 from memory.voice_personality import (
     MODE_DEFINITIONS,
     get_voice_personality,
@@ -120,10 +121,24 @@ def _set_setting(setting: str, raw_value) -> str:
         getter, setter, _description = _BOOL_SETTINGS[setting]
         if getter() == parsed:
             return f"{setting} is already {'on' if parsed else 'off'}."
+        if setting == "memory_provider_access" and parsed:
+            return confirm_gate.request(
+                key="jarvis-settings-memory-provider-access",
+                title="Allow stored memory in AI-provider requests",
+                detail=(
+                    "This permits JARVIS to include saved memory context in requests "
+                    "sent to configured AI providers. Enable only if you want this "
+                    "privacy-sensitive behavior."
+                ),
+                run=lambda: (
+                    setter(True)
+                    or "Enabled memory-provider access. Saved memory may now be included "
+                       "in configured AI-provider requests."
+                ),
+            )
         setter(parsed)
         if setting == "memory_provider_access":
-            return ("Saved memory-provider access as " + ("on" if parsed else "off")
-                    + ". This changes whether stored memory may be included in provider requests.")
+            return "Disabled memory-provider access. Saved memory will not be included in provider requests."
         return f"Turned {setting.replace('_', ' ')} {'on' if parsed else 'off'}."
 
     if setting in _ENUM_SETTINGS:

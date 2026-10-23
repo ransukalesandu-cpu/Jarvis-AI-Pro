@@ -2420,7 +2420,14 @@ class JarvisLive:
                 while True:
                     await asyncio.sleep(0.1)
         except Exception as e:
-            print(f"[JARVIS] ❌ Mic: {e}")
+            # Record microphone/runtime failures for later diagnosis, but never
+            # let the diagnostics layer hide the original audio exception.
+            try:
+                self_repair.record_error(e, operation="voice:microphone_stream")
+            except Exception:
+                pass
+            safe_error = self_repair.redact_secrets(e)
+            print(f"[JARVIS] ❌ Mic: {safe_error}")
             raise
 
     async def _flush_pending_vision(self) -> bool:

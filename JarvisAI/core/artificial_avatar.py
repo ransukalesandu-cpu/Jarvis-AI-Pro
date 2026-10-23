@@ -143,6 +143,10 @@ class HoloAvatar:
         blink = max(0.035, 1.0 - self._blink)
         energy = max(self._energy, pulse * 0.18)
 
+        # Amber/orange cybernetic theme; other HUD components keep their colors.
+        primary = QColor(255, 139, 35)
+        accent = QColor(255, 198, 92)
+
         p.save()
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
@@ -188,6 +192,19 @@ class HoloAvatar:
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QBrush(aura))
         p.drawEllipse(QRectF(cx-r*1.18, cy-r*1.18, r*2.36, r*2.36))
+
+        # Radar sweep and floating amber data nodes outside the face.
+        radar_angle = (t * 72.0) % 360.0
+        radar_rect = QRectF(cx-r*1.16, cy-r*1.16, 2*r*1.16, 2*r*1.16)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(_with_alpha(accent, int(65+45*pulse)), max(1.0, r*0.006)))
+        p.drawArc(radar_rect, int(radar_angle*16), 68*16)
+        for i in range(12):
+            a = (i/12.0)*math.tau - t*0.22
+            rr = 1.20 + 0.025*math.sin(t*2.1+i)
+            x, y = math.cos(a)*rr, math.sin(a)*rr
+            node(x, y, 0.010 + (0.003 if i % 3 == 0 else 0.0),
+                 145 if i % 3 else 225)
 
         # Rotating orbital rings and segmented perimeter marks.
         for idx, (scale, alpha) in enumerate(((0.93, 45), (1.04, 75), (1.15, 28))):
@@ -247,6 +264,47 @@ class HoloAvatar:
             nodes = [(-0.29,-0.68),(-0.49,-0.54),(-0.51,-0.20),(-0.48,0.02),(-0.43,0.42)]
             nx, ny = nodes[idx]
             node(nx if side < 0 else -nx, ny, 0.014, 210)
+
+        # Central forehead processor: layered chip, pins and a pulsing core.
+        chip_y = -0.675
+        chip_w = 0.115
+        chip_h = 0.075
+        chip_rect = QRectF(cx-chip_w*r, cy+(chip_y-chip_h/2)*r,
+                           chip_w*2*r, chip_h*r)
+        p.setBrush(_with_alpha(QColor(45, 18, 5), 225))
+        p.setPen(QPen(_with_alpha(accent, 245), max(1.2, r*0.010)))
+        p.drawRoundedRect(chip_rect, r*0.018, r*0.018)
+        p.setPen(QPen(_with_alpha(primary, 220), max(1.0, r*0.005)))
+        for pin in range(5):
+            px = chip_rect.left() + chip_rect.width()*(pin+1)/6
+            p.drawLine(QPointF(px, chip_rect.top()-r*0.014), QPointF(px, chip_rect.top()))
+            p.drawLine(QPointF(px, chip_rect.bottom()), QPointF(px, chip_rect.bottom()+r*0.014))
+        for pin in range(3):
+            py = chip_rect.top() + chip_rect.height()*(pin+1)/4
+            p.drawLine(QPointF(chip_rect.left()-r*0.014, py), QPointF(chip_rect.left(), py))
+            p.drawLine(QPointF(chip_rect.right(), py), QPointF(chip_rect.right()+r*0.014, py))
+        core_r = r*(0.018 + 0.006*pulse)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(_with_alpha(QColor(255, 229, 160), 245))
+        p.drawEllipse(QRectF(cx-core_r, cy+chip_y*r-core_r, core_r*2, core_r*2))
+        core_glow = QRadialGradient(QPointF(cx, cy+chip_y*r), r*0.10)
+        core_glow.setColorAt(0.0, _with_alpha(accent, 150))
+        core_glow.setColorAt(1.0, _with_alpha(primary, 0))
+        p.setBrush(QBrush(core_glow))
+        p.drawEllipse(QRectF(cx-r*0.10, cy+(chip_y-0.10)*r, r*0.20, r*0.20))
+
+        # Amber eye lenses: layered glow behind each bright iris/pupil.
+        for side in (-1, 1):
+            ex, ey = side*0.29 + self._look_x*0.035, -0.285 + self._look_y*0.018
+            lens = QRadialGradient(pt(ex, ey), r*0.14)
+            lens.setColorAt(0.0, _with_alpha(QColor(255, 173, 50), 120))
+            lens.setColorAt(0.55, _with_alpha(primary, 42))
+            lens.setColorAt(1.0, _with_alpha(primary, 0))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QBrush(lens))
+            p.drawEllipse(QRectF(cx+(ex-0.14)*r, cy+(ey-0.14)*r, r*0.28, r*0.28))
+            p.setPen(QPen(_with_alpha(QColor(255, 231, 168), 245), max(1.2, r*0.012)))
+            p.drawLine(pt(ex-0.065, ey), pt(ex+0.065, ey))
 
         # Eyebrows rotate into expressive angles instead of staying fixed.
         brow_raise = mood * 0.055 + (0.018 if thinking else 0.0)

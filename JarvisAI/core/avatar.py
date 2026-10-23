@@ -216,6 +216,11 @@ class HoloAvatar:
         self._gesture_at = 0.0
         self._gesture_strength = 0.0
 
+        # ── dynamic mood color adaptation ───────────────────────────────────
+        self._mood_primary = QColor(113, 212, 194)
+        self._mood_accent = QColor(217, 138, 89)
+        self._state_str = "IDLE"
+
     def react_to_text(self, text: str) -> None:
         """Choose a brief facial expression and head gesture from spoken words."""
         raw = str(text or "").casefold().replace("’", "'")
@@ -425,6 +430,7 @@ class HoloAvatar:
             elif self._gesture == "focus":
                 self._pitch -= 0.028 * envelope * self._gesture_strength
 
+        self._state_str = st
         if thinking:
             # People look away to think, and hold it. The direction re-rolls
             # slowly so it reads as thought rather than as scanning.
@@ -486,6 +492,10 @@ class HoloAvatar:
         self._scan += dt * (0.55 + 1.5 * self._glow)
         if self._scan > 1.35:
             self._scan = -1.75
+
+        # Expressive speech pupil & eyelid modulation
+        if live:
+            lid_tgt += 0.06 * math.sin(t * 12.0) * self._emph
 
         if self._blink > 0.0:
             self._blink = max(0.0, self._blink - dt * 8.5)
@@ -573,6 +583,73 @@ class HoloAvatar:
             self._lut_key = key
         return self._lut_cache
 
+    def _adapt_colors(self, dt: float, primary: QColor, accent: QColor) -> tuple[QColor, QColor]:
+        """Compute dynamic mood and facial expression adapted colors."""
+        p_r, p_g, p_b = primary.red(), primary.green(), primary.blue()
+        a_r, a_g, a_b = accent.red(), accent.green(), accent.blue()
+
+        expr = self._expr
+        smile = self._smile
+        st = self._state_str
+        live = self._glow > 0.05
+
+        # Base target offsets depending on facial expression and mood state
+        if expr < -0.4 or self._gesture == "focus":
+            # Serious / Warning / Critical -> Signal crimson & alert coral
+            target_p = QColor(255, 90, 80)
+            target_a = QColor(255, 140, 50)
+        elif expr < -0.15 or self._gesture == "tilt":
+            # Apology / Sad / Concerned -> Soft violet / deep indigo
+            target_p = QColor(165, 140, 255)
+            target_a = QColor(220, 130, 200)
+        elif smile > 0.25 or expr > 0.25:
+            # Happy / Greeting / Enthusiastic -> Luminous cyan & warm amber gold
+            target_p = QColor(80, 235, 215)
+            target_a = QColor(255, 200, 80)
+        elif st in ("THINKING", "PROCESSING"):
+            # Thinking -> Vivid electric purple & warm amber pulse
+            pulse = 0.5 + 0.5 * math.sin(self._t * 6.0)
+            target_p = QColor(190, 100, 255)
+            target_a = QColor(int(240 + 15 * pulse), int(160 + 40 * pulse), 70)
+        elif st == "LISTENING":
+            # Listening -> Vibrant emerald green & aqua
+            target_p = QColor(100, 230, 180)
+            target_a = QColor(120, 245, 140)
+        elif st in ("SLEEPING", "STANDBY", "OFFLINE"):
+            # Sleeping -> Muted cobalt
+            target_p = QColor(100, 130, 160)
+            target_a = QColor(120, 140, 170)
+        else:
+            target_p = QColor(p_r, p_g, p_b)
+            target_a = QColor(a_r, a_g, a_b)
+
+        # In speech, modulate accent hue/brightness on syllable emphasis
+        if live and self._emph > 0.05:
+            e_k = min(1.0, self._emph * 2.0)
+            target_a = QColor(
+                int(target_a.red() * (1.0 - e_k) + 255 * e_k),
+                int(target_a.green() * (1.0 - e_k) + 220 * e_k),
+                int(target_a.blue() * (1.0 - e_k) + 120 * e_k),
+            )
+
+        # Smooth adaptation rate (1.8s time constant)
+        rate = _rate(0.016, 0.18)
+        cur_p = self._mood_primary
+        cur_a = self._mood_accent
+
+        np_r = int(cur_p.red() + (target_p.red() - cur_p.red()) * rate)
+        np_g = int(cur_p.green() + (target_p.green() - cur_p.green()) * rate)
+        np_b = int(cur_p.blue() + (target_p.blue() - cur_p.blue()) * rate)
+
+        na_r = int(cur_a.red() + (target_a.red() - cur_a.red()) * rate)
+        na_g = int(cur_a.green() + (target_a.green() - cur_a.green()) * rate)
+        na_b = int(cur_a.blue() + (target_a.blue() - cur_a.blue()) * rate)
+
+        self._mood_primary = QColor(np_r, np_g, np_b)
+        self._mood_accent = QColor(na_r, na_g, na_b)
+
+        return self._mood_primary, self._mood_accent
+
     def paint(self, p: QPainter, cx: float, cy: float, r: float,
               primary: QColor, accent: QColor, bg: QColor | None = None) -> None:
         """Draw the avatar with its head centre at (cx, cy).
@@ -582,6 +659,8 @@ class HoloAvatar:
         """
         if bg is None:
             bg = QColor(0, 0, 0)
+
+        primary, accent = self._adapt_colors(0.016, primary, accent)
         amp = self._glow
         verts, norms = self._pose()
 
@@ -605,7 +684,7 @@ class HoloAvatar:
         if self.shaded:
             self._paint_surface(p, xs, ys, norms, verts, primary, bg, amp)
         self._paint_wire(p, xs, ys, norms, verts, primary, bg, amp)
-        self._paint_features(p, xs, ys, norms, r, primary, accent, bg, amp)
+        self._paint_features(p, cx, cy, xs, ys, norms, r, primary, accent, bg, amp)
 
     def _paint_surface(self, p: QPainter, xs, ys, norms, verts,
                        primary: QColor, bg: QColor, amp: float) -> None:
@@ -727,7 +806,7 @@ class HoloAvatar:
         return QPolygonF([QPointF(float(x), float(y))
                           for x, y in zip(xs[idx], ys[idx])])
 
-    def _paint_features(self, p: QPainter, xs, ys, norms, r: float,
+    def _paint_features(self, p: QPainter, cx: float, cy: float, xs, ys, norms, r: float,
                         primary: QColor, accent: QColor, bg: QColor,
                         amp: float) -> None:
         """Eyes, brows and the mouth cavity, drawn from the real landmark rings.
@@ -765,18 +844,33 @@ class HoloAvatar:
                 gy = br.center().y() + self._gaze[1] * br.height() * 0.20
                 cpt = QPointF(gx, gy)
                 rad = min(br.height() * 0.62, br.width() * 0.20)
-                p.setPen(Qt.PenStyle.NoPen)
+                # Iris concentric glowing ring
+                p.setPen(QPen(_c(accent, 180 * face * vis), 1.0))
                 p.setBrush(QBrush(_c(accent, (70 + 60 * amp) * face * vis)))
                 p.drawEllipse(cpt, rad, rad * vis)            # iris
+                # Concentric inner ring
+                p.setPen(QPen(_c(primary, 210 * face * vis), 0.8))
+                p.drawEllipse(cpt, rad * 0.70, rad * 0.70 * vis)
+                # Pupil
+                pupil_scale = 0.42 + 0.08 * math.sin(self._t * 3.0 + self._expr)
+                p.setPen(Qt.PenStyle.NoPen)
                 p.setBrush(QBrush(_c(accent, 245 * face * vis)))
-                p.drawEllipse(cpt, rad * 0.42, rad * 0.42 * vis)   # pupil
+                p.drawEllipse(cpt, rad * pupil_scale, rad * pupil_scale * vis)
+                # Ocular catchlight reflection
+                glint = QPointF(cpt.x() - rad * 0.30, cpt.y() - rad * 0.30 * vis)
+                p.setBrush(QBrush(_c(QColor(255, 255, 255), 230 * face * vis)))
+                p.drawEllipse(glint, rad * 0.18, rad * 0.18 * vis)
 
         # ── brows ───────────────────────────────────────────────────────────
         p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QPen(_c(primary, 150 * face), 1.7))
+        p.setPen(QPen(_c(primary, 190 * face), 2.2))
         for key in ("brow_l", "brow_r"):
             idx = lm[key]
-            p.drawPolyline(self._ring(xs, ys, idx))
+            poly_brow = self._ring(xs, ys, idx)
+            p.drawPolyline(poly_brow)
+            # Sculpted brow shadow line for depth
+            p.setPen(QPen(_c(accent, 110 * face), 1.2))
+            p.drawPolyline(poly_brow)
 
         # ── mouth ───────────────────────────────────────────────────────────
         inner = self._ring(xs, ys, lm["lips_in"])
@@ -784,28 +878,53 @@ class HoloAvatar:
 
         p.setPen(Qt.PenStyle.NoPen)
         if self._mouth > 0.02:
-            # The cavity is dark but never pure black — a black oval on a glowing
-            # head reads as a hole, not a mouth. Tinting it with the theme keeps
-            # it part of the hologram.
-            p.setBrush(QBrush(_blend(bg, primary, 16 + 26 * self._mouth)))
+            # Darkened holographic throat cavity
+            p.setBrush(QBrush(_blend(bg, primary, 20 + 35 * self._mouth)))
             p.drawPolygon(inner)
 
-            # Upper teeth: a bright strip hanging from the upper lip. It is the
-            # single cheapest thing that makes an open mouth look like speech.
+            # Upper teeth: a bright strip hanging from upper lip
             ux, uy = xs[self._lip_up], ys[self._lip_up]
-            th = open_h * 0.30
-            pts = [QPointF(float(x), float(y)) for x, y in zip(ux, uy)]
-            pts += [QPointF(float(x), float(y) + th)
-                    for x, y in zip(ux[::-1], uy[::-1])]
-            p.setBrush(QBrush(_blend(bg, primary, 150 + 60 * self._mouth)))
-            p.drawPolygon(QPolygonF(pts))
+            th = open_h * 0.28
+            pts_u = [QPointF(float(x), float(y)) for x, y in zip(ux, uy)]
+            pts_u += [QPointF(float(x), float(y) + th)
+                      for x, y in zip(ux[::-1], uy[::-1])]
+            p.setBrush(QBrush(_blend(bg, primary, 160 + 70 * self._mouth)))
+            p.drawPolygon(QPolygonF(pts_u))
 
-            # A warm pool at the back of the throat, strongest when wide open.
-            p.setBrush(QBrush(_c(accent, 40 * self._mouth * face)))
+            # Lower teeth: visible when opening mouth wide
+            if self._mouth > 0.15:
+                lx, ly = xs[lm["lips_in"][:10]], ys[lm["lips_in"][:10]]
+                th_l = open_h * 0.22
+                pts_l = [QPointF(float(x), float(y)) for x, y in zip(lx, ly)]
+                pts_l += [QPointF(float(x), float(y) - th_l)
+                          for x, y in zip(lx[::-1], ly[::-1])]
+                p.setBrush(QBrush(_blend(bg, primary, 130 + 50 * self._mouth)))
+                p.drawPolygon(QPolygonF(pts_l))
+
+            # Warm throat depth pool
+            p.setBrush(QBrush(_c(accent, (50 * self._mouth + 30 * amp) * face)))
             p.drawPolygon(inner)
 
         p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QPen(_c(primary, (150 + 70 * self._mouth) * face), 1.3))
+        p.setPen(QPen(_c(primary, (160 + 80 * self._mouth) * face), 1.4))
         p.drawPolygon(inner)                       # lip edge
-        p.setPen(QPen(_c(primary, 110 * face), 1.1))
+        p.setPen(QPen(_c(primary, 120 * face), 1.2))
         p.drawPolygon(self._ring(xs, ys, lm["lips_out"]))
+
+        # ── forehead chip & cheek circuit highlights ──────────────────────
+        # Central forehead processor reticle node
+        forehead_x = cx
+        forehead_y = cy - r * 0.72
+        p.setPen(QPen(_c(accent, 140 * face), 1.0))
+        p.drawEllipse(QPointF(forehead_x, forehead_y), r * 0.035, r * 0.035)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(_c(accent, 220 * face)))
+        p.drawEllipse(QPointF(forehead_x, forehead_y), r * 0.012, r * 0.012)
+
+        # Traveling highlight sparks along temples
+        t_pos = (self._t * 0.8) % 1.0
+        spark_y = cy - r * (0.40 + 0.30 * t_pos)
+        for s_side in (-1, 1):
+            spark_x = cx + s_side * r * (0.50 + 0.05 * math.sin(t_pos * math.pi))
+            p.setBrush(QBrush(_c(primary, 180 * face * (1.0 - t_pos))))
+            p.drawEllipse(QPointF(spark_x, spark_y), r * 0.015, r * 0.015)

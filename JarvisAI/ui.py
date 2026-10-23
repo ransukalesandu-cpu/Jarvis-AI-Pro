@@ -52,10 +52,14 @@ from core.hud_workspace import HudWorkspace
 from core.jarvis_logo_overlay import JarvisLogoOverlay
 
 try:
-    # Synthetic robotic hologram; shares the existing viseme/audio interface.
-    from core.artificial_avatar import HoloAvatar
-except Exception:      # pragma: no cover — HUD must never die over cosmetics
-    HoloAvatar = None
+    # 3D human head avatar (measured geometry)
+    from core.avatar import HoloAvatar
+except Exception:
+    try:
+        # Synthetic robotic hologram fallback
+        from core.artificial_avatar import HoloAvatar
+    except Exception:      # pragma: no cover — HUD must never die over cosmetics
+        HoloAvatar = None
 
 
 def _base_dir() -> Path:

@@ -59,7 +59,10 @@ if _platform.system() == "Windows":
             _chromium_flags.append(_gpu_flag)
     os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(_chromium_flags)
 
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except Exception:
+    sd = None
 import numpy as np
 from google import genai
 from google.genai import types

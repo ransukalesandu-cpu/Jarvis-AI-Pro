@@ -143,9 +143,22 @@ class HoloAvatar:
         blink = max(0.035, 1.0 - self._blink)
         energy = max(self._energy, pulse * 0.18)
 
-        # Amber/orange cybernetic theme; other HUD components keep their colors.
-        primary = QColor(255, 139, 35)
-        accent = QColor(255, 198, 92)
+        # Dynamic color adaptation based on facial mood/expression and state
+        if mood < -0.4:
+            primary = QColor(255, 90, 80)
+            accent = QColor(255, 140, 50)
+        elif mood < -0.15:
+            primary = QColor(165, 140, 255)
+            accent = QColor(220, 130, 200)
+        elif mood > 0.25:
+            primary = QColor(80, 235, 215)
+            accent = QColor(255, 200, 80)
+        elif thinking:
+            primary = QColor(190, 100, 255)
+            accent = QColor(255, 180, 80)
+        elif listening:
+            primary = QColor(100, 230, 180)
+            accent = QColor(120, 245, 140)
 
         p.save()
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)

@@ -459,6 +459,24 @@ _DANGEROUS_ACTIONS: dict[str, set[str]] = {
 
 def tier_for(name: str, params: dict | None = None) -> str:
     """Return the effective risk tier, using the requested operation when known."""
+    # Routine GUI launches and read-only health checks should not interrupt the user
+    # with a confirmation banner. Unknown app names and package repairs remain gated.
+    action = str((params or {}).get("action", "")).strip().lower()
+    operation = str((params or {}).get("operation", "")).strip().lower()
+    if name == "self_heal" and operation == "check":
+        return TIER_SAFE
+    if name == "open_app":
+        app_name = str((params or {}).get("app_name", "")).strip().casefold()
+        safe_apps = {
+            "chrome", "google chrome", "firefox", "edge", "brave", "safari", "opera",
+            "whatsapp", "telegram", "discord", "slack", "zoom", "teams", "skype",
+            "signal", "spotify", "vlc", "netflix", "vscode", "visual studio code",
+            "code", "postman", "figma", "blender", "word", "excel", "powerpoint",
+            "libreoffice", "notepad", "textedit", "explorer", "file explorer",
+            "finder", "calculator", "paint", "instagram", "tiktok", "notion",
+            "obsidian", "capcut", "steam", "epic", "epic games",
+        }
+        return TIER_SAFE if app_name in safe_apps else TIER_DANGEROUS
     if name == "holo_gestures":
         action = str((params or {}).get("action", "show")).strip().lower()
         return TIER_SAFE if action in {"close", "stop", "hide"} else TIER_DANGEROUS

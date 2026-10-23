@@ -5,11 +5,35 @@ Captured screenshots are processed locally and are not uploaded by this module.
 """
 from __future__ import annotations
 
+import platform
 import re
+import shutil
+from pathlib import Path
 
 
 def _normalise(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
+
+
+def _configure_tesseract(pytesseract) -> None:
+    """Use PATH normally, but support the standard installer path on each OS."""
+    if shutil.which("tesseract"):
+        return
+
+    if platform.system() == "Windows":
+        candidates = (
+            Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
+            Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
+        )
+    elif platform.system() == "Darwin":
+        candidates = (Path("/opt/homebrew/bin/tesseract"), Path("/usr/local/bin/tesseract"))
+    else:
+        candidates = (Path("/usr/bin/tesseract"), Path("/usr/local/bin/tesseract"))
+
+    for executable in candidates:
+        if executable.is_file():
+            pytesseract.pytesseract.tesseract_cmd = str(executable)
+            return
 
 
 def read_screen_words() -> list[dict]:
@@ -23,6 +47,8 @@ def read_screen_words() -> list[dict]:
             "OCR dependencies are missing. Install mss, Pillow and pytesseract in JARVIS's Python environment."
         ) from exc
 
+    _configure_tesseract(pytesseract)
+
     with mss.mss() as capture:
         monitor = capture.monitors[1] if len(capture.monitors) > 1 else capture.monitors[0]
         shot = capture.grab(monitor)
@@ -34,8 +60,8 @@ def read_screen_words() -> list[dict]:
     except Exception as exc:
         if "tesseract" in str(exc).lower() or "not found" in str(exc).lower():
             raise RuntimeError(
-                "Tesseract OCR engine is not installed or not on PATH. Install the Tesseract desktop engine, "
-                "then restart JARVIS. Installing pytesseract alone is not enough."
+                "Tesseract OCR engine is not installed or could not be found. Install the Tesseract desktop engine "
+                "or add its install folder to PATH, then restart JARVIS. Installing pytesseract alone is not enough."
             ) from exc
         raise RuntimeError(f"OCR failed: {type(exc).__name__}: {exc}") from exc
 

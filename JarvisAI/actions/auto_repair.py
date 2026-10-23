@@ -28,6 +28,10 @@ _CRITICAL_MODULES = {
 }
 
 
+def _supported_python() -> bool:
+    return (3, 11) <= sys.version_info[:2] <= (3, 13) and struct.calcsize("P") == 8
+
+
 def _module_exists(name: str) -> bool:
     try:
         return importlib.util.find_spec(name) is not None
@@ -96,7 +100,7 @@ def _diagnose() -> str:
 
     if missing:
         lines += ["", "MISSING STARTUP PACKAGES: " + ", ".join(missing)]
-    if sys.version_info >= (3, 15) or struct.calcsize("P") != 8:
+    if not _supported_python():
         lines += [
             "",
             "[ACTION NEEDED] This Python environment may not support all JARVIS "
@@ -128,11 +132,11 @@ def auto_repair(parameters: dict, player=None, speak=None, response=None,
     # Do not attempt installs on Python versions/architectures with poor wheel
     # availability. In particular, ONNX Runtime has no suitable wheel for the
     # user's current Python 3.15 environment.
-    if sys.version_info >= (3, 15) or struct.calcsize("P") != 8:
+    if not _supported_python():
         return (
             _diagnose()
             + "\n\n[REPAIR NOT RUN] Dependency installation was skipped because "
-              "this interpreter is not a supported 64-bit Python environment. "
+              "this interpreter is outside the supported 64-bit Python 3.11–3.13 range. "
               "Install Python 3.12 64-bit and launch JARVIS with it first."
         )
     if not REQUIREMENTS.is_file():

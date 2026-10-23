@@ -59,7 +59,10 @@ if _platform.system() == "Windows":
             _chromium_flags.append(_gpu_flag)
     os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(_chromium_flags)
 
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except (ImportError, OSError):
+    sd = None
 import numpy as np
 from google import genai
 from google.genai import types
@@ -2381,6 +2384,8 @@ class JarvisLive:
 
         try:
             def _open_mic(dev):
+                if sd is None:
+                    raise OSError("sounddevice library or PortAudio C library is not available.")
                 return sd.InputStream(
                     samplerate=SEND_SAMPLE_RATE,
                     channels=CHANNELS,
@@ -2760,6 +2765,8 @@ class JarvisLive:
             print(f"[JARVIS] 🔊 Output device: {_spk_name}")
 
         def _open_spk(dev):
+            if sd is None:
+                raise OSError("sounddevice library or PortAudio C library is not available.")
             st = sd.RawOutputStream(
                 samplerate=RECEIVE_SAMPLE_RATE,
                 channels=CHANNELS,

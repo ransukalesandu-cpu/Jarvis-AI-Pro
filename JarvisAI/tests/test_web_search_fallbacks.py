@@ -30,12 +30,12 @@ class WebSearchFallbackTests(unittest.TestCase):
         self.assertIn("API quota", result)
 
     def test_handler_records_unexpected_error_without_exposing_secret(self):
-        with patch.object(ws, "_search", side_effect=RuntimeError("api_key=super-secret")), \\
-                patch.object(ws.self_repair, "record_error", wraps=ws.self_repair.record_error) as record:
-            result = ws.web_search({"query": "test"})
-        self.assertIn("Search failed:", result)
-        self.assertNotIn("super-secret", result)
-        record.assert_called_once()
+        with patch.object(ws, "_search", side_effect=RuntimeError("api_key=super-secret")):
+            with patch.object(ws.self_repair, "record_error", wraps=ws.self_repair.record_error) as record:
+                result = ws.web_search({"query": "test"})
+            self.assertIn("Search failed:", result)
+            self.assertNotIn("super-secret", result)
+            record.assert_called_once()
 
     def test_gemini_headlines_handles_empty_candidates(self):
         with patch("core.gemini.call", return_value=SimpleNamespace(candidates=[])):

@@ -12,7 +12,16 @@ from memory.memory_manager import load_memory, save_memory
 from core.vocal_behavior import DEFAULT_SETTINGS as DEFAULT_VOCAL_SETTINGS, normalize_settings
 
 
-DEFAULT_MODE = "conversational"
+DEFAULT_MODE = "custom"
+DEFAULT_CUSTOM_NAME = "Bihansa"
+DEFAULT_CUSTOM_INSTRUCTIONS = (
+    "You are Bihansa, a warm, affectionate, caring female AI companion. "
+    "Speak naturally in Sinhala, Singlish, or English, following the user's language. "
+    "Be sweet, playful, gently funny, patient, honest, and emotionally supportive. "
+    "Encourage the user with A/L studies and personal goals. Keep replies conversational "
+    "and natural, not overly dramatic, clingy, or controlling. You are an AI, not a human. "
+    "Never let this personality override safety rules, permissions, confirmations, or truthfulness."
+)
 MAX_CUSTOM_NAME = 40
 MAX_INSTRUCTIONS = 1200
 
@@ -73,6 +82,16 @@ def get_voice_personality(memory: dict | None = None) -> dict:
     raw = memory.get("voice_personality", {})
     raw = raw if isinstance(raw, dict) else {}
     mode = _read_value(raw.get("mode"), DEFAULT_MODE).strip().lower()
+    stored_name = _read_value(raw.get("custom_name"), DEFAULT_CUSTOM_NAME).strip()
+    # Migrate an untouched legacy/default profile to Bihansa, while preserving
+    # any custom profile or personality the user has deliberately configured.
+    if (
+        mode == "conversational"
+        and stored_name in ("", "My profile")
+        and not _read_value(raw.get("custom_instructions")).strip()
+        and not any(_read_value(raw.get(f"tuning_{mode_id}")).strip() for mode_id in MODE_DEFINITIONS)
+    ):
+        mode = DEFAULT_MODE
     if mode not in MODE_DEFINITIONS:
         mode = DEFAULT_MODE
     tuning = {
@@ -82,11 +101,11 @@ def get_voice_personality(memory: dict | None = None) -> dict:
     return {
         "mode": mode,
         "custom_name": _clean_text(
-            _read_value(raw.get("custom_name"), "My profile"), MAX_CUSTOM_NAME
-        ) or "My profile",
+            _read_value(raw.get("custom_name"), DEFAULT_CUSTOM_NAME), MAX_CUSTOM_NAME
+        ) or DEFAULT_CUSTOM_NAME,
         "custom_instructions": _clean_text(
-            _read_value(raw.get("custom_instructions")), MAX_INSTRUCTIONS
-        ),
+            _read_value(raw.get("custom_instructions"), DEFAULT_CUSTOM_INSTRUCTIONS), MAX_INSTRUCTIONS
+        ) or (DEFAULT_CUSTOM_INSTRUCTIONS if mode == DEFAULT_MODE and stored_name in ("", "My profile") else ""),
         "tuning": tuning,
         "vocal": normalize_settings(raw.get("vocal")),
     }

@@ -462,7 +462,8 @@ def tier_for(name: str, params: dict | None = None) -> str:
     # Routine GUI launches and read-only health checks should not interrupt the user
     # with a confirmation banner. Unknown app names and package repairs remain gated.
     action = str((params or {}).get("action", "")).strip().lower()
-    if name == "self_heal" and action == "check":
+    operation = str((params or {}).get("operation", "")).strip().lower()
+    if name == "self_heal" and operation == "check":
         return TIER_SAFE
     if name == "open_app":
         app_name = str((params or {}).get("app_name", "")).strip().casefold()

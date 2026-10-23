@@ -59,7 +59,7 @@ import numpy as np
 _BAND_EDGES = (200, 400, 700, 1100, 1700, 2600, 3800, 5200, 7000)
 
 _HISTORY_S = 1.5      # how far back an echo could plausibly have been played
-_MIN_LEVEL = 0.06     # below this the mic is room noise; nothing to decide
+_MIN_LEVEL = 0.035    # allow ordinary and quieter microphone speech to be considered
 
 # The threshold is not a tuned constant. It is placed just above essentially ALL
 # the echo this particular room has been seen to produce. Residuals measured on
@@ -75,7 +75,7 @@ _MIN_LEVEL = 0.06     # below this the mic is room noise; nothing to decide
 # quiet setup even a voice whose formants sit close to ours stands clear of the
 # echo, and in a bad one nothing reliably does. The right response to the last
 # row is to say so — not to interrupt at random.
-_MIN_USER = 0.15      # never call anything below this a voice
+_MIN_USER = 0.12      # lower barge-in floor for ordinary conversational voices
 _HEAD_Q = 97          # percentile of observed echo the threshold must clear
 _HEAD_MULT = 1.15     # ...with this much headroom above it
 
@@ -83,13 +83,13 @@ _HEAD_MULT = 1.15     # ...with this much headroom above it
 # rescue it — in exactly those rooms the echo already saturates the level meter,
 # so a level test can never be passed. Time can: echo wobbles around its median
 # while a person talking holds above it, so such rooms hold the evidence longer.
-_UNRELIABLE_FLOOR = 0.22
-_BLOCKS_NORMAL = 5    # ~320 ms of sustained evidence
-_BLOCKS_NOISY = 12    # ~770 ms when the room is this hard
+_UNRELIABLE_FLOOR = 0.28
+_BLOCKS_NORMAL = 3    # ~190 ms of sustained evidence for natural interruption
+_BLOCKS_NOISY = 7     # ~450 ms when the room is acoustically difficult
 
 _FLOOR_WINDOW = 60    # blocks kept to characterise the room's echo
 _FLOOR_Q = 35         # percentile taken as "typical echo here"
-_WARMUP = 16          # blocks (~1 s) of listening before judging anyone
+_WARMUP = 6           # blocks (~380 ms) before judging speech; avoids swallowing the start of a request
 _RELEARN_RUN = 28     # a 'voice' lasting this long means the room changed
 
 

@@ -194,8 +194,8 @@ HUD_STYLES = ("neural", "neural_orb", "face", "core")
 def get_hud_style() -> str:
     """Which centrepiece the HUD draws: two neural views, face, or logo.
 
-    Presentation choice only; all three modes render in the same software
-    painter. Defaults to the neural field, and the selection survives a restart.
+    Presentation choice only; all modes render in the same software
+    painter. Defaults to the synthetic face on fresh configs and survives a restart.
     """
     v = str(load_api_keys().get("hud_style", "face")).strip().lower()
     return v if v in HUD_STYLES else "face"

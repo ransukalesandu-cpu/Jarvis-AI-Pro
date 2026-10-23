@@ -1631,7 +1631,7 @@ class JarvisLive:
             try:
                 pending_mic.put_nowait({
                     "data": b"".join(wake_audio),
-                    "mime_type": "audio/pcm",
+                    "mime_type": "audio/pcm;rate=16000",
                 })
             except Exception:
                 pass
@@ -2195,10 +2195,17 @@ class JarvisLive:
             # mic / phone PCM through the new `audio` field instead. Queue items
             # are {"data": <bytes>, "mime_type": <str>} from _listen_audio and
             # the phone relay.
+            # Gemini Live needs the PCM sample rate in the MIME type. The
+            # local mic is explicitly opened at SEND_SAMPLE_RATE (16 kHz);
+            # omitting rate can make the server interpret the samples at a
+            # different rate, distorting speech timing and recognition.
+            mime_type = str(msg.get("mime_type", "audio/pcm;rate=16000"))
+            if mime_type.lower().startswith("audio/pcm") and "rate=" not in mime_type.lower():
+                mime_type = "audio/pcm;rate=16000"
             await self.session.send_realtime_input(
                 audio=types.Blob(
                     data=msg["data"],
-                    mime_type=msg.get("mime_type", "audio/pcm"),
+                    mime_type=mime_type,
                 )
             )
 
@@ -2356,7 +2363,7 @@ class JarvisLive:
                 self._append_voice_id_audio(data)
                 loop.call_soon_threadsafe(
                     self.out_queue.put_nowait,
-                    {"data": data, "mime_type": "audio/pcm"}
+                    {"data": data, "mime_type": "audio/pcm;rate=16000"}
                 )
                 # Feed the live mic level to the HUD so the waveform reacts to
                 # the user's actual voice while listening. Purely cosmetic — any

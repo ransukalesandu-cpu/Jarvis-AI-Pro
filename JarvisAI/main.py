@@ -2122,6 +2122,11 @@ class JarvisLive:
                     _label = f"{_mode.upper()} — {_query[:38]}" if _query else _mode.upper()
                     self.ui.show_content(_label, r)
 
+                # Auto Repair is a native content-panel workflow, so voice
+                # commands such as "open auto repair" visibly open its report.
+                if name == "auto_repair" and r:
+                    self.ui.show_content("JARVIS AUTO REPAIR", r)
+
             else:
                 if self._plugin_registry.has(name):
                     r = await loop.run_in_executor(

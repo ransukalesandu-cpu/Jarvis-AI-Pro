@@ -35,6 +35,8 @@ for _stream in ("stdout", "stderr"):
 # ─────────────────────────────────────────────────────────────────────────────
 
 import asyncio
+
+from core import self_repair
 import re
 import threading
 import time
@@ -3993,6 +3995,8 @@ class JarvisLive:
                 return
 
 def main():
+    # Capture uncaught runtime/thread errors for diagnosis without swallowing them.
+    self_repair.install_global_exception_hooks()
     from PyQt6.QtCore import QTimer
     from PyQt6.QtWidgets import QApplication
 

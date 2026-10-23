@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
-from core import injection_guard
+from core import injection_guard, self_repair
 
 
 """
@@ -881,11 +881,18 @@ def web_search(
         )
 
     except Exception as e:
-        print(
-            f"[WebSearch] ❌ All backends failed: {e}"
-        )
+        # Persist a redacted incident so repeated provider/runtime failures can
+        # be diagnosed later. Logging must never mask the user's search result.
+        try:
+            incident = self_repair.record_error(e, operation=f"web_search:{mode}")
+            safe_error = incident["diagnosis"]["message"]
+        except Exception:
+            safe_error = self_repair.redact_secrets(e)
 
-        return f"Search failed: {e}"
+        print(
+            f"[WebSearch] ❌ Search handler failed: {safe_error}"
+        )
+        return f"Search failed: {safe_error}"
 
 
 # ── Tool declaration ─────────────────────────────────────────────────────────

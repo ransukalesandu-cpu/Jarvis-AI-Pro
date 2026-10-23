@@ -13,6 +13,8 @@
 PyQt6>=6.6,<7
 PyQt6-WebEngine>=6.6,<7
 sounddevice>=0.4,<1
+edge-tts>=7,<8             # default cloud TTS engine
+miniaudio>=1.59,<3         # decodes Edge TTS audio for sounddevice playback
 numpy>=1.24,<3
 google-genai>=2.8.0,<3
 openai>=1.68,<3

@@ -380,3 +380,31 @@ class DevAgentTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class RoutineConfirmationTierTests(unittest.TestCase):
+    def test_read_only_health_check_does_not_require_confirmation(self):
+        from core import security
+        self.assertEqual(
+            security.tier_for("self_heal", {"operation": "check"}),
+            security.TIER_SAFE,
+        )
+        self.assertEqual(
+            security.tier_for("self_heal", {"operation": "repair_dependency", "module": "cv2"}),
+            security.TIER_DANGEROUS,
+        )
+
+    def test_known_gui_apps_do_not_require_confirmation_but_unknown_apps_do(self):
+        from core import security
+        for app in ("Chrome", "Spotify", "Calculator", "VS Code"):
+            with self.subTest(app=app):
+                self.assertEqual(
+                    security.tier_for("open_app", {"app_name": app}),
+                    security.TIER_SAFE,
+                )
+        for app in ("Terminal", "PowerShell", "unrecognized-app"):
+            with self.subTest(app=app):
+                self.assertEqual(
+                    security.tier_for("open_app", {"app_name": app}),
+                    security.TIER_DANGEROUS,
+                )
+

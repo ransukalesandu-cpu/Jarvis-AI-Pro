@@ -2290,12 +2290,12 @@ class JarvisLive:
                     ):
                         try:
                             is_user_voice = self._echo.is_user_speech(
-                                indata, SEND_SAMPLE_RATE, _pcm_level(indata)
+                                indata, SEND_SAMPLE_RATE, _pcm_level(indata), fast=True
                             )
                             if is_user_voice:
                                 self._voice_barge_in_run += 1
                                 if (
-                                    self._voice_barge_in_run >= self._echo.required_blocks
+                                    self._voice_barge_in_run >= 2
                                     and not self._voice_barge_in_pending.is_set()
                                 ):
                                     self._voice_barge_in_pending.set()

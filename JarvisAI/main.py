@@ -2135,7 +2135,8 @@ class JarvisLive:
                         lambda: self._action_registry.run(name, args, _ctx),
                     )
                 _ctx = {"player": self.ui, "speak": self.speak,
-                        "response": None, "session_memory": None}
+                        "response": None, "session_memory": None,
+                        "apply_personality": self._on_voice_personality_change}
                 r = await loop.run_in_executor(
                     None, _guard_action
                 )

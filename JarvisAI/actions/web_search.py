@@ -222,10 +222,15 @@ def _ddg_search(
 
 
 def _ddg_images(query: str, max_results: int = 12) -> list[dict]:
-    """Return a small, display-only image gallery payload from DDGS."""
-    DDGS = _get_ddgs()
-    with DDGS() as ddgs:
-        results = list(ddgs.images(query, max_results=max_results))
+    """Return image results; provider/network failures become an empty gallery."""
+    try:
+        DDGS = _get_ddgs()
+        with DDGS() as ddgs:
+            results = list(ddgs.images(query, max_results=max_results))
+    except Exception as e:
+        print(f"[WebSearch] ⚠️ DDG image search unavailable: {e}")
+        return []
+
     out = []
     for row in results:
         image_url = str(row.get("image") or row.get("thumbnail") or "").strip()
@@ -685,14 +690,18 @@ def _research(query: str) -> str:
             e,
         )
 
-        results = _ddg_search(
-            query,
-            max_results=10,
-        )
+        try:
+            results = _ddg_search(query, max_results=10)
+        except Exception as ddg_error:
+            print(f"[WebSearch] ⚠️ DuckDuckGo research fallback unavailable: {ddg_error}")
+            results = []
 
-        return _format_ddg(
-            query,
-            results,
+        if results:
+            return _format_ddg(query, results)
+        return (
+            f"Web research is temporarily unavailable for: {query}. "
+            "Gemini and DuckDuckGo failed or returned no results. "
+            "Check internet access, API quota, and installed dependencies."
         )
 
 
@@ -714,14 +723,18 @@ def _price(query: str) -> str:
             e,
         )
 
-        results = _ddg_search(
-            f"{query} price buy",
-            max_results=6,
-        )
+        try:
+            results = _ddg_search(f"{query} price buy", max_results=6)
+        except Exception as ddg_error:
+            print(f"[WebSearch] ⚠️ DuckDuckGo price fallback unavailable: {ddg_error}")
+            results = []
 
-        return _format_ddg(
-            query,
-            results,
+        if results:
+            return _format_ddg(query, results)
+        return (
+            f"Price lookup is temporarily unavailable for: {query}. "
+            "Gemini and DuckDuckGo failed or returned no results. "
+            "Check internet access, API quota, and installed dependencies."
         )
 
 

@@ -192,8 +192,13 @@ class EchoGuard:
             pass          # never let bookkeeping disturb playback
 
     def is_user_speech(self, pcm, sr: int, level: float,
-                       when: float | None = None) -> bool:
-        """True if this microphone block is a different voice, not our echo."""
+                       when: float | None = None, *, fast: bool = False) -> bool:
+        """True if this microphone block is a different voice, not our echo.
+
+        ``fast`` is for active speech barge-in: use the adaptive echo threshold
+        immediately instead of waiting for the calibration warm-up. Echo-tail
+        filtering keeps the conservative default.
+        """
         try:
             if level < _MIN_LEVEL:
                 # We are playing and the microphone hears nothing back:
@@ -254,7 +259,7 @@ class EchoGuard:
             # thing it is watching for.
             warming = len(self._residuals) < _WARMUP
             thr = self.threshold
-            speech = (not warming) and best_res >= thr
+            speech = (fast or not warming) and best_res >= thr
 
             if speech:
                 self._run += 1

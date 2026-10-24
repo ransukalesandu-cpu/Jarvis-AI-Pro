@@ -1976,7 +1976,7 @@ class JarvisLive:
                 response={"result": result}
             )
 
-        loop   = asyncio.get_event_loop()
+        loop   = asyncio.get_running_loop()
         result = "Done."
 
         try:
@@ -2279,7 +2279,7 @@ class JarvisLive:
             print("[JARVIS] 🎤 Mic disabled (sounddevice unavailable or PortAudio missing)")
             return
         print("[JARVIS] 🎤 Mic started")
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         actual_sr = SEND_SAMPLE_RATE
 
         def callback(indata, frames, time_info, status):
@@ -3037,7 +3037,7 @@ class JarvisLive:
             day_period = "late night"
 
         # Start fetching news immediately — runs in parallel while phase 1 plays
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _fetch_briefing_news():
             query = "Sri Lankan local news from Newsfirst and Ada Derana in Sinhala and English"
@@ -3659,7 +3659,7 @@ class JarvisLive:
         return min(candidates, key=lambda model: self._live_model_cooldowns.get(model, 0.0))
 
     async def run(self):
-        self._loop = asyncio.get_event_loop()
+        self._loop = asyncio.get_running_loop()
         self._reconnect_event = asyncio.Event()
         self._shutdown_event = asyncio.Event()
         self._run_task = asyncio.current_task()

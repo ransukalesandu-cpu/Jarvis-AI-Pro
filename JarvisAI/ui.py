@@ -722,7 +722,17 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
             if context is None or not context.isValid():
                 print("[HUD] OpenGL context unavailable; using scaled QPainter fallback.")
                 return
-            raw = context.functions().glGetString(0x1F00)  # GL_VENDOR
+            # PyQt6 does not wrap QOpenGLContext.functions(). Get the
+            # matching OpenGL function table through Qt's supported factory.
+            from PyQt6.QtOpenGL import QOpenGLVersionFunctionsFactory, QOpenGLVersionProfile
+
+            profile = QOpenGLVersionProfile()
+            profile.setVersion(2, 0)
+            functions = QOpenGLVersionFunctionsFactory.get(profile, context)
+            if functions is None or not functions.initializeOpenGLFunctions():
+                print("[HUD] OpenGL functions unavailable; using scaled QPainter fallback.")
+                return
+            raw = functions.glGetString(0x1F00)  # GL_VENDOR
             vendor = bytes(raw).decode("utf-8", errors="replace") if raw else "unknown"
             software_markers = ("llvmpipe", "softpipe", "software rasterizer", "basic render driver")
             self._neural_gl_hardware = not any(mark in vendor.lower() for mark in software_markers)

@@ -22,6 +22,14 @@ if _platform.system() == "Windows":
 # because most of these prints sit inside the receive loop it takes the session
 # down on startup. Reconfiguring to UTF-8 with a replacement fallback costs
 # nothing and makes the app launch the same way in every locale.
+import sys
+from pathlib import Path
+
+_ROOT_DIR = Path(__file__).resolve().parent.parent
+for _p in [str(_ROOT_DIR), str(_ROOT_DIR / "JarvisAI"), str(_ROOT_DIR / "voice")]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 import sys as _sys
 
 for _stream in ("stdout", "stderr"):

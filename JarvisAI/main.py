@@ -81,7 +81,82 @@ except Exception:
 import numpy as np
 from google import genai
 from google.genai import types
-from ui import JarvisUI, configure_qt_graphics_backend
+try:
+    from ui import JarvisUI, configure_qt_graphics_backend
+except ImportError:
+    JarvisUI = None
+    configure_qt_graphics_backend = None
+
+
+class HeadlessJarvisUI:
+    """Headless UI adapter for JARVIS Lite Core running silently in background mode."""
+
+    def __init__(self):
+        self.muted = False
+        self.current_file = None
+        self.state = "INITIALIZING"
+
+    def write_log(self, text: str) -> None:
+        print(f"[CoreLog] {text}")
+
+    def set_state(self, state: str) -> None:
+        self.state = state
+        print(f"[CoreState] {state}")
+
+    def set_audio_level(self, level: float) -> None:
+        pass
+
+    def react_avatar_text(self, text: str) -> None:
+        pass
+
+    def push_visemes(self, frames, hop, at) -> None:
+        pass
+
+    def show_content(self, title: str, text: str) -> None:
+        print(f"[CoreContent] {title}\n{text}")
+
+    def show_confirm(self, action_id: str, prompt: str, callback) -> None:
+        print(f"[CoreConfirm] Confirmation gated in headless mode for {action_id}: {prompt}")
+        # In headless mode without interactive approval, deny dangerous actions by default
+        if callback:
+            callback(False)
+
+    def hide_confirm(self) -> None:
+        pass
+
+    def start_camera_stream(self) -> None:
+        pass
+
+    def stop_camera_stream(self) -> None:
+        pass
+
+    def set_voice_id_enabled(self, enabled: bool) -> None:
+        pass
+
+    def notify_phone_connected(self) -> None:
+        print("[CoreStatus] Phone connected")
+
+    def hud_video_is_active(self) -> bool:
+        return False
+
+    def get_plugins(self) -> list:
+        return []
+
+    def get_plugin_settings(self) -> dict:
+        return {}
+
+    def request_say(self, text: str) -> None:
+        print(f"[CoreSay] {text}")
+
+    def wait_for_api_key(self, stop_event=None) -> bool:
+        return True
+
+    def prompt_reconfig() -> None:
+        pass
+
+    def request_close() -> None:
+        pass
+
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
     save_session_summary, pop_last_session,
@@ -4799,13 +4874,35 @@ class JarvisLive:
                 return
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="JARVIS AI Personal Assistant")
+    parser.add_argument("--headless", action="store_true", help="Run in headless background daemon mode")
+    args, _ = parser.parse_known_args()
+
+    if args.headless:
+        print("[JARVIS Core] Starting in Headless Daemon Mode...")
+        ui = HeadlessJarvisUI()
+        jarvis = JarvisLive(ui)
+        try:
+            asyncio.run(jarvis.run())
+        except KeyboardInterrupt:
+            print("\\n[JARVIS Core] Headless core shutting down...")
+        except Exception as exc:
+            print(f"[JARVIS Core] Headless runtime failed: {type(exc).__name__}: {exc}")
+            traceback.print_exc()
+        return
+
+    if JarvisUI is None:
+        print("[JARVIS] Desktop UI dependencies are unavailable. Use --headless or install the UI dependencies.")
+        return
     from PyQt6.QtCore import QTimer
     from PyQt6.QtWidgets import QApplication
 
     # Windows defaults Qt Quick to D3D11. The HUD neural canvas is an
     # OpenGL widget, so select a matching backend before the startup video or
     # any Qt Quick window is created.
-    configure_qt_graphics_backend()
+    if configure_qt_graphics_backend:
+        configure_qt_graphics_backend()
     app = QApplication.instance() or QApplication(sys.argv)
     app.setStyle("Fusion")
     startup = {

@@ -82,7 +82,10 @@ def _run_bounded(fn, timeout: float, label: str = "task"):
         try:
             box[0] = fn()
         except Exception as e:
-            _log_gemini_failure(label, e)
+            # This helper also wraps non-Gemini providers (including DDG), so
+            # report the actual operation instead of incorrectly saying we are
+            # falling back to DDG for every exception.
+            print(f"[WebSearch] {label} failed: {type(e).__name__}: {e}")
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -248,6 +251,8 @@ def _ddg_images(query: str, max_results: int = 12) -> list[dict]:
 def _ddg_news(
     query: str,
     max_results: int = 8,
+    *,
+    fallback_to_text: bool = True,
 ) -> list[dict]:
     """DDG news search — returns actual articles."""
     DDGS = _get_ddgs()
@@ -274,8 +279,11 @@ def _ddg_news(
             "— falling back to text search"
         )
 
-    # Covers the legacy package case where news() returns no results.
-    if not results:
+    # Some callers (notably the multi-publisher Sri Lankan briefing) disable
+    # this extra request so a timed-out news provider does not immediately
+    # trigger another batch of text-search requests to the same unavailable
+    # search backends. Other news searches keep the historical fallback.
+    if not results and fallback_to_text:
         results = _ddg_search(
             query,
             max_results=max_results,
@@ -356,9 +364,17 @@ def _sri_lanka_news(_query: str = "") -> str:
             # News search tends to return fresher article links than general
             # text search. If its results are empty or point off-publisher,
             # retry with text search and still enforce the exact publisher host.
-            results = _ddg_news(source["query"], max_results=8)
+            results = _ddg_news(
+                source["query"],
+                max_results=8,
+                fallback_to_text=False,
+            )
             accepted = _publisher_items(source, results)
-            if not accepted and source.get("fallback_query"):
+            # Use the looser query only if the news provider returned articles
+            # but they did not match the publisher allowlist. If the request
+            # timed out/returned nothing, avoid hammering the same search
+            # backends again; _news() has a Gemini-grounded fallback below.
+            if results and not accepted and source.get("fallback_query"):
                 results = _ddg_search(source["fallback_query"], max_results=8)
                 accepted = _publisher_items(source, results)
             source_results[index] = accepted
@@ -382,7 +398,7 @@ def _sri_lanka_news(_query: str = "") -> str:
     # instead of discarding all results after a short shared deadline.
     # Leave a little room for each worker's single fallback query before the
     # outer news-fetch timeout closes the attempt.
-    deadline = time.monotonic() + 17.0
+    deadline = time.monotonic() + 8.0
     for worker in workers:
         worker.join(max(0.0, deadline - time.monotonic()))
 
@@ -622,12 +638,39 @@ def _news(query: str) -> str:
     if _is_sri_lanka_news_request(query):
         local_news = _run_bounded(
             lambda: _sri_lanka_news(query),
-            timeout=18.0,
-            label="Sri Lankan news",
+            timeout=9.0,
+            label="Sri Lankan publisher news",
         )
         if local_news and not local_news.startswith("No Sri Lankan headlines"):
             return local_news
-        return local_news or "Sri Lankan news could not be fetched right now."
+
+        # The old Sri Lankan branch returned immediately when the scraping
+        # providers timed out, even though other news modes already had a
+        # Gemini/Google Search grounding fallback. Use that same grounded
+        # fallback here so startup briefing can still get current headlines
+        # when DDG/Yahoo/Bing/Mojeek/Brave are unreachable.
+        gemini_query = (
+            "Find current, recent Sri Lankan news headlines using Google Search. "
+            "Prioritize Newsfirst and Ada Derana, include Sinhala and English "
+            "coverage when available, and give the publication date and source "
+            "URL for each item. Only report headlines you can verify from search "
+            "results; do not invent stories. User request: "
+            + (query or "latest Sri Lankan news")
+        )
+        grounded_news = _run_bounded(
+            lambda: _gemini_search(gemini_query),
+            timeout=12.0,
+            label="Gemini-grounded Sri Lankan news",
+        )
+        if grounded_news and len(grounded_news.strip()) > 60:
+            return grounded_news.strip()
+
+        return (
+            "Sri Lankan news could not be fetched right now. The publisher search "
+            "providers timed out and the Google Search-grounded fallback did not "
+            "return verified headlines. Check internet/proxy access and Gemini "
+            "Search grounding quota, then retry."
+        )
 
     gemini_query = (
         f"latest news today: {query}"

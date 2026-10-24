@@ -37,7 +37,7 @@ def launch_app(name: str) -> str:
     app_name = str(name).strip()
     if _UNSAFE_CMD_RE.search(app_name) or any(ch in app_name for ch in ('"', "'", "\\", "/", " ", ";", "&", "|", "$")):
         if not (os.path.isfile(app_name) and os.path.splitext(app_name)[1].lower() in (".exe", ".com")):
-            return "Refused to launch application: provide one executable name or an explicit .exe/.com path."
+            return "Refused to launch application: unsafe command characters or arguments detected; provide one executable name or explicit .exe/.com path."
 
     system = platform.system()
     try:

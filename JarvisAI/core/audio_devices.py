@@ -173,6 +173,22 @@ def _transport_works(idx: int, kind: str, api_key) -> bool:
     return ok
 
 
+def probe_transport(device_index: int, kind: str) -> bool:
+    """Verify that one specific device consumes audio at real-time speed.
+
+    This is used as a last-resort playback fallback when a stream opens and
+    accepts PCM but its host API appears to swallow writes without pacing.
+    The output probe writes silence only.
+    """
+    if kind not in _RATES:
+        return False
+    try:
+        idx = int(device_index)
+    except (TypeError, ValueError):
+        return False
+    return _transport_works(idx, kind, ("runtime-device", kind, idx))
+
+
 def _display_name(name: str, devices) -> str:
     """MME truncates device names to 31 characters, so the API that actually
     carries the audio may not be the one that can spell. If another host API

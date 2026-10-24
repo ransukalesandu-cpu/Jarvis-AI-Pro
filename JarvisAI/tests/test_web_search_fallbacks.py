@@ -6,9 +6,28 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from actions import web_search as ws
+from core import gemini as gm
 
 
 class WebSearchFallbackTests(unittest.TestCase):
+    def test_free_search_ladder_uses_current_model_ids(self):
+        with patch.object(gm, "_FREE_TIER", True):
+            ladder = gm._resolve_ladder(gm.SEARCH)
+        self.assertEqual(
+            ladder,
+            ("gemini-3.5-flash-lite", "gemini-3.8-flash"),
+        )
+        self.assertNotIn("gemini-2.5-flash-lite", ladder)
+        self.assertNotIn("gemini-2.5-flash", ladder)
+
+    def test_paid_search_ladder_keeps_current_model_ids(self):
+        with patch.object(gm, "_FREE_TIER", False):
+            ladder = gm._resolve_ladder(gm.SEARCH)
+        self.assertEqual(
+            ladder,
+            ("gemini-3.8-flash", "gemini-3.5-flash-lite"),
+        )
+
     @staticmethod
     def _run_bounded_inline(fn, timeout, label="task"):
         # These tests exercise fallback selection, not Python's thread scheduler.

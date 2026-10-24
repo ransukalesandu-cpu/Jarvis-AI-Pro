@@ -31,14 +31,14 @@ For the current PowerShell window only, use `Remove-Item Env:JARVIS_PERSONAL_MOD
 With `JARVIS_PERSONAL_MODE=1`, these selected actions run without the extra confirmation banner and remain audited/rate-limited:
 
 - Direct local desktop input (click, type, key press, hotkey, paste, drag).
-- Basic file operations (create, copy, move, rename, write) that are already permitted by the file tool's user-home and protected-path checks.
+- Folder creation and renaming that does not overwrite an existing destination; both remain restricted by the file tool's user-home and protected-path checks.
 - Desktop wallpaper changes.
 
 ## What stays protected
 
 Personal Mode does **not** disable the security layer. These actions still require the normal confirmation flow or existing checks:
 
-- File deletion and bulk desktop organization.
+- File deletion, file creation/writes, copy/move (which can overwrite existing data), and bulk desktop organization.
 - Sending emails/messages, Instagram publication, and phone calls.
 - Generated-code tasks, development/installer operations, system shutdown, and high-impact repair/update actions.
 - Unknown/unrecognized application launches.

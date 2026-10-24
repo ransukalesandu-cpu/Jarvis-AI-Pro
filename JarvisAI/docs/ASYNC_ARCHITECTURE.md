@@ -43,3 +43,8 @@ The runtime prints one-time-per-turn checkpoints with the `[AudioTrace ...]` pre
 - `Callback failed`, `Live audio send failed`, `Speaker write failed`, or `CRITICAL THREAD CRASH` includes exception details and/or a traceback to identify the failing stage.
 
 If a turn completes with assistant text but no PCM audio payload, the trace explicitly reports that mismatch. Do not add `pyttsx3`/COM or `PyAudio` code to this path unless the app is deliberately changed to use those engines; this runtime uses Gemini Live native audio and `sounddevice`.
+
+
+### Tiny PCM payloads and silent output
+
+Gemini Live native audio is 24 kHz, mono, signed 16-bit PCM in this application. A 2-byte payload is only one sample, not a spoken phrase. The receive loop buffers sub-10 ms fragments until at least 480 bytes (10 ms) are available, keeps 16-bit sample alignment, and only then queues PCM for playback. At turn completion, any incomplete remainder is discarded and the log distinguishes text-without-playable-audio from a fully missing audio payload.

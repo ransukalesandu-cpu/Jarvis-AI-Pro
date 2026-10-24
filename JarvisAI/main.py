@@ -180,6 +180,26 @@ def _take_playback_pcm(buffer: bytearray, *, final: bool = False) -> bytes:
     del buffer[:take_bytes]
     return pcm
 
+
+def _output_write_is_unpaced(audio_seconds: float, wall_seconds: float) -> bool:
+    """True when output writes cannot plausibly be keeping pace with playback.
+
+    A healthy blocking output stream may buffer ahead briefly, so do not judge
+    it from the first write. The caller checks this only after at least one full
+    second of PCM has been submitted.
+    """
+    try:
+        audio_seconds = float(audio_seconds)
+        wall_seconds = float(wall_seconds)
+    except (TypeError, ValueError):
+        return False
+    return (
+        audio_seconds >= 1.0
+        and wall_seconds >= 0.0
+        and wall_seconds < audio_seconds * 0.20
+    )
+
+
 # RMS below which 16-bit PCM is treated as room silence; above _LEVEL_FULL it
 # reads as a full-height waveform. Tuned so ordinary speech lands mid-range and
 # the bars still move for a quiet talker — language- and device-independent.

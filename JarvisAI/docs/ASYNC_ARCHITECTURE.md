@@ -58,3 +58,8 @@ Voice-based interruption is armed only after JARVIS is actually speaking and the
 ### Sri Lankan news search fallback
 
 The Newsfirst/Ada Derana scrape path runs a bounded publisher search first. A failed DDG news request no longer automatically triggers another text request for each edition; if no publisher results arrive, the news action tries the existing Gemini Google Search-grounded path and asks for dates and source URLs. If both paths fail, it returns a clear unavailable message instead of silently inventing headlines. The startup briefing recognizes that message and does not launch an identical second publisher sweep during the same briefing.
+
+
+### Gemini search transport failures and quotas
+
+Grounded search uses the current model IDs from the active search ladder. A transport-level disconnect such as HTTPX RemoteProtocolError is retried once with a fresh SDK client, paced by the normal per-model request gap. If the retry also fails, that model receives a short transient cooldown so repeated startup briefings do not continually reuse a broken connection. HTTP 429/quota errors remain on their longer server-hinted cooldown and are not retried as transport failures. The Sri Lankan news wrapper uses a 10-second per-request HTTP deadline and a bounded overall wait for the ladder/retry; unavailable headlines are reported as unavailable rather than invented.

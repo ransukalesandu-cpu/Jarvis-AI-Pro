@@ -3,13 +3,45 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from actions import web_search as ws
 from core import gemini as gm
 
 
 class WebSearchFallbackTests(unittest.TestCase):
+    def test_remote_protocol_disconnect_is_classified_as_transient(self):
+        error_type = type("RemoteProtocolError", (Exception,), {})
+        error = error_type("Server disconnected without sending a response")
+        self.assertTrue(gm._is_transient_transport_error(error))
+
+    def test_model_404_is_not_classified_as_transient_transport(self):
+        error_type = type("ClientError", (Exception,), {})
+        error = error_type("404 NOT_FOUND: model unavailable")
+        self.assertFalse(gm._is_transient_transport_error(error))
+
+    def test_grounded_call_retries_remote_protocol_error_with_fresh_client(self):
+        error_type = type("RemoteProtocolError", (Exception,), {})
+        first_client = SimpleNamespace(models=Mock())
+        first_client.models.generate_content.side_effect = error_type(
+            "Server disconnected without sending a response"
+        )
+        expected_response = object()
+        second_client = SimpleNamespace(models=Mock())
+        second_client.models.generate_content.return_value = expected_response
+
+        with patch.object(gm, "_resolve_ladder", return_value=("gemini-3.5-flash-lite",)), \
+                patch.object(gm, "_FREE_TIER", False), \
+                patch.object(gm, "_cooling", return_value=False), \
+                patch.object(gm, "api_key", return_value="test-key"), \
+                patch.object(gm, "client", side_effect=[first_client, second_client]) as client_factory:
+            response = gm.call("find current headlines", tier=gm.SEARCH)
+
+        self.assertIs(response, expected_response)
+        self.assertEqual(client_factory.call_count, 2)
+        first_client.models.generate_content.assert_called_once()
+        second_client.models.generate_content.assert_called_once()
+
     def test_free_search_ladder_uses_current_model_ids(self):
         with patch.object(gm, "_FREE_TIER", True):
             ladder = gm._resolve_ladder(gm.SEARCH)

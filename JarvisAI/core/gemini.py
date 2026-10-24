@@ -615,6 +615,38 @@ _RETRY_HINT_RE = re.compile(
 )
 _HTTP_429_RE = re.compile(r"(?<![0-9A-Za-z])429(?![0-9A-Za-z])")
 
+# Some provider/proxy failures arrive as an HTTPX protocol exception without
+# an HTTP status code. They are transient transport failures, not quota errors
+# or invalid model IDs.
+_TRANSIENT_TRANSPORT_NAMES = frozenset({
+    "connecterror",
+    "connecttimeout",
+    "networkerror",
+    "pooltimeout",
+    "protocolerror",
+    "readerror",
+    "readtimeout",
+    "remoteprotocolerror",
+    "writeerror",
+    "writetimeout",
+})
+
+
+def _is_transient_transport_error(exc: Exception) -> bool:
+    name = type(exc).__name__.casefold()
+    if name in _TRANSIENT_TRANSPORT_NAMES:
+        return True
+
+    message = str(exc).upper()
+    return any(token in message for token in (
+        "SERVER DISCONNECTED WITHOUT SENDING A RESPONSE",
+        "REMOTE PROTOCOL ERROR",
+        "CONNECTION RESET BY PEER",
+        "CONNECTION ABORTED",
+        "BROKEN PIPE",
+        "TEMPORARY FAILURE IN NAME RESOLUTION",
+    ))
+
 
 def _retry_after_seconds(message: str, default: int = _COOLDOWN_SECONDS) -> int:
     """Cooldown length for a 429: the server's own hint if it gave one.
@@ -841,9 +873,27 @@ def call(
             if effective_config is not None:
                 kwargs["config"] = effective_config
 
-            return rest_client.models.generate_content(
-                **kwargs
-            )
+            try:
+                return rest_client.models.generate_content(**kwargs)
+            except Exception as first_exc:
+                if not _is_transient_transport_error(first_exc):
+                    raise
+
+                # A remote protocol disconnect can leave the SDK's pooled
+                # connection unusable. Make one paced retry with a fresh client
+                # before abandoning this model rung; do not retry quota/404/400
+                # errors because those are not fixed by reconnecting.
+                print(
+                    f"[Gemini] {model}: transient transport disconnect "
+                    "— rebuilding the connection and retrying once"
+                )
+                if _FREE_TIER and model != LIVE:
+                    _wait_for_request_slot(model)
+                rest_client = client(
+                    timeout_ms=timeout_ms,
+                    key=resolved_key,
+                )
+                return rest_client.models.generate_content(**kwargs)
 
         except Exception as exc:
 
@@ -862,6 +912,13 @@ def call(
                 print(
                     f"[Gemini] {model}: out of quota — "
                     f"skipping it for {cooldown}s"
+                )
+
+            elif _is_transient_transport_error(exc):
+                _cool(model, _TRANSIENT_COOLDOWN_SECONDS)
+                print(
+                    f"[Gemini] {model}: transient transport failure; "
+                    f"cooling it for {_TRANSIENT_COOLDOWN_SECONDS}s and trying the next model"
                 )
 
             elif (status is not None and 500 <= status <= 599) or any(

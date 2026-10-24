@@ -99,11 +99,12 @@ class WebSearchFallbackTests(unittest.TestCase):
             "Newsfirst — English\n• Verified headline from publisher"
         )
         with patch.object(ws, "_run_bounded", side_effect=self._run_bounded_inline), \
-                patch.object(ws, "_sri_lanka_news", return_value=no_headlines), \
+                patch.object(ws, "_sri_lanka_news", return_value=no_headlines) as search_mock, \
                 patch.object(ws, "_direct_sri_lanka_news", return_value=direct_news), \
                 patch.object(ws, "_gemini_search") as gemini:
             result = ws._news("Sri Lankan local news")
         self.assertEqual(result, direct_news)
+        search_mock.assert_not_called()
         gemini.assert_not_called()
 
     def test_direct_publisher_fallback_extracts_only_allowlisted_https_links(self):

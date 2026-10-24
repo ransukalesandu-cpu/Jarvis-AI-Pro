@@ -528,6 +528,64 @@ class DashboardServer:
                                 status_code=401)
 
 
+        @app.post("/api/native-pair")
+        async def native_pair_ep(req: Request):
+            """Pair a native mobile client using the same short-lived code as the QR flow."""
+            from core import security
+            client_ip = req.client.host if req.client else "unknown"
+            if self._rate_limited(client_ip):
+                security.audit("dashboard_login", "native_pair", "SENSITIVE", "denied",
+                               f"rate-limited: {client_ip}")
+                return JSONResponse(
+                    {"ok": False, "error": "Too many pairing attempts. Wait a minute."},
+                    status_code=429,
+                    headers={"Cache-Control": "no-store"},
+                )
+            try:
+                body = await req.json()
+            except Exception:
+                return JSONResponse(
+                    {"ok": False, "error": "Invalid request."},
+                    status_code=400,
+                    headers={"Cache-Control": "no-store"},
+                )
+            entered = str(body.get("pin", "")).strip().upper()
+            expiry = self._pending_keys.get(entered, 0.0)
+            if not entered or expiry <= time.time():
+                if entered:
+                    self._pending_keys.pop(entered, None)
+                security.audit("dashboard_login", "native_pair", "SENSITIVE", "denied",
+                               f"invalid or expired pairing code: {client_ip}")
+                return JSONResponse(
+                    {"ok": False, "error": "Invalid or expired pairing code."},
+                    status_code=401,
+                    headers={"Cache-Control": "no-store"},
+                )
+
+            # The one-time pairing code becomes the session key exactly once.
+            # The persistent device token is random and can be revoked from JARVIS.
+            del self._pending_keys[entered]
+            device_token = secrets.token_urlsafe(32)
+            self._device_sessions[device_token] = {
+                "session_key": entered,
+                "issued": time.time(),
+            }
+            security.audit("dashboard_login", "native_pair", "SENSITIVE", "ran",
+                           f"native device paired: ip={client_ip}")
+            if self._connect_callback:
+                self._connect_callback()
+            asyncio.create_task(self.broadcast(
+                {"type": "sys", "text": "Native mobile device paired."}
+            ))
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "device_token": device_token,
+                    "device_expires_in": self._DEVICE_TTL_SECONDS,
+                },
+                headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+            )
+
         @app.get("/auto-login")
         async def auto_login(req: Request, key: str = ""):
             """QR code target — validates one-time key, creates session, redirects phone."""

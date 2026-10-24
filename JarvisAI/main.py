@@ -1,8 +1,5 @@
 import platform as _platform
 import subprocess as _subprocess
-import os
-import sys
-import threading
 
 # ── Nuclear: force CREATE_NO_WINDOW on EVERY subprocess call on Windows ───────
 # This patches Popen itself, so no per-file flag is needed anywhere.
@@ -25,6 +22,14 @@ if _platform.system() == "Windows":
 # because most of these prints sit inside the receive loop it takes the session
 # down on startup. Reconfiguring to UTF-8 with a replacement fallback costs
 # nothing and makes the app launch the same way in every locale.
+import sys
+from pathlib import Path
+
+_ROOT_DIR = Path(__file__).resolve().parent.parent
+for _p in [str(_ROOT_DIR), str(_ROOT_DIR / "JarvisAI"), str(_ROOT_DIR / "voice")]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 import sys as _sys
 
 for _stream in ("stdout", "stderr"):
@@ -60,16 +65,14 @@ if _platform.system() == "Windows":
     for _gpu_flag in ("--enable-gpu-rasterization", "--enable-zero-copy"):
         if _gpu_flag not in _chromium_flags:
             _chromium_flags.append(_gpu_flag)
-elif _platform.system() == "Linux":
-    if "--no-sandbox" not in _chromium_flags:
-        _chromium_flags.append("--no-sandbox")
+elif _platform.system() == "Linux" and "--no-sandbox" not in _chromium_flags:
+    _chromium_flags.append("--no-sandbox")
 os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(_chromium_flags)
 
 try:
     import sounddevice as sd
-except Exception as _sd_err:
+except Exception:
     sd = None
-    print(f"[JARVIS] ⚠️ sounddevice unavailable: {_sd_err}")
 import numpy as np
 from google import genai
 from google.genai import types
@@ -1449,6 +1452,7 @@ class JarvisLive:
                 wake_hint = "say 'Hey Jarvis', " + wake_hint
             self.ui.write_log(f"SYS: I'm asleep — {wake_hint} first.")
             return
+        self._interrupted = False
         security.mark_user_turn_started(voice_verified=True)
         with self._voice_id_audio_lock:
             self._voice_id_turn_audio = b""
@@ -2163,6 +2167,11 @@ class JarvisLive:
                     _label = f"{_mode.upper()} — {_query[:38]}" if _query else _mode.upper()
                     self.ui.show_content(_label, r)
 
+                # Auto Repair is a native content-panel workflow, so voice
+                # commands such as "open auto repair" visibly open its report.
+                if name == "auto_repair" and r:
+                    self.ui.show_content("JARVIS AUTO REPAIR", r)
+
             else:
                 if self._plugin_registry.has(name):
                     r = await loop.run_in_executor(
@@ -2245,7 +2254,7 @@ class JarvisLive:
 
     async def _listen_audio(self):
         if sd is None:
-            print("[JARVIS] 🎤 Mic disabled (sounddevice not installed or PortAudio missing)")
+            print("[JARVIS] 🎤 Mic disabled (sounddevice unavailable or PortAudio missing)")
             return
         print("[JARVIS] 🎤 Mic started")
         loop = asyncio.get_event_loop()
@@ -2256,12 +2265,11 @@ class JarvisLive:
             if actual_sr != SEND_SAMPLE_RATE and actual_sr > 0 and indata.size > 0:
                 raw_mono = indata[:, 0] if indata.ndim > 1 else indata
                 n_samples = int(round(len(raw_mono) * SEND_SAMPLE_RATE / actual_sr))
-                if n_samples > 0:
+                if n_samples > 0 and len(raw_mono) > 1:
                     old_x = np.linspace(0, 1, len(raw_mono))
                     new_x = np.linspace(0, 1, n_samples)
                     resampled = np.interp(new_x, old_x, raw_mono.astype(np.float32)).astype(np.int16)
                     indata = resampled.reshape(-1, 1) if indata.ndim > 1 else resampled
-
             self._capture_voice_id_enrollment(indata, frames)
             # ── Wake-word gate ───────────────────────────────────────────────
             # While asleep, the mic audio NEVER goes to Gemini (nothing is
@@ -2305,10 +2313,14 @@ class JarvisLive:
                 det.feed(indata)
 
             if response_active:
-                if jarvis_speaking:
-                    # Keep a short, local-only pre-roll while JARVIS speaks. The
-                    # mic remains closed to Gemini until the echo-aware detector
-                    # confirms that a person (not the speaker echo) is talking.
+                # Keep a short, local-only pre-roll while JARVIS is active/speaking.
+                # The mic remains closed to Gemini until the echo-aware detector
+                # confirms that a person (not the speaker echo) is talking.
+                if (
+                    not self.ui.muted
+                    and not self._phone_active
+                    and (not self._ptt_enabled or self._ptt_held)
+                ):
                     try:
                         with self._wake_interrupt_lock:
                             self._wake_interrupt_audio.append(indata.tobytes())
@@ -2316,43 +2328,29 @@ class JarvisLive:
                         pass
 
                     # EchoGuard compares the mic's speech-band energies with
-                    # recent output. Require sustained evidence (more blocks in
-                    # difficult rooms) to avoid stopping for a single noise.
-                    if (
-                        not self.ui.muted
-                        and not self._phone_active
-                        and (not self._ptt_enabled or self._ptt_held)
-                    ):
-                        try:
-                            is_user_voice = self._echo.is_user_speech(
-                                indata, SEND_SAMPLE_RATE, _pcm_level(indata), fast=True
-                            )
-                            if is_user_voice:
-                                self._voice_barge_in_run += 1
-                                if (
-                                    self._voice_barge_in_run >= 2
-                                    and not self._voice_barge_in_pending.is_set()
-                                ):
-                                    self._voice_barge_in_pending.set()
-                                    loop.call_soon_threadsafe(self._on_voice_barge_in)
-                            else:
-                                self._voice_barge_in_run = 0
-                        except Exception:
-                            self._voice_barge_in_run = 0
-                elif detector_can_interrupt:
-                    # During a silent model/tool gap, retain pre-roll for the
-                    # local wake detector; no audio is sent unless it triggers.
+                    # recent output. Require sustained evidence (2 blocks)
+                    # to avoid stopping for a single noise.
                     try:
-                        with self._wake_interrupt_lock:
-                            self._wake_interrupt_audio.append(indata.tobytes())
+                        is_user_voice = self._echo.is_user_speech(
+                            indata, SEND_SAMPLE_RATE, _pcm_level(indata), fast=True
+                        )
+                        if is_user_voice:
+                            self._voice_barge_in_run += 1
+                            if (
+                                self._voice_barge_in_run >= 2
+                                and not self._voice_barge_in_pending.is_set()
+                            ):
+                                self._voice_barge_in_pending.set()
+                                loop.call_soon_threadsafe(self._on_voice_barge_in)
+                        else:
+                            self._voice_barge_in_run = 0
                     except Exception:
-                        pass
+                        self._voice_barge_in_run = 0
 
-                # Do not stream JARVIS's own speaker echo back to the model.
-                # In a silent tool gap, the local wake detector still gates input.
-                if jarvis_speaking or detector_can_interrupt:
-                    self._expire_voice_id_audio()
-                    return
+                # Do not stream speaker echo or pending turn audio back to the model
+                # while a response or briefing is active.
+                self._expire_voice_id_audio()
+                return
             else:
                 self._voice_barge_in_run = 0
                 self._voice_barge_in_pending.clear()
@@ -2417,11 +2415,10 @@ class JarvisLive:
                     )
                     actual_sr = SEND_SAMPLE_RATE
                     return stream
-                except Exception as ex_sr:
-                    # Retry with native device samplerate if device requires specific hardware rate
+                except Exception:
                     try:
-                        dev_info = sd.query_devices(dev, 'input') if dev is not None else sd.query_devices(kind='input')
-                        native_sr = int(dev_info.get('default_samplerate', 16000))
+                        dev_info = sd.query_devices(dev, "input") if dev is not None else sd.query_devices(kind="input")
+                        native_sr = int(dev_info.get("default_samplerate", 16000))
                     except Exception:
                         native_sr = 16000
                     stream = sd.InputStream(
@@ -2446,6 +2443,10 @@ class JarvisLive:
             try:
                 _mic_stream = _open_mic(_mic_dev)
             except Exception as _e:
+                # A device the picker listed but the driver will not open right
+                # now — exclusive mode, a webcam already in use, a virtual mic
+                # whose source went away. Chosen hardware failing must never
+                # mean the assistant cannot hear at all.
                 if _mic_dev is None:
                     print(f"[JARVIS] ⚠️ Mic input unavailable: {_e}")
                     return
@@ -2597,14 +2598,8 @@ class JarvisLive:
 
                         if sc.output_transcription and sc.output_transcription.text:
                             txt = _clean_transcript(sc.output_transcription.text)
-                            # A turn that involves a tool call passes through
-                            # several turn_completes, and the API re-sends the
-                            # tail of the transcript across them. Comparing only
-                            # against the previous chunk missed that — once
-                            # out_buf had been flushed and emptied, the repeat
-                            # sailed straight back in, which logged the answer
-                            # twice AND made the avatar mouth it twice.
-                            if txt and not _is_repeat_chunk(txt, out_buf):
+                            # Ignore output transcriptions from an interrupted assistant turn.
+                            if txt and not self._interrupted and not _is_repeat_chunk(txt, out_buf):
                                 self._plan_vocal_response(txt)
                                 self._assistant_turn_pending = True
                                 out_buf.append(txt)
@@ -2679,10 +2674,10 @@ class JarvisLive:
                             if self._turn_done_event:
                                 self._turn_done_event.set()
 
-                            # If this turn_complete ends an interrupted response, clear the
-                            # flag and skip all further processing for that turn.
+                            # If this turn_complete ends an interrupted response, discard
+                            # old output state and keep the interrupted flag active until
+                            # the user's new turn (input_transcription) or sc.interrupted arrives.
                             if self._interrupted and not in_buf:
-                                self._interrupted = False
                                 out_buf = []
                                 self._visemes.reset()
                                 self._vocal_plan = VocalPlan()
@@ -2805,6 +2800,8 @@ class JarvisLive:
             print(f"[JARVIS] 🔊 Output device: {_spk_name}")
 
         def _open_spk(dev):
+            if sd is None:
+                raise RuntimeError("sounddevice is unavailable (PortAudio missing)")
             st = sd.RawOutputStream(
                 samplerate=RECEIVE_SAMPLE_RATE,
                 channels=CHANNELS,

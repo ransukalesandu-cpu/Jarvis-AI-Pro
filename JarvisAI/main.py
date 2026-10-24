@@ -73,6 +73,10 @@ try:
     import sounddevice as sd
 except Exception:
     sd = None
+try:
+    import webrtcvad as _webrtcvad
+except Exception:
+    _webrtcvad = None
 import numpy as np
 from google import genai
 from google.genai import types
@@ -726,6 +730,8 @@ class JarvisLive:
         self._shutdown_lock = threading.Lock()
         self._shutdown_in_progress = False
         self._is_speaking         = False
+        self._output_stream       = None
+        self._playback_interrupt_requested = threading.Event()
         self._assistant_turn_pending = False
         self._barge_in_until      = 0.0
         self._speaking_lock       = threading.Lock()
@@ -774,6 +780,11 @@ class JarvisLive:
         self._ptt_held             = False
         self._ptt                  = None    # core.hotkey.PushToTalk
         self._out_level            = 0.0     # level of the audio being played right now
+        self._speech_vad           = _webrtcvad.Vad(2) if _webrtcvad is not None else None
+        if self._speech_vad is None:
+            print("[Voice] WebRTC VAD unavailable; using EchoGuard-only barge-in.")
+        else:
+            print("[Voice] WebRTC VAD enabled (aggressiveness 2).")
         self._echo                 = EchoGuard()
         # `stream.write()` returns when the buffer accepts the audio, not when the
         # speaker has finished with it, so sound is still in the room after the
@@ -1640,6 +1651,15 @@ class JarvisLive:
         turn_pending = bool(self._assistant_turn_pending)
         briefing_active = bool(self._briefing_active)
         self._interrupted = speaking or turn_pending or briefing_active
+        if self._interrupted:
+            # Abort the device buffer as well as draining the asyncio queue.
+            self._playback_interrupt_requested.set()
+            output_stream = self._output_stream
+            if output_stream is not None:
+                try:
+                    output_stream.abort()
+                except Exception as exc:
+                    print(f"[JARVIS] Output abort during interruption: {exc}")
         self._assistant_turn_pending = False
         if briefing_active:
             self._briefing_cancelled = True
@@ -2281,6 +2301,9 @@ class JarvisLive:
         print("[JARVIS] 🎤 Mic started")
         loop = asyncio.get_running_loop()
         actual_sr = SEND_SAMPLE_RATE
+        # WebRTC VAD accepts 10/20/30 ms mono int16 frames; buffer callback sizes.
+        vad_pcm_buffer = bytearray()
+        vad_recent = deque(maxlen=3)
 
         def callback(indata, frames, time_info, status):
             nonlocal actual_sr
@@ -2357,12 +2380,26 @@ class JarvisLive:
                     except Exception:
                         pass
 
-                    # EchoGuard compares the mic's speech-band energies with
-                    # recent output. Require sustained evidence (2 blocks)
-                    # to avoid stopping for a single noise.
+                    # WebRTC VAD rejects non-speech noise first; EchoGuard then
+                    # separates the user's voice from JARVIS speaker echo.
                     try:
-                        is_user_voice = self._echo.is_user_speech(
-                            indata, SEND_SAMPLE_RATE, _pcm_level(indata), fast=True
+                        vad_confirms_speech = True
+                        if self._speech_vad is not None:
+                            mono = indata[:, 0] if indata.ndim > 1 else indata
+                            vad_pcm_buffer.extend(np.asarray(mono, dtype=np.int16).tobytes())
+                            while len(vad_pcm_buffer) >= 640:  # 20 ms at 16 kHz
+                                frame = bytes(vad_pcm_buffer[:640])
+                                del vad_pcm_buffer[:640]
+                                vad_recent.append(
+                                    self._speech_vad.is_speech(frame, SEND_SAMPLE_RATE)
+                                )
+                            vad_confirms_speech = sum(vad_recent) >= 2
+
+                        is_user_voice = (
+                            self._echo.is_user_speech(
+                                indata, SEND_SAMPLE_RATE, _pcm_level(indata), fast=True
+                            )
+                            if vad_confirms_speech else False
                         )
                         if is_user_voice:
                             self._voice_barge_in_run += 1
@@ -2384,6 +2421,8 @@ class JarvisLive:
             else:
                 self._voice_barge_in_run = 0
                 self._voice_barge_in_pending.clear()
+                vad_pcm_buffer.clear()
+                vad_recent.clear()
                 with self._wake_interrupt_lock:
                     self._wake_interrupt_audio.clear()
 
@@ -2875,6 +2914,8 @@ class JarvisLive:
             self.ui.write_log(f"SYS: Speaker '{_spk_name}' unavailable — using system default.")
             stream = _open_spk(None)
 
+        self._output_stream = stream
+
         # Ask the device how far behind the speakers actually are, rather than
         # assuming. This is what the echo tail is sized from, so a machine with a
         # large audio buffer gets a correspondingly longer guard — and one with a
@@ -2896,6 +2937,13 @@ class JarvisLive:
                         timeout=0.1
                     )
                 except asyncio.TimeoutError:
+                    if self._playback_interrupt_requested.is_set():
+                        self._playback_interrupt_requested.clear()
+                        try:
+                            if not stream.active:
+                                stream.start()
+                        except Exception as exc:
+                            print(f"[JARVIS] Could not resume output after interrupt: {exc}")
                     if (
                         self._turn_done_event
                         and self._turn_done_event.is_set()
@@ -2903,6 +2951,16 @@ class JarvisLive:
                     ):
                         self.set_speaking(False)
                         self._turn_done_event.clear()
+                    continue
+
+                if self._playback_interrupt_requested.is_set():
+                    self._playback_interrupt_requested.clear()
+                    try:
+                        if not stream.active:
+                            stream.start()
+                    except Exception as exc:
+                        print(f"[JARVIS] Could not resume output after interrupt: {exc}")
+                    # Drop a chunk queued just before the interruption.
                     continue
 
                 self.set_speaking(True)
@@ -2985,14 +3043,33 @@ class JarvisLive:
                 else:
                     try:
                         await asyncio.to_thread(stream.write, bytes(batch))
-                    except (RuntimeError, asyncio.CancelledError):
-                        break   # executor shutting down — exit cleanly
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        if self._playback_interrupt_requested.is_set():
+                            self._playback_interrupt_requested.clear()
+                            self.set_speaking(False)
+                            try:
+                                if not stream.active:
+                                    stream.start()
+                            except Exception as restart_exc:
+                                print(f"[JARVIS] Could not resume output after interrupt: {restart_exc}")
+                                raise
+                            continue
+                        if self._shutdown_requested:
+                            break
+                        print(f"[JARVIS] Speaker write failed: {exc}")
+                        raise
         except Exception as e:
             print(f"[JARVIS] ❌ Play: {e}")
             raise
         finally:
             self.set_speaking(False)
-            stream.stop()
+            self._output_stream = None
+            try:
+                stream.stop()
+            except Exception:
+                pass
             stream.close()
 
     # ── Morning briefing ────────────────────────────────────────────────────────

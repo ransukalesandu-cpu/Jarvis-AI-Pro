@@ -55,26 +55,40 @@ class StartupVideoSplash(QWidget):
         layout.addLayout(header)
         layout.addWidget(self.video, 1)
 
-        self.audio = QAudioOutput(self)
-        self.audio.setVolume(0.78)
-        self.player = QMediaPlayer(self)
-        self.player.setAudioOutput(self.audio)
-        self.player.setVideoOutput(self.video)
-        self.player.mediaStatusChanged.connect(self._on_media_status)
-        self.player.errorOccurred.connect(self._on_error)
-        self.player.setSource(QUrl.fromLocalFile(str(video_path.resolve())))
-
-    def start(self) -> None:
-        self.showFullScreen()
-        self.player.play()
-
-    def _on_media_status(self, status) -> None:
-        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+        try:
+            self.audio = QAudioOutput(self)
+            self.audio.setVolume(0.78)
+            self.player = QMediaPlayer(self)
+            self.player.setAudioOutput(self.audio)
+            self.player.setVideoOutput(self.video)
+            self.player.mediaStatusChanged.connect(self._on_media_status)
+            self.player.errorOccurred.connect(self._on_error)
+            self.player.setSource(QUrl.fromLocalFile(str(video_path.resolve())))
+        except Exception as exc:
+            print(f"[Startup] Error setting up media player: {exc}")
             self.finish()
 
-    def _on_error(self, *_args) -> None:
-        # Unsupported codecs or missing platform multimedia backends should
-        # never prevent the normal desktop HUD from opening.
+    def start(self) -> None:
+        try:
+            self.showFullScreen()
+            if hasattr(self, "player") and self.player:
+                self.player.play()
+            else:
+                self.finish()
+        except Exception as exc:
+            print(f"[Startup] Error starting video playback: {exc}")
+            self.finish()
+
+    def _on_media_status(self, status) -> None:
+        if status in (QMediaPlayer.MediaStatus.EndOfMedia, QMediaPlayer.MediaStatus.InvalidMedia):
+            self.finish()
+
+    def _on_error(self, error=None, error_string="") -> None:
+        # Unsupported codecs or missing platform multimedia backends (e.g. GStreamer plugins on Linux)
+        # should never prevent the normal desktop HUD from opening.
+        err_msg = error_string or str(error) if error is not None else ""
+        if err_msg:
+            print(f"[Startup] Intro video playback error ({err_msg}) — falling back directly to HUD.")
         self.finish()
 
     def finish(self) -> None:

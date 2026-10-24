@@ -3,60 +3,7 @@ import subprocess as _subprocess
 import os
 import sys
 import threading
-from PyQt5.QtWidgets import QApplication
 
-# Import your new upgrade modules
-from JarvisAI.voice.voice_engine import JarvisVoiceEngine
-from JarvisAI.voice.persona import JARVIS_SPOKEN_SYSTEM_PROMPT
-from JarvisAI.voice.fillers import get_filler_phrase
-from JarvisAI.core.self_healing_v2 import SelfHealingSentinel
-from JarvisAI.core.screen_agent import ScreenAgent
-from JarvisAI.services.phone_controller import AndroidPhoneController
-
-# 1. Initialize Subsystems
-voice_engine = JarvisVoiceEngine(voice="en-GB-RyanNeural")
-phone = AndroidPhoneController(device_ip=os.getenv("PHONE_IP"))
-screen_agent = ScreenAgent(security_check_cb=lambda title, msg: True) # Or link to your HUD popup
-
-# 2. Start Self-Healing Sentinel in Background
-sentinel = SelfHealingSentinel()
-sentinel.start(interval_sec=5.0)
-
-# 3. Connect Voice Interruption (Barge-In)
-# When the microphone detects user speech while Jarvis is talking, call:
-# voice_engine.interrupt()
-
-print("[JARVIS] All enhanced modules online and ready.")
-from JarvisAI.services.phone_controller import AndroidPhoneController
-
-# Set your phone's local Wi-Fi IP in your .env or pass it directly:
-# PHONE_IP=192.168.1.15
-phone = AndroidPhoneController(device_ip=os.getenv("PHONE_IP", None))
-
-# Example voice commands Jarvis can now execute:
-
-def execute_phone_voice_command(query: str):
-    q = query.lower()
-    
-    if "phone battery" in q:
-        data = phone.get_battery()
-        return f"Your phone is at {data['level']}% battery."
-
-    if "call" in q:
-        # e.g., "Jarvis, call +123456789 from my phone"
-        import re
-        nums = re.findall(r"\+?\d[\d -]{7,}\d", query)
-        if nums:
-            phone.make_call(nums[0])
-            return f"Placing call to {nums[0]} on your phone, Sir."
-
-    if "open whatsapp" in q:
-        phone.open_app("whatsapp")
-        return "WhatsApp is now open on your device."
-
-    if "hang up" in q or "end call" in q:
-        phone.end_call()
-        return "Call disconnected."
 # ── Nuclear: force CREATE_NO_WINDOW on EVERY subprocess call on Windows ───────
 # This patches Popen itself, so no per-file flag is needed anywhere.
 if _platform.system() == "Windows":
@@ -108,14 +55,21 @@ from pathlib import Path
 # explicitly request GPU rasterization for the canvas-heavy Holo UI. Do this
 # before importing PyQt/WebEngine so its renderer process inherits the flags.
 # Keep user-supplied Chromium flags intact and never force past the GPU blocklist.
+_chromium_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "").split()
 if _platform.system() == "Windows":
-    _chromium_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "").split()
     for _gpu_flag in ("--enable-gpu-rasterization", "--enable-zero-copy"):
         if _gpu_flag not in _chromium_flags:
             _chromium_flags.append(_gpu_flag)
-    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(_chromium_flags)
+elif _platform.system() == "Linux":
+    if "--no-sandbox" not in _chromium_flags:
+        _chromium_flags.append("--no-sandbox")
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(_chromium_flags)
 
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except Exception as _sd_err:
+    sd = None
+    print(f"[JARVIS] ⚠️ sounddevice unavailable: {_sd_err}")
 import numpy as np
 from google import genai
 from google.genai import types
@@ -2290,10 +2244,24 @@ class JarvisLive:
             print(f"[JARVIS] Could not resume interrupted request: {exc}")
 
     async def _listen_audio(self):
+        if sd is None:
+            print("[JARVIS] 🎤 Mic disabled (sounddevice not installed or PortAudio missing)")
+            return
         print("[JARVIS] 🎤 Mic started")
         loop = asyncio.get_event_loop()
+        actual_sr = SEND_SAMPLE_RATE
 
         def callback(indata, frames, time_info, status):
+            nonlocal actual_sr
+            if actual_sr != SEND_SAMPLE_RATE and actual_sr > 0 and indata.size > 0:
+                raw_mono = indata[:, 0] if indata.ndim > 1 else indata
+                n_samples = int(round(len(raw_mono) * SEND_SAMPLE_RATE / actual_sr))
+                if n_samples > 0:
+                    old_x = np.linspace(0, 1, len(raw_mono))
+                    new_x = np.linspace(0, 1, n_samples)
+                    resampled = np.interp(new_x, old_x, raw_mono.astype(np.float32)).astype(np.int16)
+                    indata = resampled.reshape(-1, 1) if indata.ndim > 1 else resampled
+
             self._capture_voice_id_enrollment(indata, frames)
             # ── Wake-word gate ───────────────────────────────────────────────
             # While asleep, the mic audio NEVER goes to Gemini (nothing is
@@ -2437,14 +2405,35 @@ class JarvisLive:
 
         try:
             def _open_mic(dev):
-                return sd.InputStream(
-                    samplerate=SEND_SAMPLE_RATE,
-                    channels=CHANNELS,
-                    dtype="int16",
-                    blocksize=CHUNK_SIZE,
-                    device=dev,
-                    callback=callback,
-                )
+                nonlocal actual_sr
+                try:
+                    stream = sd.InputStream(
+                        samplerate=SEND_SAMPLE_RATE,
+                        channels=CHANNELS,
+                        dtype="int16",
+                        blocksize=CHUNK_SIZE,
+                        device=dev,
+                        callback=callback,
+                    )
+                    actual_sr = SEND_SAMPLE_RATE
+                    return stream
+                except Exception as ex_sr:
+                    # Retry with native device samplerate if device requires specific hardware rate
+                    try:
+                        dev_info = sd.query_devices(dev, 'input') if dev is not None else sd.query_devices(kind='input')
+                        native_sr = int(dev_info.get('default_samplerate', 16000))
+                    except Exception:
+                        native_sr = 16000
+                    stream = sd.InputStream(
+                        samplerate=native_sr,
+                        channels=CHANNELS,
+                        dtype="int16",
+                        device=dev,
+                        callback=callback,
+                    )
+                    actual_sr = native_sr
+                    print(f"[JARVIS] 🎤 Mic opened at native samplerate {native_sr}Hz (resampling to 16000Hz)")
+                    return stream
 
             # Which microphone. resolve() returns None for "system default" and
             # for a saved device that is no longer present — so a headset
@@ -2457,17 +2446,18 @@ class JarvisLive:
             try:
                 _mic_stream = _open_mic(_mic_dev)
             except Exception as _e:
-                # A device the picker listed but the driver will not open right
-                # now — exclusive mode, a webcam already in use, a virtual mic
-                # whose source went away. Chosen hardware failing must never
-                # mean the assistant cannot hear at all.
                 if _mic_dev is None:
-                    raise
+                    print(f"[JARVIS] ⚠️ Mic input unavailable: {_e}")
+                    return
                 print(f"[JARVIS] ⚠️  Mic '{_mic_name}' failed: {_e} — using default")
                 self.ui.write_log(
                     f"SYS: Microphone '{_mic_name}' unavailable — using system default."
                 )
-                _mic_stream = _open_mic(None)
+                try:
+                    _mic_stream = _open_mic(None)
+                except Exception as _e2:
+                    print(f"[JARVIS] ⚠️ Default mic failed: {_e2}")
+                    return
 
             with _mic_stream:
                 print("[JARVIS] 🎤 Mic stream open")
@@ -2475,7 +2465,6 @@ class JarvisLive:
                     await asyncio.sleep(0.1)
         except Exception as e:
             print(f"[JARVIS] ❌ Mic: {e}")
-            raise
 
     async def _flush_pending_vision(self) -> bool:
         """Send a captured frame immediately after its tool response.

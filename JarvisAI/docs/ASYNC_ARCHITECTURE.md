@@ -53,3 +53,8 @@ Gemini Live native audio is 24 kHz, mono, signed 16-bit PCM in this application.
 ### Preventing false barge-in before playback starts
 
 Voice-based interruption is armed only after JARVIS is actually speaking and the echo guard has a recent playback reference. While Gemini is generating the first response audio, the microphone still feeds the local wake-word detector, but VAD/echo-based interruption evidence is cleared rather than allowed to cancel a not-yet-audible greeting. This avoids treating a clap or background noise as user speech when EchoGuard has no output PCM to compare against. Real-hardware testing is still required to tune acoustic interruption behavior.
+
+
+### Sri Lankan news search fallback
+
+The Newsfirst/Ada Derana scrape path runs a bounded publisher search first. A failed DDG news request no longer automatically triggers another text request for each edition; if no publisher results arrive, the news action tries the existing Gemini Google Search-grounded path and asks for dates and source URLs. If both paths fail, it returns a clear unavailable message instead of silently inventing headlines. The startup briefing recognizes that message and does not launch an identical second publisher sweep during the same briefing.

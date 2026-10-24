@@ -52,6 +52,22 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from core import confirm as confirm_gate
+from security.auth_manager import AuthManager, RESTRICTED_MODE, FULL_ACCESS_MODE, CHALLENGE_MODE, PRIVACY_LOCK
+from core.dispatcher import ActionDispatcher
+
+_auth_manager = AuthManager()
+
+def get_auth_manager() -> AuthManager:
+    return _auth_manager
+
+def get_auth_state() -> str:
+    return _auth_manager.get_state()
+
+def set_auth_state(state: str) -> None:
+    _auth_manager.set_state(state)
+
+def verify_pin(pin: str) -> bool:
+    return _auth_manager.verify_pin(pin)
 
 # ── where the ledger lives ───────────────────────────────────────────────────
 BASE_DIR   = Path(__file__).resolve().parent.parent
@@ -844,6 +860,19 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
     Returns the string that should go back to the model as the tool result.
     """
     tier = tier_for(name, params)
+
+    auth_state = _auth_manager.get_state()
+    allowed, prompt = ActionDispatcher.can_dispatch(name, auth_state)
+
+    if not allowed:
+        if auth_state not in (PRIVACY_LOCK, CHALLENGE_MODE):
+            _auth_manager.set_state(CHALLENGE_MODE)
+        audit("call", name, tier, "denied", f"Action Dispatcher blocked execution in {auth_state}")
+        _log(f"DISPATCHER INTERCEPTED '{name}' — Auth state: {auth_state}. Prompting PIN.")
+        return prompt
+
+    if auth_state == FULL_ACCESS_MODE:
+        return _run_and_audit(name, tier, run)
 
     # HUD media controls skip the confirmation banner, but they must still be
     # traceable to a fresh user request so untrusted page/email content cannot

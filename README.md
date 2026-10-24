@@ -35,7 +35,7 @@ It can:
 * 🔋 Report its own battery status
 * 📞 Answer phone calls when you are unavailable
 * 📝 Capture caller messages as voicemail transcripts
-* 📱 Provide a remote dashboard for your phone or Android tablet (via Wi-Fi or USB cable using ADB)
+* 📱 Provide a remote dashboard for your phone
 * 🎨 Display an animated holographic-style avatar
 * 🧠 Show two full-screen, state-reactive neural visualizations with optional hand control
 * 📈 Display animated cross-platform system telemetry and live data panels
@@ -1401,23 +1401,9 @@ Jarvis supports:
 
 ---
 
-# 📱 Remote Dashboard & Android Tablet USB Connection
+# 📱 Remote Dashboard
 
-Jarvis includes a remote dashboard that can display assistant status, transcripts, and send remote commands from a mobile browser or Android tablet while the laptop/PC remains the primary system.
-
-## 🔌 Android Tablet USB Connection (ADB Reverse Port Forwarding)
-
-An Android tablet connected by USB cable can act as a dedicated HUD display and controller without requiring Wi-Fi or public network exposure.
-
-1. Connect tablet to Windows PC via USB and authorize USB Debugging (`adb devices`).
-2. Run the persistent USB connection manager script:
-   ```powershell
-   .\scripts\windows\start_adb_bridge.ps1
-   ```
-3. Open `http://127.0.0.1:8000` in the Android tablet browser.
-4. For full automatic startup and detailed troubleshooting instructions, see the [USB Tablet Setup Guide](docs/USB_TABLET_SETUP.md).
-
----
+Jarvis includes a phone dashboard that can display assistant status and send remote commands while the computer remains the primary system.
 
 JARVIS continues to run as its native PyQt desktop application on the computer. Phone access uses the project's mobile dashboard in the phone browser; it does not replace the desktop UI.
 

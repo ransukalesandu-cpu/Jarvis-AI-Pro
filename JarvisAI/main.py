@@ -1,18 +1,6 @@
 import platform as _platform
 import subprocess as _subprocess
 
-# ── Nuclear: force CREATE_NO_WINDOW on EVERY subprocess call on Windows ───────
-# This patches Popen itself, so no per-file flag is needed anywhere.
-if _platform.system() == "Windows":
-    _OrigPopen = _subprocess.Popen
-
-    class _Popen(_OrigPopen):
-        def __init__(self, args, **kw):
-            kw["creationflags"] = kw.get("creationflags", 0) | _subprocess.CREATE_NO_WINDOW
-            kw.pop("startupinfo", None)   # drop any stale/shared STARTUPINFO
-            super().__init__(args, **                       kw)
-
-    _subprocess.Popen = _Popen
 
 
 # ── Console must survive non-UTF-8 code pages ────────────────────────────────
@@ -156,7 +144,6 @@ class HeadlessJarvisUI:
 
     def request_close() -> None:
         pass
-
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
     save_session_summary, pop_last_session,
@@ -4886,15 +4873,9 @@ def main():
         try:
             asyncio.run(jarvis.run())
         except KeyboardInterrupt:
-            print("\\n[JARVIS Core] Headless core shutting down...")
-        except Exception as exc:
-            print(f"[JARVIS Core] Headless runtime failed: {type(exc).__name__}: {exc}")
-            traceback.print_exc()
+            print("\n🔴 Headless core shutting down...")
         return
 
-    if JarvisUI is None:
-        print("[JARVIS] Desktop UI dependencies are unavailable. Use --headless or install the UI dependencies.")
-        return
     from PyQt6.QtCore import QTimer
     from PyQt6.QtWidgets import QApplication
 

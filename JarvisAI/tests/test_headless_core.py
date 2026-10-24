@@ -1,9 +1,8 @@
 """Tests for Headless Core execution and Dashboard Server AI File Ingestion."""
 import unittest
 import tempfile
-import asyncio
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from fastapi.testclient import TestClient
 import main
@@ -37,14 +36,16 @@ class HeadlessCoreAndIngestionTests(unittest.TestCase):
 
     def test_headless_flag_uses_daemon_path(self):
         import JarvisAI.main as jmain
-        with (
-            patch.object(jmain.sys, "argv", ["main.py", "--headless"]),
-            patch.object(jmain, "JarvisLive") as live_cls,
-            patch.object(jmain.asyncio, "run") as run_async,
-        ):
+        with patch.object(jmain.sys, "argv", ["main.py", "--headless"]), \
+             patch.object(jmain, "HeadlessJarvisUI") as ui_cls, \
+             patch.object(jmain, "JarvisLive") as live_cls, \
+             patch("asyncio.run") as run_async:
+            mock_live_instance = MagicMock()
+            live_cls.return_value = mock_live_instance
             jmain.main()
+            ui_cls.assert_called_once()
             live_cls.assert_called_once()
-            run_async.assert_called_once()
+            run_async.assert_called_once_with(mock_live_instance.run())
 
     def test_dashboard_upload_endpoint_and_ai_ingestion(self):
         server = DashboardServer()

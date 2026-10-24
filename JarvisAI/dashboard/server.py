@@ -42,14 +42,6 @@ STATIC_DIR  = Path(__file__).parent / "static"
 PORT        = 8000
 MAX_UPLOAD_MB = 500
 
-def _select_dashboard_bind_host(allow_lan: bool, use_ssl: bool) -> str:
-    """Never expose the command dashboard to Wi-Fi without TLS."""
-    if allow_lan and not use_ssl:
-        raise RuntimeError("LAN dashboard access requires TLS.")
-    return "0.0.0.0" if allow_lan else "127.0.0.1"
-
-
-
 
 def _twilio_stream_request_url(base_url: str, token: str) -> str:
     """Build the pinned public WSS URL covered by Twilio's signature."""
@@ -404,14 +396,8 @@ class DashboardServer:
 
     @staticmethod
     def _ssl_enabled() -> bool:
-        # Certificates alone do not mean the active listener uses TLS. It is
-        # enabled only when explicitly requested, or when LAN access requires it.
-        env_enabled = (
-            os.environ.get("JARVIS_USE_SSL", "").strip().lower() in ("true", "1")
-            or os.environ.get("JARVIS_ALLOW_LAN", "").strip().lower() in ("true", "1")
-        )
         certs = BASE_DIR / "config" / "certs"
-        return env_enabled and (certs / "jarvis.key").exists() and (certs / "jarvis.crt").exists()
+        return (certs / "jarvis.key").exists() and (certs / "jarvis.crt").exists()
 
     def get_url(self) -> str:
         if self._remote_url:
@@ -489,25 +475,6 @@ class DashboardServer:
             tok = req.headers.get("authorization", "").removeprefix("Bearer ").strip()
             return self._token_valid(tok)
 
-        # CORS / CSRF origin validation middleware for state-changing endpoints
-        @app.middleware("http")
-        async def validate_origin_middleware(request: Request, call_next):
-            # Defense in depth: reject cross-origin browser mutations. All
-            # control endpoints still require the existing bearer session token.
-            if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.url.path.startswith("/api"):
-                origin = request.headers.get("origin") or request.headers.get("referer")
-                if origin:
-                    parsed = urlparse(origin)
-                    request_host = (request.headers.get("host") or "").strip().lower()
-                    if (
-                        parsed.scheme not in ("http", "https")
-                        or not parsed.netloc
-                        or parsed.username or parsed.password
-                        or parsed.netloc.lower() != request_host
-                    ):
-                        return JSONResponse({"error": "Forbidden cross-origin request"}, status_code=403)
-            return await call_next(request)
-
         # serve CryptoJS from local cache, fallback to CDN redirect
         @app.get("/static/crypto.js")
         async def serve_crypto():
@@ -516,15 +483,6 @@ class DashboardServer:
                                     media_type="application/javascript")
             from fastapi.responses import RedirectResponse
             return RedirectResponse(_CRYPTOJS_CDN)
-
-        @app.get("/health")
-        async def health_check():
-            """Lightweight unauthenticated health check endpoint."""
-            return JSONResponse({
-                "status": "ok",
-                "service": "jarvis-dashboard",
-                "timestamp": time.time()
-            })
 
         @app.get("/login", response_class=HTMLResponse)
         async def login_page():
@@ -809,26 +767,22 @@ class DashboardServer:
                         pass
                     return JSONResponse({"error": str(exc)}, status_code=500)
 
-                # Run document parsing in a worker thread so large/slow uploads
-                # do not block the FastAPI event loop or other dashboard clients.
+                # Trigger Cloud AI document indexing / ingestion on upload in a threadpool worker
+                ai_ingested = False
+                ingestion_summary = ""
+
                 def _run_ingestion():
                     try:
                         from actions.file_processor import file_processor
-                        result = file_processor({"file_path": str(dest), "action": "summarize"})
-                        if isinstance(result, str) and result.strip():
-                            error_prefixes = ("File not found", "Could not", "Unsupported", "Error:", "Failed:")
-                            if not result.startswith(error_prefixes):
-                                return True, result[:300]
+                        res = file_processor({"file_path": str(dest), "action": "summarize"})
+                        if isinstance(res, str) and res.strip() and not res.startswith("File not found") and not res.startswith("Could not") and not res.startswith("Unsupported"):
+                            return True, res[:300]
                     except Exception as exc:
-                        print(f"[Dashboard Upload] AI ingestion failed: {type(exc).__name__}: {exc}")
+                        print(f"[Dashboard Upload] AI ingestion failed: {exc}")
                     return False, ""
 
-                try:
-                    loop = asyncio.get_running_loop()
-                    ai_ingested, ingestion_summary = await loop.run_in_executor(None, _run_ingestion)
-                except Exception as exc:
-                    print(f"[Dashboard Upload] Could not schedule ingestion: {type(exc).__name__}: {exc}")
-                    ai_ingested, ingestion_summary = False, ""
+                loop = asyncio.get_running_loop()
+                ai_ingested, ingestion_summary = await loop.run_in_executor(None, _run_ingestion)
 
                 asyncio.create_task(self.broadcast({
                     "type": "file_received",
@@ -1014,29 +968,22 @@ class DashboardServer:
             print("[Dashboard] Run:  pip install fastapi 'uvicorn[standard]' cryptography")
             return
 
-        # LAN control mode is opt-in and requires TLS. If certificate
-        # creation fails, safely fall back to the loopback-only listener.
-        allow_lan = os.environ.get("JARVIS_ALLOW_LAN", "").strip().lower() in ("true", "1")
-        ssl_requested = allow_lan or os.environ.get("JARVIS_USE_SSL", "").strip().lower() in ("true", "1")
-        certs_ok = _ensure_certs() if ssl_requested else False
-        use_ssl = bool(certs_ok and self._ssl_enabled())
-        try:
-            bind_host = _select_dashboard_bind_host(allow_lan, use_ssl)
-        except RuntimeError as exc:
-            print(f"[Dashboard] {exc} Falling back to loopback-only access.")
-            bind_host = "127.0.0.1"
-            allow_lan = False
+        # Generate the TLS pair on first run so no private key ships in the repo.
+        certs_ok = _ensure_certs()
 
+        use_ssl  = certs_ok and self._ssl_enabled()
         ssl_key  = BASE_DIR / "config" / "certs" / "jarvis.key"
         ssl_cert = BASE_DIR / "config" / "certs" / "jarvis.crt"
 
         cfg = uvicorn.Config(
-            self.app, host=bind_host, port=PORT, log_level="warning",
+            # The dashboard is reached through the local UI or a private VPN
+            # reverse proxy. Never expose its control API directly on every NIC.
+            self.app, host="127.0.0.1", port=PORT, log_level="warning",
             **({"ssl_keyfile": str(ssl_key), "ssl_certfile": str(ssl_cert)} if use_ssl else {}),
         )
 
         proto = "https" if use_ssl else "http"
-        print(f"[Dashboard] Dashboard server started successfully: {proto}://{bind_host}:{PORT}")
+        print(f"[Dashboard] Local-only listener: {proto}://127.0.0.1:{PORT}")
         print("[Twilio] Dedicated local-only listener: http://127.0.0.1:8001 (tunnel only this port)")
         if self._remote_url:
             print(f"[Dashboard] Private remote URL: {self._remote_url}")
@@ -1054,19 +1001,9 @@ class DashboardServer:
         ]
         try:
             await asyncio.gather(*self._uvicorn_tasks)
-        except OSError as exc:
-            err_msg = str(exc).lower()
-            if "already in use" in err_msg or "10048" in err_msg or "98" in err_msg:
-                print(f"[Dashboard] ERROR: Port conflict detected on port {PORT} or 8001. Another process is already using the port.")
-                print(f"[Dashboard] Please stop the process occupying port {PORT} or 8001 and restart JARVIS.")
-            else:
-                print(f"[Dashboard] ERROR: Socket error during server startup: {exc}")
-        except Exception as exc:
-            print(f"[Dashboard] ERROR: Dashboard server startup failed: {exc}")
         finally:
             self._uvicorn_tasks.clear()
             self._uvicorn_servers.clear()
-            print("[Dashboard] Dashboard server stopped.")
 
     async def shutdown(self) -> None:
         """Ask both local Uvicorn listeners to finish their lifespan cleanly."""

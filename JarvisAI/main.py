@@ -259,10 +259,33 @@ def _live_audio_chunks(response) -> list[bytes]:
 
 
 def _error_text(error) -> str:
-    """Include nested TaskGroup exceptions when classifying API failures."""
-    parts = [str(error)]
-    for child in getattr(error, "exceptions", ()) or ():
-        parts.append(_error_text(child))
+    """Flatten TaskGroup members and chained exceptions for error classification."""
+    parts = []
+    pending = [error]
+    seen = set()
+
+    while pending:
+        current = pending.pop()
+        if current is None or id(current) in seen:
+            continue
+        seen.add(id(current))
+
+        try:
+            message = str(current)
+        except Exception:
+            message = type(current).__name__
+        parts.append(f"{type(current).__name__}: {message}")
+
+        # asyncio.TaskGroup stores child failures in .exceptions.
+        children = getattr(current, "exceptions", ())
+        if isinstance(children, (tuple, list)):
+            pending.extend(children)
+
+        # The useful WebSocket close code/reason can live in a cause/context,
+        # several levels below the APIError raised by the Gemini SDK.
+        pending.append(getattr(current, "__cause__", None))
+        pending.append(getattr(current, "__context__", None))
+
     return " | ".join(part for part in parts if part)
 
 
@@ -279,10 +302,10 @@ def _is_quota_error(error) -> bool:
 
 
 def _is_transient_live_disconnect(error) -> bool:
-    """Recognize temporary Gemini Live/WebSocket server failures, including
-    API errors wrapped by asyncio.TaskGroup into an ExceptionGroup."""
+    """Recognize transient Gemini Live/WebSocket failures, including close 1006
+    and keepalive timeouts wrapped by the SDK or an asyncio.TaskGroup."""
     code = getattr(error, "code", None) or getattr(error, "status_code", None)
-    if code in (1011, 500, 502, 503, 504):
+    if code in (1006, 1011, 500, 502, 503, 504):
         return True
 
     children = getattr(error, "exceptions", ()) or ()
@@ -290,11 +313,15 @@ def _is_transient_live_disconnect(error) -> bool:
         return True
 
     text = _error_text(error).upper()
-    return (
-        "1011" in text
-        or "INTERNAL ERROR ENCOUNTERED" in text
-        or ("CONNECTIONCLOSEDERROR" in text and "1011" in text)
-    )
+    return any(marker in text for marker in (
+        "1006",
+        "1011",
+        "ABNORMAL CLOSURE",
+        "KEEPALIVE PING TIMEOUT",
+        "TIMED OUT WHILE CLOSING CONNECTION",
+        "NO CLOSE FRAME RECEIVED",
+        "INTERNAL ERROR ENCOUNTERED",
+    ))
 
 
 # ── Viseme extraction ─────────────────────────────────────────────────────────

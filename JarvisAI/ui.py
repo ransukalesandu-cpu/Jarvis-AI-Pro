@@ -733,7 +733,15 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
                 print("[HUD] OpenGL functions unavailable; using scaled QPainter fallback.")
                 return
             raw = functions.glGetString(0x1F00)  # GL_VENDOR
-            vendor = bytes(raw).decode("utf-8", errors="replace") if raw else "unknown"
+            # PyQt6 bindings can expose the returned GL string as either str
+            # or bytes depending on the binding/runtime. Do not pass an
+            # already-decoded str to bytes(), which requires an encoding.
+            if isinstance(raw, str):
+                vendor = raw or "unknown"
+            elif isinstance(raw, (bytes, bytearray, memoryview)):
+                vendor = bytes(raw).decode("utf-8", errors="replace") if raw else "unknown"
+            else:
+                vendor = str(raw) if raw else "unknown"
             software_markers = ("llvmpipe", "softpipe", "software rasterizer", "basic render driver")
             self._neural_gl_hardware = not any(mark in vendor.lower() for mark in software_markers)
             if self._neural_gl_hardware:

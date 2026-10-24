@@ -1,62 +1,6 @@
 import platform as _platform
 import subprocess as _subprocess
-import os
-import sys
-import threading
-from PyQt5.QtWidgets import QApplication
 
-# Import your new upgrade modules
-from JarvisAI.voice.voice_engine import JarvisVoiceEngine
-from JarvisAI.voice.persona import JARVIS_SPOKEN_SYSTEM_PROMPT
-from JarvisAI.voice.fillers import get_filler_phrase
-from JarvisAI.core.self_healing_v2 import SelfHealingSentinel
-from JarvisAI.core.screen_agent import ScreenAgent
-from JarvisAI.services.phone_controller import AndroidPhoneController
-
-# 1. Initialize Subsystems
-voice_engine = JarvisVoiceEngine(voice="en-GB-RyanNeural")
-phone = AndroidPhoneController(device_ip=os.getenv("PHONE_IP"))
-screen_agent = ScreenAgent(security_check_cb=lambda title, msg: True) # Or link to your HUD popup
-
-# 2. Start Self-Healing Sentinel in Background
-sentinel = SelfHealingSentinel()
-sentinel.start(interval_sec=5.0)
-
-# 3. Connect Voice Interruption (Barge-In)
-# When the microphone detects user speech while Jarvis is talking, call:
-# voice_engine.interrupt()
-
-print("[JARVIS] All enhanced modules online and ready.")
-from JarvisAI.services.phone_controller import AndroidPhoneController
-
-# Set your phone's local Wi-Fi IP in your .env or pass it directly:
-# PHONE_IP=192.168.1.15
-phone = AndroidPhoneController(device_ip=os.getenv("PHONE_IP", None))
-
-# Example voice commands Jarvis can now execute:
-
-def execute_phone_voice_command(query: str):
-    q = query.lower()
-    
-    if "phone battery" in q:
-        data = phone.get_battery()
-        return f"Your phone is at {data['level']}% battery."
-
-    if "call" in q:
-        # e.g., "Jarvis, call +123456789 from my phone"
-        import re
-        nums = re.findall(r"\+?\d[\d -]{7,}\d", query)
-        if nums:
-            phone.make_call(nums[0])
-            return f"Placing call to {nums[0]} on your phone, Sir."
-
-    if "open whatsapp" in q:
-        phone.open_app("whatsapp")
-        return "WhatsApp is now open on your device."
-
-    if "hang up" in q or "end call" in q:
-        phone.end_call()
-        return "Call disconnected."
 # ── Nuclear: force CREATE_NO_WINDOW on EVERY subprocess call on Windows ───────
 # This patches Popen itself, so no per-file flag is needed anywhere.
 if _platform.system() == "Windows":

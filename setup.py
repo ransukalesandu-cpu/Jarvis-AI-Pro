@@ -1,12 +1,8 @@
-import sys
-from pathlib import Path
+from setuptools import setup, find_packages
 
-ROOT_DIR = Path(__file__).resolve().parent
-for p in [str(ROOT_DIR), str(ROOT_DIR / "JarvisAI"), str(ROOT_DIR / "voice")]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
-
-from JarvisAI.setup import main
-
-if __name__ == "__main__":
-    main()
+setup(
+    name="jarvis-ai",
+    version="1.0.0",
+    description="Jarvis AI personal assistant",
+    packages=find_packages(),
+)

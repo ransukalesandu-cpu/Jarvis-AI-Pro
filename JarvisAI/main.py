@@ -4350,6 +4350,15 @@ class JarvisLive:
             voice_id_verifier=self._verify_voice_id_for_current_turn,
             voice_id_role=self._get_speaker_role_for_current_turn,
         )
+
+        from security.lockdown import register_silencing_hooks
+        register_silencing_hooks(
+            tts_stop=self.interrupt,
+            mic_suspend=lambda: self.ui._toggle_mute() if not self.ui._muted else None,
+            mic_restore=lambda: self.ui._toggle_mute() if self.ui._muted else None,
+            clear_memory=lambda: (self._session_log.clear(), pop_last_session()),
+            clear_tokens=lambda: self._dashboard.revoke_all_sessions() if self._dashboard else None,
+        )
         _ledger_ok, _ledger_status = security.verify_log()
         self.ui.write_log(
             ("SEC: " if _ledger_ok else "SECURITY ALERT: ") + _ledger_status

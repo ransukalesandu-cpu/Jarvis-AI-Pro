@@ -36,6 +36,20 @@ Jarvis AI may interact with local applications, files, devices, cameras, microph
 - Require user confirmation for sensitive or destructive operations.
 - Do not expose remote-control interfaces directly to the public internet without appropriate authentication and security controls.
 
+## Biometric + PIN + Emergency Privacy Lockout Architecture
+
+Jarvis AI employs a multi-tiered security defense protocol to prevent unauthorized access:
+
+- **Voice Biometric Authorization:** Speaker voice embeddings verify owner identity before sensitive actions or spoken confirmations are authorized.
+- **Argon2 / DPAPI Secured PIN Vault:** Core state management uses Argon2/DPAPI protected vaults for PIN credential verification.
+- **3-Strike Emergency Privacy Lockout (`JarvisAI/security/lockdown.py`):**
+  - **Trigger:** 3 consecutive incorrect PIN/credential attempts trigger an immediate transition to `PRIVACY_LOCK` state.
+  - **OS Lockdown:** Calls native Windows `ctypes.windll.user32.LockWorkStation()` to immediately switch the desktop to the Windows lock screen.
+  - **Process Silencing:** Instantly terminates active TTS speech playback and suspends microphone streaming (PyAudio/WASAPI).
+  - **Data Zeroing (`SecureZeroMemory`):** Zeroes out sensitive conversation memory, revokes active session tokens, and closes handles to private vaults and files.
+  - **Clamped Hardware Monotonic Timer:** Enforces countdown using `time.monotonic()` strictly clamped between 60 seconds (1 minute) and 300 seconds (5 minutes) (`effective_duration = max(60, min(configured_duration, 300))`), bypassing system clock manipulation. Upon expiration, resets failed attempts to 0 and restores microphone in `RESTRICTED_MODE`.
+  - **Multi-Device Emergency Alerts (`JarvisAI/notifications/alert_service.py`):** Dispatches SMS/voice alerts via Twilio and broadcasts emergency WebSocket payloads (`{"event": "PRIVACY_LOCK", "duration": effective_duration}`) to all connected companion HUDs and mobile devices.
+
 ## Third-Party Services
 
 Jarvis AI may use external AI providers and other third-party services. Users should review the relevant providers' privacy policies, security practices, and data-handling terms.

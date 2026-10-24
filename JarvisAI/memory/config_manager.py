@@ -515,3 +515,21 @@ def save_plugin_enabled(plugin_name: str, enabled: bool) -> None:
     plugins_cfg[plugin_name] = enabled
     data["plugins_enabled"] = plugins_cfg
     _write_config(data)
+
+
+def get_privacy_lock_duration_seconds() -> int:
+    """Return configured Privacy Lock duration in seconds (default: 180)."""
+    try:
+        val = int(load_api_keys().get("privacy_lock_duration_seconds", 180))
+        return val
+    except (TypeError, ValueError):
+        return 180
+
+
+def save_privacy_lock_duration_seconds(seconds: int) -> None:
+    """Persist Privacy Lock duration setting in seconds."""
+    try:
+        val = int(seconds)
+    except (TypeError, ValueError):
+        val = 180
+    _patch_config(privacy_lock_duration_seconds=val)

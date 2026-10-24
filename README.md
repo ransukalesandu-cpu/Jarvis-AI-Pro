@@ -289,11 +289,17 @@ The security architecture currently includes:
 * Process-level sandboxing
 * Scrubbed execution environments
 * Memory and execution limits
+* Voice Biometric Authorization & Argon2/DPAPI PIN Vault (`security/voice_auth.py`, `security/auth_manager.py`, `core/dispatcher.py`)
+* 3-Strike Emergency Privacy Lockout (`security/lockdown.py`) & Multi-Device Alert Dispatcher (`notifications/alert_service.py`)
 
 The security system is implemented primarily under:
 
 ```text
 core/security.py
+security/auth_manager.py
+security/voice_auth.py
+security/lockdown.py
+notifications/alert_service.py
 core/injection_guard.py
 core/confirm.py
 core/sandbox.py
@@ -450,6 +456,16 @@ settings, or modify user data need their own safety checks and approval flows.
 Future versions will not silently inherit permission to perform those actions;
 each newly supported repair must be reviewed and must request your approval
 before it changes anything.
+
+### 🔐 3-Strike Privacy Lockout Protocol
+
+When 3 consecutive incorrect PIN/credential attempts occur, JARVIS immediately executes the emergency Privacy Lock defense sequence:
+
+1. **Windows OS Lock (`ctypes.windll.user32.LockWorkStation()`):** Immediately switches the master desktop to the Windows lock screen.
+2. **Process Silencing:** Instantly terminates active TTS speech playback and suspends microphone streaming (PyAudio/WASAPI). JARVIS becomes silent and unresponsive to all voice commands and wake-words while locked.
+3. **Block Private Information:** Zeroes out sensitive conversation memory (`SecureZeroMemory`), revokes active session tokens, and closes/unmounts active handles to private vaults or user files.
+4. **Strictly Clamped Hardware-Monotonic Timer:** Enforces a hardware countdown using `time.monotonic()` strictly clamped between 60s (1 min) and 300s (5 min) (`effective_duration = max(60, min(configured_duration, 300))`), ignoring clock/timezone changes. Upon expiration, resets failed attempts to 0 and restores microphone in `RESTRICTED_MODE`.
+5. **Multi-Device Emergency Alerts:** Sends an emergency SMS via Twilio and broadcasts a WebSocket payload `{"event": "PRIVACY_LOCK", "duration": effective_duration}` to all connected companion HUDs and devices. Companion HUDs switch to a red lockdown shield UI and reject remote commands until cleared.
 
 ### Optional Voice ID
 

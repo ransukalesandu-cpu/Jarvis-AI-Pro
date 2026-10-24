@@ -320,6 +320,12 @@ class DashboardServer:
         self.app                          = self._build_app()
         self.twilio_app                   = self._build_twilio_app()
 
+        try:
+            from notifications.alert_service import register_websocket_broadcast_callback
+            register_websocket_broadcast_callback(self.broadcast)
+        except Exception as e:
+            print(f"[Dashboard] Alert service callback registration error: {e}")
+
     # ── one-time key management ───────────────────────────────────────────
 
     @staticmethod
@@ -696,6 +702,9 @@ class DashboardServer:
         async def command(req: Request):
             if not _auth(req):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            from security.auth_manager import get_auth_manager
+            if get_auth_manager().is_locked():
+                return JSONResponse({"error": "System is in PRIVACY_LOCK state. Commands rejected."}, status_code=423)
             body  = await req.json()
             token = req.headers.get("authorization", "").removeprefix("Bearer ").strip()
             enc   = body.get("enc", "")
@@ -741,6 +750,9 @@ class DashboardServer:
             try:
                 while True:
                     data = await websocket.receive_bytes()
+                    from security.auth_manager import get_auth_manager
+                    if get_auth_manager().is_locked():
+                        continue
                     try:
                         self._phone_audio_queue.put_nowait(
                             {"data": data, "mime_type": "audio/pcm"}
@@ -871,6 +883,9 @@ class DashboardServer:
             try:
                 while True:
                     data = await websocket.receive_json()
+                    from security.auth_manager import get_auth_manager
+                    if get_auth_manager().is_locked():
+                        continue
                     if data.get("type") == "command":
                         enc = data.get("enc", "")
                         t   = self._decrypt(tok, enc) if enc else (data.get("text") or "").strip()

@@ -1303,6 +1303,23 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
         p.setPen(QPen(qcol(C.BORDER), 1.0))
         p.drawLines(_ticks)
 
+        # Check PRIVACY_LOCK state for lockdown shield overlay
+        from security.auth_manager import get_auth_manager, STATE_PRIVACY_LOCK
+        if get_auth_manager().get_state() == STATE_PRIVACY_LOCK:
+            p.fillRect(self.rect(), qcol("#090002"))
+            p.setPen(QPen(qcol(C.RED), 3))
+            p.setBrush(QBrush(qcol("#200005")))
+            shield_r = min(W, H) * 0.25
+            p.drawEllipse(QRectF(cx - shield_r, cy - shield_r, shield_r * 2, shield_r * 2))
+            p.setFont(QFont("Courier New", 16, QFont.Weight.Bold))
+            p.setPen(QPen(qcol(C.RED), 1))
+            p.drawText(QRectF(0, cy - 20, W, 40), Qt.AlignmentFlag.AlignCenter, "🔒 PRIVACY LOCK")
+            p.setFont(QFont("Courier New", 10, QFont.Weight.Bold))
+            p.setPen(QPen(qcol(C.TEXT_DIM), 1))
+            p.drawText(QRectF(0, cy + 30, W, 30), Qt.AlignmentFlag.AlignCenter, "SYSTEM LOCKED & MUTED")
+            p.end()
+            return
+
         # status text
         sy = _sy_status
         if self.muted:

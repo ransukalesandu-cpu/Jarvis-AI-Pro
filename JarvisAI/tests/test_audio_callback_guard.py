@@ -4,7 +4,11 @@ from __future__ import annotations
 import unittest
 from unittest.mock import Mock
 
-from core.audio_callback_guard import enqueue_audio_frame, guarded_audio_callback
+from core.audio_callback_guard import (
+    audio_queue_snapshot,
+    enqueue_audio_frame,
+    guarded_audio_callback,
+)
 
 
 class AudioCallbackGuardTests(unittest.TestCase):
@@ -45,14 +49,17 @@ class AudioCallbackGuardTests(unittest.TestCase):
             )
         )
 
-
     def test_enqueue_audio_frame_returns_true_when_queue_has_space(self):
         import asyncio
 
         queue = asyncio.Queue(maxsize=1)
         item = {"data": b"frame", "mime_type": "audio/pcm;rate=16000"}
+        before = audio_queue_snapshot()
         self.assertTrue(enqueue_audio_frame(queue, item))
+        after = audio_queue_snapshot()
         self.assertIs(queue.get_nowait(), item)
+        self.assertEqual(after["enqueued"], before["enqueued"] + 1)
+        self.assertEqual(after["dropped_full"], before["dropped_full"])
 
     def test_enqueue_audio_frame_drops_when_queue_is_full(self):
         import asyncio
@@ -60,11 +67,19 @@ class AudioCallbackGuardTests(unittest.TestCase):
         queue = asyncio.Queue(maxsize=1)
         first = {"data": b"first"}
         second = {"data": b"second"}
+        before = audio_queue_snapshot()
         self.assertTrue(enqueue_audio_frame(queue, first))
         self.assertFalse(enqueue_audio_frame(queue, second))
+        after = audio_queue_snapshot()
         self.assertIs(queue.get_nowait(), first)
         self.assertTrue(queue.empty())
+        self.assertEqual(after["enqueued"], before["enqueued"] + 1)
+        self.assertEqual(after["dropped_full"], before["dropped_full"] + 1)
 
+    def test_audio_queue_snapshot_returns_independent_copy(self):
+        snapshot = audio_queue_snapshot()
+        snapshot["enqueued"] = -1
+        self.assertGreaterEqual(audio_queue_snapshot()["enqueued"], 0)
 
 
 if __name__ == "__main__":

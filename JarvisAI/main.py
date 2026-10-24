@@ -153,6 +153,32 @@ CHUNK_SIZE          = 1024
 # At 24 kHz mono int16, 10 ms of valid PCM is 480 bytes. Smaller audio events
 # can be transport fragments; buffer them until a complete frame is available.
 _MIN_LIVE_AUDIO_FRAME_BYTES = (RECEIVE_SAMPLE_RATE // 100) * 2
+# Output chunks are kept at 50 ms to avoid tiny writes that can sound choppy.
+_PLAYBACK_SLICE_BYTES = 2400
+
+
+def _take_playback_pcm(buffer: bytearray, *, final: bool = False) -> bytes:
+    """Take aligned PCM without producing tiny writes during streaming.
+
+    During streaming only full 50 ms slices are returned. At turn completion,
+    return a valid final tail of at least 10 ms so short replies are not lost.
+    """
+    processable_bytes = len(buffer) & ~1  # signed 16-bit samples
+    if final:
+        take_bytes = (
+            processable_bytes
+            if processable_bytes >= _MIN_LIVE_AUDIO_FRAME_BYTES
+            else 0
+        )
+    else:
+        take_bytes = (
+            processable_bytes // _PLAYBACK_SLICE_BYTES
+        ) * _PLAYBACK_SLICE_BYTES
+    if take_bytes <= 0:
+        return b""
+    pcm = bytes(buffer[:take_bytes])
+    del buffer[:take_bytes]
+    return pcm
 
 # RMS below which 16-bit PCM is treated as room silence; above _LEVEL_FULL it
 # reads as a full-height waveform. Tuned so ordinary speech lands mid-range and
@@ -2731,19 +2757,17 @@ class JarvisLive:
                         else:
                             output_audio_bytes_seen += event_bytes
                             audio_fragment_buffer.extend(b"".join(_audio_chunks))
-                            # PCM int16 must be byte-aligned. Keep any odd trailing
-                            # byte until the next Live event instead of writing it
-                            # as an incomplete sample to PortAudio.
-                            processable_bytes = len(audio_fragment_buffer) & ~1
-                            if processable_bytes >= _MIN_LIVE_AUDIO_FRAME_BYTES:
-                                playable_audio = bytes(audio_fragment_buffer[:processable_bytes])
-                                del audio_fragment_buffer[:processable_bytes]
+                            # Keep PCM samples aligned and enqueue only full 50 ms
+                            # slices while streaming. Any partial tail stays buffered
+                            # instead of becoming a tiny write.
+                            playable_audio = _take_playback_pcm(audio_fragment_buffer)
+                            if playable_audio:
                                 if not output_audio_checkpoint_logged:
                                     print(
                                         f"[AudioTrace 3→4/AUDIO] Playable Gemini PCM accumulated: "
                                         f"{len(playable_audio)} bytes across Live event(s) "
-                                        f"(raw event={event_bytes} bytes; minimum frame="
-                                        f"{_MIN_LIVE_AUDIO_FRAME_BYTES} bytes)."
+                                        f"(raw event={event_bytes} bytes; playback slice="
+                                        f"{_PLAYBACK_SLICE_BYTES} bytes)."
                                     )
                                     output_audio_checkpoint_logged = True
                                 if not self._vocal_audio_started:
@@ -2753,20 +2777,16 @@ class JarvisLive:
                                 self._assistant_turn_pending = True
                                 if self._turn_done_event and self._turn_done_event.is_set():
                                     self._turn_done_event.clear()
-                                # Split into ~50 ms aligned chunks so playback can
-                                # interrupt quickly without sending tiny fragments
-                                # to the output device.
-                                _SLICE = 2400
-                                for _i in range(0, len(playable_audio), _SLICE):
+                                for _i in range(0, len(playable_audio), _PLAYBACK_SLICE_BYTES):
                                     self.audio_in_queue.put_nowait(
-                                        playable_audio[_i : _i + _SLICE]
+                                        playable_audio[_i : _i + _PLAYBACK_SLICE_BYTES]
                                     )
                             elif not output_audio_checkpoint_logged and not short_audio_fragment_logged:
+                                buffered_bytes = len(audio_fragment_buffer) & ~1
                                 print(
-                                    f"[AudioTrace 3→4/AUDIO] Short PCM fragment received "
-                                    f"({event_bytes} bytes; buffered={len(audio_fragment_buffer)}); "
-                                    f"waiting for at least {_MIN_LIVE_AUDIO_FRAME_BYTES} bytes "
-                                    "before playback."
+                                    f"[AudioTrace 3→4/AUDIO] PCM fragment buffered "
+                                    f"({buffered_bytes} byte(s)); waiting for a full "
+                                    f"{_PLAYBACK_SLICE_BYTES}-byte (50 ms) playback slice."
                                 )
                                 short_audio_fragment_logged = True
 
@@ -2879,6 +2899,29 @@ class JarvisLive:
                                         self._inflight_user_tool_started = False
 
                         if sc.turn_complete:
+                            # Flush a valid short tail only after Live confirms the
+                            # turn ended. Streaming writes remain 50 ms aligned.
+                            final_pcm = b""
+                            if not self._interrupted:
+                                final_pcm = _take_playback_pcm(
+                                    audio_fragment_buffer, final=True
+                                )
+                            if final_pcm:
+                                if not self._vocal_audio_started:
+                                    for event in self._vocal_plan.before:
+                                        self._enqueue_vocal_event(event)
+                                self._vocal_audio_started = True
+                                self._assistant_turn_pending = True
+                                if self._turn_done_event and self._turn_done_event.is_set():
+                                    self._turn_done_event.clear()
+                                self.audio_in_queue.put_nowait(final_pcm)
+                                if not output_audio_checkpoint_logged:
+                                    print(
+                                        f"[AudioTrace 3→4/AUDIO] Queued final PCM tail "
+                                        f"({len(final_pcm)} bytes) at turn completion."
+                                    )
+                                    output_audio_checkpoint_logged = True
+
                             if not output_audio_checkpoint_logged and not self._interrupted:
                                 if output_text_checkpoint_logged and output_audio_bytes_seen:
                                     print(
@@ -2903,10 +2946,15 @@ class JarvisLive:
                                         "transcription or audio payload."
                                     )
                             if audio_fragment_buffer:
+                                trailing_bytes = len(audio_fragment_buffer)
+                                reason = (
+                                    "interrupted turn"
+                                    if self._interrupted
+                                    else f"less than {_MIN_LIVE_AUDIO_FRAME_BYTES} playable bytes"
+                                )
                                 print(
-                                    f"[AudioTrace 3→4/AUDIO] Discarding "
-                                    f"{len(audio_fragment_buffer)} trailing PCM byte(s) at turn end; "
-                                    "not enough audio for a complete playback frame."
+                                    f"[AudioTrace 3→4/AUDIO] Discarding {trailing_bytes} "
+                                    f"trailing PCM byte(s) at turn end ({reason})."
                                 )
                                 audio_fragment_buffer.clear()
                             input_checkpoint_logged = False

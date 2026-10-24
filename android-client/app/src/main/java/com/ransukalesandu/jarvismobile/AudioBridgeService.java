@@ -192,6 +192,12 @@ public final class AudioBridgeService extends Service {
             });
         } catch (Exception error) {
             if (!running) return;
+            if (authenticationFailed) {
+                stopMessage = "Pairing expired. Pair this tablet with JARVIS again.";
+                report(stopMessage, false);
+                stopSelf();
+                return;
+            }
             report("Could not connect: " + safeMessage(error), false);
             scheduleReconnect();
         }

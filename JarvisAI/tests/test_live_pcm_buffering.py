@@ -6,12 +6,48 @@ import unittest
 from main import (
     _MIN_LIVE_AUDIO_FRAME_BYTES,
     _PLAYBACK_SLICE_BYTES,
+    _error_text,
+    _is_transient_live_disconnect,
     _output_write_is_unpaced,
     _take_playback_pcm,
 )
 
 
 class LivePcmBufferingTests(unittest.TestCase):
+    def test_transient_classifier_recognizes_websocket_close_1006(self):
+        class AbnormalClosure(Exception):
+            code = 1006
+
+        self.assertTrue(
+            _is_transient_live_disconnect(
+                AbnormalClosure("abnormal closure [internal]")
+            )
+        )
+        self.assertTrue(
+            _is_transient_live_disconnect(
+                RuntimeError("1006 None. abnormal closure [internal]")
+            )
+        )
+
+    def test_taskgroup_classifier_sees_chained_keepalive_failure(self):
+        try:
+            try:
+                raise TimeoutError("timed out while closing connection")
+            except TimeoutError as cause:
+                raise ConnectionError(
+                    "sent 1011 (internal error) keepalive ping timeout; "
+                    "no close frame received"
+                ) from cause
+        except ConnectionError as websocket_error:
+            grouped = ExceptionGroup(
+                "unhandled errors in a TaskGroup", [websocket_error]
+            )
+
+        flattened = _error_text(grouped).upper()
+        self.assertIn("KEEPALIVE PING TIMEOUT", flattened)
+        self.assertIn("TIMED OUT WHILE CLOSING CONNECTION", flattened)
+        self.assertTrue(_is_transient_live_disconnect(grouped))
+
     def test_output_pacing_detector_waits_until_one_second_of_audio(self):
         self.assertFalse(_output_write_is_unpaced(0.99, 0.0))
 

@@ -4377,6 +4377,8 @@ class MainWindow(QMainWindow):
     _log_sig        = pyqtSignal(str)
     _state_sig      = pyqtSignal(str)
     _logo_level_sig = pyqtSignal(object)  # audio amplitude, queued from audio workers
+    _audio_level_sig = pyqtSignal(float)  # HUD waveform level, applied on the Qt thread
+    _visemes_sig = pyqtSignal(object, float, float)  # frames, hop, playback start time
     _avatar_cue_sig = pyqtSignal(str)
     _hud_pulse_sig  = pyqtSignal(str)
     _content_sig    = pyqtSignal(str, str)   # (title, text) — thread-safe content display
@@ -4574,6 +4576,8 @@ class MainWindow(QMainWindow):
         self._log_sig.connect(self._log.append_log)
         self._state_sig.connect(self._apply_state)
         self._logo_level_sig.connect(self._set_logo_audio_level)
+        self._audio_level_sig.connect(self._apply_audio_level)
+        self._visemes_sig.connect(self._apply_visemes)
         self._avatar_cue_sig.connect(self.hud.react_avatar_text)
         self._hud_pulse_sig.connect(self._on_hud_activity)
         self._content_sig.connect(self._show_content)
@@ -7458,6 +7462,32 @@ class MainWindow(QMainWindow):
         if self.on_text_command:
             threading.Thread(target=self.on_text_command, args=(txt,), daemon=True).start()
 
+    def _apply_audio_level(self, level: float) -> None:
+        """Apply audio levels to HUD canvases on the Qt GUI thread only."""
+        try:
+            self.hud.set_audio_level(level)
+        except (RuntimeError, TypeError, ValueError):
+            pass
+        overlay = getattr(self, "_immersive_overlay", None)
+        if overlay is not None:
+            try:
+                overlay.hud.set_audio_level(level)
+            except (RuntimeError, TypeError, ValueError):
+                pass
+
+    def _apply_visemes(self, frames, hop: float, at: float) -> None:
+        """Apply mouth-animation frames only on the Qt GUI thread."""
+        try:
+            self.hud.push_visemes(frames, hop, at)
+        except (RuntimeError, TypeError, ValueError):
+            pass
+        overlay = getattr(self, "_immersive_overlay", None)
+        if overlay is not None and getattr(self, "_immersive_open", False):
+            try:
+                overlay.hud.push_visemes(frames, hop, at)
+            except (RuntimeError, TypeError, ValueError):
+                pass
+
     def _apply_state(self, state: str):
         self.hud.state    = state
         self.hud.speaking = (state == "SPEAKING")
@@ -7717,14 +7747,12 @@ class JarvisUI:
         self._win.set_voice_id_enabled(enabled)
 
     def set_audio_level(self, level: float) -> None:
-        """Thread-safe: feed a 0.0–1.0 live audio level to the HUD waveform.
-        Called from the audio threads; a plain float store is atomic under the
-        GIL, so no signal/lock is needed for this cosmetic value."""
+        """Thread-safe: queue audio-level updates for GUI-thread application."""
         try:
-            self._win.hud.set_audio_level(level)
-            self._win._immersive_overlay.hud.set_audio_level(level)
-            self._win._logo_level_sig.emit(float(level))
-        except Exception:
+            value = float(level)
+            self._win._audio_level_sig.emit(value)
+            self._win._logo_level_sig.emit(value)
+        except (RuntimeError, TypeError, ValueError):
             pass
 
     def glance(self, dx: float, dy: float, hold: float = 1.1) -> None:
@@ -7759,12 +7787,10 @@ class JarvisUI:
         self._win.on_push_to_talk = cb
 
     def push_visemes(self, frames, hop: float, at: float) -> None:
-        """Thread-safe: post a schedule of (level, openness, width) mouth frames
-        for JARVIS's own speech. `at` is the wall-clock time the batch begins to
-        sound, not the time of the call. See HudCanvas.push_visemes()."""
+        """Thread-safe: queue mouth-animation frames for the Qt GUI thread."""
         try:
-            self._win.hud.push_visemes(frames, hop, at)
-        except Exception:
+            self._win._visemes_sig.emit(list(frames), float(hop), float(at))
+        except (RuntimeError, TypeError, ValueError):
             pass
 
     def notify_phone_connected(self) -> None:

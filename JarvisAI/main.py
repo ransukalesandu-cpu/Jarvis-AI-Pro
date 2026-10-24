@@ -73,6 +73,10 @@ try:
     import sounddevice as sd
 except Exception:
     sd = None
+try:
+    import webrtcvad as _webrtcvad
+except Exception:
+    _webrtcvad = None
 import numpy as np
 from google import genai
 from google.genai import types
@@ -146,6 +150,9 @@ CHANNELS            = 1
 SEND_SAMPLE_RATE    = 16000 
 RECEIVE_SAMPLE_RATE = 24000
 CHUNK_SIZE          = 1024
+# At 24 kHz mono int16, 10 ms of valid PCM is 480 bytes. Smaller audio events
+# can be transport fragments; buffer them until a complete frame is available.
+_MIN_LIVE_AUDIO_FRAME_BYTES = (RECEIVE_SAMPLE_RATE // 100) * 2
 
 # RMS below which 16-bit PCM is treated as room silence; above _LEVEL_FULL it
 # reads as a full-height waveform. Tuned so ordinary speech lands mid-range and
@@ -726,6 +733,8 @@ class JarvisLive:
         self._shutdown_lock = threading.Lock()
         self._shutdown_in_progress = False
         self._is_speaking         = False
+        self._output_stream       = None
+        self._playback_interrupt_requested = threading.Event()
         self._assistant_turn_pending = False
         self._barge_in_until      = 0.0
         self._speaking_lock       = threading.Lock()
@@ -774,6 +783,11 @@ class JarvisLive:
         self._ptt_held             = False
         self._ptt                  = None    # core.hotkey.PushToTalk
         self._out_level            = 0.0     # level of the audio being played right now
+        self._speech_vad           = _webrtcvad.Vad(2) if _webrtcvad is not None else None
+        if self._speech_vad is None:
+            print("[Voice] WebRTC VAD unavailable; using EchoGuard-only barge-in.")
+        else:
+            print("[Voice] WebRTC VAD enabled (aggressiveness 2).")
         self._echo                 = EchoGuard()
         # `stream.write()` returns when the buffer accepts the audio, not when the
         # speaker has finished with it, so sound is still in the room after the
@@ -985,6 +999,8 @@ class JarvisLive:
             self._wake_interrupt_audio.clear()
         print("[Voice] User speech detected during JARVIS playback; interrupting.")
         self.ui.write_log("SYS: Voice detected — interrupting JARVIS.")
+        # The microphone callback has already marshalled this handler onto
+        # the asyncio loop, so keep queue and playback lifecycle changes here.
         self._interrupt_on_loop(replay)
 
     def _on_double_clap_detected(self) -> None:
@@ -1640,6 +1656,15 @@ class JarvisLive:
         turn_pending = bool(self._assistant_turn_pending)
         briefing_active = bool(self._briefing_active)
         self._interrupted = speaking or turn_pending or briefing_active
+        if self._interrupted:
+            # Abort the device buffer as well as draining the asyncio queue.
+            self._playback_interrupt_requested.set()
+            output_stream = self._output_stream
+            if output_stream is not None:
+                try:
+                    output_stream.abort()
+                except Exception as exc:
+                    print(f"[JARVIS] Output abort during interruption: {exc}")
         self._assistant_turn_pending = False
         if briefing_active:
             self._briefing_cancelled = True
@@ -1976,7 +2001,7 @@ class JarvisLive:
                 response={"result": result}
             )
 
-        loop   = asyncio.get_event_loop()
+        loop   = asyncio.get_running_loop()
         result = "Done."
 
         try:
@@ -2233,6 +2258,8 @@ class JarvisLive:
         )
 
     async def _send_realtime(self):
+        frames_sent = 0
+        print("[AudioTrace 1→3] Sender running; waiting for microphone/phone audio frames.")
         while True:
             msg = await self.out_queue.get()
             # Gemini 3.x Live rejects the old realtime_input.media_chunks field
@@ -2247,12 +2274,30 @@ class JarvisLive:
             mime_type = str(msg.get("mime_type", "audio/pcm;rate=16000"))
             if mime_type.lower().startswith("audio/pcm") and "rate=" not in mime_type.lower():
                 mime_type = "audio/pcm;rate=16000"
-            await self.session.send_realtime_input(
-                audio=types.Blob(
-                    data=msg["data"],
-                    mime_type=mime_type,
+            if frames_sent == 0:
+                print(
+                    f"[AudioTrace 1→3] Sending first input frame "
+                    f"({len(msg.get('data', b''))} bytes; {mime_type})."
                 )
-            )
+            try:
+                await self.session.send_realtime_input(
+                    audio=types.Blob(
+                        data=msg["data"],
+                        mime_type=mime_type,
+                    )
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                print(
+                    f"[AudioTrace 1→3] Live audio send failed after {frames_sent} "
+                    f"frames: {type(exc).__name__}: {exc}"
+                )
+                traceback.print_exc()
+                raise
+            frames_sent += 1
+            if frames_sent == 1:
+                print("[AudioTrace 1→3] First input frame accepted by the Live client.")
 
     async def _resend_interrupted_request(self, text: str) -> None:
         """Continue a recognized user request after a fresh Live session opens."""
@@ -2279,11 +2324,22 @@ class JarvisLive:
             print("[JARVIS] 🎤 Mic disabled (sounddevice unavailable or PortAudio missing)")
             return
         print("[JARVIS] 🎤 Mic started")
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         actual_sr = SEND_SAMPLE_RATE
+        mic_callback_count = 0
+        callback_error_last_reported = [0.0]
+        # WebRTC VAD accepts 10/20/30 ms mono int16 frames; buffer callback sizes.
+        vad_pcm_buffer = bytearray()
+        vad_recent = deque(maxlen=3)
 
-        def callback(indata, frames, time_info, status):
-            nonlocal actual_sr
+        def _mic_callback_impl(indata, frames, time_info, status):
+            nonlocal actual_sr, mic_callback_count
+            mic_callback_count += 1
+            if mic_callback_count == 1:
+                print(
+                    f"[AudioTrace 1/MIC] First callback received: frames={frames}, "
+                    f"level={_pcm_level(indata):.3f}, status={status or 'OK'}."
+                )
             if actual_sr != SEND_SAMPLE_RATE and actual_sr > 0 and indata.size > 0:
                 raw_mono = indata[:, 0] if indata.ndim > 1 else indata
                 n_samples = int(round(len(raw_mono) * SEND_SAMPLE_RATE / actual_sr))
@@ -2357,12 +2413,26 @@ class JarvisLive:
                     except Exception:
                         pass
 
-                    # EchoGuard compares the mic's speech-band energies with
-                    # recent output. Require sustained evidence (2 blocks)
-                    # to avoid stopping for a single noise.
+                    # WebRTC VAD rejects non-speech noise first; EchoGuard then
+                    # separates the user's voice from JARVIS speaker echo.
                     try:
-                        is_user_voice = self._echo.is_user_speech(
-                            indata, SEND_SAMPLE_RATE, _pcm_level(indata), fast=True
+                        vad_confirms_speech = True
+                        if self._speech_vad is not None:
+                            mono = indata[:, 0] if indata.ndim > 1 else indata
+                            vad_pcm_buffer.extend(np.asarray(mono, dtype=np.int16).tobytes())
+                            while len(vad_pcm_buffer) >= 640:  # 20 ms at 16 kHz
+                                frame = bytes(vad_pcm_buffer[:640])
+                                del vad_pcm_buffer[:640]
+                                vad_recent.append(
+                                    self._speech_vad.is_speech(frame, SEND_SAMPLE_RATE)
+                                )
+                            vad_confirms_speech = sum(vad_recent) >= 2
+
+                        is_user_voice = (
+                            self._echo.is_user_speech(
+                                indata, SEND_SAMPLE_RATE, _pcm_level(indata), fast=True
+                            )
+                            if vad_confirms_speech else False
                         )
                         if is_user_voice:
                             self._voice_barge_in_run += 1
@@ -2384,6 +2454,8 @@ class JarvisLive:
             else:
                 self._voice_barge_in_run = 0
                 self._voice_barge_in_pending.clear()
+                vad_pcm_buffer.clear()
+                vad_recent.clear()
                 with self._wake_interrupt_lock:
                     self._wake_interrupt_audio.clear()
 
@@ -2431,6 +2503,26 @@ class JarvisLive:
                     pass
             else:
                 self._expire_voice_id_audio()
+
+        def callback(indata, frames, time_info, status):
+            """Keep a callback exception visible instead of silently losing mic input."""
+            try:
+                _mic_callback_impl(indata, frames, time_info, status)
+            except Exception as exc:
+                now = time.monotonic()
+                if now - callback_error_last_reported[0] >= 5.0:
+                    callback_error_last_reported[0] = now
+                    print(
+                        f"[AudioTrace 1/MIC] Callback failed; dropping this frame: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    traceback.print_exc()
+                    try:
+                        self.ui.write_log(
+                            f"ERR: Microphone callback failed: {type(exc).__name__}: {exc}"
+                        )
+                    except Exception:
+                        pass
 
         try:
             def _open_mic(dev):
@@ -2509,6 +2601,7 @@ class JarvisLive:
 
             with _mic_stream:
                 print("[JARVIS] 🎤 Mic stream open")
+                print("[AudioTrace 1/MIC] Input stream opened; waiting for mic callback samples.")
                 while True:
                     await asyncio.sleep(0.1)
         except Exception as e:
@@ -2564,13 +2657,24 @@ class JarvisLive:
 
     async def _receive_audio(self):
         print("[JARVIS] 👂 Recv started")
+        print("[AudioTrace 3/LIVE] Receiver running; waiting for Gemini Live events.")
         out_buf, in_buf = [], []
         voice_confirmation_consumed = False
         holo_open_request_pending = False
+        live_events_received = 0
+        input_checkpoint_logged = False
+        output_text_checkpoint_logged = False
+        output_audio_checkpoint_logged = False
+        short_audio_fragment_logged = False
+        output_audio_bytes_seen = 0
+        audio_fragment_buffer = bytearray()
 
         try:
             while True:
                 async for response in self.session.receive():
+                    live_events_received += 1
+                    if live_events_received == 1:
+                        print("[AudioTrace 3/LIVE] First server event received from Gemini Live.")
 
                     # ── Session resumption ───────────────────────────────────
                     # The server sends this periodically. `resumable` goes false
@@ -2596,25 +2700,52 @@ class JarvisLive:
 
                     _audio_chunks = _live_audio_chunks(response)
                     if _audio_chunks:
+                        event_bytes = sum(len(chunk) for chunk in _audio_chunks)
                         if self._interrupted:
-                            pass  # discard: interrupted
+                            # Never let a fragment from a cancelled assistant turn
+                            # leak into the next user's response.
+                            audio_fragment_buffer.clear()
                         else:
-                            if not self._vocal_audio_started:
-                                for event in self._vocal_plan.before:
-                                    self._enqueue_vocal_event(event)
-                            self._vocal_audio_started = True
-                            self._assistant_turn_pending = True
-                            if self._turn_done_event and self._turn_done_event.is_set():
-                                self._turn_done_event.clear()
-                            # Split into ~50 ms chunks so the playback queue can
-                            # be cleared precisely; the output loop writes at
-                            # most 100 ms at a time.
-                            _SLICE = 2400
-                            for _audio_data in _audio_chunks:
-                                for _i in range(0, len(_audio_data), _SLICE):
-                                    self.audio_in_queue.put_nowait(
-                                        _audio_data[_i : _i + _SLICE]
+                            output_audio_bytes_seen += event_bytes
+                            audio_fragment_buffer.extend(b"".join(_audio_chunks))
+                            # PCM int16 must be byte-aligned. Keep any odd trailing
+                            # byte until the next Live event instead of writing it
+                            # as an incomplete sample to PortAudio.
+                            processable_bytes = len(audio_fragment_buffer) & ~1
+                            if processable_bytes >= _MIN_LIVE_AUDIO_FRAME_BYTES:
+                                playable_audio = bytes(audio_fragment_buffer[:processable_bytes])
+                                del audio_fragment_buffer[:processable_bytes]
+                                if not output_audio_checkpoint_logged:
+                                    print(
+                                        f"[AudioTrace 3→4/AUDIO] Playable Gemini PCM accumulated: "
+                                        f"{len(playable_audio)} bytes across Live event(s) "
+                                        f"(raw event={event_bytes} bytes; minimum frame="
+                                        f"{_MIN_LIVE_AUDIO_FRAME_BYTES} bytes)."
                                     )
+                                    output_audio_checkpoint_logged = True
+                                if not self._vocal_audio_started:
+                                    for event in self._vocal_plan.before:
+                                        self._enqueue_vocal_event(event)
+                                self._vocal_audio_started = True
+                                self._assistant_turn_pending = True
+                                if self._turn_done_event and self._turn_done_event.is_set():
+                                    self._turn_done_event.clear()
+                                # Split into ~50 ms aligned chunks so playback can
+                                # interrupt quickly without sending tiny fragments
+                                # to the output device.
+                                _SLICE = 2400
+                                for _i in range(0, len(playable_audio), _SLICE):
+                                    self.audio_in_queue.put_nowait(
+                                        playable_audio[_i : _i + _SLICE]
+                                    )
+                            elif not output_audio_checkpoint_logged and not short_audio_fragment_logged:
+                                print(
+                                    f"[AudioTrace 3→4/AUDIO] Short PCM fragment received "
+                                    f"({event_bytes} bytes; buffered={len(audio_fragment_buffer)}); "
+                                    f"waiting for at least {_MIN_LIVE_AUDIO_FRAME_BYTES} bytes "
+                                    "before playback."
+                                )
+                                short_audio_fragment_logged = True
 
                     if sc:
 
@@ -2630,6 +2761,7 @@ class JarvisLive:
                                     except Exception:
                                         break
                             self.set_speaking(False)
+                            audio_fragment_buffer.clear()
                             self._visemes.reset()
                             self._play_cursor = 0.0
                             # This server event confirms the old assistant turn
@@ -2648,6 +2780,12 @@ class JarvisLive:
                             txt = _clean_transcript(sc.output_transcription.text)
                             # Ignore output transcriptions from an interrupted assistant turn.
                             if txt and not self._interrupted and not _is_repeat_chunk(txt, out_buf):
+                                if not output_text_checkpoint_logged:
+                                    print(
+                                        f"[AudioTrace 3/GEN] Assistant transcription received: "
+                                        f"{txt[:160]!r}"
+                                    )
+                                    output_text_checkpoint_logged = True
                                 self._plan_vocal_response(txt)
                                 self._assistant_turn_pending = True
                                 out_buf.append(txt)
@@ -2665,6 +2803,9 @@ class JarvisLive:
                         if sc.input_transcription and sc.input_transcription.text:
                             txt = _clean_transcript(sc.input_transcription.text)
                             if txt:
+                                if not input_checkpoint_logged:
+                                    print(f"[AudioTrace 2/STT] Recognized user speech: {txt[:160]!r}")
+                                    input_checkpoint_logged = True
                                 self._assistant_turn_pending = True
                                 # Some Live responses deliver the user's
                                 # transcription before the interrupted marker.
@@ -2715,6 +2856,41 @@ class JarvisLive:
                                         self._inflight_user_tool_started = False
 
                         if sc.turn_complete:
+                            if not output_audio_checkpoint_logged and not self._interrupted:
+                                if output_text_checkpoint_logged and output_audio_bytes_seen:
+                                    print(
+                                        f"[AudioTrace 3→4/AUDIO] Assistant text arrived, but only "
+                                        f"{output_audio_bytes_seen} PCM byte(s) arrived this turn; "
+                                        f"no complete 10 ms frame ({_MIN_LIVE_AUDIO_FRAME_BYTES} bytes) "
+                                        "reached playback. Check Live model/audio output."
+                                    )
+                                elif output_text_checkpoint_logged:
+                                    print(
+                                        "[AudioTrace 3→4/AUDIO] Assistant text arrived but Gemini "
+                                        "returned no audio payload for this turn."
+                                    )
+                                elif output_audio_bytes_seen:
+                                    print(
+                                        f"[AudioTrace 3→4/AUDIO] Only {output_audio_bytes_seen} "
+                                        "PCM byte(s) arrived without a playable frame or assistant text."
+                                    )
+                                else:
+                                    print(
+                                        "[AudioTrace 3/LIVE] Turn completed without assistant "
+                                        "transcription or audio payload."
+                                    )
+                            if audio_fragment_buffer:
+                                print(
+                                    f"[AudioTrace 3→4/AUDIO] Discarding "
+                                    f"{len(audio_fragment_buffer)} trailing PCM byte(s) at turn end; "
+                                    "not enough audio for a complete playback frame."
+                                )
+                                audio_fragment_buffer.clear()
+                            input_checkpoint_logged = False
+                            output_text_checkpoint_logged = False
+                            output_audio_checkpoint_logged = False
+                            short_audio_fragment_logged = False
+                            output_audio_bytes_seen = 0
                             if (not self._interrupted and self._vocal_audio_started
                                     and self._vocal_plan.after):
                                 for event in self._vocal_plan.after:
@@ -2844,7 +3020,12 @@ class JarvisLive:
 
     async def _play_audio(self):
         print("[JARVIS] 🔊 Play started")
+        print("[AudioTrace 4/OUTPUT] Playback worker running; waiting for Live PCM chunks.")
 
+        first_output_chunk_logged = False
+        first_output_write_started = False
+        first_output_write_completed = False
+        first_phone_audio_logged = False
         _spk_name = get_output_device()
         _spk_dev  = audio_devices.resolve(_spk_name, "output")
         if _spk_dev is not None:
@@ -2875,6 +3056,12 @@ class JarvisLive:
             self.ui.write_log(f"SYS: Speaker '{_spk_name}' unavailable — using system default.")
             stream = _open_spk(None)
 
+        self._output_stream = stream
+        print(
+            f"[AudioTrace 4/OUTPUT] Output stream ready: requested_device={_spk_name or 'system default'!r}, "
+            f"resolved_device={_spk_dev!r}, sample_rate={RECEIVE_SAMPLE_RATE} Hz."
+        )
+
         # Ask the device how far behind the speakers actually are, rather than
         # assuming. This is what the echo tail is sized from, so a machine with a
         # large audio buffer gets a correspondingly longer guard — and one with a
@@ -2896,6 +3083,13 @@ class JarvisLive:
                         timeout=0.1
                     )
                 except asyncio.TimeoutError:
+                    if self._playback_interrupt_requested.is_set():
+                        self._playback_interrupt_requested.clear()
+                        try:
+                            if not stream.active:
+                                stream.start()
+                        except Exception as exc:
+                            print(f"[JARVIS] Could not resume output after interrupt: {exc}")
                     if (
                         self._turn_done_event
                         and self._turn_done_event.is_set()
@@ -2904,6 +3098,23 @@ class JarvisLive:
                         self.set_speaking(False)
                         self._turn_done_event.clear()
                     continue
+
+                if self._playback_interrupt_requested.is_set():
+                    self._playback_interrupt_requested.clear()
+                    try:
+                        if not stream.active:
+                            stream.start()
+                    except Exception as exc:
+                        print(f"[JARVIS] Could not resume output after interrupt: {exc}")
+                    # Drop a chunk queued just before the interruption.
+                    continue
+
+                if not first_output_chunk_logged:
+                    print(
+                        f"[AudioTrace 4/OUTPUT] First PCM chunk received from playback queue "
+                        f"({len(chunk)} bytes)."
+                    )
+                    first_output_chunk_logged = True
 
                 self.set_speaking(True)
 
@@ -2974,6 +3185,9 @@ class JarvisLive:
                 # back to PC speakers during an active phone handoff: a lost
                 # phone connection should fail quiet until its mic stops.
                 if self._phone_active:
+                    if not first_phone_audio_logged:
+                        print("[AudioTrace 4/OUTPUT] Phone handoff is active; routing reply audio to the phone, not PC speakers.")
+                        first_phone_audio_logged = True
                     delivered = False
                     if self._dashboard is not None and not self.ui.muted:
                         try:
@@ -2984,15 +3198,47 @@ class JarvisLive:
                         continue
                 else:
                     try:
+                        if not first_output_write_started:
+                            print(
+                                f"[AudioTrace 4/OUTPUT] Calling sounddevice.write for first batch "
+                                f"({len(batch)} bytes)."
+                            )
+                            first_output_write_started = True
                         await asyncio.to_thread(stream.write, bytes(batch))
-                    except (RuntimeError, asyncio.CancelledError):
-                        break   # executor shutting down — exit cleanly
+                        if not first_output_write_completed:
+                            print(
+                                "[AudioTrace 4/OUTPUT] First sounddevice.write returned; "
+                                "PortAudio accepted the PCM batch (this does not guarantee audible sound)."
+                            )
+                            first_output_write_completed = True
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        if self._playback_interrupt_requested.is_set():
+                            self._playback_interrupt_requested.clear()
+                            self.set_speaking(False)
+                            try:
+                                if not stream.active:
+                                    stream.start()
+                            except Exception as restart_exc:
+                                print(f"[JARVIS] Could not resume output after interrupt: {restart_exc}")
+                                raise
+                            continue
+                        if self._shutdown_requested:
+                            break
+                        print(f"[AudioTrace 4/OUTPUT] Speaker write failed: {type(exc).__name__}: {exc}")
+                        traceback.print_exc()
+                        raise
         except Exception as e:
             print(f"[JARVIS] ❌ Play: {e}")
             raise
         finally:
             self.set_speaking(False)
-            stream.stop()
+            self._output_stream = None
+            try:
+                stream.stop()
+            except Exception:
+                pass
             stream.close()
 
     # ── Morning briefing ────────────────────────────────────────────────────────
@@ -3037,7 +3283,7 @@ class JarvisLive:
             day_period = "late night"
 
         # Start fetching news immediately — runs in parallel while phase 1 plays
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _fetch_briefing_news():
             query = "Sri Lankan local news from Newsfirst and Ada Derana in Sinhala and English"
@@ -3659,7 +3905,7 @@ class JarvisLive:
         return min(candidates, key=lambda model: self._live_model_cooldowns.get(model, 0.0))
 
     async def run(self):
-        self._loop = asyncio.get_event_loop()
+        self._loop = asyncio.get_running_loop()
         self._reconnect_event = asyncio.Event()
         self._shutdown_event = asyncio.Event()
         self._run_task = asyncio.current_task()
@@ -4128,6 +4374,19 @@ def main():
                 asyncio.run(jarvis.run())
             except KeyboardInterrupt:
                 print("\n🔴 Shutting down...")
+            except Exception as exc:
+                print(
+                    f"[CRITICAL THREAD CRASH] JARVIS runtime worker stopped: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                traceback.print_exc()
+                try:
+                    ui.write_log(
+                        f"ERR: JARVIS runtime stopped unexpectedly: {type(exc).__name__}: {exc}"
+                    )
+                    ui.set_state("ERROR")
+                except Exception:
+                    pass
             finally:
                 if jarvis._shutdown_requested:
                     ui.request_close()

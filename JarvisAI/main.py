@@ -3234,6 +3234,8 @@ class JarvisLive:
             print(f"[JARVIS] ⚠️  Output device '{_spk_name}' failed: {_e} — using default")
             self.ui.write_log(f"SYS: Speaker '{_spk_name}' unavailable — using system default.")
             stream = _open_spk(None)
+            _spk_name = ""
+            _spk_dev = None
 
         self._output_stream = stream
         print(

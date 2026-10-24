@@ -335,6 +335,20 @@ def _is_transient_live_disconnect(error) -> bool:
     ))
 
 
+def _is_live_operation_aborted(error) -> bool:
+    """Recognize Gemini Live's 1008 'operation was aborted' close response.
+
+    Some Live sessions are aborted by the service without a useful JSON body.
+    Treat this specific close as a model/session failure so the reconnect loop
+    can cool down that model and try another configured Live model.
+    """
+    text = _error_text(error).upper()
+    return (
+        ("1008" in text or "POLICY VIOLATION" in text)
+        and ("OPERATION WAS ABORTED" in text or "OPERATION ABORTED" in text)
+    )
+
+
 # ── Viseme extraction ─────────────────────────────────────────────────────────
 # The avatar's mouth used to be driven by one RMS value per ~200 ms write batch,
 # which is five updates a second averaged over a fifth of a second — it could
@@ -4582,6 +4596,49 @@ class JarvisLive:
                     continue
 
                 err_str = _error_text(e)
+
+                # Gemini sometimes terminates a Live session with close code 1008
+                # and only the generic message "The operation was aborted." If we
+                # keep the same model, this can repeat every reconnect. Cool the
+                # failed model and try the next configured model before retrying.
+                if _is_live_operation_aborted(e):
+                    failed_model = self._active_live_model
+                    self._live_model_cooldowns[failed_model] = (
+                        time.monotonic() + LIVE_MODEL_COOLDOWN_SECONDS
+                    )
+                    next_model = self._select_live_model()
+                    next_is_ready = (
+                        self._live_model_cooldowns.get(next_model, 0.0)
+                        <= time.monotonic()
+                    )
+                    if next_model != failed_model and next_is_ready:
+                        self._live_switch_context = "\\n".join(self._session_log[-12:])[-9000:]
+                        self._active_live_model = next_model
+                        self._resume_handle = None
+                        self._conn_backoff = 0
+                        message = (
+                            f"SYS: Gemini Live aborted {failed_model}; "
+                            f"retrying with {next_model}."
+                        )
+                        print(f"[JARVIS] {message}")
+                        self.ui.write_log(message)
+                        continue
+
+                    self._conn_backoff = min(
+                        max(getattr(self, "_conn_backoff", 3), 3) * 2, 60
+                    )
+                    message = (
+                        "NET: Gemini Live aborted the session (1008); "
+                        f"retrying in {self._conn_backoff}s. "
+                        "If repeated, check Live-model access and API settings."
+                    )
+                    print(f"[JARVIS] ⚠️ {message}")
+                    self.ui.write_log(message)
+                    if not await self._wait_for_reconnect(self._conn_backoff):
+                        await self._finish_shutdown()
+                        return
+                    continue
+
                 transient_live_disconnect = _is_transient_live_disconnect(e)
                 if transient_live_disconnect:
                     self._conn_backoff = min(

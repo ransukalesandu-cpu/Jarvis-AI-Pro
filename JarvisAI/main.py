@@ -3325,7 +3325,18 @@ class JarvisLive:
                 if result and not result.startswith(unavailable_prefixes):
                     return result
                 if attempt == 0:
-                    print("[Briefing] No news returned; retrying the publisher search once.")
+                    if result and result.startswith(unavailable_prefixes):
+                        # The news action has already tried its configured
+                        # providers and its Gemini-grounded fallback. Starting
+                        # another publisher sweep creates more blocked network
+                        # requests while the previous provider threads may
+                        # still be unwinding, so report the unavailable state.
+                        print(
+                            "[Briefing] Search providers/fallback unavailable; "
+                            "skipping duplicate publisher search this briefing."
+                        )
+                        return result
+                    print("[Briefing] News fetch returned no result; retrying once.")
                     time.sleep(1.0)
             return result
 

@@ -545,9 +545,9 @@ def tier_for(name: str, params: dict | None = None) -> str:
 _PERSONAL_MODE_ENV = "JARVIS_PERSONAL_MODE"
 
 _PERSONAL_MODE_RELAXED_ACTIONS: dict[str, set[str]] = {
-    # Ordinary file operations stay limited by file_controller's home-directory
-    # and protected-path checks. Delete and bulk desktop organization stay gated.
-    "file_controller": {"create_file", "create_folder", "move", "copy", "rename", "write"},
+    # Folder creation and rename refuse overwriting existing targets. File
+    # creation/writes/copy/move can replace existing data, so they remain gated.
+    "file_controller": {"create_folder", "rename"},
     # Allow direct desktop control without one confirmation per click/keypress.
     # Actions still require a fresh user turn when derived from untrusted content.
     "computer_control": {

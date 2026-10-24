@@ -798,16 +798,9 @@ def _news(query: str) -> str:
     Gemini is only used when DDG returns insufficient results.
     """
     if _is_sri_lanka_news_request(query):
-        local_news = _run_bounded(
-            lambda: _sri_lanka_news(query),
-            timeout=9.0,
-            label="Sri Lankan publisher news",
-        )
-        if local_news and not local_news.startswith("No Sri Lankan headlines"):
-            return local_news
-
-        # Try the publisher pages themselves before spending Gemini Search quota.
-        # This path is independent of DDG/Yahoo/Bing and does not need a model.
+        # Start with the publishers themselves. This route is independent of
+        # search engines and Gemini quota, and is often faster than waiting for
+        # multiple third-party search requests to time out.
         direct_news = _run_bounded(
             lambda: _direct_sri_lanka_news(query),
             timeout=5.0,
@@ -815,6 +808,14 @@ def _news(query: str) -> str:
         )
         if direct_news and not direct_news.startswith("No Sri Lankan headlines"):
             return direct_news
+
+        local_news = _run_bounded(
+            lambda: _sri_lanka_news(query),
+            timeout=9.0,
+            label="Sri Lankan publisher news search",
+        )
+        if local_news and not local_news.startswith("No Sri Lankan headlines"):
+            return local_news
 
         # The old Sri Lankan branch returned immediately when the scraping
         # providers timed out, even though other news modes already had a

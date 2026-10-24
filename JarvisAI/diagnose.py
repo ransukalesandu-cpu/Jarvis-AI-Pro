@@ -63,45 +63,6 @@ def _find_tesseract() -> Path | None:
     return next((path for path in candidates if path.is_file()), None)
 
 
-def print_memory_diagnostics() -> dict:
-    """Print memory usage metrics and process footprint. Return stats dict."""
-    print("\nMemory Usage Diagnostics:")
-    stats = {}
-    try:
-        import psutil
-        proc = psutil.Process(os.getpid())
-        mem_info = proc.memory_info()
-        rss_mb = mem_info.rss / (1024 * 1024)
-        vms_mb = mem_info.vms / (1024 * 1024)
-        threads = proc.num_threads()
-        sys_mem = psutil.virtual_memory()
-
-        print(f"  [RAM] Process RSS (Physical): {rss_mb:.2f} MB")
-        print(f"  [RAM] Process VMS (Virtual):  {vms_mb:.2f} MB")
-        print(f"  [CPU] Active Process Threads: {threads}")
-        print(f"  [SYS] System Total RAM:       {sys_mem.total / (1024**3):.2f} GB")
-        print(f"  [SYS] System Available RAM:   {sys_mem.available / (1024**3):.2f} GB ({sys_mem.available / sys_mem.total * 100:.1f}% free)")
-
-        stats = {
-            "rss_mb": rss_mb,
-            "vms_mb": vms_mb,
-            "threads": threads,
-            "sys_total_gb": sys_mem.total / (1024**3),
-            "sys_avail_gb": sys_mem.available / (1024**3),
-        }
-    except Exception as exc:
-        print(f"  [WARN] Could not read detailed memory usage: {type(exc).__name__}: {exc}")
-
-    heavy_modules = ["torch", "transformers", "speechbrain", "faster_whisper", "openwakeword"]
-    loaded = [m for m in heavy_modules if m in sys.modules]
-    if loaded:
-        print(f"  [WARN] Heavy local AI modules currently in memory: {', '.join(loaded)}")
-    else:
-        print("  [OK] No heavy local AI models are loaded in RAM (Cloud-First Mode active).")
-
-    return stats
-
-
 def _print_audio_diagnostics() -> bool:
     """Print discovered audio endpoints. Return True if both directions exist."""
     print("\nAudio devices:")
@@ -141,12 +102,6 @@ def _print_audio_diagnostics() -> bool:
 
 
 def main() -> int:
-    memory_only = "--memory" in sys.argv
-    if memory_only:
-        print("JARVIS AI — memory usage diagnostic")
-        print_memory_diagnostics()
-        return 0
-
     version = sys.version_info
     print("JARVIS AI — runtime preflight")
     print(f"OS: {platform.platform()}")
@@ -189,8 +144,6 @@ def main() -> int:
             print("  Windows installer: https://github.com/UB-Mannheim/tesseract/wiki")
 
         _print_audio_diagnostics()
-
-    print_memory_diagnostics()
 
     print("\nAPI configuration:")
     try:

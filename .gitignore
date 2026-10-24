@@ -14,10 +14,6 @@ config/api_keys.json
 .venv/
 venv/
 
-# Runtime logs and artifacts
-logs/
-sandbox_runs/
-
 # Editors and operating systems
 .vscode/
 .idea/

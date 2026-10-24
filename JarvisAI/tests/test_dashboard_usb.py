@@ -21,7 +21,6 @@ try:
     from fastapi.testclient import TestClient
     import uvicorn
     from dashboard.server import DashboardServer
-    from dashboard.server import _select_dashboard_bind_host
     _HAS_FASTAPI = True
 except ImportError:
     _HAS_FASTAPI = False
@@ -93,12 +92,6 @@ class TestADBBridgeServices(unittest.TestCase):
 
 
 class TestDashboardServerAndSecurity(unittest.TestCase):
-    def test_lan_mode_requires_tls(self):
-        self.assertEqual(_select_dashboard_bind_host(False, False), "127.0.0.1")
-        self.assertEqual(_select_dashboard_bind_host(True, True), "0.0.0.0")
-        with self.assertRaises(RuntimeError):
-            _select_dashboard_bind_host(True, False)
-
 
     def setUp(self):
         if not _HAS_FASTAPI:
@@ -132,32 +125,19 @@ class TestDashboardServerAndSecurity(unittest.TestCase):
         """Start the actual DashboardServer Uvicorn listener on a real loopback port and verify socket requests."""
         srv = DashboardServer()
         # Bind to an unassigned test port to avoid conflicting with running 8000
-        with socket.socket() as probe:
-            probe.bind(("127.0.0.1", 0))
-            test_port = probe.getsockname()[1]
-
-        server_holder = {}
+        test_port = 8999
+        srv_task = None
 
         def run_srv():
             cfg = uvicorn.Config(srv.app, host="127.0.0.1", port=test_port, log_level="error")
-            instance = uvicorn.Server(cfg)
-            server_holder["server"] = instance
-            instance.run()
+            server = uvicorn.Server(cfg)
+            server.run()
 
         t = threading.Thread(target=run_srv, daemon=True)
         t.start()
-        deadline = time.monotonic() + 5
-        try:
-            while time.monotonic() < deadline:
-                instance = server_holder.get("server")
-                if instance is not None and instance.started:
-                    break
-                if not t.is_alive():
-                    self.fail("Uvicorn exited before the health endpoint became available")
-                time.sleep(0.05)
-            else:
-                self.fail("Uvicorn listener did not start within 5 seconds")
+        time.sleep(1.2)
 
+        try:
             url = f"http://127.0.0.1:{test_port}/health"
             with urllib.request.urlopen(url, timeout=3) as resp:
                 self.assertEqual(resp.status, 200)
@@ -165,11 +145,8 @@ class TestDashboardServerAndSecurity(unittest.TestCase):
                 self.assertEqual(body.get("status"), "ok")
                 self.assertEqual(body.get("service"), "jarvis-dashboard")
         finally:
-            instance = server_holder.get("server")
-            if instance is not None:
-                instance.should_exit = True
-            t.join(timeout=5)
-
+            # Let thread exit cleanly at process finish
+            pass
 
 
 if __name__ == "__main__":

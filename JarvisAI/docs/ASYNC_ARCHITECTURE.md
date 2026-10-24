@@ -48,3 +48,8 @@ If a turn completes with assistant text but no PCM audio payload, the trace expl
 ### Tiny PCM payloads and silent output
 
 Gemini Live native audio is 24 kHz, mono, signed 16-bit PCM in this application. A 2-byte payload is only one sample, not a spoken phrase. The receive loop buffers sub-10 ms fragments until at least 480 bytes (10 ms) are available, keeps 16-bit sample alignment, and only then queues PCM for playback. At turn completion, any incomplete remainder is discarded and the log distinguishes text-without-playable-audio from a fully missing audio payload.
+
+
+### Preventing false barge-in before playback starts
+
+Voice-based interruption is armed only after JARVIS is actually speaking and the echo guard has a recent playback reference. While Gemini is generating the first response audio, the microphone still feeds the local wake-word detector, but VAD/echo-based interruption evidence is cleared rather than allowed to cancel a not-yet-audible greeting. This avoids treating a clap or background noise as user speech when EchoGuard has no output PCM to compare against. Real-hardware testing is still required to tune acoustic interruption behavior.

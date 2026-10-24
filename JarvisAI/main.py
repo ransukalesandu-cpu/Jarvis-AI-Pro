@@ -4612,7 +4612,7 @@ class JarvisLive:
                         <= time.monotonic()
                     )
                     if next_model != failed_model and next_is_ready:
-                        self._live_switch_context = "\\n".join(self._session_log[-12:])[-9000:]
+                        self._live_switch_context = "\n".join(self._session_log[-12:])[-9000:]
                         self._active_live_model = next_model
                         self._resume_handle = None
                         self._conn_backoff = 0

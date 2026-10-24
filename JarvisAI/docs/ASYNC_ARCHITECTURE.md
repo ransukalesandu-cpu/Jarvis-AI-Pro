@@ -12,8 +12,8 @@ This document describes the current runtime boundaries and the rules for extendi
 ## Rules for async code
 
 1. Inside a coroutine or callback running on the event-loop thread, use `asyncio.get_running_loop()`. It fails fast if there is no running loop instead of returning a loop that may not be running or may belong to another thread.
-2. From another thread, do not call `asyncio.create_task()`, set an `asyncio.Event` directly, or access an `asyncio.Queue` directly. Use `asyncio.run_coroutine_threadsafe(coro, loop)` for a coroutine and `loop.call_soon_threadsafe(callback, ...)` for a small callback.
-3. Keep all Qt widget updates on the Qt thread. Use Qt signals or the UI's existing thread-safe dispatch mechanism when reporting background work.
+2. From another thread, do not call `asyncio.create_task()`, set an `asyncio.Event` directly, or access an `asyncio.Queue` directly. Use `asyncio.run_coroutine_threadsafe(coro, loop)` for a coroutine and `loop.call_soon_threadsafe(callback, ...)` for a small callback. The sounddevice microphone callback must hand barge-in state changes to the session loop instead of draining asyncio queues directly.
+3. Keep all Qt widget/canvas mutations on the Qt thread. Audio workers must submit HUD waveform levels and mouth-animation (viseme) schedules through Qt signals; wrappers must not directly mutate `HudCanvas` state from an audio or asyncio thread.
 4. Treat cancellation and shutdown as normal lifecycle events. Stop accepting work, signal the loop, allow session tasks to unwind, then close the loop. Do not block the event-loop thread waiting for a future submitted to that same loop.
 5. Keep microphone callbacks lightweight: no network calls, long computations, blocking waits, or UI operations in the callback.
 6. When adding a task to a session, make its ownership clear. Prefer the existing session `asyncio.TaskGroup` for tasks that should end when the Live session ends; use explicitly tracked tasks for longer-lived work and cancel/await them during shutdown.

@@ -1579,6 +1579,13 @@ class JarvisLive:
     def _on_text_command(self, text: str):
         if not self._loop or not self.session:
             return
+        pin_match = re.search(r"\b(?:pin|password|passcode)\b.*?([0-9]{4,8})\b", text, re.IGNORECASE)
+        if not pin_match and security.get_auth_state() in (security.CHALLENGE_MODE, security.RESTRICTED_MODE):
+            pin_match = re.search(r"\b([0-9]{4,8})\b", text)
+        if pin_match:
+            pin_candidate = pin_match.group(1)
+            if security.verify_pin(pin_candidate):
+                self.ui.write_log("SEC: Master PIN verified successfully via text input. FULL_ACCESS_MODE granted.")
         # Respect wake-word sleep: a typed command must not be answered while
         # asleep either (the sleep gate is not just for the mic). Wake first with
         # "Hey Jarvis" or the WAKE NOW button.
@@ -2088,7 +2095,8 @@ class JarvisLive:
                 None, lambda: security.guard(name, args, _memory_operation))
             return types.FunctionResponse(id=fc.id, name=name, response={"result": result})
 
-        if name == "recall_memory" and not get_memory_provider_access_enabled():
+        import memory.config_manager as _config_mgr
+        if name == "recall_memory" and not _config_mgr.get_memory_provider_access_enabled():
             result = (
                 "Memory is stored locally, and AI-provider access is disabled. "
                 "Enable memory access in the HUD Memory panel before asking JARVIS "
@@ -2945,6 +2953,13 @@ class JarvisLive:
                                     print(f"[AudioTrace 2/STT] Recognized user speech: {txt[:160]!r}")
                                     input_checkpoint_logged = True
                                 self._assistant_turn_pending = True
+                                pin_match = re.search(r"\b(?:pin|password|passcode)\b.*?([0-9]{4,8})\b", txt, re.IGNORECASE)
+                                if not pin_match and security.get_auth_state() in (security.CHALLENGE_MODE, security.RESTRICTED_MODE):
+                                    pin_match = re.search(r"\b([0-9]{4,8})\b", txt)
+                                if pin_match:
+                                    pin_candidate = pin_match.group(1)
+                                    if security.verify_pin(pin_candidate):
+                                        self.ui.write_log("SEC: Master PIN verified successfully via voice input. FULL_ACCESS_MODE granted.")
                                 # Some Live responses deliver the user's
                                 # transcription before the interrupted marker.
                                 # Once speech is transcribed, it belongs to the

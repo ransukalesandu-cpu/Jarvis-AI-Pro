@@ -261,6 +261,7 @@ class MemoryV3Tests(unittest.TestCase):
         mm.BASE_DIR = Path(self.temp.name)
         try:
             with patch.object(main.security, "guard", side_effect=lambda _name, _args, operation: operation()), \
+                 patch("memory.config_manager.get_memory_provider_access_enabled", return_value=True), \
                  patch.object(main, "get_memory_provider_access_enabled", return_value=True), \
                  patch.object(main.asyncio, "get_running_loop", return_value=FakeLoop()), \
                  patch.object(main.asyncio, "get_event_loop", return_value=FakeLoop()):

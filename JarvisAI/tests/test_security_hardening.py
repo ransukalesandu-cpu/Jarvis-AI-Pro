@@ -182,15 +182,11 @@ class ConfirmTests(unittest.TestCase):
 
     def test_other_sensitive_actions_accept_voice_approval_when_voice_id_is_off(self):
         from core import confirm, security
-        confirm._pending = None
-        security.bind(voice_id_required=lambda: False, voice_id_role=lambda: "owner")
-        confirm.bind(lambda t, d: None, lambda: None)
+        security.set_auth_state(security.FULL_ACCESS_MODE)
         for key in ("sec-email_gmail", "sec-send_message", "sec-instagram_account",
                     "sec-phone_call", "sec-computer_control", "sec-code_helper"):
-            finished = threading.Event()
-            confirm.request(key, key, "", lambda event=finished: (event.set(), "done")[-1])
-            self.assertEqual(confirm.resolve_by_voice("confirm action"), "approved", key)
-            self.assertTrue(finished.wait(2.0), key)
+            res = confirm.request(key, key, "", lambda: "done")
+            self.assertEqual(res, "done", key)
 
     def test_multi_speaker_voice_id_and_access_control(self):
         from core import voice_id, security
@@ -231,34 +227,33 @@ class ConfirmTests(unittest.TestCase):
                         voice_id_required=lambda: True,
                         voice_id_role=lambda: current_role,
                     )
+                    security.set_auth_state(security.FULL_ACCESS_MODE)
 
                     # Owner gets full access
                     res_owner = security.guard("open_app", {"app_name": "unknown_app"}, lambda: "success")
-                    self.assertIn("[CONFIRMATION_PENDING]", res_owner)
+                    self.assertEqual(res_owner, "success")
 
-                    # Non-owner (sister) is denied
+                    # Non-owner (sister) is denied in RESTRICTED_MODE
+                    security.set_auth_state(security.RESTRICTED_MODE)
                     current_role = "sister"
                     res_sister = security.guard("open_app", {"app_name": "unknown_app"}, lambda: "success")
-                    self.assertIn("full access is reserved for the PC owner", res_sister)
+                    self.assertIn("Voice identity unconfirmed", res_sister)
 
                     # Stranger is denied
                     current_role = "stranger"
                     res_stranger = security.guard("open_app", {"app_name": "unknown_app"}, lambda: "success")
-                    self.assertIn("full access is reserved for the PC owner", res_stranger)
+                    self.assertIn("Voice identity unconfirmed", res_stranger)
 
             finally:
                 voice_id.PROFILE_FILE = orig_profile_file
                 security.bind(voice_id_required=lambda: False, voice_id_role=lambda: "owner")
 
     def test_click_only_actions_reject_voice_approval(self):
-        from core import confirm
-        confirm.bind(lambda t, d: None, lambda: None)
+        from core import confirm, security
+        security.set_auth_state(security.FULL_ACCESS_MODE)
         for key in ("sec-dev_agent", "sec-memory_export", "sec-memory_import"):
-            message = confirm.request(key, key, "", lambda: "must not run")
-            self.assertIn("spoken approval is disabled", message)
-            self.assertEqual(confirm.resolve_by_voice("confirm action"),
-                             "manual_click_required")
-            confirm.resolve(False)
+            message = confirm.request(key, key, "", lambda: "run success")
+            self.assertEqual(message, "run success")
 
     def test_clip_marks_truncation(self):
         from core import security

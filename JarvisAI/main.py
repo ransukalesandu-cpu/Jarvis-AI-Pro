@@ -2275,10 +2275,23 @@ class JarvisLive:
             print(f"[JARVIS] Could not resume interrupted request: {exc}")
 
     async def _listen_audio(self):
+        if sd is None:
+            print("[JARVIS] 🎤 Mic disabled (sounddevice unavailable or PortAudio missing)")
+            return
         print("[JARVIS] 🎤 Mic started")
         loop = asyncio.get_event_loop()
+        actual_sr = SEND_SAMPLE_RATE
 
         def callback(indata, frames, time_info, status):
+            nonlocal actual_sr
+            if actual_sr != SEND_SAMPLE_RATE and actual_sr > 0 and indata.size > 0:
+                raw_mono = indata[:, 0] if indata.ndim > 1 else indata
+                n_samples = int(round(len(raw_mono) * SEND_SAMPLE_RATE / actual_sr))
+                if n_samples > 0 and len(raw_mono) > 1:
+                    old_x = np.linspace(0, 1, len(raw_mono))
+                    new_x = np.linspace(0, 1, n_samples)
+                    resampled = np.interp(new_x, old_x, raw_mono.astype(np.float32)).astype(np.int16)
+                    indata = resampled.reshape(-1, 1) if indata.ndim > 1 else resampled
             self._capture_voice_id_enrollment(indata, frames)
             # ── Wake-word gate ───────────────────────────────────────────────
             # While asleep, the mic audio NEVER goes to Gemini (nothing is
@@ -2413,16 +2426,55 @@ class JarvisLive:
 
         try:
             def _open_mic(dev):
+
                 if sd is None:
-                    raise RuntimeError("sounddevice is unavailable (PortAudio missing)")
-                return sd.InputStream(
-                    samplerate=SEND_SAMPLE_RATE,
-                    channels=CHANNELS,
-                    dtype="int16",
-                    blocksize=CHUNK_SIZE,
-                    device=dev,
-                    callback=callback,
-                )
+                    raise RuntimeError(
+                        "sounddevice is unavailable (PortAudio missing)"
+                    )
+
+                nonlocal actual_sr
+
+                try:
+                    stream = sd.InputStream(
+                        samplerate=SEND_SAMPLE_RATE,
+                        channels=CHANNELS,
+                        dtype="int16",
+                        blocksize=CHUNK_SIZE,
+                        device=dev,
+                        callback=callback,
+                    )
+                    actual_sr = SEND_SAMPLE_RATE
+                    return stream
+
+                except Exception:
+                    try:
+                        dev_info = (
+                            sd.query_devices(dev, "input")
+                            if dev is not None
+                            else sd.query_devices(kind="input")
+                        )
+                        native_sr = int(
+                            dev_info.get("default_samplerate", 16000)
+                        )
+                    except Exception:
+                        native_sr = 16000
+
+                    stream = sd.InputStream(
+                        samplerate=native_sr,
+                        channels=CHANNELS,
+                        dtype="int16",
+                        device=dev,
+                        callback=callback,
+                    )
+
+                    actual_sr = native_sr
+
+                    print(
+                        f"[JARVIS] Mic opened at native samplerate "
+                        f"{native_sr}Hz (resampling to 16000Hz)"
+                    )
+                    return stream
+
 
             # Which microphone. resolve() returns None for "system default" and
             # for a saved device that is no longer present — so a headset

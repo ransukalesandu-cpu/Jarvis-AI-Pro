@@ -2665,6 +2665,7 @@ class JarvisLive:
         input_checkpoint_logged = False
         output_text_checkpoint_logged = False
         output_audio_checkpoint_logged = False
+        short_audio_fragment_logged = False
         output_audio_bytes_seen = 0
         audio_fragment_buffer = bytearray()
 
@@ -2737,13 +2738,14 @@ class JarvisLive:
                                     self.audio_in_queue.put_nowait(
                                         playable_audio[_i : _i + _SLICE]
                                     )
-                            elif not output_audio_checkpoint_logged:
+                            elif not output_audio_checkpoint_logged and not short_audio_fragment_logged:
                                 print(
                                     f"[AudioTrace 3→4/AUDIO] Short PCM fragment received "
                                     f"({event_bytes} bytes; buffered={len(audio_fragment_buffer)}); "
                                     f"waiting for at least {_MIN_LIVE_AUDIO_FRAME_BYTES} bytes "
                                     "before playback."
                                 )
+                                short_audio_fragment_logged = True
 
                     if sc:
 
@@ -2887,6 +2889,7 @@ class JarvisLive:
                             input_checkpoint_logged = False
                             output_text_checkpoint_logged = False
                             output_audio_checkpoint_logged = False
+                            short_audio_fragment_logged = False
                             output_audio_bytes_seen = 0
                             if (not self._interrupted and self._vocal_audio_started
                                     and self._vocal_plan.after):

@@ -6,11 +6,19 @@ import unittest
 from main import (
     _MIN_LIVE_AUDIO_FRAME_BYTES,
     _PLAYBACK_SLICE_BYTES,
+    _output_write_is_unpaced,
     _take_playback_pcm,
 )
 
 
 class LivePcmBufferingTests(unittest.TestCase):
+    def test_output_pacing_detector_waits_until_one_second_of_audio(self):
+        self.assertFalse(_output_write_is_unpaced(0.99, 0.0))
+
+    def test_output_pacing_detector_flags_writes_that_are_too_fast(self):
+        self.assertTrue(_output_write_is_unpaced(1.2, 0.1))
+        self.assertFalse(_output_write_is_unpaced(1.2, 0.3))
+
     def test_streaming_emits_full_slices_and_keeps_tiny_tail(self):
         buffer = bytearray(b"\x01\x00" * 6001)  # 12,002 bytes
         pcm = _take_playback_pcm(buffer)

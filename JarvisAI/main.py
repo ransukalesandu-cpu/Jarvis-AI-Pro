@@ -180,6 +180,26 @@ def _take_playback_pcm(buffer: bytearray, *, final: bool = False) -> bytes:
     del buffer[:take_bytes]
     return pcm
 
+
+def _output_write_is_unpaced(audio_seconds: float, wall_seconds: float) -> bool:
+    """True when output writes cannot plausibly be keeping pace with playback.
+
+    A healthy blocking output stream may buffer ahead briefly, so do not judge
+    it from the first write. The caller checks this only after at least one full
+    second of PCM has been submitted.
+    """
+    try:
+        audio_seconds = float(audio_seconds)
+        wall_seconds = float(wall_seconds)
+    except (TypeError, ValueError):
+        return False
+    return (
+        audio_seconds >= 1.0
+        and wall_seconds >= 0.0
+        and wall_seconds < audio_seconds * 0.20
+    )
+
+
 # RMS below which 16-bit PCM is treated as room silence; above _LEVEL_FULL it
 # reads as a full-height waveform. Tuned so ordinary speech lands mid-range and
 # the bars still move for a quiet talker — language- and device-independent.
@@ -2717,6 +2737,8 @@ class JarvisLive:
         short_audio_fragment_logged = False
         output_audio_bytes_seen = 0
         audio_fragment_buffer = bytearray()
+        last_audio_event_at = None
+        last_audio_event_duration = 0.0
 
         try:
             while True:
@@ -2750,6 +2772,27 @@ class JarvisLive:
                     _audio_chunks = _live_audio_chunks(response)
                     if _audio_chunks:
                         event_bytes = sum(len(chunk) for chunk in _audio_chunks)
+                        now_audio_event = time.monotonic()
+                        event_audio_duration = event_bytes / (
+                            RECEIVE_SAMPLE_RATE * CHANNELS * 2
+                        )
+                        if last_audio_event_at is not None:
+                            arrival_gap = now_audio_event - last_audio_event_at
+                            expected_gap = last_audio_event_duration + 0.10
+                            if (
+                                arrival_gap > max(0.18, expected_gap)
+                                and arrival_gap < 3.0
+                            ):
+                                print(
+                                    f"[AudioTrace 3→4/AUDIO] Live PCM arrival gap "
+                                    f"{arrival_gap * 1000:.0f} ms after a "
+                                    f"{last_audio_event_duration * 1000:.0f} ms payload; "
+                                    f"next payload={event_bytes} bytes "
+                                    f"({event_audio_duration * 1000:.0f} ms). "
+                                    "This may explain speech stutter."
+                                )
+                        last_audio_event_at = now_audio_event
+                        last_audio_event_duration = event_audio_duration
                         if self._interrupted:
                             # Never let a fragment from a cancelled assistant turn
                             # leak into the next user's response.
@@ -2899,6 +2942,9 @@ class JarvisLive:
                                         self._inflight_user_tool_started = False
 
                         if sc.turn_complete:
+                            # Start arrival-cadence tracking fresh for the next turn.
+                            last_audio_event_at = None
+                            last_audio_event_duration = 0.0
                             # Flush a valid short tail only after Live confirms the
                             # turn ended. Streaming writes remain 50 ms aligned.
                             final_pcm = b""
@@ -3097,6 +3143,13 @@ class JarvisLive:
         first_output_write_started = False
         first_output_write_completed = False
         first_phone_audio_logged = False
+        output_audio_seconds = 0.0
+        output_write_wall_seconds = 0.0
+        output_write_count = 0
+        output_timing_diagnostic_done = False
+        last_output_write_end = None
+        last_queue_starvation_log = 0.0
+
         _spk_name = get_output_device()
         _spk_dev  = audio_devices.resolve(_spk_name, "output")
         if _spk_dev is not None:
@@ -3115,6 +3168,61 @@ class JarvisLive:
             st.start()
             return st
 
+        def _describe_output_route(dev) -> str:
+            try:
+                if sd is None:
+                    return repr(dev)
+                info = sd.query_devices(dev, "output")
+                hostapis = sd.query_hostapis()
+                host_index = int(info.get("hostapi", -1))
+                api_name = (
+                    hostapis[host_index].get("name", "unknown host API")
+                    if 0 <= host_index < len(hostapis)
+                    else "unknown host API"
+                )
+                return f"{info.get('name', 'unknown device')} via {api_name}"
+            except Exception:
+                return repr(dev)
+
+        def _stream_device_index(active_stream, requested_device):
+            try:
+                value = getattr(active_stream, "device", None)
+                if isinstance(value, (tuple, list)):
+                    value = value[-1] if value else None
+                if value is not None:
+                    return int(value)
+            except (TypeError, ValueError, RuntimeError):
+                pass
+            return requested_device
+
+        async def _open_verified_fallback(excluded_device):
+            """Open a speaker endpoint proven to consume output in real time."""
+            try:
+                candidates = await asyncio.to_thread(audio_devices.list_devices, "output")
+            except Exception as exc:
+                print(f"[AudioTrace 4/OUTPUT] Could not enumerate fallback speakers: {exc}")
+                return None
+            for candidate_name in candidates:
+                try:
+                    candidate_device = await asyncio.to_thread(
+                        audio_devices.resolve, candidate_name, "output"
+                    )
+                    if candidate_device is None or candidate_device == excluded_device:
+                        continue
+                    works = await asyncio.to_thread(
+                        audio_devices.probe_transport, candidate_device, "output"
+                    )
+                    if not works:
+                        continue
+                    candidate_stream = await asyncio.to_thread(_open_spk, candidate_device)
+                    return candidate_name, candidate_device, candidate_stream
+                except Exception as exc:
+                    print(
+                        f"[AudioTrace 4/OUTPUT] Fallback speaker "
+                        f"{candidate_name!r} unavailable: {exc}"
+                    )
+            return None
+
         try:
             stream = _open_spk(_spk_dev)
         except Exception as _e:
@@ -3126,11 +3234,17 @@ class JarvisLive:
             print(f"[JARVIS] ⚠️  Output device '{_spk_name}' failed: {_e} — using default")
             self.ui.write_log(f"SYS: Speaker '{_spk_name}' unavailable — using system default.")
             stream = _open_spk(None)
+            _spk_name = ""
+            _spk_dev = None
 
         self._output_stream = stream
         print(
             f"[AudioTrace 4/OUTPUT] Output stream ready: requested_device={_spk_name or 'system default'!r}, "
             f"resolved_device={_spk_dev!r}, sample_rate={RECEIVE_SAMPLE_RATE} Hz."
+        )
+        print(
+            f"[AudioTrace 4/OUTPUT] Active route: {_describe_output_route(_spk_dev)}; "
+            f"stream_active={bool(getattr(stream, 'active', False))}."
         )
 
         # Ask the device how far behind the speakers actually are, rather than
@@ -3154,6 +3268,26 @@ class JarvisLive:
                         timeout=0.1
                     )
                 except asyncio.TimeoutError:
+                    now_mono = time.monotonic()
+                    turn_event_pending = bool(
+                        self._assistant_turn_pending
+                        and not (
+                            self._turn_done_event
+                            and self._turn_done_event.is_set()
+                        )
+                    )
+                    if (
+                        turn_event_pending
+                        and last_output_write_end is not None
+                        and now_mono - last_output_write_end >= 0.10
+                        and now_mono - last_queue_starvation_log >= 1.0
+                    ):
+                        print(
+                            "[AudioTrace 4/BUFFER] Playback queue starved for at least "
+                            f"{(now_mono - last_output_write_end) * 1000:.0f} ms while "
+                            "the assistant turn was still pending; checking Live audio cadence."
+                        )
+                        last_queue_starvation_log = now_mono
                     if self._playback_interrupt_requested.is_set():
                         self._playback_interrupt_requested.clear()
                         try:
@@ -3275,7 +3409,93 @@ class JarvisLive:
                                 f"({len(batch)} bytes)."
                             )
                             first_output_write_started = True
+                        write_started = time.perf_counter()
                         await asyncio.to_thread(stream.write, bytes(batch))
+                        write_elapsed = max(0.0, time.perf_counter() - write_started)
+                        batch_audio_seconds = len(batch) / (
+                            RECEIVE_SAMPLE_RATE * CHANNELS * 2
+                        )
+                        output_audio_seconds += batch_audio_seconds
+                        output_write_wall_seconds += write_elapsed
+                        output_write_count += 1
+                        last_output_write_end = time.monotonic()
+
+                        if output_write_count <= 4:
+                            print(
+                                f"[AudioTrace 4/OUTPUT] Write timing #{output_write_count}: "
+                                f"{len(batch)} bytes (~{batch_audio_seconds * 1000:.0f} ms PCM) "
+                                f"accepted in {write_elapsed * 1000:.0f} ms; "
+                                f"queue_chunks={self.audio_in_queue.qsize()}."
+                            )
+
+                        if (
+                            not output_timing_diagnostic_done
+                            and output_audio_seconds >= 1.0
+                        ):
+                            output_timing_diagnostic_done = True
+                            if _output_write_is_unpaced(
+                                output_audio_seconds, output_write_wall_seconds
+                            ):
+                                print(
+                                    "[AudioTrace 4/OUTPUT] WARNING: submitted "
+                                    f"{output_audio_seconds * 1000:.0f} ms of PCM in only "
+                                    f"{output_write_wall_seconds * 1000:.0f} ms of write time. "
+                                    "The current endpoint may be accepting audio without "
+                                    "playing it in real time; attempting a tested speaker fallback."
+                                )
+                                current_device = _stream_device_index(stream, _spk_dev)
+                                fallback = await _open_verified_fallback(current_device)
+                                if fallback is None:
+                                    print(
+                                        "[AudioTrace 4/OUTPUT] No alternate tested speaker "
+                                        "endpoint was available. Check Windows output device "
+                                        "and volume settings."
+                                    )
+                                else:
+                                    fallback_name, fallback_device, fallback_stream = fallback
+                                    old_stream = stream
+                                    stream = fallback_stream
+                                    self._output_stream = stream
+                                    _spk_name = fallback_name
+                                    _spk_dev = fallback_device
+                                    try:
+                                        old_stream.stop()
+                                    except Exception:
+                                        pass
+                                    try:
+                                        old_stream.close()
+                                    except Exception:
+                                        pass
+                                    output_audio_seconds = 0.0
+                                    output_write_wall_seconds = 0.0
+                                    output_write_count = 0
+                                    print(
+                                        f"[AudioTrace 4/OUTPUT] Switched to tested speaker "
+                                        f"{_spk_name!r} (device {_spk_dev}); "
+                                        f"route={_describe_output_route(_spk_dev)}. "
+                                        "Replaying the last PCM batch."
+                                    )
+                                    replay_started = time.perf_counter()
+                                    await asyncio.to_thread(stream.write, bytes(batch))
+                                    replay_elapsed = max(
+                                        0.0, time.perf_counter() - replay_started
+                                    )
+                                    output_audio_seconds = batch_audio_seconds
+                                    output_write_wall_seconds = replay_elapsed
+                                    output_write_count = 1
+                                    last_output_write_end = time.monotonic()
+                                    print(
+                                        f"[AudioTrace 4/OUTPUT] Fallback replay accepted "
+                                        f"in {replay_elapsed * 1000:.0f} ms."
+                                    )
+                            else:
+                                print(
+                                    "[AudioTrace 4/OUTPUT] Output pacing check: "
+                                    f"{output_audio_seconds * 1000:.0f} ms of PCM took "
+                                    f"{output_write_wall_seconds * 1000:.0f} ms of write time; "
+                                    "no silent/unpaced endpoint signature detected."
+                                )
+
                         if not first_output_write_completed:
                             print(
                                 "[AudioTrace 4/OUTPUT] First sounddevice.write returned; "

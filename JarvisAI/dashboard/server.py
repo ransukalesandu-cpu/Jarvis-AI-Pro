@@ -809,13 +809,42 @@ class DashboardServer:
                         pass
                     return JSONResponse({"error": str(exc)}, status_code=500)
 
+                # Run document parsing in a worker thread so large/slow uploads
+                # do not block the FastAPI event loop or other dashboard clients.
+                def _run_ingestion():
+                    try:
+                        from actions.file_processor import file_processor
+                        result = file_processor({"file_path": str(dest), "action": "summarize"})
+                        if isinstance(result, str) and result.strip():
+                            error_prefixes = ("File not found", "Could not", "Unsupported", "Error:", "Failed:")
+                            if not result.startswith(error_prefixes):
+                                return True, result[:300]
+                    except Exception as exc:
+                        print(f"[Dashboard Upload] AI ingestion failed: {type(exc).__name__}: {exc}")
+                    return False, ""
+
+                try:
+                    loop = asyncio.get_running_loop()
+                    ai_ingested, ingestion_summary = await loop.run_in_executor(None, _run_ingestion)
+                except Exception as exc:
+                    print(f"[Dashboard Upload] Could not schedule ingestion: {type(exc).__name__}: {exc}")
+                    ai_ingested, ingestion_summary = False, ""
+
                 asyncio.create_task(self.broadcast({
                     "type": "file_received",
                     "name": dest.name,
                     "size": size,
                     "saved_to": str(self._uploads_dir),
+                    "ai_ingested": ai_ingested,
+                    "summary": ingestion_summary,
                 }))
-                return JSONResponse({"ok": True, "name": dest.name, "size": size})
+                return JSONResponse({
+                    "ok": True,
+                    "name": dest.name,
+                    "size": size,
+                    "ai_ingested": ai_ingested,
+                    "summary": ingestion_summary,
+                })
         else:
             @app.post("/api/upload")
             async def upload_unavailable(req: Request):

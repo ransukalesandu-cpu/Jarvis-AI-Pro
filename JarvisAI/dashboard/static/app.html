@@ -179,6 +179,61 @@
       });
     }
 
+    let _pinPrompt = false;
+    let _privacyLockActive = false;
+    let _ownerVerified = false;
+    let _lastAuthUiMode = '';
+
+    function _applyAuthStatus(s) {
+      _privacyLockActive = Boolean(s && s.privacy_lock_active);
+      _pinPrompt = Boolean(s && s.pin_required) && !_privacyLockActive;
+      _ownerVerified = Boolean(s && s.owner_verified);
+      const inp = document.getElementById('inp');
+      const send = document.querySelector('.btn-send');
+      const mic = document.getElementById('mic-btn');
+      const file = document.getElementById('file-inp');
+      const attach = document.querySelector('.btn-attach');
+      const wakeButton = document.getElementById('wake');
+      const mode = _privacyLockActive ? 'locked' : (_pinPrompt ? 'pin' : (_ownerVerified ? 'owner' : 'limited'));
+
+      if (inp) {
+        inp.disabled = _privacyLockActive;
+        inp.type = _pinPrompt || _privacyLockActive ? 'password' : 'text';
+        inp.placeholder = _privacyLockActive
+          ? 'Privacy Lock active'
+          : (_pinPrompt ? 'Enter owner PIN/password (checked locally)'
+            : (_ownerVerified ? 'Send a command to JARVIS…' : 'Basic request — private actions need owner verification'));
+        if (_privacyLockActive || _pinPrompt) inp.value = '';
+      }
+      if (send) send.disabled = _privacyLockActive;
+      if (mic) mic.disabled = _privacyLockActive || _pinPrompt;
+      if (file) file.disabled = !_ownerVerified || _privacyLockActive || _pinPrompt;
+      if (attach) {
+        attach.style.pointerEvents = (!_ownerVerified || _privacyLockActive || _pinPrompt) ? 'none' : '';
+        attach.style.opacity = (!_ownerVerified || _privacyLockActive || _pinPrompt) ? '0.4' : '';
+      }
+      if (wakeButton) wakeButton.disabled = _privacyLockActive || _pinPrompt;
+
+      if (mode !== _lastAuthUiMode) {
+        if (mode === 'locked') sys('Privacy Lock active. JARVIS is silent and private access is blocked.');
+        else if (mode === 'pin') sys('Owner verification required. Type the PIN/password here; do not speak it aloud.');
+        else if (mode === 'owner') sys('Owner access verified.');
+        _lastAuthUiMode = mode;
+      }
+    }
+
+    async function _refreshAuthStatus() {
+      if (!_authToken) return;
+      try {
+        const response = await _authFetch('/api/auth/status');
+        if (response.ok) _applyAuthStatus(await response.json());
+      } catch (_) {
+        // A network failure never grants access; the server remains authoritative.
+      }
+    }
+    _refreshAuthStatus();
+    setInterval(_refreshAuthStatus, 1500);
+
     // ── AES-256-CBC encryption (CryptoJS) ────────────────────────────────────
     const _AES_SALT = 'JARVIS-DASHBOARD-v1';
     let _aesKey = null;
@@ -237,6 +292,19 @@
       if (m.type === 'wake')          sys('Wake word detected — connecting…');
       if (m.type === 'sys')           sys(m.text);
       if (m.type === 'file_received') _onFileReceived(m);
+      if (m.type === 'auth_state') {
+        if (m.message) sys(m.message);
+        _refreshAuthStatus();
+      }
+      if (m.type === 'privacy_lock') {
+        _applyAuthStatus({privacy_lock_active:true, pin_required:false, owner_verified:false});
+        if (m.text) sys(m.text);
+        try {
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('JARVIS Privacy Lock', {body:'Owner verification failed three times. Private access is blocked.'});
+          }
+        } catch (_) {}
+      }
     };
 
     function setStatus(s) {
@@ -392,16 +460,26 @@
     function doSend() {
       const inp = document.getElementById('inp');
       const txt = inp.value.trim();
-      if (!txt) return;
+      if (!txt || _privacyLockActive) return;
+      const isCredential = _pinPrompt;
       inp.value = '';
-      append('user', txt);
+      if (isCredential) sys('Checking owner credential locally…');
+      else append('user', txt);
       const enc  = _encrypt(txt);
       const body = enc ? { enc } : { text: txt };
       _authFetch('/api/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
-      });
+      }).then(async response => {
+        if (response.status === 423) {
+          sys('Privacy Lock is active. Commands are blocked until the cooldown ends.');
+          await _refreshAuthStatus();
+        } else if (!response.ok) {
+          sys(isCredential ? 'Owner credential could not be checked.' : 'Command could not be sent.');
+        }
+        if (isCredential) await _refreshAuthStatus();
+      }).catch(() => sys('Connection error.'));
     }
 
     function doWake() {

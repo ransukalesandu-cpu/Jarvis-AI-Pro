@@ -43,6 +43,7 @@ for _stream in ("stdout", "stderr"):
 # ─────────────────────────────────────────────────────────────────────────────
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from core.audio_callback_guard import enqueue_audio_frame
 import re
@@ -147,14 +148,24 @@ LIVE_FALLBACK_MODELS = (
 )
 LIVE_MODEL_COOLDOWN_SECONDS = 300
 CHANNELS            = 1
-SEND_SAMPLE_RATE    = 16000 
+SEND_SAMPLE_RATE    = 16000
 RECEIVE_SAMPLE_RATE = 24000
 CHUNK_SIZE          = 1024
+# Keep real-time audio writes separate from potentially slow automation/search work.
+_AUDIO_OUTPUT_EXECUTOR = ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="jarvis-audio-output"
+)
+_BRIEFING_SEARCH_EXECUTOR = ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="jarvis-briefing-search"
+)
+_OUTPUT_BLOCKSIZE = 2048
 # At 24 kHz mono int16, 10 ms of valid PCM is 480 bytes. Smaller audio events
 # can be transport fragments; buffer them until a complete frame is available.
 _MIN_LIVE_AUDIO_FRAME_BYTES = (RECEIVE_SAMPLE_RATE // 100) * 2
 # Output chunks are kept at 50 ms to avoid tiny writes that can sound choppy.
 _PLAYBACK_SLICE_BYTES = 2400
+# 24 kHz, mono, int16: hold 300 ms of PCM before writing to speakers.
+_MIN_PREBUFFER_BYTES = int(RECEIVE_SAMPLE_RATE * CHANNELS * 2 * 0.30)
 
 
 def _take_playback_pcm(buffer: bytearray, *, final: bool = False) -> bytes:
@@ -343,7 +354,7 @@ _VIS_HOP = 480         # 20 ms between frames, i.e. 50 shapes a second
 
 # Delay from handing the first bytes of a reply to an already-running output
 # stream to hearing them: one callback period, plus whatever the DAC adds.
-_FIRST_SOUND = CHUNK_SIZE / RECEIVE_SAMPLE_RATE      # ~43 ms
+_FIRST_SOUND = _OUTPUT_BLOCKSIZE / RECEIVE_SAMPLE_RATE  # ~85 ms
 # How far past the device's own buffer the mouth's timeline may drift before it
 # is re-anchored. The buffer is the hard limit on how much audio can be queued
 # ahead, so anything beyond it plus a margin for clock error is impossible.
@@ -3189,7 +3200,7 @@ class JarvisLive:
                 samplerate=RECEIVE_SAMPLE_RATE,
                 channels=CHANNELS,
                 dtype="int16",
-                blocksize=CHUNK_SIZE,
+                blocksize=_OUTPUT_BLOCKSIZE,
                 device=dev,
             )
             st.start()
@@ -3287,80 +3298,143 @@ class JarvisLive:
         except Exception:
             pass
 
+        pending_pcm = bytearray()
+        playback_started = False
+        prebuffer_logged = False
         try:
             while True:
-                try:
-                    chunk = await asyncio.wait_for(
-                        self.audio_in_queue.get(),
-                        timeout=0.1
-                    )
-                except asyncio.TimeoutError:
-                    now_mono = time.monotonic()
-                    turn_event_pending = bool(
-                        self._assistant_turn_pending
-                        and not (
-                            self._turn_done_event
-                            and self._turn_done_event.is_set()
-                        )
-                    )
-                    if (
-                        turn_event_pending
-                        and last_output_write_end is not None
-                        and now_mono - last_output_write_end >= 0.10
-                        and now_mono - last_queue_starvation_log >= 1.0
-                    ):
-                        print(
-                            "[AudioTrace 4/BUFFER] Playback queue starved for at least "
-                            f"{(now_mono - last_output_write_end) * 1000:.0f} ms while "
-                            "the assistant turn was still pending; checking Live audio cadence."
-                        )
-                        last_queue_starvation_log = now_mono
-                    if self._playback_interrupt_requested.is_set():
-                        self._playback_interrupt_requested.clear()
-                        try:
-                            if not stream.active:
-                                stream.start()
-                        except Exception as exc:
-                            print(f"[JARVIS] Could not resume output after interrupt: {exc}")
-                    if (
-                        self._turn_done_event
-                        and self._turn_done_event.is_set()
-                        and self.audio_in_queue.empty()
-                    ):
-                        self.set_speaking(False)
-                        self._turn_done_event.clear()
-                    continue
-
+                # An interruption must discard both queued and locally buffered
+                # PCM, otherwise the old response could resume after barge-in.
                 if self._playback_interrupt_requested.is_set():
+                    pending_pcm.clear()
+                    playback_started = False
                     self._playback_interrupt_requested.clear()
                     try:
                         if not stream.active:
                             stream.start()
                     except Exception as exc:
                         print(f"[JARVIS] Could not resume output after interrupt: {exc}")
-                    # Drop a chunk queued just before the interruption.
                     continue
+
+                interrupted_while_buffering = False
+
+                # Maintain a ~300 ms jitter buffer before the first write and
+                # whenever the local buffer falls below target. This gives Live
+                # audio a chance to arrive before the speaker queue runs dry.
+                while len(pending_pcm) < _MIN_PREBUFFER_BYTES:
+                    if self._playback_interrupt_requested.is_set():
+                        pending_pcm.clear()
+                        playback_started = False
+                        self._playback_interrupt_requested.clear()
+                        try:
+                            if not stream.active:
+                                stream.start()
+                        except Exception as exc:
+                            print(f"[JARVIS] Could not resume output after interrupt: {exc}")
+                        interrupted_while_buffering = True
+                        break
+
+                    try:
+                        next_chunk = await asyncio.wait_for(
+                            self.audio_in_queue.get(), timeout=0.1
+                        )
+                    except asyncio.TimeoutError:
+                        now_mono = time.monotonic()
+                        turn_complete = bool(
+                            self._turn_done_event
+                            and self._turn_done_event.is_set()
+                        )
+                        queue_empty = self.audio_in_queue.empty()
+
+                        if (
+                            playback_started
+                            and self._assistant_turn_pending
+                            and not turn_complete
+                            and last_output_write_end is not None
+                            and now_mono - last_output_write_end >= 0.10
+                            and now_mono - last_queue_starvation_log >= 1.0
+                        ):
+                            print(
+                                "[AudioTrace 4/BUFFER] PCM prebuffer fell below "
+                                f"300 ms while the assistant turn was pending; "
+                                f"buffered={len(pending_pcm)} bytes, waiting for Live audio."
+                            )
+                            last_queue_starvation_log = now_mono
+
+                        # Short replies must not be held forever waiting for
+                        # 300 ms that will never arrive. Flush remaining audio
+                        # once Live confirms the turn is complete.
+                        if turn_complete and queue_empty:
+                            if pending_pcm:
+                                if not playback_started:
+                                    print(
+                                        "[AudioTrace 4/BUFFER] Short response: flushing "
+                                        f"{len(pending_pcm)} buffered PCM bytes below the "
+                                        "300 ms prebuffer target."
+                                    )
+                                    playback_started = True
+                                break
+
+                            self.set_speaking(False)
+                            self._turn_done_event.clear()
+                            playback_started = False
+                            prebuffer_logged = False
+                            continue
+                        continue
+
+                    if self._playback_interrupt_requested.is_set():
+                        pending_pcm.clear()
+                        playback_started = False
+                        self._playback_interrupt_requested.clear()
+                        try:
+                            if not stream.active:
+                                stream.start()
+                        except Exception as exc:
+                            print(f"[JARVIS] Could not resume output after interrupt: {exc}")
+                        interrupted_while_buffering = True
+                        break
+
+                    pending_pcm.extend(next_chunk)
+
+                if interrupted_while_buffering:
+                    continue
+
+                if not playback_started:
+                    if len(pending_pcm) >= _MIN_PREBUFFER_BYTES:
+                        playback_started = True
+                        if not prebuffer_logged:
+                            print(
+                                "[AudioTrace 4/BUFFER] PCM prebuffer ready: "
+                                f"{len(pending_pcm)} bytes "
+                                f"(target={_MIN_PREBUFFER_BYTES} bytes, about 300 ms)."
+                            )
+                            prebuffer_logged = True
+                    else:
+                        continue
+
+                if not pending_pcm:
+                    turn_complete = bool(
+                        self._turn_done_event
+                        and self._turn_done_event.is_set()
+                    )
+                    if turn_complete and self.audio_in_queue.empty():
+                        self.set_speaking(False)
+                        self._turn_done_event.clear()
+                        playback_started = False
+                        prebuffer_logged = False
+                    continue
+
+                batch = bytearray(pending_pcm[:4800])
+                del pending_pcm[:len(batch)]
 
                 if not first_output_chunk_logged:
                     print(
-                        f"[AudioTrace 4/OUTPUT] First PCM chunk received from playback queue "
-                        f"({len(chunk)} bytes)."
+                        "[AudioTrace 4/OUTPUT] First buffered PCM batch ready for playback "
+                        f"({len(batch)} bytes; prebuffer target={_MIN_PREBUFFER_BYTES} bytes)."
                     )
                     first_output_chunk_logged = True
 
                 self.set_speaking(True)
-
-                # Batch all immediately-available chunks into one write to reduce
-                # thread-pool round-trips (was one asyncio.to_thread per 50ms slice).
-                # Cap at ~100 ms: small enough to keep interrupt latency low,
-                # while batching writes enough to avoid starving playback on
-                # systems where each sounddevice write crosses a worker thread.
-                batch = bytearray(chunk)
-                while len(batch) < 4800:   # 4800 bytes ≈ 100 ms at 24 kHz / 16-bit mono
-                    try:
-                        batch.extend(self.audio_in_queue.get_nowait())
-                    except asyncio.QueueEmpty:
-                        break
 
                 # Drive the HUD waveform and the avatar's mouth from JARVIS's
                 # own voice. The batch is up to 100 ms long, so we hand over a
@@ -3437,7 +3511,9 @@ class JarvisLive:
                             )
                             first_output_write_started = True
                         write_started = time.perf_counter()
-                        await asyncio.to_thread(stream.write, bytes(batch))
+                        await asyncio.get_running_loop().run_in_executor(
+                            _AUDIO_OUTPUT_EXECUTOR, stream.write, bytes(batch)
+                        )
                         write_elapsed = max(0.0, time.perf_counter() - write_started)
                         batch_audio_seconds = len(batch) / (
                             RECEIVE_SAMPLE_RATE * CHANNELS * 2
@@ -3503,7 +3579,9 @@ class JarvisLive:
                                         "Replaying the last PCM batch."
                                     )
                                     replay_started = time.perf_counter()
-                                    await asyncio.to_thread(stream.write, bytes(batch))
+                                    await asyncio.get_running_loop().run_in_executor(
+                            _AUDIO_OUTPUT_EXECUTOR, stream.write, bytes(batch)
+                        )
                                     replay_elapsed = max(
                                         0.0, time.perf_counter() - replay_started
                                     )
@@ -3635,8 +3713,10 @@ class JarvisLive:
                     time.sleep(1.0)
             return result
 
+        # Isolate slow news/network I/O from the default pool used by other
+        # blocking tasks. In particular, it cannot queue ahead of speaker writes.
         news_future = loop.run_in_executor(
-            None,
+            _BRIEFING_SEARCH_EXECUTOR,
             _fetch_briefing_news,
         )
 

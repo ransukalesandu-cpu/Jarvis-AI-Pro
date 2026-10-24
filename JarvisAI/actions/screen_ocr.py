@@ -10,6 +10,17 @@ import re
 import shutil
 from pathlib import Path
 
+from core import self_repair
+
+
+def _record_ocr_error(exc: Exception, operation: str) -> None:
+    """Record a redacted OCR incident without masking the original failure."""
+    try:
+        self_repair.record_error(exc, operation=operation)
+    except Exception:
+        # Diagnostics must never stop OCR or replace its real error.
+        pass
+
 
 def _normalise(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
@@ -43,27 +54,35 @@ def read_screen_words() -> list[dict]:
         from PIL import Image
         from pytesseract import Output
     except ImportError as exc:
+        _record_ocr_error(exc, "screen_ocr:dependencies")
         raise RuntimeError(
             "OCR dependencies are missing. Install mss, Pillow and pytesseract in JARVIS's Python environment."
         ) from exc
 
     _configure_tesseract(pytesseract)
 
-    with mss.mss() as capture:
-        monitor = capture.monitors[1] if len(capture.monitors) > 1 else capture.monitors[0]
-        shot = capture.grab(monitor)
-        image = Image.frombytes("RGB", shot.size, shot.rgb)
-        offset_x, offset_y = int(monitor.get("left", 0)), int(monitor.get("top", 0))
+    try:
+        with mss.mss() as capture:
+            monitor = capture.monitors[1] if len(capture.monitors) > 1 else capture.monitors[0]
+            shot = capture.grab(monitor)
+            image = Image.frombytes("RGB", shot.size, shot.rgb)
+            offset_x, offset_y = int(monitor.get("left", 0)), int(monitor.get("top", 0))
+    except Exception as exc:
+        _record_ocr_error(exc, "screen_ocr:capture")
+        raise RuntimeError(
+            f"Screen capture failed: {type(exc).__name__}: {self_repair.redact_secrets(exc)}"
+        ) from exc
 
     try:
         data = pytesseract.image_to_data(image, output_type=Output.DICT, config="--psm 11")
     except Exception as exc:
+        _record_ocr_error(exc, "screen_ocr:recognition")
         if "tesseract" in str(exc).lower() or "not found" in str(exc).lower():
             raise RuntimeError(
                 "Tesseract OCR engine is not installed or could not be found. Install the Tesseract desktop engine "
                 "or add its install folder to PATH, then restart JARVIS. Installing pytesseract alone is not enough."
             ) from exc
-        raise RuntimeError(f"OCR failed: {type(exc).__name__}: {exc}") from exc
+        raise RuntimeError(f"OCR failed: {type(exc).__name__}: {self_repair.redact_secrets(exc)}") from exc
 
     words = []
     for i, raw in enumerate(data.get("text", [])):

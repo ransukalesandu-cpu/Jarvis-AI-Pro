@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from actions.screen_ocr import _configure_tesseract, find_text_matches
+from actions.screen_ocr import _configure_tesseract, _record_ocr_error, find_text_matches
 
 
 def word(text, x, y=10, confidence=90, line=(1, 1, 1), w=None):
@@ -57,6 +57,16 @@ class ScreenOCRMatchingTests(unittest.TestCase):
             fake.pytesseract.tesseract_cmd,
             str(Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")),
         )
+
+    def test_ocr_error_is_sent_to_self_repair_logger(self):
+        with patch("actions.screen_ocr.self_repair.record_error") as record:
+            _record_ocr_error(RuntimeError("OCR failed"), "screen_ocr:test")
+        record.assert_called_once()
+        self.assertEqual(record.call_args.kwargs["operation"], "screen_ocr:test")
+
+    def test_ocr_error_logger_does_not_mask_original_failure(self):
+        with patch("actions.screen_ocr.self_repair.record_error", side_effect=OSError("disk full")):
+            _record_ocr_error(RuntimeError("OCR failed"), "screen_ocr:test")
 
 
 if __name__ == "__main__":

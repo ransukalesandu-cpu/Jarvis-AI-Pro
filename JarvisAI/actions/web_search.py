@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
-from core import injection_guard
+from core import injection_guard, self_repair
 
 
 """
@@ -533,11 +533,19 @@ def _gemini_headlines(
     if response is None:
         return [], ""
 
-    raw = ""
+    # Providers can return blocked, empty, or partially populated responses.
+    # Treat those as an empty result so callers can use their normal fallback.
+    candidates = getattr(response, "candidates", None) or []
+    if not candidates:
+        return [], ""
+    content = getattr(candidates[0], "content", None)
+    parts = getattr(content, "parts", None) or []
 
-    for part in response.candidates[0].content.parts:
-        if hasattr(part, "text") and part.text:
-            raw += part.text
+    raw = ""
+    for part in parts:
+        text_part = getattr(part, "text", None)
+        if isinstance(text_part, str) and text_part:
+            raw += text_part
 
     headlines = []
 
@@ -881,11 +889,18 @@ def web_search(
         )
 
     except Exception as e:
-        print(
-            f"[WebSearch] ❌ All backends failed: {e}"
-        )
+        # Persist a redacted incident so repeated provider/runtime failures can
+        # be diagnosed later. Logging must never mask the user's search result.
+        try:
+            incident = self_repair.record_error(e, operation=f"web_search:{mode}")
+            safe_error = incident["diagnosis"]["message"]
+        except Exception:
+            safe_error = self_repair.redact_secrets(e)
 
-        return f"Search failed: {e}"
+        print(
+            f"[WebSearch] ❌ Search handler failed: {safe_error}"
+        )
+        return f"Search failed: {safe_error}"
 
 
 # ── Tool declaration ─────────────────────────────────────────────────────────

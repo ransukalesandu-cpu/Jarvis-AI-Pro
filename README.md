@@ -8,7 +8,7 @@ Jarvis AI is a real-time personal AI assistant designed to interact naturally wi
 
 Built for **Windows, macOS, and Linux**, Jarvis combines the **Gemini Live API** with a native desktop HUD, persistent memory, computer automation, plugins, web intelligence, an animated AI avatar, proactive intelligence, a security layer, and a Twilio-powered phone interface.
 
-> **No Jarvis subscription. No hosted Jarvis server. Your assistant runs on your machine.**
+> **No Jarvis subscription. Cloud-first Gemini Live integration. Low-memory architecture running on your machine.**
 
 ---
 
@@ -1401,9 +1401,25 @@ Jarvis supports:
 
 ---
 
-# 📱 Remote Dashboard
+# 📱 Remote & Tablet Wi-Fi Dashboard
 
-Jarvis includes a phone dashboard that can display assistant status and send remote commands while the computer remains the primary system.
+Jarvis includes a responsive dashboard designed for phones and Android tablets over Wi-Fi. No USB cable or ADB debugging is required for standard access.
+
+The dashboard runs directly from JARVIS on your laptop (`127.0.0.1:8000`), allowing tablet browsers on the same local Wi-Fi network to connect via private IP or local hostname. All command endpoints require PIN, QR, or token authentication. Unauthenticated public command endpoints are never exposed.
+
+### Wi-Fi Dashboard Setup for Tablets
+
+1. **Connect Laptop and Tablet to the Same Wi-Fi Network.**
+2. **Start JARVIS on the Laptop.**
+3. **Open Remote Control** in JARVIS's HUD to display the pairing PIN or QR code.
+4. **Open the Dashboard URL** (e.g. `http://<laptop-local-ip>:8000`) in the tablet browser and enter the PIN or scan the QR code.
+5. **Truthful Status Indicators**: The dashboard header displays real-time connection status (`Active`, `Sleeping`, `Reconnecting`, `Disconnected`).
+
+To measure laptop resource usage and verify Cloud-First Low-RAM mode, run the memory diagnostic tool:
+
+```powershell
+python diagnose.py --memory
+```
 
 JARVIS continues to run as its native PyQt desktop application on the PC. You can access the browser dashboard from a phone or build the native Java/Gradle tablet remote HUD in [android-client](android-client/README.md). In this setup the PC keeps using its selected microphone and external speaker; the tablet is a remote display/controller and does not handle audio.
 

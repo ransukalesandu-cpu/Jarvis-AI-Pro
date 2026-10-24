@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import unittest
 
-from main import (
+from JarvisAI.main import (
     _MIN_LIVE_AUDIO_FRAME_BYTES,
     _MIN_PREBUFFER_BYTES,
     _OUTPUT_BLOCKSIZE,

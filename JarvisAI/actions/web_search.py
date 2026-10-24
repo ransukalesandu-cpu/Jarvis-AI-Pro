@@ -893,14 +893,15 @@ def web_search(
 TOOL = {
     "name": "web_search",
     "description": (
-        "Searches the web. Use for ANY question about current facts, "
-        "events, prices, or topics — always prefer this over guessing. "
-        "Modes: 'search' (default), 'news' (latest headlines on a topic), "
-        "For Sri Lankan local news, use news mode and return headlines from "
-        "Newsfirst and Ada Derana in both English and Sinhala when available. "
-        "'research' (deep comprehensive answer), 'price' (product cost "
-        "lookup), 'images' (show a thumbnail gallery), 'compare' (side-by-side "
-        "comparison of items). Search and news results appear as HUD cards."
+        "Actually perform an internet lookup whenever the user asks to search, "
+        "look up, verify, or find online information, or asks about current facts. "
+        "Do not just explain or claim you searched: call this tool and use its results. "
+        "Modes: 'search' (default web results), 'news' (latest headlines), "
+        "'research' (detailed investigation), 'price' (current product price), "
+        "'images' (show image results), 'compare' (compare items; provide items). "
+        "For Sri Lankan local news, news mode searches Newsfirst and Ada Derana "
+        "in English and Sinhala when available. Return grounded findings and source "
+        "URLs; if search fails or returns no results, say so without guessing."
     ),
     "parameters": {
         "type": "OBJECT",

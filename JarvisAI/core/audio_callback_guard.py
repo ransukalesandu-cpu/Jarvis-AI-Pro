@@ -13,6 +13,7 @@ from typing import Any
 
 _LOCK = threading.Lock()
 _LAST_REPORTED: dict[str, float] = {}
+_QUEUE_STATS = {"enqueued": 0, "dropped_full": 0}
 
 
 def guarded_audio_callback(
@@ -49,14 +50,24 @@ def guarded_audio_callback(
 
 
 def enqueue_audio_frame(queue: Any, item: Any) -> bool:
-    """Queue one real-time audio frame without leaking QueueFull exceptions.
+    """Queue one real-time audio frame and count accepted/dropped frames.
 
     The caller should schedule this on the queue's owning event loop. When
     the consumer falls behind, drop the newest frame rather than accumulating
-    latency or raising an unhandled exception on the event loop.
+    latency or raising an unhandled event-loop exception.
     """
     try:
         queue.put_nowait(item)
-        return True
     except asyncio.QueueFull:
+        with _LOCK:
+            _QUEUE_STATS["dropped_full"] += 1
         return False
+    with _LOCK:
+        _QUEUE_STATS["enqueued"] += 1
+    return True
+
+
+def audio_queue_snapshot() -> dict[str, int]:
+    """Return a thread-safe, read-only copy of audio queue counters."""
+    with _LOCK:
+        return dict(_QUEUE_STATS)

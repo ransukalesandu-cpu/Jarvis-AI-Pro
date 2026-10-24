@@ -7482,7 +7482,7 @@ class MainWindow(QMainWindow):
         except (RuntimeError, TypeError, ValueError):
             pass
         overlay = getattr(self, "_immersive_overlay", None)
-        if overlay is not None:
+        if overlay is not None and getattr(self, "_immersive_open", False):
             try:
                 overlay.hud.push_visemes(frames, hop, at)
             except (RuntimeError, TypeError, ValueError):

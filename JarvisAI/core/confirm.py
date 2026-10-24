@@ -179,8 +179,20 @@ def resolve_by_voice(text: str) -> str | None:
     manual HUD click; the pending object is checked again before consuming it.
     """
     phrase = " ".join(re.findall(r"[a-z0-9]+", str(text or "").casefold()))
-    accepted = {"confirm", "confirm action", "approve", "approve action"}
-    rejected = {"cancel", "cancel action", "deny", "deny action"}
+    # Use explicit phrases so ordinary conversation (especially a bare
+    # "yes" or "no") cannot approve or reject a sensitive operation by accident.
+    # Voice approval still passes through Voice ID below; manual-click-only
+    # operations remain click-only regardless of the phrase.
+    accepted = {
+        "confirm", "confirm action", "approve", "approve action",
+        "accept access", "allow access", "approve access", "grant access",
+        "accept request", "approve request", "allow request",
+    }
+    rejected = {
+        "cancel", "cancel action", "deny", "deny action",
+        "deny access", "reject access", "decline access",
+        "deny request", "reject request", "decline request",
+    }
     if phrase in accepted:
         decision, label = True, "approved"
     elif phrase in rejected:

@@ -9,6 +9,47 @@ from actions import web_search as ws
 
 
 class WebSearchFallbackTests(unittest.TestCase):
+    def test_sri_lanka_news_uses_grounded_fallback_after_publisher_timeout(self):
+        no_headlines = (
+            "No Sri Lankan headlines were found from Newsfirst or Ada Derana right now."
+        )
+        grounded = (
+            "Sri Lankan headlines verified from Google Search. "
+            "Newsfirst reported a current update with publication date and source URL. "
+            "Ada Derana also published a separate current update with its source URL."
+        )
+        with patch.object(ws, "_sri_lanka_news", return_value=no_headlines), \
+                patch.object(ws, "_gemini_search", return_value=grounded) as gemini:
+            result = ws._news(
+                "Sri Lankan local news from Newsfirst and Ada Derana in Sinhala and English"
+            )
+        self.assertEqual(result, grounded)
+        gemini.assert_called_once()
+        self.assertIn("Google Search", gemini.call_args.args[0])
+        self.assertIn("Newsfirst", gemini.call_args.args[0])
+
+    def test_sri_lanka_news_returns_clear_message_if_grounded_fallback_fails(self):
+        no_headlines = (
+            "No Sri Lankan headlines were found from Newsfirst or Ada Derana right now."
+        )
+        with patch.object(ws, "_sri_lanka_news", return_value=no_headlines), \
+                patch.object(ws, "_gemini_search", side_effect=RuntimeError("quota exhausted")):
+            result = ws._news("Sri Lankan local news")
+        self.assertIn("could not be fetched right now", result)
+        self.assertIn("providers timed out", result)
+
+    def test_ddg_news_can_skip_duplicate_text_fallback(self):
+        manager = SimpleNamespace()
+        manager.__enter__ = lambda: manager
+        manager.__exit__ = lambda *_: False
+        manager.news = lambda *args, **kwargs: (_ for _ in ()).throw(
+            TimeoutError("provider timed out")
+        )
+        with patch.object(ws, "_get_ddgs", return_value=lambda: manager), \
+                patch.object(ws, "_ddg_search") as text_fallback:
+            self.assertEqual(ws._ddg_news("test query", fallback_to_text=False), [])
+        text_fallback.assert_not_called()
+
     def test_image_search_returns_empty_gallery_when_provider_fails(self):
         with patch.object(ws, "_get_ddgs", side_effect=RuntimeError("network down")):
             self.assertEqual(ws._ddg_images("test query"), [])

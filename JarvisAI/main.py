@@ -1579,13 +1579,23 @@ class JarvisLive:
     def _on_text_command(self, text: str):
         if not self._loop or not self.session:
             return
-        pin_match = re.search(r"\b(?:pin|password|passcode)\b.*?([0-9]{4,8})\b", text, re.IGNORECASE)
-        if not pin_match and security.get_auth_state() in (security.CHALLENGE_MODE, security.RESTRICTED_MODE):
-            pin_match = re.search(r"\b([0-9]{4,8})\b", text)
-        if pin_match:
-            pin_candidate = pin_match.group(1)
-            if security.verify_pin(pin_candidate):
-                self.ui.write_log("SEC: Master PIN verified successfully via text input. FULL_ACCESS_MODE granted.")
+
+        # Dedicated PIN Interception Path: Only accept PIN input while explicitly in CHALLENGE_MODE
+        if security.get_auth_state() == security.CHALLENGE_MODE:
+            pin_match = re.search(r"\b(?:pin|password|passcode)\b.*?([0-9]{4,8})\b", text, re.IGNORECASE)
+            if not pin_match:
+                pin_match = re.search(r"\b([0-9]{4,8})\b", text)
+            if pin_match:
+                pin_candidate = pin_match.group(1)
+                success = security.verify_pin(pin_candidate)
+                del pin_candidate, pin_match
+                if success:
+                    self.ui.write_log("SEC: Master PIN verified successfully. FULL_ACCESS_MODE granted.")
+                else:
+                    self.ui.write_log("SEC: Incorrect PIN entry attempt.")
+                # Return immediately without sending PIN text to Gemini, session logs, or dashboard
+                return
+
         # Respect wake-word sleep: a typed command must not be answered while
         # asleep either (the sleep gate is not just for the mic). Wake first with
         # "Hey Jarvis" or the WAKE NOW button.
@@ -2949,17 +2959,27 @@ class JarvisLive:
                         if sc.input_transcription and sc.input_transcription.text:
                             txt = _clean_transcript(sc.input_transcription.text)
                             if txt:
+                                # Dedicated PIN Interception Path: Only accept PIN input while in CHALLENGE_MODE
+                                if security.get_auth_state() == security.CHALLENGE_MODE:
+                                    pin_match = re.search(r"\b(?:pin|password|passcode)\b.*?([0-9]{4,8})\b", txt, re.IGNORECASE)
+                                    if not pin_match:
+                                        pin_match = re.search(r"\b([0-9]{4,8})\b", txt)
+                                    if pin_match:
+                                        pin_candidate = pin_match.group(1)
+                                        success = security.verify_pin(pin_candidate)
+                                        del pin_candidate, pin_match
+                                        if success:
+                                            self.ui.write_log("SEC: Master PIN verified successfully. FULL_ACCESS_MODE granted.")
+                                        else:
+                                            self.ui.write_log("SEC: Incorrect PIN entry attempt.")
+                                        # Do NOT forward PIN speech to Gemini, session logs, or dashboard
+                                        in_buf = []
+                                        continue
+
                                 if not input_checkpoint_logged:
                                     print(f"[AudioTrace 2/STT] Recognized user speech: {txt[:160]!r}")
                                     input_checkpoint_logged = True
                                 self._assistant_turn_pending = True
-                                pin_match = re.search(r"\b(?:pin|password|passcode)\b.*?([0-9]{4,8})\b", txt, re.IGNORECASE)
-                                if not pin_match and security.get_auth_state() in (security.CHALLENGE_MODE, security.RESTRICTED_MODE):
-                                    pin_match = re.search(r"\b([0-9]{4,8})\b", txt)
-                                if pin_match:
-                                    pin_candidate = pin_match.group(1)
-                                    if security.verify_pin(pin_candidate):
-                                        self.ui.write_log("SEC: Master PIN verified successfully via voice input. FULL_ACCESS_MODE granted.")
                                 # Some Live responses deliver the user's
                                 # transcription before the interrupted marker.
                                 # Once speech is transcribed, it belongs to the

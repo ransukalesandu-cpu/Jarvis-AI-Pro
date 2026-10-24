@@ -1,9 +1,14 @@
 """
-JarvisAI/security/voice_auth.py — Local Voice Biometrics & Anti-Spoofing Engine.
+JarvisAI/security/voice_auth.py — Neural Speaker Verification & Anti-Spoofing Engine.
 
-Extracts 192-dimensional speaker embedding vectors, performs spectral liveness/anti-spoofing
-verification, and compares live audio samples against the enrolled `master_voice.emb`
-profile using cosine similarity (threshold >= 0.80).
+DISCLAIMER & SECURITY LIMITATIONS:
+  Spectral liveness heuristics and speaker embedding comparisons provide speaker identity
+  convenience verification, not hardware-backed biometric liveness or military-grade anti-spoofing.
+  High-quality voice clones or studio replays may bypass acoustic checks. High-impact or destructive
+  system operations must require PIN authentication or multi-factor verification.
+
+Reuses repository's neural `core.voice_id` (SpeechBrain ECAPA-TDNN) for speaker verification when available and enrolled.
+If neural verification is un-enrolled or dependencies are missing, verification fails closed to PIN challenge.
 """
 
 from __future__ import annotations
@@ -13,6 +18,12 @@ import sys
 import math
 from pathlib import Path
 import numpy as np
+
+try:
+    from core import voice_id
+    _VOICE_ID_MODULE_AVAILABLE = True
+except ImportError:
+    _VOICE_ID_MODULE_AVAILABLE = False
 
 DEFAULT_EMB_PATH = Path(__file__).resolve().parent.parent / "config" / "master_voice.emb"
 DEFAULT_FALLBACK_EMB_PATH = Path("master_voice.emb")
@@ -34,13 +45,20 @@ def compute_cosine_similarity(v1: np.ndarray, v2: np.ndarray) -> float:
 
 
 class SpeakerAuthenticator:
-    """Modular Speaker Verification Engine using 192-D Neural Embeddings & Spectral Liveness."""
+    """
+    Neural Speaker Verification Engine.
+    Leverages core.voice_id (SpeechBrain ECAPA-TDNN) for 192-D speaker embeddings.
+    Fails closed to PIN when neural speaker models are un-enrolled or unavailable.
+    """
 
     def __init__(self, emb_path: str | Path | None = None):
         self.emb_path = Path(emb_path) if emb_path else DEFAULT_EMB_PATH
 
     def extract_embedding(self, audio: np.ndarray | list | bytes, sample_rate: int = 16000) -> np.ndarray:
-        """Extract a 192-dimensional normalized speaker embedding vector."""
+        """
+        Extract a 192-dimensional speaker embedding vector using core.voice_id if available.
+        Fails closed with zero vector if unavailable.
+        """
         if isinstance(audio, bytes):
             samples = np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
         else:
@@ -52,51 +70,25 @@ class SpeakerAuthenticator:
         if len(samples) == 0:
             return np.zeros(EMBEDDING_DIM, dtype=np.float32)
 
-        # Normalize waveform RMS
-        rms = float(np.sqrt(np.mean(np.square(samples))))
-        if rms > 1e-6:
-            samples = samples / rms
+        # Use SpeechBrain via core.voice_id if backend ready
+        if _VOICE_ID_MODULE_AVAILABLE and voice_id.backend_ready():
+            try:
+                # voice_id._embedding accepts waveform samples
+                int16_audio = (np.clip(samples, -1.0, 1.0) * 32767.0).astype(np.int16)
+                emb = voice_id._embedding(int16_audio)
+                if len(emb) == EMBEDDING_DIM:
+                    return emb.astype(np.float32)
+            except Exception as e:
+                print(f"[SpeakerAuthenticator] SpeechBrain embedding extraction failed: {e}")
 
-        # FFT magnitude spectrum
-        fft_data = np.abs(np.fft.rfft(samples, n=1024))
-        num_bins = len(fft_data)
-
-        # Divide spectrum into energy sub-bands
-        if num_bins >= EMBEDDING_DIM:
-            band_size = num_bins // EMBEDDING_DIM
-            bands = []
-            for i in range(EMBEDDING_DIM):
-                start = i * band_size
-                end = (i + 1) * band_size if i < EMBEDDING_DIM - 1 else num_bins
-                band_energy = float(np.mean(fft_data[start:end]))
-                bands.append(band_energy)
-            vec = np.array(bands, dtype=np.float32)
-        else:
-            vec = np.pad(fft_data.astype(np.float32), (0, EMBEDDING_DIM - num_bins))
-
-        # Modulate vector with frame energies
-        frame_len = 512
-        if len(samples) >= frame_len:
-            num_frames = min(16, len(samples) // frame_len)
-            frame_energies = []
-            for f in range(num_frames):
-                frame = samples[f * frame_len : (f + 1) * frame_len]
-                frame_energies.append(float(np.std(frame)))
-            if frame_energies:
-                mod = np.tile(np.array(frame_energies, dtype=np.float32), math.ceil(EMBEDDING_DIM / len(frame_energies)))[:EMBEDDING_DIM]
-                vec = vec + 0.1 * mod
-
-        norm = float(np.linalg.norm(vec))
-        if norm > 1e-6:
-            vec = vec / norm
-        else:
-            vec = np.zeros(EMBEDDING_DIM, dtype=np.float32)
-            vec[0] = 1.0
-
-        return vec.astype(np.float32)
+        # Fail closed: return zero vector if neural embedding model unavailable
+        return np.zeros(EMBEDDING_DIM, dtype=np.float32)
 
     def check_liveness(self, audio: np.ndarray | list | bytes, sample_rate: int = 16000) -> tuple[bool, str]:
-        """Spectral liveness/anti-spoofing check to reject synthesized or replayed audio."""
+        """
+        Spectral liveness/anti-spoofing heuristic check.
+        NOTE: This is a basic spectral acoustic check, not proof against voice cloning or acoustic replays.
+        """
         if isinstance(audio, bytes):
             samples = np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
         else:
@@ -143,7 +135,7 @@ class SpeakerAuthenticator:
         return True, "Liveness check passed."
 
     def save_master_profile(self, embedding: np.ndarray, filepath: str | Path | None = None) -> Path:
-        """Save a 192-dimensional vector to `master_voice.emb`."""
+        """Save a 192-dimensional vector to local `master_voice.emb` file."""
         target_path = Path(filepath) if filepath else self.emb_path
         target_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -157,14 +149,6 @@ class SpeakerAuthenticator:
 
         # Save binary embedding array
         np.save(str(target_path), vec)
-
-        # Also attempt to keep root master_voice.emb in sync
-        try:
-            if target_path.resolve() != DEFAULT_FALLBACK_EMB_PATH.resolve():
-                np.save(str(DEFAULT_FALLBACK_EMB_PATH), vec)
-        except Exception:
-            pass
-
         return target_path
 
     def load_master_profile(self, filepath: str | Path | None = None) -> np.ndarray | None:
@@ -181,14 +165,8 @@ class SpeakerAuthenticator:
                     try:
                         data = np.load(str(candidate))
                         vec = np.asarray(data, dtype=np.float32).reshape(-1)
-                        if len(vec) == EMBEDDING_DIM:
+                        if len(vec) == EMBEDDING_DIM and float(np.linalg.norm(vec)) > 0:
                             return vec
-                    except Exception:
-                        pass
-                    try:
-                        data = np.fromfile(str(candidate), dtype=np.float32)
-                        if len(data) == EMBEDDING_DIM:
-                            return data
                     except Exception:
                         pass
         return None
@@ -200,14 +178,18 @@ class SpeakerAuthenticator:
         master_emb_path: str | Path | None = None,
     ) -> tuple[bool, float, bool]:
         """
-        Real-time verification: compare live voice against master profile using cosine similarity.
+        Real-time verification: compare live voice against enrolled master profile using cosine similarity.
+        Fails closed (returns False) if un-enrolled or neural backend is unavailable.
         Returns: (is_master, similarity_score, is_live)
         """
-        live_emb = self.extract_embedding(audio, sample_rate=sample_rate)
+        master_emb = self.load_master_profile(master_emb_path)
         is_live, _liveness_reason = self.check_liveness(audio, sample_rate=sample_rate)
 
-        master_emb = self.load_master_profile(master_emb_path)
         if master_emb is None:
+            return False, 0.0, is_live
+
+        live_emb = self.extract_embedding(audio, sample_rate=sample_rate)
+        if float(np.linalg.norm(live_emb)) == 0.0:
             return False, 0.0, is_live
 
         similarity = compute_cosine_similarity(live_emb, master_emb)

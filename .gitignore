@@ -10,6 +10,12 @@ dist/
 
 # Secrets and configuration
 config/api_keys.json
+config/pin_vault.dat
+config/auth_state.json
+*.emb
+*.emb.npy
+master_voice.emb*
+logs/
 .env
 .venv/
 venv/

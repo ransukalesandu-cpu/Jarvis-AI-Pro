@@ -75,14 +75,64 @@ def _log(msg: str) -> None:
 
 
 def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
-    """Execute action autonomously without manual approval prompts or confirmation banners."""
-    _log(f"SYS: Autonomous execution granted — {title}")
+    """Park an irreversible action behind the on-screen gate or execute if authorized in FULL_ACCESS_MODE."""
+    global _pending
+
     try:
-        result = run()
-        return result if result else "Done."
+        from core import security
+        auth_state = security.get_auth_state()
+    except Exception:
+        auth_state = "RESTRICTED_MODE"
+
+    # In FULL_ACCESS_MODE, execute immediately with audit log
+    if auth_state == "FULL_ACCESS_MODE":
+        _log(f"SYS: Autonomous execution granted in FULL_ACCESS_MODE — {title}")
+        try:
+            result = run()
+            return result if result else "Done."
+        except Exception as e:
+            _log(f"ERR: Execution failed for {title}: {e}")
+            return f"Error executing {title}: {e}"
+
+    if _show_cb is None:
+        return (f"I cannot confirm '{title}' right now because the interface is "
+                f"not available, so I have not done it.")
+
+    with _lock:
+        if _pending is not None and time.monotonic() - _pending.at <= TIMEOUT_SECONDS:
+            existing_title = _pending.title
+            _log(f"SYS: Refused to replace pending confirmation — {existing_title}")
+            return (
+                f"A different confirmation is already waiting: {existing_title}. "
+                "Resolve or cancel it before requesting another action."
+            )
+        if _pending is not None:
+            _pending = None
+        _pending = _Pending(key=key, title=title, detail=detail,
+                            run=run, at=time.monotonic())
+
+    try:
+        _show_cb(title, detail)
     except Exception as e:
-        _log(f"ERR: Autonomous execution failed for {title}: {e}")
-        return f"Error executing {title}: {e}"
+        with _lock:
+            _pending = None
+        return f"Could not ask for confirmation: {e}. Nothing was done."
+
+    _log(f"SYS: Awaiting confirmation — {title}")
+    if key in _MANUAL_CLICK_ONLY_KEYS:
+        guidance = (
+            "This request requires the user to click CONFIRM on the HUD; spoken "
+            "approval is disabled for it. They can click CANCEL instead."
+        )
+    else:
+        guidance = (
+            "The user can say 'confirm action' or click CONFIRM on the HUD; "
+            "they can say 'cancel action' or click CANCEL instead."
+        )
+    return (
+        f"[CONFIRMATION_PENDING] I have put a confirmation on screen for: {title}. "
+        f"{guidance} Do not claim it is done."
+    )
 
 
 def resolve(accepted: bool, source: str = "HUD") -> None:

@@ -13,6 +13,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -480,3 +481,64 @@ class SelfUpdateTierTests(unittest.TestCase):
             security.TIER_DANGEROUS,
         )
 
+
+
+class PersonalTrustModeTests(unittest.TestCase):
+    def test_personal_mode_is_off_by_default(self):
+        from core import security
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("JARVIS_PERSONAL_MODE", None)
+            self.assertFalse(security.personal_mode_enabled())
+            self.assertEqual(
+                security.tier_for("computer_control", {"action": "click"}),
+                security.TIER_DANGEROUS,
+            )
+
+    def test_personal_mode_relaxes_only_selected_local_actions(self):
+        from core import security
+        with unittest.mock.patch.dict(os.environ, {"JARVIS_PERSONAL_MODE": "1"}):
+            self.assertTrue(security.personal_mode_enabled())
+            self.assertEqual(
+                security.tier_for("computer_control", {"action": "click"}),
+                security.TIER_SENSITIVE,
+            )
+            self.assertEqual(
+                security.tier_for("file_controller", {"action": "rename"}),
+                security.TIER_SENSITIVE,
+            )
+            self.assertEqual(
+                security.tier_for("file_controller", {"action": "write"}),
+                security.TIER_DANGEROUS,
+            )
+            self.assertEqual(
+                security.tier_for("desktop", {"action": "wallpaper"}),
+                security.TIER_SENSITIVE,
+            )
+
+    def test_personal_mode_keeps_high_impact_actions_gated(self):
+        from core import security
+        with unittest.mock.patch.dict(os.environ, {"JARVIS_PERSONAL_MODE": "on"}):
+            self.assertEqual(
+                security.tier_for("file_controller", {"action": "delete"}),
+                security.TIER_DANGEROUS,
+            )
+            self.assertEqual(
+                security.tier_for("file_controller", {"action": "organize_desktop"}),
+                security.TIER_DANGEROUS,
+            )
+            self.assertEqual(
+                security.tier_for("email_gmail", {"action": "send"}),
+                security.TIER_DANGEROUS,
+            )
+            self.assertEqual(
+                security.tier_for("send_message", {"action": "send"}),
+                security.TIER_DANGEROUS,
+            )
+            self.assertEqual(
+                security.tier_for("code_helper", {"action": "run"}),
+                security.TIER_DANGEROUS,
+            )
+            self.assertEqual(
+                security.tier_for("shutdown_jarvis", {}),
+                security.TIER_DANGEROUS,
+            )

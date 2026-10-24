@@ -323,6 +323,8 @@ computer input that can submit or change data remain approval-gated. Email,
 Instagram, and phone plugin actions still require confirmation for every
 request.
 
+For a trusted single-user PC, an optional **Personal Mode** reduces repetitive confirmation banners for selected local desktop actions and safe folder/rename operations while retaining audit logs, rate limits, protected-path checks, provenance checks, and confirmations for overwrite-capable file operations, external communications, generated-code tasks, and other high-impact operations. Enable it locally through the `JARVIS_PERSONAL_MODE=1` process environment variable; it cannot be toggled by a voice or remote-tablet command. See [Personal Mode setup](JarvisAI/docs/PERSONAL_MODE.md).
+
 Unknown tools are **never automatically treated as SAFE**.
 
 Unknown actions default to:

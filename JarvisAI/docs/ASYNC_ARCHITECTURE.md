@@ -6,7 +6,7 @@ This document describes the current runtime boundaries and the rules for extendi
 
 - **Qt/UI thread:** owns QApplication, widgets, HUD updates, and Qt signals.
 - **JARVIS asyncio thread:** `main()` starts a dedicated non-daemon worker thread; that worker calls `asyncio.run(jarvis.run())`. The asyncio loop owns the Gemini Live session, session-scoped tasks, asyncio queues/events, reconnects, and shutdown coordination.
-- **Audio callbacks and background workers:** audio callbacks must stay short and must not directly manipulate Qt widgets or use asyncio queues as if they were thread-safe. Cross-thread handoffs must use a thread-safe loop API or a thread-safe queue.
+- **Audio callbacks and background workers:** audio callbacks must stay short and must not directly manipulate Qt widgets or use asyncio queues as if they were thread-safe. Cross-thread handoffs must use a thread-safe loop API or a thread-safe queue. Voice barge-in uses WebRTC VAD as a speech/noise gate, then EchoGuard to reject the assistant's own speaker echo.
 - **Blocking operations:** use `asyncio.get_running_loop().run_in_executor(...)` (or `asyncio.to_thread` where compatible) for blocking work that would otherwise stall Live audio/session tasks.
 
 ## Rules for async code
@@ -17,6 +17,7 @@ This document describes the current runtime boundaries and the rules for extendi
 4. Treat cancellation and shutdown as normal lifecycle events. Stop accepting work, signal the loop, allow session tasks to unwind, then close the loop. Do not block the event-loop thread waiting for a future submitted to that same loop.
 5. Keep microphone callbacks lightweight: no network calls, long computations, blocking waits, or UI operations in the callback.
 6. When adding a task to a session, make its ownership clear. Prefer the existing session `asyncio.TaskGroup` for tasks that should end when the Live session ends; use explicitly tracked tasks for longer-lived work and cancel/await them during shutdown.
+7. For voice interruption, confirm speech with 20 ms WebRTC VAD frames (when the optional module is available), then apply EchoGuard and its sustained-evidence rule. On confirmation, signal the event loop, abort the output device buffer, drain queued audio, and resume the stream before the next response. Keep the existing local wake-word interrupt as a separate trusted path.
 
 ## Initial hardening in this change
 
@@ -27,5 +28,5 @@ The async methods in `JarvisAI/main.py` now call `asyncio.get_running_loop()` ra
 - Start the app and confirm the HUD opens.
 - Confirm Gemini Live connects and microphone input is streamed.
 - Trigger a tool that runs blocking work and verify the UI remains responsive.
-- Test manual interruption, reconnect, and orderly shutdown.
+- Test manual interruption, voice barge-in over speaker output, false triggers from fan/hum noise, reconnect, and orderly shutdown.
 - Test on the target Windows/Python version; static inspection alone does not prove device-specific audio behavior.

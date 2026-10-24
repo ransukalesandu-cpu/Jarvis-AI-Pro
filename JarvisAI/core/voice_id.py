@@ -68,12 +68,30 @@ def _enabled_setting() -> bool:
         return False
 
 
-def is_enrolled() -> bool:
-    return PROFILE_FILE.is_file()
+def is_enrolled(role: str | None = None) -> bool:
+    if not PROFILE_FILE.is_file():
+        return False
+    if role is None:
+        return True
+    try:
+        profiles = _load_profiles()
+        return role.strip().lower() in profiles
+    except Exception:
+        return False
 
 
 def is_enabled() -> bool:
     return _enabled_setting() and is_enrolled()
+
+
+def get_enrolled_roles() -> list[str]:
+    if not is_enrolled():
+        return []
+    try:
+        profiles = _load_profiles()
+        return list(profiles.keys())
+    except Exception:
+        return []
 
 
 def status() -> dict:
@@ -81,6 +99,7 @@ def status() -> dict:
         "available": backend_ready(),
         "enrolled": is_enrolled(),
         "enabled": is_enabled(),
+        "roles": get_enrolled_roles(),
     }
 
 
@@ -121,7 +140,26 @@ def disable() -> None:
     _set_enabled(False)
 
 
-def remove_profile() -> None:
+def remove_profile(role: str | None = None) -> None:
+    if role is not None and is_enrolled():
+        target_role = str(role).strip().lower()
+        try:
+            profiles = _load_profiles()
+            if target_role in profiles:
+                del profiles[target_role]
+                if not profiles:
+                    remove_profile(None)
+                    return
+                profiles_dict = {r: vec.tolist() for r, vec in profiles.items()}
+                record = json.dumps({"version": 2, "profiles": profiles_dict}).encode("utf-8")
+                protected = _protect(record)
+                temp_path = PROFILE_FILE.with_suffix(".tmp")
+                temp_path.write_bytes(protected)
+                os.replace(temp_path, PROFILE_FILE)
+                return
+        except Exception:
+            pass
+
     _set_enabled(False)
     try:
         PROFILE_FILE.unlink()
@@ -296,24 +334,56 @@ def _profile_key(*, create: bool = True) -> bytes:
     return key
 
 
-def _load_profile() -> np.ndarray:
+def _load_profiles() -> dict[str, np.ndarray]:
     raw = _unprotect(PROFILE_FILE.read_bytes())
     record = json.loads(raw.decode("utf-8"))
-    if record.get("version") != 1:
+    version = record.get("version")
+    result: dict[str, np.ndarray] = {}
+    if version == 1:
+        vector = np.asarray(record.get("embedding", []), dtype=np.float32)
+        norm = float(np.linalg.norm(vector))
+        if vector.size >= 32 and norm:
+            result["owner"] = vector / norm
+    elif version == 2:
+        profiles_data = record.get("profiles", {})
+        if isinstance(profiles_data, dict):
+            for role, emb_list in profiles_data.items():
+                vector = np.asarray(emb_list, dtype=np.float32)
+                norm = float(np.linalg.norm(vector))
+                if vector.size >= 32 and norm:
+                    result[role] = vector / norm
+    else:
         raise ValueError("The saved Voice ID profile has an unknown format.")
-    vector = np.asarray(record.get("embedding", []), dtype=np.float32)
-    norm = float(np.linalg.norm(vector))
-    if vector.size < 32 or not norm:
+    if not result:
         raise ValueError("The saved Voice ID profile is invalid.")
-    return vector / norm
+    return result
 
 
-def enroll(audio) -> None:
-    """Create an encrypted speaker embedding; raw enrollment audio is discarded."""
+def _load_profile() -> np.ndarray:
+    profiles = _load_profiles()
+    if "owner" in profiles:
+        return profiles["owner"]
+    return next(iter(profiles.values()))
+
+
+def enroll(audio, role: str = "owner") -> None:
+    """Create an encrypted speaker embedding for `role`; raw enrollment audio is discarded."""
     embedding = _embedding(audio)
+    target_role = str(role or "owner").strip().lower()
+
+    profiles: dict[str, np.ndarray] = {}
+    if PROFILE_FILE.is_file():
+        try:
+            profiles = _load_profiles()
+        except Exception:
+            profiles = {}
+
+    profiles[target_role] = embedding
+    profiles_dict = {r: vec.tolist() for r, vec in profiles.items()}
+
     record = json.dumps({
-        "version": 1,
-        "embedding": embedding.tolist(),
+        "version": 2,
+        "profiles": profiles_dict,
     }).encode("utf-8")
     PROFILE_FILE.parent.mkdir(parents=True, exist_ok=True)
     protected = _protect(record)
@@ -329,13 +399,17 @@ def enroll(audio) -> None:
     _set_enabled(True)
 
 
-def verify(audio) -> tuple[bool, float]:
+def verify(audio, role: str = "owner") -> tuple[bool, float]:
     """Return (match, similarity); fail closed on any model/profile error."""
     if not is_enabled() or not backend_ready():
         return False, 0.0
     try:
         with _inference_lock:
-            template = _load_profile()
+            profiles = _load_profiles()
+        target_role = str(role or "owner").strip().lower()
+        if target_role not in profiles:
+            return False, 0.0
+        template = profiles[target_role]
         sample = _embedding(audio)
         if sample.shape != template.shape:
             return False, 0.0
@@ -344,3 +418,27 @@ def verify(audio) -> tuple[bool, float]:
     except Exception as e:
         print(f"[Voice ID] Verification unavailable: {e}")
         return False, 0.0
+
+
+def identify_speaker(audio) -> tuple[str, float]:
+    """Identify speaker role among enrolled roles ('owner', 'sister', etc.), or 'stranger'."""
+    if not is_enabled() or not backend_ready():
+        return ("owner", 1.0) if not is_enabled() else ("stranger", 0.0)
+    try:
+        with _inference_lock:
+            profiles = _load_profiles()
+        if not profiles:
+            return "stranger", 0.0
+        sample = _embedding(audio)
+        best_role = "stranger"
+        best_score = 0.0
+        for role, template in profiles.items():
+            if sample.shape == template.shape:
+                score = float(np.dot(sample, template))
+                if score >= SIMILARITY_THRESHOLD and score > best_score:
+                    best_score = score
+                    best_role = role
+        return best_role, best_score
+    except Exception as e:
+        print(f"[Voice ID] Identification failed: {e}")
+        return "stranger", 0.0

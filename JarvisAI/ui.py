@@ -52,10 +52,14 @@ from core.hud_workspace import HudWorkspace
 from core.jarvis_logo_overlay import JarvisLogoOverlay
 
 try:
-    # Synthetic robotic hologram; shares the existing viseme/audio interface.
-    from core.artificial_avatar import HoloAvatar
-except Exception:      # pragma: no cover — HUD must never die over cosmetics
-    HoloAvatar = None
+    # 3D human head avatar (measured geometry)
+    from core.avatar import HoloAvatar
+except Exception:
+    try:
+        # Synthetic robotic hologram fallback
+        from core.artificial_avatar import HoloAvatar
+    except Exception:      # pragma: no cover — HUD must never die over cosmetics
+        HoloAvatar = None
 
 
 def _base_dir() -> Path:
@@ -7111,18 +7115,28 @@ class MainWindow(QMainWindow):
         from PyQt6.QtWidgets import QMenu, QMessageBox
 
         menu = QMenu(self)
-        reenroll = menu.addAction("Enroll / replace owner voice")
-        remove = menu.addAction("Remove Voice ID profile")
+        reenroll_owner = menu.addAction("Enroll / replace owner voice")
+        enroll_sister = menu.addAction("Enroll / replace sister voice")
+        remove_sister = menu.addAction("Remove sister voice profile")
+        remove_all = menu.addAction("Remove all Voice ID profiles")
         chosen = menu.exec(self._voice_id_btn.mapToGlobal(pos))
-        if chosen == reenroll:
-            result = self.on_voice_id_action("enroll")
+        if chosen == reenroll_owner:
+            result = self.on_voice_id_action("enroll_owner")
             if result:
                 self._log.append_log(f"SYS: {result}")
-        elif chosen == remove:
+        elif chosen == enroll_sister:
+            result = self.on_voice_id_action("enroll_sister")
+            if result:
+                self._log.append_log(f"SYS: {result}")
+        elif chosen == remove_sister:
+            result = self.on_voice_id_action("remove_sister")
+            if result:
+                self._log.append_log(f"SYS: {result}")
+        elif chosen == remove_all:
             answer = QMessageBox.question(
                 self,
                 "Remove Voice ID",
-                "Delete the encrypted owner voice profile and disable speaker checks?",
+                "Delete all encrypted voice profiles and disable speaker checks?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )

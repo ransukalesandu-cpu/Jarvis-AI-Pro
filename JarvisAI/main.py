@@ -2426,7 +2426,14 @@ class JarvisLive:
 
         try:
             def _open_mic(dev):
+
+                if sd is None:
+                    raise RuntimeError(
+                        "sounddevice is unavailable (PortAudio missing)"
+                    )
+
                 nonlocal actual_sr
+
                 try:
                     stream = sd.InputStream(
                         samplerate=SEND_SAMPLE_RATE,
@@ -2438,12 +2445,20 @@ class JarvisLive:
                     )
                     actual_sr = SEND_SAMPLE_RATE
                     return stream
+
                 except Exception:
                     try:
-                        dev_info = sd.query_devices(dev, "input") if dev is not None else sd.query_devices(kind="input")
-                        native_sr = int(dev_info.get("default_samplerate", 16000))
+                        dev_info = (
+                            sd.query_devices(dev, "input")
+                            if dev is not None
+                            else sd.query_devices(kind="input")
+                        )
+                        native_sr = int(
+                            dev_info.get("default_samplerate", 16000)
+                        )
                     except Exception:
                         native_sr = 16000
+
                     stream = sd.InputStream(
                         samplerate=native_sr,
                         channels=CHANNELS,
@@ -2451,9 +2466,15 @@ class JarvisLive:
                         device=dev,
                         callback=callback,
                     )
+
                     actual_sr = native_sr
-                    print(f"[JARVIS] 🎤 Mic opened at native samplerate {native_sr}Hz (resampling to 16000Hz)")
+
+                    print(
+                        f"[JARVIS] Mic opened at native samplerate "
+                        f"{native_sr}Hz (resampling to 16000Hz)"
+                    )
                     return stream
+
 
             # Which microphone. resolve() returns None for "system default" and
             # for a saved device that is no longer present — so a headset

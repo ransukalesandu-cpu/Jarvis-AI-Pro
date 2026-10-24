@@ -93,6 +93,7 @@ _audit_key_lock = threading.Lock()
 _log_cb: Optional[Callable[[str], None]] = None
 _voice_id_required_cb: Optional[Callable[[], bool]] = None
 _voice_id_verifier_cb: Optional[Callable[[], bool]] = None
+_voice_id_role_cb: Optional[Callable[[], str]] = None
 _manual_user_turn = False
 _manual_user_turn_lock = threading.Lock()
 
@@ -101,12 +102,14 @@ def bind(
     logger: Callable[[str], None] | None = None,
     voice_id_required: Callable[[], bool] | None = None,
     voice_id_verifier: Callable[[], bool] | None = None,
+    voice_id_role: Callable[[], str] | None = None,
 ) -> None:
     """Wire logging and optional owner-speaker checks from main.py."""
-    global _log_cb, _voice_id_required_cb, _voice_id_verifier_cb
+    global _log_cb, _voice_id_required_cb, _voice_id_verifier_cb, _voice_id_role_cb
     _log_cb = logger
     _voice_id_required_cb = voice_id_required
     _voice_id_verifier_cb = voice_id_verifier
+    _voice_id_role_cb = voice_id_role
 
 
 def _log(msg: str) -> None:
@@ -401,16 +404,31 @@ def _voice_id_is_required() -> bool:
         return True
 
 
-def _voice_id_authorized() -> bool:
+def get_current_speaker_role() -> str:
     with _manual_user_turn_lock:
         if _manual_user_turn:
-            return True
-    if _voice_id_verifier_cb is None:
-        return False
-    try:
-        return bool(_voice_id_verifier_cb())
-    except Exception:
-        return False
+            return "owner"
+    if not _voice_id_is_required():
+        return "owner"
+    if _voice_id_role_cb is not None:
+        try:
+            role = _voice_id_role_cb()
+            if role:
+                return str(role).lower()
+        except Exception:
+            return "stranger"
+    if _voice_id_verifier_cb is not None:
+        try:
+            return "owner" if _voice_id_verifier_cb() else "stranger"
+        except Exception:
+            return "stranger"
+    return "stranger"
+
+
+def _voice_id_authorized() -> bool:
+    if not _voice_id_is_required():
+        return True
+    return get_current_speaker_role() == "owner"
 
 
 def voice_id_required() -> bool:
@@ -812,19 +830,18 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
                 f"something I just read rather than from you directly. Ask me for "
                 f"it yourself if you want it done.")
 
-    # When Voice ID is enabled, verify the recent microphone audio before
-    # allowing a SENSITIVE action to run immediately. DANGEROUS actions still
-    # go to the confirmation panel; spoken approval is separately identity-
-    # checked in main.py, while a deliberate click remains the manual fallback.
-    # Typed commands and authenticated paired-phone commands are marked as
-    # deliberate manual input by main.py.
-    if tier == TIER_SENSITIVE and _voice_id_is_required():
-        if not _voice_id_authorized():
-            audit("call", name, tier, "denied", "Voice ID did not match or was unavailable")
-            _log(f"VOICE ID blocked '{name}' — no owner speaker match.")
+    # When Voice ID is enabled, check speaker role before allowing SENSITIVE or DANGEROUS
+    # actions. Full access is granted to the owner. Non-owner speakers (sister, stranger)
+    # are denied sensitive and dangerous system operations.
+    if _voice_id_is_required():
+        speaker_role = get_current_speaker_role()
+        if speaker_role != "owner" and tier in (TIER_SENSITIVE, TIER_DANGEROUS):
+            audit("call", name, tier, "denied", f"Voice ID role '{speaker_role}' denied full access")
+            _log(f"VOICE ID blocked '{name}' — speaker is '{speaker_role}', owner access required.")
+            role_label = f"recognized as {speaker_role}" if speaker_role != "stranger" else "not recognized as the owner"
             return (
-                f"I have not done '{_confirmation_label(name)}' because Voice ID could not "
-                "verify the owner. Try again in your own voice or use the manual control."
+                f"I cannot perform '{_confirmation_label(name)}' because full access is reserved for the PC owner "
+                f"({role_label})."
             )
 
     # 2) rate limit — independent of confirmation, catches loops.

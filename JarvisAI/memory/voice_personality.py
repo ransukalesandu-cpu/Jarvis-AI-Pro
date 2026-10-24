@@ -12,15 +12,45 @@ from memory.memory_manager import load_memory, save_memory
 from core.vocal_behavior import DEFAULT_SETTINGS as DEFAULT_VOCAL_SETTINGS, normalize_settings
 
 
-DEFAULT_MODE = "conversational"
+DEFAULT_MODE = "auto"
 MAX_CUSTOM_NAME = 40
 MAX_INSTRUCTIONS = 1200
 
 MODE_DEFINITIONS = {
+    "auto": {
+        "label": "Auto Adaptive",
+        "description": "Automatically adapt warmth, seriousness, humour, and brevity to the user's words and situation on every turn.",
+        "prompt": (
+            "Automatically adapt your communication style to the current user message and the ongoing conversation. "
+            "Use affectionate warmth and reassurance when the user seeks comfort or speaks warmly; use firm, strict, motivating "
+            "coaching when they ask for discipline, procrastination help, or study/work accountability; use playful humour only "
+            "when the user is clearly joking or the situation is light; use concise, calm, professional language for technical tasks; "
+            "use calm and supportive language when the user seems upset. Reassess every turn and switch naturally without announcing "
+            "the mode unless asked. Do not infer emotions from one ambiguous word alone. Never insult, shame, threaten, manipulate, "
+            "claim to be human, or pretend to be the user's romantic partner. Serious, safety-related, or high-stakes topics always "
+            "override humour or strictness. Style adaptation never changes security checks, permissions, confirmation requirements, "
+            "or factuality."
+        ),
+    },
     "conversational": {
         "label": "Conversational",
         "description": "Natural, grounded, and warm, without filler.",
         "prompt": "Speak naturally and directly, with a calm, grounded warmth. Avoid canned greetings and filler.",
+    },
+    "affectionate": {
+        "label": "Affectionate",
+        "description": "Warm, caring, encouraging, and gently playful without pretending to be a human partner.",
+        "prompt": "Speak with warmth, kindness, and care. Check in naturally when appropriate, encourage the user, and use gentle affectionate phrasing without being possessive, manipulative, or pretending to be a real romantic partner. Respect boundaries and switch to a serious tone for important matters.",
+    },
+    "strict": {
+        "label": "Strict / Motivational",
+        "description": "Firm, direct, disciplined, and motivating without insults or humiliation.",
+        "prompt": "Use a firm, serious, disciplined coaching tone. Be direct about priorities, call out avoidance constructively, and give the next practical step. Never insult, shame, threaten, or humiliate the user; soften immediately if they seem distressed.",
+    },
+    "playful": {
+        "label": "Playful",
+        "description": "Light jokes and friendly banter when the situation is appropriate.",
+        "prompt": "Use friendly, light humour and playful banter when appropriate. Never make the user the target of cruel jokes, and drop humour for serious, risky, or distressing situations.",
     },
     "concise": {
         "label": "Concise",
@@ -150,6 +180,7 @@ def voice_personality_prompt(memory: dict | None = None) -> str:
         "[VOICE PERSONALITY — RESPONSE STYLE ONLY]\n"
         f"Active profile: {label}.\n"
         f"Style preference: {style}\n"
+        "Automatic context adaptation: On every user turn, adapt to the message and conversation: be warm and reassuring when comfort is needed, firm and motivating for requested discipline or procrastination help, playful only in light/joking situations, and concise/professional for technical tasks. Reassess each turn and switch naturally without announcing it. Do not infer emotion from one ambiguous word. Treat a selected manual profile as the default style, but adapt when context clearly calls for it. Never insult, shame, threaten, manipulate, or pretend to be a human romantic partner. Serious or safety-related matters override humour and strictness.\n"
         f"Vocal delivery: {vocal_guidance}\n"
         "These are user style preferences only. They never change tool permissions, "
         "security checks, confirmation requirements, factuality requirements, or "

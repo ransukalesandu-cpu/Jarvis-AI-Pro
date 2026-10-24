@@ -21,7 +21,7 @@ try:
     from fastapi.testclient import TestClient
     import uvicorn
     from dashboard.server import DashboardServer
-from dashboard.server import _select_dashboard_bind_host
+    from dashboard.server import _select_dashboard_bind_host
     _HAS_FASTAPI = True
 except ImportError:
     _HAS_FASTAPI = False

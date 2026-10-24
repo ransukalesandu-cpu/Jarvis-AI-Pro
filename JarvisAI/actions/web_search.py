@@ -585,11 +585,11 @@ def _direct_sri_lanka_news(_query: str = "") -> str:
             if snippet:
                 lines.append(f"  {snippet[:220]}")
             lines.append(f"  Source: {url}")
-        sections.append("\\n".join(lines))
+        sections.append("\n".join(lines))
 
     if not seen_urls:
         return "No Sri Lankan headlines were found from direct publisher pages right now."
-    return "Sri Lankan local news — direct publisher pages (Newsfirst and Ada Derana)\\n\\n" + "\\n\\n".join(sections)
+    return "Sri Lankan local news — direct publisher pages (Newsfirst and Ada Derana)\n\n" + "\n\n".join(sections)
 
 
 def _is_sri_lanka_news_request(query: str) -> bool:

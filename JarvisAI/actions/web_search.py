@@ -122,7 +122,7 @@ def _get_api_key() -> str:
 # ── Gemini search ────────────────────────────────────────────────────────────
 
 
-def _gemini_search(query: str) -> str:
+def _gemini_search(query: str, *, timeout_ms: int = 30_000) -> str:
     if not _gemini_available():
         raise _QuotaCooldown(
             "Gemini grounding is in quota cooldown"
@@ -141,7 +141,7 @@ def _gemini_search(query: str) -> str:
                     }
                 ]
             },
-            timeout_ms=30_000,
+            timeout_ms=timeout_ms,
         )
 
         if response is None:
@@ -658,8 +658,10 @@ def _news(query: str) -> str:
             + (query or "latest Sri Lankan news")
         )
         grounded_news = _run_bounded(
-            lambda: _gemini_search(gemini_query),
-            timeout=12.0,
+            # Use a shorter per-model HTTP deadline, but allow time for the
+            # paced model ladder and one fresh-connection retry to finish.
+            lambda: _gemini_search(gemini_query, timeout_ms=10_000),
+            timeout=28.0,
             label="Gemini-grounded Sri Lankan news",
         )
         if grounded_news and len(grounded_news.strip()) > 60:

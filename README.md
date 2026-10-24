@@ -1403,7 +1403,7 @@ Jarvis supports:
 
 Jarvis includes a phone dashboard that can display assistant status and send remote commands while the computer remains the primary system.
 
-JARVIS continues to run as its native PyQt desktop application on the computer. You can access the browser dashboard from a phone, or build the native Java/Gradle tablet voice client in [android-client](android-client/README.md). The native client uses the tablet microphone and speaker while the desktop continues to run the assistant session; it does not replace the desktop UI.
+JARVIS continues to run as its native PyQt desktop application on the PC. You can access the browser dashboard from a phone or build the native Java/Gradle tablet remote HUD in [android-client](android-client/README.md). In this setup the PC keeps using its selected microphone and external speaker; the tablet is a remote display/controller and does not handle audio.
 
 The dashboard listens only on `127.0.0.1:8000`. Tailscale Serve can provide a private HTTPS URL to devices in your tailnet without router port forwarding or opening a public port. Tailscale Serve is available only within the tailnet; do not use Tailscale Funnel for this dashboard. See the [Tailscale Serve guide](https://tailscale.com/docs/features/tailscale-serve) and [Serve CLI reference](https://tailscale.com/docs/reference/tailscale-cli/serve).
 
@@ -1455,9 +1455,9 @@ changes, update the variable and restart JARVIS.
 
 In JARVIS's desktop UI, open **REMOTE CONTROL** and keep the six-character code private. The browser dashboard can use the QR flow. For the native tablet client, enter the root HTTPS Tailscale hostname and the displayed code in the app, then tap **PAIR TABLET**. The current native client uses manual URL/code pairing rather than QR scanning.
 
-For tablet voice, open **JARVIS Mobile**, tap **START VOICE**, and grant microphone permission. Android shows an ongoing foreground-service notification while the tablet microphone is streamed to JARVIS. The app uses native `AudioRecord` at 16 kHz mono PCM16, and plays JARVIS response audio through `AudioTrack` at 24 kHz mono PCM16. Tap **STOP VOICE** to stop the microphone stream. The tablet renders its animated orb locally, and the app does not save raw audio files.
+After pairing, tap **CONNECT REMOTE HUD**. The tablet shows desktop status/transcript events and can send typed commands. To speak to JARVIS, talk into the microphone connected to the PC; JARVIS uses the output speaker selected in its desktop audio settings. The tablet does not request microphone permissions and does not capture, transmit, or play voice audio.
 
-The native client currently uses manual start/stop. BLE proximity-based automatic voice handoff and scanning the desktop QR directly inside the app are not included yet. The desktop's optional BLE beacon support does not automatically enable these features in the Android app.
+The native client currently uses manual URL/code pairing and start/stop remote connection. QR scanning and BLE proximity-based automatic handoff are not implemented in this app.
 
 If pairing fails, check that dashboard dependencies are installed, `JARVIS_REMOTE_URL` is set to the exact root HTTPS Tailscale hostname, JARVIS was restarted after setting it, and `tailscale serve status` shows the expected hostname. A one-time pairing code expires, is rate-limited, and can be used only once. The current dashboard implementation keeps paired-device tokens in memory; after restarting JARVIS or revoking devices, pair the tablet again.
 

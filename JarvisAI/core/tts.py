@@ -12,6 +12,7 @@ import os
 import queue as _queue
 import threading
 from typing import Callable, Optional
+import re
 
 import numpy as np
 
@@ -19,6 +20,56 @@ try:
     import sounddevice as sd
 except Exception:
     sd = None
+
+
+
+def clean_text_for_speech(text: str) -> str:
+    """Prepare text for TTS engines by stripping markdown/code clutter and expanding units."""
+    if not text:
+        return ""
+
+    # 1. Remove fenced code blocks and inline code
+    cleaned = re.sub(r"```[\s\S]*?```", "", text)
+    cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
+
+    # 2. Clean Markdown links: [anchor text](url) -> anchor text
+    cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
+
+    # 3. Remove standalone URLs
+    cleaned = re.sub(r"https?://\S+", "", cleaned)
+
+    # 4. Strip Markdown headers, bold, italics, bullets
+    cleaned = re.sub(r"^#{1,6}\s+", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", cleaned)
+    cleaned = re.sub(r"\*([^*]+)\*", r"\1", cleaned)
+    cleaned = re.sub(r"_([^_]+)_", r"\1", cleaned)
+    cleaned = re.sub(r"^\s*[-*+]\s+", "", cleaned, flags=re.MULTILINE)
+
+    # 5. Expand common technical symbols and units for speech
+    replacements = [
+        (r"\b(\d+)\s*GB\b", r"\1 gigabytes"),
+        (r"\b(\d+)\s*MB\b", r"\1 megabytes"),
+        (r"\b(\d+)\s*KB\b", r"\1 kilobytes"),
+        (r"\b(\d+)\s*TB\b", r"\1 terabytes"),
+        (r"\b(\d+)\s*GHz\b", r"\1 gigahertz"),
+        (r"\b(\d+)\s*MHz\b", r"\1 megahertz"),
+        (r"\b(\d+)\s*kHz\b", r"\1 kilohertz"),
+        (r"\b(\d+)\s*Hz\b", r"\1 hertz"),
+        (r"\b(\d+)\s*ms\b", r"\1 milliseconds"),
+        (r"\b(\d+)\s*km/h\b", r"\1 kilometers per hour"),
+        (r"\b(\d+)\s*mph\b", r"\1 miles per hour"),
+        (r"%", " percent"),
+        (r"\s*=\s*", " equals "),
+        (r"\s*\+\s*", " plus "),
+        (r"\s*>\s*", " is greater than "),
+        (r"\s*<\s*", " is less than "),
+    ]
+    for pattern, repl in replacements:
+        cleaned = re.sub(pattern, repl, cleaned, flags=re.IGNORECASE)
+
+    # 6. Normalize whitespace
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
 
 
 
@@ -117,9 +168,12 @@ class EdgeTTSEngine:
         self.voice = voice
 
     def speak(self, text: str) -> None:
+        cleaned_text = clean_text_for_speech(text)
+        if not cleaned_text:
+            return
         loop = asyncio.new_event_loop()
         try:
-            audio_bytes = loop.run_until_complete(self._synth(text))
+            audio_bytes = loop.run_until_complete(self._synth(cleaned_text))
         finally:
             loop.close()
         if audio_bytes:
@@ -316,6 +370,9 @@ class KokoroTTSEngine:
             print(f"[TTS] Kokoro warmup warning: {e}")
 
     def speak(self, text: str) -> None:
+        cleaned_text = clean_text_for_speech(text)
+        if not cleaned_text:
+            return
         with self._lock:
             if self._pipeline is None:
                 self._init()
@@ -331,7 +388,7 @@ class KokoroTTSEngine:
 
         def _synth():
             try:
-                for _, _, audio in self._pipeline(text, voice=self.voice, speed=self.speed):
+                for _, _, audio in self._pipeline(cleaned_text, voice=self.voice, speed=self.speed):
                     if audio is not None:
                         arr = _to_numpy(audio)
                         arr = _compress_silence(arr)
@@ -366,13 +423,16 @@ class ElevenLabsTTSEngine:
         self.voice_id = voice_id
 
     def speak(self, text: str) -> None:
+        cleaned_text = clean_text_for_speech(text)
+        if not cleaned_text:
+            return
         import requests
         headers = {
             "xi-api-key":   self.api_key,
             "Content-Type": "application/json",
         }
         payload = {
-            "text":     text,
+            "text":     cleaned_text,
             "model_id": "eleven_multilingual_v2",
             "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
         }

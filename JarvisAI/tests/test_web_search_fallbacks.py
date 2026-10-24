@@ -9,6 +9,15 @@ from actions import web_search as ws
 
 
 class WebSearchFallbackTests(unittest.TestCase):
+    @staticmethod
+    def _run_bounded_inline(fn, _timeout, _label="task"):
+        # These tests exercise fallback selection, not Python's thread scheduler.
+        # Inline execution keeps the provider calls deterministic and offline.
+        try:
+            return fn()
+        except Exception:
+            return None
+
     def test_sri_lanka_news_uses_grounded_fallback_after_publisher_timeout(self):
         no_headlines = (
             "No Sri Lankan headlines were found from Newsfirst or Ada Derana right now."
@@ -18,7 +27,8 @@ class WebSearchFallbackTests(unittest.TestCase):
             "Newsfirst reported a current update with publication date and source URL. "
             "Ada Derana also published a separate current update with its source URL."
         )
-        with patch.object(ws, "_sri_lanka_news", return_value=no_headlines), \
+        with patch.object(ws, "_run_bounded", side_effect=self._run_bounded_inline), \
+                patch.object(ws, "_sri_lanka_news", return_value=no_headlines), \
                 patch.object(ws, "_gemini_search", return_value=grounded) as gemini:
             result = ws._news(
                 "Sri Lankan local news from Newsfirst and Ada Derana in Sinhala and English"
@@ -32,7 +42,8 @@ class WebSearchFallbackTests(unittest.TestCase):
         no_headlines = (
             "No Sri Lankan headlines were found from Newsfirst or Ada Derana right now."
         )
-        with patch.object(ws, "_sri_lanka_news", return_value=no_headlines), \
+        with patch.object(ws, "_run_bounded", side_effect=self._run_bounded_inline), \
+                patch.object(ws, "_sri_lanka_news", return_value=no_headlines), \
                 patch.object(ws, "_gemini_search", side_effect=RuntimeError("quota exhausted")):
             result = ws._news("Sri Lankan local news")
         self.assertIn("could not be fetched right now", result)

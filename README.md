@@ -8,7 +8,7 @@ Jarvis AI is a real-time personal AI assistant designed to interact naturally wi
 
 Built for **Windows, macOS, and Linux**, Jarvis combines the **Gemini Live API** with a native desktop HUD, persistent memory, computer automation, plugins, web intelligence, an animated AI avatar, proactive intelligence, a security layer, and a Twilio-powered phone interface.
 
-> **No Jarvis subscription. Cloud-first Gemini Live integration. Low-memory architecture running on your machine.**
+> **No Jarvis subscription. No hosted Jarvis server. Your assistant runs on your machine.**
 
 ---
 
@@ -35,7 +35,7 @@ It can:
 * 🔋 Report its own battery status
 * 📞 Answer phone calls when you are unavailable
 * 📝 Capture caller messages as voicemail transcripts
-* 📱 Provide a remote dashboard for your phone
+* 📱 Provide a remote dashboard for your phone or Android tablet (via Wi-Fi or USB cable using ADB)
 * 🎨 Display an animated holographic-style avatar
 * 🧠 Show two full-screen, state-reactive neural visualizations with optional hand control
 * 📈 Display animated cross-platform system telemetry and live data panels
@@ -1401,27 +1401,25 @@ Jarvis supports:
 
 ---
 
-# 📱 Remote & Tablet Wi-Fi Dashboard
+# 📱 Remote Dashboard & Android Tablet USB Connection
 
-Jarvis includes a responsive dashboard designed for phones and Android tablets over Wi-Fi. No USB cable or ADB debugging is required for standard access.
+Jarvis includes a remote dashboard that can display assistant status, transcripts, and send remote commands from a mobile browser or Android tablet while the laptop/PC remains the primary system.
 
-The dashboard runs directly from JARVIS on your laptop (`127.0.0.1:8000`), allowing tablet browsers on the same local Wi-Fi network to connect via private IP or local hostname. All command endpoints require PIN, QR, or token authentication. Unauthenticated public command endpoints are never exposed.
+## 🔌 Android Tablet USB Connection (ADB Reverse Port Forwarding)
 
-### Wi-Fi Dashboard Setup for Tablets
+An Android tablet connected by USB cable can act as a dedicated HUD display and controller without requiring Wi-Fi or public network exposure.
 
-1. **Connect Laptop and Tablet to the Same Wi-Fi Network.**
-2. **Start JARVIS on the Laptop.**
-3. **Open Remote Control** in JARVIS's HUD to display the pairing PIN or QR code.
-4. **Open the Dashboard URL** (e.g. `http://<laptop-local-ip>:8000`) in the tablet browser and enter the PIN or scan the QR code.
-5. **Truthful Status Indicators**: The dashboard header displays real-time connection status (`Active`, `Sleeping`, `Reconnecting`, `Disconnected`).
+1. Connect tablet to Windows PC via USB and authorize USB Debugging (`adb devices`).
+2. Run the persistent USB connection manager script:
+   ```powershell
+   .\scripts\windows\start_adb_bridge.ps1
+   ```
+3. Open `http://127.0.0.1:8000` in the Android tablet browser.
+4. For full automatic startup and detailed troubleshooting instructions, see the [USB Tablet Setup Guide](docs/USB_TABLET_SETUP.md).
 
-To measure laptop resource usage and verify Cloud-First Low-RAM mode, run the memory diagnostic tool:
+---
 
-```powershell
-python diagnose.py --memory
-```
-
-JARVIS continues to run as its native PyQt desktop application on the PC. You can access the browser dashboard from a phone or build the native Java/Gradle tablet remote HUD in [android-client](android-client/README.md). In this setup the PC keeps using its selected microphone and external speaker; the tablet is a remote display/controller and does not handle audio.
+JARVIS continues to run as its native PyQt desktop application on the computer. Phone access uses the project's mobile dashboard in the phone browser; it does not replace the desktop UI.
 
 The dashboard listens only on `127.0.0.1:8000`. Tailscale Serve can provide a private HTTPS URL to devices in your tailnet without router port forwarding or opening a public port. Tailscale Serve is available only within the tailnet; do not use Tailscale Funnel for this dashboard. See the [Tailscale Serve guide](https://tailscale.com/docs/features/tailscale-serve) and [Serve CLI reference](https://tailscale.com/docs/reference/tailscale-cli/serve).
 
@@ -1471,15 +1469,34 @@ changes, update the variable and restart JARVIS.
 
 ## 4. Pair the phone
 
-In JARVIS's desktop UI, open **REMOTE CONTROL** and keep the six-character code private. The browser dashboard can use the QR flow. For the native tablet client, enter the root HTTPS Tailscale hostname and the displayed code in the app, then tap **PAIR TABLET**. The current native client uses manual URL/code pairing rather than QR scanning.
+In JARVIS's desktop UI, open **REMOTE CONTROL**. Scan the one-time QR with
+the phone camera or tap **Scan desktop QR** in the Jarvis Mobile Android app.
+The Android app validates the private HTTPS Tailscale host and asks before
+pairing. The phone opens the private dashboard and stores its pairing token in
+local app storage. Keep the QR code private.
 
-After pairing, tap **CONNECT REMOTE HUD**. The tablet shows desktop status/transcript events and can send typed commands. To speak to JARVIS, talk into the microphone connected to the PC; JARVIS uses the output speaker selected in its desktop audio settings. The tablet does not request microphone permissions and does not capture, transmit, or play voice audio.
+For automatic voice handoff, enable Bluetooth on the Windows PC and phone, open
+the paired dashboard in Jarvis Mobile, and tap its microphone button while you
+are near the PC. Android asks for microphone and nearby-device access and shows
+an ongoing microphone notification. The phone scans for the desktop's private,
+per-install BLE beacon. After it has detected the PC nearby, moving out of
+Bluetooth range transfers microphone input and JARVIS speech to the phone;
+returning near the PC routes audio back. Tap the microphone button to disarm.
+The app uses native Android audio capture, not WebView microphone device
+enumeration.
 
-The native client currently uses manual URL/code pairing and start/stop remote connection. QR scanning and BLE proximity-based automatic handoff are not implemented in this app.
+BLE signal strength only estimates proximity; walls, the phone's position, and
+Bluetooth hardware affect its range, so it does not report exact meters. Arm
+the handoff while near the PC first. JARVIS stores the random beacon UUID in
+`config/phone_handoff.json`, which is ignored by Git. Install requirements on
+Windows so the optional `winrt-Windows.Devices.Bluetooth.Advertisement` package
+is present. If Windows BLE advertising is unavailable, the dashboard reports
+that proximity handoff is disabled. Android requires Bluetooth/Nearby devices,
+microphone permission, and its visible foreground-service notification.
 
-If pairing fails, check that dashboard dependencies are installed, `JARVIS_REMOTE_URL` is set to the exact root HTTPS Tailscale hostname, JARVIS was restarted after setting it, and `tailscale serve status` shows the expected hostname. A one-time pairing code expires, is rate-limited, and can be used only once. The current dashboard implementation keeps paired-device tokens in memory; after restarting JARVIS or revoking devices, pair the tablet again.
+If QR pairing is unavailable, check that the dashboard dependencies are installed, JARVIS was restarted after setting `JARVIS_REMOTE_URL`, and `tailscale serve status` shows the expected hostname.
 
-The dashboard backend supports an authenticated `POST /api/revoke-devices` request to revoke all currently paired device tokens. Keep access private: never expose dashboard port 8000 through a public tunnel or publish pairing codes/device tokens.
+The dashboard backend supports an authenticated `POST /api/revoke-devices` request to revoke all paired device tokens. Clearing a phone browser's site data removes that phone's locally stored token; use the authenticated revocation endpoint to invalidate server-side pairings.
 
 ## 5. Stop remote access
 

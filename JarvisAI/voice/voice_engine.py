@@ -14,12 +14,9 @@ from typing import Generator, Optional
 
 try:
     import edge_tts
-except ImportError:
-    edge_tts = None
-
-try:
     import pygame
 except ImportError:
+    edge_tts = None
     pygame = None
 
 from .sanitizer import SpeechSanitizer
@@ -41,22 +38,15 @@ class JarvisVoiceEngine:
         self._is_speaking = False
         self._interrupt_flag = False
 
-        if pygame:
-            try:
-                if not pygame.mixer.get_init():
-                    pygame.mixer.init(frequency=24000, size=-16, channels=1, buffer=1024)
-            except Exception as e:
-                logger.warning(f"[VOICE] Pygame mixer init failed: {e}")
+        if pygame and not pygame.mixer.get_init():
+            pygame.mixer.init(frequency=24000, size=-16, channels=1, buffer=1024)
 
     def interrupt(self):
         """Immediately halts active playback (called by barge-in VAD)."""
         self._interrupt_flag = True
         self._is_speaking = False
-        try:
-            if pygame and pygame.mixer and pygame.mixer.get_init() and pygame.mixer.music.get_busy():
-                pygame.mixer.music.stop()
-        except Exception as e:
-            logger.warning(f"[VOICE] Interrupt warning: {e}")
+        if pygame and pygame.mixer.music.get_busy():
+            pygame.mixer.music.stop()
         logger.info("[VOICE] Playback interrupted.")
 
     def speak_stream(self, token_generator: Generator[str, None, None]):
@@ -97,10 +87,6 @@ class JarvisVoiceEngine:
         if self._interrupt_flag:
             return
 
-        if edge_tts is None:
-            logger.error(f"[VOICE] Cannot synthesize '{text}': edge_tts is not installed.")
-            return
-
         async def _fetch_audio():
             communicate = edge_tts.Communicate(
                 text=text,
@@ -117,23 +103,18 @@ class JarvisVoiceEngine:
         try:
             # Run async fetch in sync loop
             loop = asyncio.new_event_loop()
-            try:
-                audio_bytes = loop.run_until_complete(_fetch_audio())
-            finally:
-                loop.close()
+            audio_bytes = loop.run_until_complete(_fetch_audio())
+            loop.close()
 
             if audio_bytes and not self._interrupt_flag:
-                if pygame and pygame.mixer and pygame.mixer.get_init():
-                    audio_io = io.BytesIO(audio_bytes)
-                    pygame.mixer.music.load(audio_io)
-                    pygame.mixer.music.play()
+                audio_io = io.BytesIO(audio_bytes)
+                pygame.mixer.music.load(audio_io)
+                pygame.mixer.music.play()
 
-                    while pygame.mixer.music.get_busy():
-                        if self._interrupt_flag:
-                            pygame.mixer.music.stop()
-                            break
-                        pygame.time.Clock().tick(30)
-                else:
-                    logger.warning(f"[VOICE] Audio playback unavailable for '{text}' (pygame mixer not initialized).")
+                while pygame.mixer.music.get_busy():
+                    if self._interrupt_flag:
+                        pygame.mixer.music.stop()
+                        break
+                    pygame.time.Clock().tick(30)
         except Exception as e:
             logger.error(f"[VOICE] Synthesis error on '{text}': {e}")

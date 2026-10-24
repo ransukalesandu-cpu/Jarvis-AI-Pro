@@ -42,6 +42,14 @@ STATIC_DIR  = Path(__file__).parent / "static"
 PORT        = 8000
 MAX_UPLOAD_MB = 500
 
+def _select_dashboard_bind_host(allow_lan: bool, use_ssl: bool) -> str:
+    """Never expose the command dashboard to Wi-Fi without TLS."""
+    if allow_lan and not use_ssl:
+        raise RuntimeError("LAN dashboard access requires TLS.")
+    return "0.0.0.0" if allow_lan else "127.0.0.1"
+
+
+
 
 def _twilio_stream_request_url(base_url: str, token: str) -> str:
     """Build the pinned public WSS URL covered by Twilio's signature."""
@@ -396,8 +404,14 @@ class DashboardServer:
 
     @staticmethod
     def _ssl_enabled() -> bool:
+        # Certificates alone do not mean the active listener uses TLS. It is
+        # enabled only when explicitly requested, or when LAN access requires it.
+        env_enabled = (
+            os.environ.get("JARVIS_USE_SSL", "").strip().lower() in ("true", "1")
+            or os.environ.get("JARVIS_ALLOW_LAN", "").strip().lower() in ("true", "1")
+        )
         certs = BASE_DIR / "config" / "certs"
-        return (certs / "jarvis.key").exists() and (certs / "jarvis.crt").exists()
+        return env_enabled and (certs / "jarvis.key").exists() and (certs / "jarvis.crt").exists()
 
     def get_url(self) -> str:
         if self._remote_url:
@@ -475,6 +489,25 @@ class DashboardServer:
             tok = req.headers.get("authorization", "").removeprefix("Bearer ").strip()
             return self._token_valid(tok)
 
+        # CORS / CSRF origin validation middleware for state-changing endpoints
+        @app.middleware("http")
+        async def validate_origin_middleware(request: Request, call_next):
+            # Defense in depth: reject cross-origin browser mutations. All
+            # control endpoints still require the existing bearer session token.
+            if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.url.path.startswith("/api"):
+                origin = request.headers.get("origin") or request.headers.get("referer")
+                if origin:
+                    parsed = urlparse(origin)
+                    request_host = (request.headers.get("host") or "").strip().lower()
+                    if (
+                        parsed.scheme not in ("http", "https")
+                        or not parsed.netloc
+                        or parsed.username or parsed.password
+                        or parsed.netloc.lower() != request_host
+                    ):
+                        return JSONResponse({"error": "Forbidden cross-origin request"}, status_code=403)
+            return await call_next(request)
+
         # serve CryptoJS from local cache, fallback to CDN redirect
         @app.get("/static/crypto.js")
         async def serve_crypto():
@@ -483,6 +516,15 @@ class DashboardServer:
                                     media_type="application/javascript")
             from fastapi.responses import RedirectResponse
             return RedirectResponse(_CRYPTOJS_CDN)
+
+        @app.get("/health")
+        async def health_check():
+            """Lightweight unauthenticated health check endpoint."""
+            return JSONResponse({
+                "status": "ok",
+                "service": "jarvis-dashboard",
+                "timestamp": time.time()
+            })
 
         @app.get("/login", response_class=HTMLResponse)
         async def login_page():
@@ -527,64 +569,6 @@ class DashboardServer:
             return JSONResponse({"ok": False, "error": "Invalid or expired key"},
                                 status_code=401)
 
-
-        @app.post("/api/native-pair")
-        async def native_pair_ep(req: Request):
-            """Pair a native mobile client using the same short-lived code as the QR flow."""
-            from core import security
-            client_ip = req.client.host if req.client else "unknown"
-            if self._rate_limited(client_ip):
-                security.audit("dashboard_login", "native_pair", "SENSITIVE", "denied",
-                               f"rate-limited: {client_ip}")
-                return JSONResponse(
-                    {"ok": False, "error": "Too many pairing attempts. Wait a minute."},
-                    status_code=429,
-                    headers={"Cache-Control": "no-store"},
-                )
-            try:
-                body = await req.json()
-            except Exception:
-                return JSONResponse(
-                    {"ok": False, "error": "Invalid request."},
-                    status_code=400,
-                    headers={"Cache-Control": "no-store"},
-                )
-            entered = str(body.get("pin", "")).strip().upper()
-            expiry = self._pending_keys.get(entered, 0.0)
-            if not entered or expiry <= time.time():
-                if entered:
-                    self._pending_keys.pop(entered, None)
-                security.audit("dashboard_login", "native_pair", "SENSITIVE", "denied",
-                               f"invalid or expired pairing code: {client_ip}")
-                return JSONResponse(
-                    {"ok": False, "error": "Invalid or expired pairing code."},
-                    status_code=401,
-                    headers={"Cache-Control": "no-store"},
-                )
-
-            # The one-time pairing code becomes the session key exactly once.
-            # The persistent device token is random and can be revoked from JARVIS.
-            del self._pending_keys[entered]
-            device_token = secrets.token_urlsafe(32)
-            self._device_sessions[device_token] = {
-                "session_key": entered,
-                "issued": time.time(),
-            }
-            security.audit("dashboard_login", "native_pair", "SENSITIVE", "ran",
-                           f"native device paired: ip={client_ip}")
-            if self._connect_callback:
-                self._connect_callback()
-            asyncio.create_task(self.broadcast(
-                {"type": "sys", "text": "Native mobile device paired."}
-            ))
-            return JSONResponse(
-                {
-                    "ok": True,
-                    "device_token": device_token,
-                    "device_expires_in": self._DEVICE_TTL_SECONDS,
-                },
-                headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
-            )
 
         @app.get("/auto-login")
         async def auto_login(req: Request, key: str = ""):
@@ -1001,22 +985,29 @@ class DashboardServer:
             print("[Dashboard] Run:  pip install fastapi 'uvicorn[standard]' cryptography")
             return
 
-        # Generate the TLS pair on first run so no private key ships in the repo.
-        certs_ok = _ensure_certs()
+        # LAN control mode is opt-in and requires TLS. If certificate
+        # creation fails, safely fall back to the loopback-only listener.
+        allow_lan = os.environ.get("JARVIS_ALLOW_LAN", "").strip().lower() in ("true", "1")
+        ssl_requested = allow_lan or os.environ.get("JARVIS_USE_SSL", "").strip().lower() in ("true", "1")
+        certs_ok = _ensure_certs() if ssl_requested else False
+        use_ssl = bool(certs_ok and self._ssl_enabled())
+        try:
+            bind_host = _select_dashboard_bind_host(allow_lan, use_ssl)
+        except RuntimeError as exc:
+            print(f"[Dashboard] {exc} Falling back to loopback-only access.")
+            bind_host = "127.0.0.1"
+            allow_lan = False
 
-        use_ssl  = certs_ok and self._ssl_enabled()
         ssl_key  = BASE_DIR / "config" / "certs" / "jarvis.key"
         ssl_cert = BASE_DIR / "config" / "certs" / "jarvis.crt"
 
         cfg = uvicorn.Config(
-            # The dashboard is reached through the local UI or a private VPN
-            # reverse proxy. Never expose its control API directly on every NIC.
-            self.app, host="127.0.0.1", port=PORT, log_level="warning",
+            self.app, host=bind_host, port=PORT, log_level="warning",
             **({"ssl_keyfile": str(ssl_key), "ssl_certfile": str(ssl_cert)} if use_ssl else {}),
         )
 
         proto = "https" if use_ssl else "http"
-        print(f"[Dashboard] Local-only listener: {proto}://127.0.0.1:{PORT}")
+        print(f"[Dashboard] Dashboard server started successfully: {proto}://{bind_host}:{PORT}")
         print("[Twilio] Dedicated local-only listener: http://127.0.0.1:8001 (tunnel only this port)")
         if self._remote_url:
             print(f"[Dashboard] Private remote URL: {self._remote_url}")
@@ -1034,9 +1025,19 @@ class DashboardServer:
         ]
         try:
             await asyncio.gather(*self._uvicorn_tasks)
+        except OSError as exc:
+            err_msg = str(exc).lower()
+            if "already in use" in err_msg or "10048" in err_msg or "98" in err_msg:
+                print(f"[Dashboard] ERROR: Port conflict detected on port {PORT} or 8001. Another process is already using the port.")
+                print(f"[Dashboard] Please stop the process occupying port {PORT} or 8001 and restart JARVIS.")
+            else:
+                print(f"[Dashboard] ERROR: Socket error during server startup: {exc}")
+        except Exception as exc:
+            print(f"[Dashboard] ERROR: Dashboard server startup failed: {exc}")
         finally:
             self._uvicorn_tasks.clear()
             self._uvicorn_servers.clear()
+            print("[Dashboard] Dashboard server stopped.")
 
     async def shutdown(self) -> None:
         """Ask both local Uvicorn listeners to finish their lifespan cleanly."""

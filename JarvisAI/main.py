@@ -4418,7 +4418,7 @@ class JarvisLive:
                 ):
                     self.session          = session
                     self._live_switch_context = ""
-                    self.audio_in_queue   = asyncio.Queue(maxsize=200)
+                    self.audio_in_queue   = asyncio.Queue()
                     self.out_queue        = asyncio.Queue(maxsize=200)
                     self._turn_done_event = asyncio.Event()
 
@@ -4766,22 +4766,20 @@ class JarvisLive:
                     _conn_backoff = 3
                     continue
 
-                # Network / timeout or unknown errors — log clearly and back off
+                # Network / timeout errors — log clearly and back off
                 is_net_err = any(k in err_str for k in (
                     "TimeoutError", "timed out", "getaddrinfo", "CancelledError",
-                    "ConnectionRefusedError", "OSError", "Cannot connect", "NetworkError",
+                    "ConnectionRefusedError", "OSError", "Cannot connect",
                 ))
-                _conn_backoff = min(max(getattr(self, "_conn_backoff", 3), 3) * 2, 60)
-                self._conn_backoff = _conn_backoff
                 if is_net_err:
+                    _conn_backoff = min(getattr(self, "_conn_backoff", 3) * 2, 60)
+                    self._conn_backoff = _conn_backoff
                     self.ui.write_log(
-                        f"NET: Cloud AI / network unavailable — retrying in {_conn_backoff}s. "
-                        "(check Wi-Fi or VPN connection)"
+                        f"NET: Connection failed — retrying in {_conn_backoff}s. "
+                        "(a VPN may be required)"
                     )
                 else:
-                    self.ui.write_log(
-                        f"ERR: Session error occurred — retrying in {_conn_backoff}s."
-                    )
+                    self._conn_backoff = 3
             finally:
                 self.session = None
                 # Only save if there was a real conversation (≥3 turns)

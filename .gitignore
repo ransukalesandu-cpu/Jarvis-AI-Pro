@@ -14,13 +14,16 @@ config/api_keys.json
 .venv/
 venv/
 
-# Runtime logs and artifacts
-logs/
-sandbox_runs/
-
 # Editors and operating systems
 .vscode/
 .idea/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Runtime logs and per-user auth material must not be committed
+logs/
+config/pin_vault.dat
+config/auth_state.json
+master_voice.emb*
+*.emb.npy

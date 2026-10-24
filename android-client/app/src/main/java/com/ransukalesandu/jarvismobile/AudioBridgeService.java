@@ -68,6 +68,7 @@ public final class AudioBridgeService extends Service {
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
 
     private final AtomicBoolean captureActive = new AtomicBoolean(false);
+    private final AtomicBoolean captureTaskRunning = new AtomicBoolean(false);
     private final AtomicBoolean reconnectScheduled = new AtomicBoolean(false);
     private final ExecutorService captureExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService playbackExecutor = Executors.newSingleThreadExecutor();
@@ -86,6 +87,7 @@ public final class AudioBridgeService extends Service {
 
     private OkHttpClient client;
     private int reconnectAttempt = 0;
+    private volatile String stopMessage = "Tablet voice bridge stopped.";
 
     @Nullable
     @Override
@@ -227,7 +229,8 @@ public final class AudioBridgeService extends Service {
         stopCapture();
         if (!running) return;
         if (authenticationFailed) {
-            report("Pairing expired. Pair this tablet with JARVIS again.", false);
+            stopMessage = "Pairing expired. Pair this tablet with JARVIS again.";
+            report(stopMessage, false);
             stopSelf();
             return;
         }
@@ -302,9 +305,11 @@ public final class AudioBridgeService extends Service {
     }
 
     private void startCapture() {
-        if (!running || !connected || !captureActive.compareAndSet(false, true)) return;
+        if (!running || !connected || !captureTaskRunning.compareAndSet(false, true)) return;
+        captureActive.set(true);
         captureExecutor.execute(() -> {
             AudioRecord local = null;
+            boolean captureFailed = false;
             try {
                 int minimum = AudioRecord.getMinBufferSize(
                         INPUT_SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
@@ -347,7 +352,8 @@ public final class AudioBridgeService extends Service {
                     }
                 }
             } catch (Exception error) {
-                if (running && connected) report("Microphone issue: " + safeMessage(error), true);
+                captureFailed = captureActive.get() && running && connected;
+                if (captureFailed) report("Microphone issue: " + safeMessage(error), true);
             } finally {
                 captureActive.set(false);
                 releaseVoiceProcessing();
@@ -359,6 +365,10 @@ public final class AudioBridgeService extends Service {
                     local.release();
                 }
                 if (recorder == local) recorder = null;
+                captureTaskRunning.set(false);
+                // A reconnect can happen while the prior AudioRecord is unwinding.
+                // Restart only after that capture task has fully released its device.
+                if (!captureFailed && running && connected) startCapture();
             }
         });
     }
@@ -468,7 +478,7 @@ public final class AudioBridgeService extends Service {
     public void onDestroy() {
         running = false;
         connected = false;
-        report("Tablet voice bridge stopped.", false);
+        report(stopMessage, false);
         WebSocket currentSocket = socket;
         socket = null;
         if (currentSocket != null) {

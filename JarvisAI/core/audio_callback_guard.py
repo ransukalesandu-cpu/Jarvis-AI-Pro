@@ -5,6 +5,7 @@ broken detector cannot flood the incident log on every microphone block.
 """
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 from collections.abc import Callable
@@ -44,4 +45,18 @@ def guarded_audio_callback(
                 on_error(exc, key)
             except Exception:
                 pass
+        return False
+
+
+def enqueue_audio_frame(queue: Any, item: Any) -> bool:
+    """Queue one real-time audio frame without leaking QueueFull exceptions.
+
+    The caller should schedule this on the queue's owning event loop. When
+    the consumer falls behind, drop the newest frame rather than accumulating
+    latency or raising an unhandled exception on the event loop.
+    """
+    try:
+        queue.put_nowait(item)
+        return True
+    except asyncio.QueueFull:
         return False

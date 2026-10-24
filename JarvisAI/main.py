@@ -996,7 +996,15 @@ class JarvisLive:
             self._wake_interrupt_audio.clear()
         print("[Voice] User speech detected during JARVIS playback; interrupting.")
         self.ui.write_log("SYS: Voice detected — interrupting JARVIS.")
-        self._interrupt_on_loop(replay)
+        # This detector may run inside the sounddevice callback thread. Keep all
+        # asyncio queue/state handling and output-stream lifecycle work on the
+        # session loop, using the thread-safe handoff rather than touching them
+        # directly from PortAudio's callback thread.
+        loop = self._loop
+        if loop is not None and loop.is_running():
+            loop.call_soon_threadsafe(self._interrupt_on_loop, replay)
+        else:
+            self._interrupt_on_loop(replay)
 
     def _on_double_clap_detected(self) -> None:
         """The clap worker calls from its own thread; marshal state changes."""

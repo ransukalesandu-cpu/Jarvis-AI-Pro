@@ -1403,17 +1403,17 @@ Jarvis supports:
 
 # 📱 Remote & Tablet Wi-Fi Dashboard
 
-Jarvis includes a responsive dashboard designed for phones and Android tablets over Wi-Fi. No USB cable or ADB debugging is required for standard access.
+Jarvis includes a responsive dashboard for phones and Android tablets. Same-Wi-Fi access is opt-in and must use TLS; USB + ADB remains an optional wired fallback.
 
-The dashboard runs directly from JARVIS on your laptop (`127.0.0.1:8000`), allowing tablet browsers on the same local Wi-Fi network to connect via private IP or local hostname. All command endpoints require PIN, QR, or token authentication. Unauthenticated public command endpoints are never exposed.
+### Same-Wi-Fi Dashboard Setup
 
-### Wi-Fi Dashboard Setup for Tablets
+1. Connect the laptop and tablet to the same trusted Wi-Fi network.
+2. Start JARVIS with LAN access explicitly enabled: in PowerShell set `$env:JARVIS_ALLOW_LAN = "true"` before launching JARVIS.
+3. Open Remote Control in JARVIS's HUD to display the pairing PIN or QR code.
+4. Open `https://<laptop-local-ip>:8000` on the tablet. The local certificate may need to be installed/trusted on the tablet; do not bypass a certificate warning on an untrusted network.
+5. Enter the pairing PIN or scan the QR code. State-changing dashboard routes continue to require the paired session token.
 
-1. **Connect Laptop and Tablet to the Same Wi-Fi Network.**
-2. **Start JARVIS on the Laptop.**
-3. **Open Remote Control** in JARVIS's HUD to display the pairing PIN or QR code.
-4. **Open the Dashboard URL** (e.g. `http://<laptop-local-ip>:8000`) in the tablet browser and enter the PIN or scan the QR code.
-5. **Truthful Status Indicators**: The dashboard header displays real-time connection status (`Active`, `Sleeping`, `Reconnecting`, `Disconnected`).
+For wired access, connect the Android tablet with USB debugging authorized and follow [the USB Tablet Setup Guide](docs/USB_TABLET_SETUP.md). In USB mode, ADB reverse forwarding maps the tablet's `127.0.0.1:8000` to the laptop dashboard.
 
 To measure laptop resource usage and verify Cloud-First Low-RAM mode, run the memory diagnostic tool:
 

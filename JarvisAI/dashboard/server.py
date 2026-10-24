@@ -42,6 +42,13 @@ STATIC_DIR  = Path(__file__).parent / "static"
 PORT        = 8000
 MAX_UPLOAD_MB = 500
 
+def _select_dashboard_bind_host(allow_lan: bool, use_ssl: bool) -> str:
+    """Keep LAN control private by requiring TLS for non-loopback listeners."""
+    if allow_lan and not use_ssl:
+        raise RuntimeError("LAN dashboard access requires TLS; refusing an unencrypted LAN listener.")
+    return "0.0.0.0" if allow_lan else "127.0.0.1"
+
+
 
 def _twilio_stream_request_url(base_url: str, token: str) -> str:
     """Build the pinned public WSS URL covered by Twilio's signature."""
@@ -475,6 +482,21 @@ class DashboardServer:
             tok = req.headers.get("authorization", "").removeprefix("Bearer ").strip()
             return self._token_valid(tok)
 
+        @app.middleware("http")
+        async def validate_same_origin(request: Request, call_next):
+            # State-changing browser requests must originate from the same host.
+            # These endpoints also require an explicit bearer token.
+            if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.url.path.startswith("/api/"):
+                origin = request.headers.get("origin") or request.headers.get("referer")
+                if origin:
+                    parsed = urlparse(origin)
+                    request_host = (request.headers.get("host") or "").strip().lower()
+                    if (parsed.scheme not in ("http", "https") or not parsed.netloc
+                            or parsed.username or parsed.password
+                            or parsed.netloc.lower() != request_host):
+                        return JSONResponse({"error": "Forbidden cross-origin request"}, status_code=403)
+            return await call_next(request)
+
         # serve CryptoJS from local cache, fallback to CDN redirect
         @app.get("/static/crypto.js")
         async def serve_crypto():
@@ -483,6 +505,11 @@ class DashboardServer:
                                     media_type="application/javascript")
             from fastapi.responses import RedirectResponse
             return RedirectResponse(_CRYPTOJS_CDN)
+
+        @app.get("/health")
+        async def health_check():
+            """Return minimal process health without exposing user/session data."""
+            return JSONResponse({"status": "ok", "service": "jarvis-dashboard", "timestamp": time.time()})
 
         @app.get("/login", response_class=HTMLResponse)
         async def login_page():
@@ -1001,22 +1028,26 @@ class DashboardServer:
             print("[Dashboard] Run:  pip install fastapi 'uvicorn[standard]' cryptography")
             return
 
-        # Generate the TLS pair on first run so no private key ships in the repo.
+        # Generate an installation-local TLS pair. LAN control is never served
+        # over plain HTTP because that would expose session tokens on Wi-Fi.
         certs_ok = _ensure_certs()
-
-        use_ssl  = certs_ok and self._ssl_enabled()
+        use_ssl = certs_ok and self._ssl_enabled()
+        allow_lan = os.environ.get("JARVIS_ALLOW_LAN", "").strip().lower() in ("true", "1")
+        try:
+            bind_host = _select_dashboard_bind_host(allow_lan, use_ssl)
+        except RuntimeError as exc:
+            print(f"[Dashboard] {exc} Falling back to loopback-only access.")
+            bind_host = "127.0.0.1"
         ssl_key  = BASE_DIR / "config" / "certs" / "jarvis.key"
         ssl_cert = BASE_DIR / "config" / "certs" / "jarvis.crt"
 
         cfg = uvicorn.Config(
-            # The dashboard is reached through the local UI or a private VPN
-            # reverse proxy. Never expose its control API directly on every NIC.
-            self.app, host="127.0.0.1", port=PORT, log_level="warning",
+            self.app, host=bind_host, port=PORT, log_level="warning",
             **({"ssl_keyfile": str(ssl_key), "ssl_certfile": str(ssl_cert)} if use_ssl else {}),
         )
 
         proto = "https" if use_ssl else "http"
-        print(f"[Dashboard] Local-only listener: {proto}://127.0.0.1:{PORT}")
+        print(f"[Dashboard] Listener: {proto}://{bind_host}:{PORT}")
         print("[Twilio] Dedicated local-only listener: http://127.0.0.1:8001 (tunnel only this port)")
         if self._remote_url:
             print(f"[Dashboard] Private remote URL: {self._remote_url}")

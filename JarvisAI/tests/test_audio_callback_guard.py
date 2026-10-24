@@ -4,7 +4,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import Mock
 
-from core.audio_callback_guard import guarded_audio_callback
+from core.audio_callback_guard import enqueue_audio_frame, guarded_audio_callback
 
 
 class AudioCallbackGuardTests(unittest.TestCase):
@@ -44,6 +44,27 @@ class AudioCallbackGuardTests(unittest.TestCase):
                 "test:reporter-failure-unique", callback, on_error=reporter
             )
         )
+
+
+    def test_enqueue_audio_frame_returns_true_when_queue_has_space(self):
+        import asyncio
+
+        queue = asyncio.Queue(maxsize=1)
+        item = {"data": b"frame", "mime_type": "audio/pcm;rate=16000"}
+        self.assertTrue(enqueue_audio_frame(queue, item))
+        self.assertIs(queue.get_nowait(), item)
+
+    def test_enqueue_audio_frame_drops_when_queue_is_full(self):
+        import asyncio
+
+        queue = asyncio.Queue(maxsize=1)
+        first = {"data": b"first"}
+        second = {"data": b"second"}
+        self.assertTrue(enqueue_audio_frame(queue, first))
+        self.assertFalse(enqueue_audio_frame(queue, second))
+        self.assertIs(queue.get_nowait(), first)
+        self.assertTrue(queue.empty())
+
 
 
 if __name__ == "__main__":

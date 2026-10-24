@@ -503,8 +503,12 @@ class PersonalTrustModeTests(unittest.TestCase):
                 security.TIER_SENSITIVE,
             )
             self.assertEqual(
-                security.tier_for("file_controller", {"action": "write"}),
+                security.tier_for("file_controller", {"action": "rename"}),
                 security.TIER_SENSITIVE,
+            )
+            self.assertEqual(
+                security.tier_for("file_controller", {"action": "write"}),
+                security.TIER_DANGEROUS,
             )
             self.assertEqual(
                 security.tier_for("desktop", {"action": "wallpaper"}),

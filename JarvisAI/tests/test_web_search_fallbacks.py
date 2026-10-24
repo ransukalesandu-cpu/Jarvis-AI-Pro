@@ -39,13 +39,17 @@ class WebSearchFallbackTests(unittest.TestCase):
         self.assertIn("providers timed out", result)
 
     def test_ddg_news_can_skip_duplicate_text_fallback(self):
-        manager = SimpleNamespace()
-        manager.__enter__ = lambda: manager
-        manager.__exit__ = lambda *_: False
-        manager.news = lambda *args, **kwargs: (_ for _ in ()).throw(
-            TimeoutError("provider timed out")
-        )
-        with patch.object(ws, "_get_ddgs", return_value=lambda: manager), \
+        class FakeDDGS:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def news(self, *_args, **_kwargs):
+                raise TimeoutError("provider timed out")
+
+        with patch.object(ws, "_get_ddgs", return_value=FakeDDGS), \
                 patch.object(ws, "_ddg_search") as text_fallback:
             self.assertEqual(ws._ddg_news("test query", fallback_to_text=False), [])
         text_fallback.assert_not_called()

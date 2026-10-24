@@ -483,6 +483,11 @@ def tier_for(name: str, params: dict | None = None) -> str:
     # with a confirmation banner. Unknown app names and package repairs remain gated.
     action = str((params or {}).get("action", "")).strip().lower()
     operation = str((params or {}).get("operation", "")).strip().lower()
+    # Personal mode skips the extra confirmation click only for this narrow
+    # local-action allowlist. The guard below still enforces provenance checks,
+    # Voice ID (when enabled), rate limits and the audit ledger.
+    if _personal_mode_relaxes(name, action):
+        return TIER_SENSITIVE
     if name == "self_heal" and operation == "check":
         return TIER_SAFE
     if name == "self_update":
@@ -532,6 +537,40 @@ def tier_for(name: str, params: dict | None = None) -> str:
     if name in _DANGEROUS_ACTIONS and action:
         return TIER_DANGEROUS
     return base
+
+
+# Personal mode is a deliberate local opt-in, never a voice/tool setting.
+# It relaxes confirmation only for selected local desktop/file edits. Audit,
+# rate limits, owner checks, path protections and untrusted-content checks remain.
+_PERSONAL_MODE_ENV = "JARVIS_PERSONAL_MODE"
+
+_PERSONAL_MODE_RELAXED_ACTIONS: dict[str, set[str]] = {
+    # Ordinary file operations stay limited by file_controller's home-directory
+    # and protected-path checks. Delete and bulk desktop organization stay gated.
+    "file_controller": {"create_file", "create_folder", "move", "copy", "rename", "write"},
+    # Allow direct desktop control without one confirmation per click/keypress.
+    # Actions still require a fresh user turn when derived from untrusted content.
+    "computer_control": {
+        "type", "smart_type", "click", "left_click", "double_click",
+        "right_click", "drag", "hotkey", "press", "paste", "screen_click",
+        "clear_field",
+    },
+    # Simple local personalization; bulk file operations and generated tasks
+    # continue to require the usual confirmation.
+    "desktop": {"wallpaper", "wallpaper_url"},
+    "desktop_control": {"wallpaper", "wallpaper_url"},
+}
+
+
+def personal_mode_enabled() -> bool:
+    """Return whether the owner explicitly enabled relaxed local confirmations."""
+    return os.environ.get(_PERSONAL_MODE_ENV, "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def _personal_mode_relaxes(name: str, action: str) -> bool:
+    return personal_mode_enabled() and action in _PERSONAL_MODE_RELAXED_ACTIONS.get(name, set())
 
 
 _SAFE_ACTIONS: dict[str, set[str]] = {

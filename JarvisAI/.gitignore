@@ -77,3 +77,11 @@ screenshots/
 
 # Optional personal/large startup media
 assets/startup_intro.mp4
+
+# Owner authentication and biometric profile material
+config/pin_vault.dat
+config/auth_state.json
+config/auth_state.json.tmp
+config/master_voice.emb*
+*.emb
+*.emb.npy

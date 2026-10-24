@@ -1206,6 +1206,22 @@ All discovered capabilities are passed through the security layer before executi
 
 ---
 
+# 🔐 Owner Access, Voice ID & Privacy Lock
+
+JARVIS starts in restricted mode and ships with **no default owner PIN**.
+
+1. Run `python scripts/setup_owner_auth.py` in a local Windows terminal to enroll the owner PIN/password. It is hashed with Argon2id and protected with Windows DPAPI; the raw credential is never written to disk.
+2. To enroll Voice ID, install the optional local SpeechBrain/Torch and platform key-store dependencies, then run `python scripts/enroll_master.py`. Voice ID is a convenience identity check, not proof against a replay or voice clone; PIN fallback remains available.
+3. Three consecutive incorrect PIN/password attempts activate Privacy Lock, attempt to lock Windows, suppress private assistant output and notify connected paired dashboard clients.
+4. The cooldown defaults to 1 minute. Set `JARVIS_PRIVACY_LOCK_MINUTES` to `1`, `2`, `3`, `4`, or `5` before launch to select an allowed 1–5 minute duration. After the timer, JARVIS stays silent until owner PIN re-authentication succeeds. Windows itself is never automatically unlocked.
+5. Type PIN/password fallback into the local JARVIS command box or paired dashboard. Do not speak it; microphone input is intentionally not sent to Gemini during a PIN challenge.
+
+Restricted mode permits basic public queries. Private files/memory, system controls, and unknown actions require owner access. Existing confirmations for dangerous actions remain active.
+
+See [Owner Security Setup](docs/OWNER_SECURITY.md).
+
+---
+
 # 🖥️ Computer Control
 
 Jarvis can interact with the operating system through voice commands.

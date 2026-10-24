@@ -16,6 +16,7 @@ sounddevice>=0.4,<1
 edge-tts>=7,<8             # default cloud TTS engine
 miniaudio>=1.59,<3         # decodes Edge TTS audio for sounddevice playback
 numpy>=1.24,<3
+argon2-cffi>=23.1.0,<25  # Argon2id owner PIN/password hashing
 google-genai>=2.8.0,<3
 openai>=1.68,<3
 anthropic>=0.49,<2

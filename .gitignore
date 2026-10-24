@@ -27,3 +27,15 @@ config/pin_vault.dat
 config/auth_state.json
 master_voice.emb*
 *.emb.npy
+
+# JARVIS per-user credentials and runtime state (never commit these)
+JarvisAI/config/pin_vault.dat
+JarvisAI/config/auth_state.json
+JarvisAI/config/auth_state.json.tmp
+JarvisAI/config/voice_id.dat
+JarvisAI/config/voice_id.tmp
+JarvisAI/logs/
+logs/
+master_voice.emb*
+*.emb
+*.emb.npy

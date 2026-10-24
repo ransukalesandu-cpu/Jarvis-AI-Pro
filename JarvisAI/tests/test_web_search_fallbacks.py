@@ -10,7 +10,7 @@ from actions import web_search as ws
 
 class WebSearchFallbackTests(unittest.TestCase):
     @staticmethod
-    def _run_bounded_inline(fn, _timeout, _label="task"):
+    def _run_bounded_inline(fn, timeout, label="task"):
         # These tests exercise fallback selection, not Python's thread scheduler.
         # Inline execution keeps the provider calls deterministic and offline.
         try:

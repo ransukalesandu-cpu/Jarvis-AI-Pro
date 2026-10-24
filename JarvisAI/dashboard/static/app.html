@@ -24,18 +24,6 @@
       display: flex; flex-direction: column; overflow: hidden;
     }
 
-    /* ── TABLET & RESPONSIVE DASHBOARD ── */
-    @media (min-width: 600px) {
-      header { padding: 16px 24px; }
-      .logo { font-size: 18px; letter-spacing: 8px; }
-      main { padding: 20px 24px 12px; gap: 14px; }
-      .msg, .msg-file { max-width: 70%; font-size: 15px; }
-      footer { padding: 14px 24px; gap: 12px; }
-      #inp { font-size: 15px; padding: 13px 18px; }
-      .btn { padding: 13px 20px; font-size: 12px; }
-      .btn-attach, #mic-btn { padding: 13px 16px; font-size: 18px; }
-    }
-
     /* ── HEADER ── */
     header {
       flex-shrink: 0; display: flex; align-items: center; gap: 10px;
@@ -232,22 +220,14 @@
     const _wsUrl   = `${_wsProto}://${location.host}/ws?token=${encodeURIComponent(_authToken)}`;
     const ws       = new WebSocket(_wsUrl);
 
-    ws.onopen    = () => {
-      setStatus('active');
-      sys('Wi-Fi tablet connection established.');
-      toast('Connected to JARVIS via Wi-Fi');
-    };
+    ws.onopen    = () => { sys('Remote session active.'); toast('Connected to JARVIS'); };
     ws.onclose   = () => {
-      setStatus('disconnected');
-      sys('Wi-Fi connection lost — tap or refresh to reconnect.');
+      sys('Connection lost — refresh to reconnect.');
       // A rejected handshake looks like any other drop; probe once so an expired
       // session redirects to /login instead of staying stuck.
       _authFetch('/api/handoff/status').catch(() => {});
     };
-    ws.onerror   = () => {
-      setStatus('disconnected');
-      sys('Connection error over Wi-Fi.');
-    };
+    ws.onerror   = () => sys('Connection error.');
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
       if (m.type === 'log')           append(m.speaker, m.text);
@@ -260,10 +240,6 @@
     function setStatus(s) {
       if (s === 'active') {
         pill.className = 'pill on'; stTxt.textContent = 'Active'; wake.classList.remove('show');
-      } else if (s === 'disconnected') {
-        pill.className = 'pill'; stTxt.textContent = 'Disconnected'; wake.classList.remove('show');
-      } else if (s === 'reconnecting') {
-        pill.className = 'pill'; stTxt.textContent = 'Reconnecting'; wake.classList.remove('show');
       } else {
         pill.className = 'pill'; stTxt.textContent = 'Sleeping'; wake.classList.add('show');
       }

@@ -26,22 +26,11 @@ class TestPhaseUpgrades(unittest.TestCase):
             self.assertIn("Refused to launch application", res)
             self.assertIn("unsafe command characters", res)
 
-    @patch("actions.desktop_automation.shutil.which", return_value=r"C:\Windows\System32\calc.exe")
-    @patch("actions.desktop_automation.platform.system", return_value="Windows")
     @patch("actions.desktop_automation.subprocess.Popen")
-    def test_launch_app_safe_execution(self, mock_popen, _mock_system, _mock_which):
-        """Launch uses a resolved executable and never invokes a shell."""
+    def test_launch_app_safe_execution(self, mock_popen):
+        """Verify that a safe application name is passed to launch_app without shell injection."""
         res = launch_app("calc")
         self.assertIn("Launched application: calc", res)
-        mock_popen.assert_called_once_with([r"C:\Windows\System32\calc.exe"], shell=False)
-
-    @patch("actions.desktop_automation.shutil.which", return_value=None)
-    @patch("actions.desktop_automation.platform.system", return_value="Windows")
-    @patch("actions.desktop_automation.subprocess.Popen")
-    def test_windows_launcher_rejects_unknown_executable(self, mock_popen, _mock_system, _mock_which):
-        res = launch_app("missing-app")
-        self.assertIn("Application not found", res)
-        mock_popen.assert_not_called()
 
     def test_speech_engine_fallback_handling(self):
         """Verify that SafeSpeechManager handles _play_audio_stream gracefully."""
@@ -52,6 +41,11 @@ class TestPhaseUpgrades(unittest.TestCase):
         finally:
             manager.interrupt()
 
+    def test_live_model_configuration(self):
+        """Verify that LIVE_MODEL and LIVE_FALLBACK_MODELS are correctly configured."""
+        self.assertEqual(main.LIVE_MODEL, "models/gemini-3.1-flash-live-preview")
+        self.assertIn("models/gemini-2.0-flash-exp", main.LIVE_FALLBACK_MODELS)
+        self.assertIn("models/gemini-2.5-flash-native-audio-preview-12-2025", main.LIVE_FALLBACK_MODELS)
 
     @patch("actions.web_search._run_bounded")
     def test_search_timeout_configuration(self, mock_run_bounded):

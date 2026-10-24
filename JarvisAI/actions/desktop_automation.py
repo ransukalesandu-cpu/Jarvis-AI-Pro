@@ -2,7 +2,6 @@
 import os
 import platform
 import re
-import shutil
 import subprocess
 import sys
 from typing import Any
@@ -25,38 +24,25 @@ _UNSAFE_CMD_RE = re.compile(r"[\;&|`$\r\n]")
 
 
 def launch_app(name: str) -> str:
-    """Launch one installed application without invoking a command shell.
-
-    Windows accepts only a single executable found on PATH or an explicit
-    .exe/.com path. Arguments and shell metacharacters are intentionally not
-    accepted; callers must use a dedicated, validated action for arguments.
-    """
-    if not name or not str(name).strip():
+    """Launch an application on the host machine without shell injection risk."""
+    if not name or not name.strip():
         return "Application name is required."
 
-    app_name = str(name).strip()
-    if _UNSAFE_CMD_RE.search(app_name) or any(ch in app_name for ch in ('"', "'", "\\", "/", " ", ";", "&", "|", "$")):
-        if not (os.path.isfile(app_name) and os.path.splitext(app_name)[1].lower() in (".exe", ".com")):
-            return "Refused to launch application: unsafe command characters or arguments detected; provide one executable name or explicit .exe/.com path."
+    app_name = name.strip()
+    if _UNSAFE_CMD_RE.search(app_name):
+        return f"Refused to launch application '{app_name}': Contains invalid or unsafe command characters."
 
     system = platform.system()
     try:
         if system == "Windows":
-            resolved = shutil.which(app_name)
-            if not resolved and os.path.isfile(app_name) and os.path.splitext(app_name)[1].lower() in (".exe", ".com"):
-                resolved = os.path.abspath(app_name)
-            if not resolved or os.path.splitext(resolved)[1].lower() not in (".exe", ".com"):
-                return "Application not found as a Windows executable. Provide a valid .exe/.com path or executable name on PATH."
-            subprocess.Popen([resolved], shell=False)
+            if hasattr(os, "startfile"):
+                os.startfile(app_name)
+            else:
+                subprocess.Popen(["cmd.exe", "/c", "start", "", app_name])
         elif system == "Darwin":
-            subprocess.Popen(["open", "-a", app_name], shell=False)
+            subprocess.Popen(["open", "-a", app_name])
         else:
-            resolved = shutil.which(app_name)
-            if not resolved and os.path.isfile(app_name) and os.access(app_name, os.X_OK):
-                resolved = os.path.abspath(app_name)
-            if not resolved:
-                return "Application not found as an executable. Provide an executable name on PATH."
-            subprocess.Popen([resolved], shell=False)
+            subprocess.Popen([app_name])
         return f"Launched application: {app_name}"
     except Exception as exc:
         return f"Failed to launch application '{app_name}': {exc}"

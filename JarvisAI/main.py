@@ -143,6 +143,7 @@ LIVE_MODEL          = "models/gemini-3.1-flash-live-preview"
 # If that model returns a quota/rate-limit error, reconnect on the lower-cost
 # native-audio model, then retry the primary after the cooldown expires.
 LIVE_FALLBACK_MODELS = (
+    "models/gemini-2.0-flash-exp",
     "models/gemini-2.5-flash-native-audio-preview-12-2025",
     "models/gemini-3.8-live",
 )
@@ -333,20 +334,6 @@ def _is_transient_live_disconnect(error) -> bool:
         "NO CLOSE FRAME RECEIVED",
         "INTERNAL ERROR ENCOUNTERED",
     ))
-
-
-def _is_live_operation_aborted(error) -> bool:
-    """Recognize Gemini Live's 1008 'operation was aborted' close response.
-
-    Some Live sessions are aborted by the service without a useful JSON body.
-    Treat this specific close as a model/session failure so the reconnect loop
-    can cool down that model and try another configured Live model.
-    """
-    text = _error_text(error).upper()
-    return (
-        ("1008" in text or "POLICY VIOLATION" in text)
-        and ("OPERATION WAS ABORTED" in text or "OPERATION ABORTED" in text)
-    )
 
 
 # ── Viseme extraction ─────────────────────────────────────────────────────────
@@ -4418,7 +4405,7 @@ class JarvisLive:
                 ):
                     self.session          = session
                     self._live_switch_context = ""
-                    self.audio_in_queue   = asyncio.Queue(maxsize=200)
+                    self.audio_in_queue   = asyncio.Queue()
                     self.out_queue        = asyncio.Queue(maxsize=200)
                     self._turn_done_event = asyncio.Event()
 
@@ -4596,49 +4583,6 @@ class JarvisLive:
                     continue
 
                 err_str = _error_text(e)
-
-                # Gemini sometimes terminates a Live session with close code 1008
-                # and only the generic message "The operation was aborted." If we
-                # keep the same model, this can repeat every reconnect. Cool the
-                # failed model and try the next configured model before retrying.
-                if _is_live_operation_aborted(e):
-                    failed_model = self._active_live_model
-                    self._live_model_cooldowns[failed_model] = (
-                        time.monotonic() + LIVE_MODEL_COOLDOWN_SECONDS
-                    )
-                    next_model = self._select_live_model()
-                    next_is_ready = (
-                        self._live_model_cooldowns.get(next_model, 0.0)
-                        <= time.monotonic()
-                    )
-                    if next_model != failed_model and next_is_ready:
-                        self._live_switch_context = "\n".join(self._session_log[-12:])[-9000:]
-                        self._active_live_model = next_model
-                        self._resume_handle = None
-                        self._conn_backoff = 0
-                        message = (
-                            f"SYS: Gemini Live aborted {failed_model}; "
-                            f"retrying with {next_model}."
-                        )
-                        print(f"[JARVIS] {message}")
-                        self.ui.write_log(message)
-                        continue
-
-                    self._conn_backoff = min(
-                        max(getattr(self, "_conn_backoff", 3), 3) * 2, 60
-                    )
-                    message = (
-                        "NET: Gemini Live aborted the session (1008); "
-                        f"retrying in {self._conn_backoff}s. "
-                        "If repeated, check Live-model access and API settings."
-                    )
-                    print(f"[JARVIS] ⚠️ {message}")
-                    self.ui.write_log(message)
-                    if not await self._wait_for_reconnect(self._conn_backoff):
-                        await self._finish_shutdown()
-                        return
-                    continue
-
                 transient_live_disconnect = _is_transient_live_disconnect(e)
                 if transient_live_disconnect:
                     self._conn_backoff = min(
@@ -4766,22 +4710,20 @@ class JarvisLive:
                     _conn_backoff = 3
                     continue
 
-                # Network / timeout or unknown errors — log clearly and back off
+                # Network / timeout errors — log clearly and back off
                 is_net_err = any(k in err_str for k in (
                     "TimeoutError", "timed out", "getaddrinfo", "CancelledError",
-                    "ConnectionRefusedError", "OSError", "Cannot connect", "NetworkError",
+                    "ConnectionRefusedError", "OSError", "Cannot connect",
                 ))
-                _conn_backoff = min(max(getattr(self, "_conn_backoff", 3), 3) * 2, 60)
-                self._conn_backoff = _conn_backoff
                 if is_net_err:
+                    _conn_backoff = min(getattr(self, "_conn_backoff", 3) * 2, 60)
+                    self._conn_backoff = _conn_backoff
                     self.ui.write_log(
-                        f"NET: Cloud AI / network unavailable — retrying in {_conn_backoff}s. "
-                        "(check Wi-Fi or VPN connection)"
+                        f"NET: Connection failed — retrying in {_conn_backoff}s. "
+                        "(a VPN may be required)"
                     )
                 else:
-                    self.ui.write_log(
-                        f"ERR: Session error occurred — retrying in {_conn_backoff}s."
-                    )
+                    self._conn_backoff = 3
             finally:
                 self.session = None
                 # Only save if there was a real conversation (≥3 turns)

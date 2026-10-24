@@ -882,7 +882,7 @@ def _news(query: str) -> str:
         return text
 
     text = _run_bounded(
-        lambda: _gemini_search(gemini_query),
+        lambda: _gemini_search(gemini_query, timeout_ms=6000),
         timeout=6.0,
         label="Gemini news",
     )

@@ -58,26 +58,17 @@ class SafeSpeechManager:
 
     def _play_audio_stream(self, text: str):
         """
-        Play audio in small chunks so that stop_event.is_set() 
+        Play audio in small chunks so that stop_event.is_set()
         breaks out in milliseconds without crashing the audio driver.
         """
         try:
             import pyttsx3
             engine = pyttsx3.init()
-        except ImportError:
-            print("[Voice] pyttsx3 is not installed. Speech playback skipped.")
-            return
+            phrases = [p.strip() for p in text.replace("\n", ". ").split(". ") if p.strip()]
+            for phrase in phrases:
+                if self.stop_event.is_set():
+                    break
+                engine.say(phrase)
+                engine.runAndWait()
         except Exception as e:
-            print(f"[Voice] pyttsx3 initialization failed: {e}")
-            return
-
-        # Break long sentences into short phrases
-        phrases = [p.strip() for p in text.replace("\n", ". ").split(". ") if p.strip()]
-
-        for phrase in phrases:
-            # Check if user interrupted before speaking each chunk
-            if self.stop_event.is_set():
-                break
-
-            engine.say(phrase)
-            engine.runAndWait()
+            print(f"[Voice] Fallback TTS unavailable or interrupted: {e}")

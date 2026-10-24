@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import unittest
 
-from JarvisAI.main import (
+from main import (
     _MIN_LIVE_AUDIO_FRAME_BYTES,
     _MIN_PREBUFFER_BYTES,
     _OUTPUT_BLOCKSIZE,
     _PLAYBACK_SLICE_BYTES,
     _error_text,
-    _is_live_operation_aborted,
     _is_transient_live_disconnect,
     _output_write_is_unpaced,
     _take_playback_pcm,
@@ -21,18 +20,6 @@ class LivePcmBufferingTests(unittest.TestCase):
         # 24 kHz * mono * int16 * 0.3 seconds = 14,400 bytes.
         self.assertEqual(_MIN_PREBUFFER_BYTES, 14_400)
         self.assertEqual(_OUTPUT_BLOCKSIZE, 2048)
-
-    def test_live_abort_classifier_recognizes_policy_close_1008(self):
-        self.assertTrue(
-            _is_live_operation_aborted(
-                RuntimeError("1008 None. The operation was aborted.")
-            )
-        )
-        self.assertFalse(
-            _is_live_operation_aborted(
-                RuntimeError("1008 None. unrelated failure")
-            )
-        )
 
     def test_transient_classifier_recognizes_websocket_close_1006(self):
         class AbnormalClosure(Exception):

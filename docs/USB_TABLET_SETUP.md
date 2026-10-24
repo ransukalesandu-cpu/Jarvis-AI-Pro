@@ -9,7 +9,7 @@ This guide explains how to connect an Android tablet to your Windows laptop as a
 | Feature | Option A: Same-Wi-Fi (LAN Mode) | Option B: USB Cable (ADB Tunnel) |
 |---|---|---|
 | **Primary Connection** | Wi-Fi Local Area Network (Same Subnet) | USB Data Cable |
-| **Tablet Browser Address** | `http://<LAPTOP_LAN_IP>:8000` | `http://127.0.0.1:8000` |
+| **Tablet Browser Address** | `https://<LAPTOP_LAN_IP>:8000` | `http://127.0.0.1:8000` |
 | **Wi-Fi Required?** | Yes (both laptop and tablet on same Wi-Fi) | No |
 | **Configuration Opt-in** | `JARVIS_ALLOW_LAN=true` | None (Loopback `127.0.0.1` default) |
 | **ADB Required?** | No | Yes |
@@ -27,12 +27,16 @@ By default, JARVIS binds only to loopback (`127.0.0.1`) for maximum privacy and 
 ```powershell
 $env:JARVIS_ALLOW_LAN = "true"
 python run.py
+
+LAN mode automatically requires HTTPS. JARVIS creates a local certificate; install/trust it on the tablet before sending the pairing PIN or commands. If certificate creation fails, JARVIS stays loopback-only.
 ```
 
 **Command Prompt (CMD)**:
 ```cmd
 set JARVIS_ALLOW_LAN=true
 python run.py
+
+LAN mode automatically requires HTTPS. JARVIS creates a local certificate; install/trust it on the tablet before sending the pairing PIN or commands. If certificate creation fails, JARVIS stays loopback-only.
 ```
 
 ### 2. Find Your Laptop's Local IP Address
@@ -43,9 +47,9 @@ python run.py
 1. Connect tablet to the same Wi-Fi network as the laptop.
 2. Open Chrome/Firefox on tablet and navigate to:
    ```
-   http://<LAPTOP_LAN_IP>:8000
+   https://<LAPTOP_LAN_IP>:8000
    ```
-   *(e.g., `http://192.168.1.15:8000`)*
+   *(e.g., `https://192.168.1.15:8000`)*
 3. Enter your 6-character JARVIS remote session key or scan the QR code from the JARVIS desktop app (**Remote Control** button).
 
 ---

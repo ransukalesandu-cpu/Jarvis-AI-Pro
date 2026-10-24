@@ -42,6 +42,14 @@ STATIC_DIR  = Path(__file__).parent / "static"
 PORT        = 8000
 MAX_UPLOAD_MB = 500
 
+def _select_dashboard_bind_host(allow_lan: bool, use_ssl: bool) -> str:
+    """Never expose the command dashboard to Wi-Fi without TLS."""
+    if allow_lan and not use_ssl:
+        raise RuntimeError("LAN dashboard access requires TLS.")
+    return "0.0.0.0" if allow_lan else "127.0.0.1"
+
+
+
 
 def _twilio_stream_request_url(base_url: str, token: str) -> str:
     """Build the pinned public WSS URL covered by Twilio's signature."""
@@ -396,8 +404,14 @@ class DashboardServer:
 
     @staticmethod
     def _ssl_enabled() -> bool:
+        # Certificates alone do not mean the active listener uses TLS. It is
+        # enabled only when explicitly requested, or when LAN access requires it.
+        env_enabled = (
+            os.environ.get("JARVIS_USE_SSL", "").strip().lower() in ("true", "1")
+            or os.environ.get("JARVIS_ALLOW_LAN", "").strip().lower() in ("true", "1")
+        )
         certs = BASE_DIR / "config" / "certs"
-        return (certs / "jarvis.key").exists() and (certs / "jarvis.crt").exists()
+        return env_enabled and (certs / "jarvis.key").exists() and (certs / "jarvis.crt").exists()
 
     def get_url(self) -> str:
         if self._remote_url:
@@ -478,17 +492,19 @@ class DashboardServer:
         # CORS / CSRF origin validation middleware for state-changing endpoints
         @app.middleware("http")
         async def validate_origin_middleware(request: Request, call_next):
-            # Enforce origin checks for state-changing POST/PUT/DELETE API routes
-            if request.method in ("POST", "PUT", "DELETE") and request.url.path.startswith("/api"):
+            # Defense in depth: reject cross-origin browser mutations. All
+            # control endpoints still require the existing bearer session token.
+            if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.url.path.startswith("/api"):
                 origin = request.headers.get("origin") or request.headers.get("referer")
                 if origin:
                     parsed = urlparse(origin)
-                    origin_host = (parsed.hostname or "").lower()
-                    # Allow loopback, local LAN IP, and explicitly configured remote URL
-                    allowed_hosts = {"127.0.0.1", "localhost", self._ip.lower()}
-                    if self._remote_url:
-                        allowed_hosts.add((urlparse(self._remote_url).hostname or "").lower())
-                    if origin_host and origin_host not in allowed_hosts and not origin_host.startswith("192.168.") and not origin_host.startswith("10.") and not origin_host.startswith("172."):
+                    request_host = (request.headers.get("host") or "").strip().lower()
+                    if (
+                        parsed.scheme not in ("http", "https")
+                        or not parsed.netloc
+                        or parsed.username or parsed.password
+                        or parsed.netloc.lower() != request_host
+                    ):
                         return JSONResponse({"error": "Forbidden cross-origin request"}, status_code=403)
             return await call_next(request)
 
@@ -969,19 +985,18 @@ class DashboardServer:
             print("[Dashboard] Run:  pip install fastapi 'uvicorn[standard]' cryptography")
             return
 
-        # Plain HTTP by default on loopback (127.0.0.1) — no SSL warnings, safe default.
-        # LAN access (0.0.0.0) is enabled ONLY if JARVIS_ALLOW_LAN is explicitly set to "true".
-        bind_host = "127.0.0.1"
+        # LAN control mode is opt-in and requires TLS. If certificate
+        # creation fails, safely fall back to the loopback-only listener.
         allow_lan = os.environ.get("JARVIS_ALLOW_LAN", "").strip().lower() in ("true", "1")
-        if allow_lan:
-            bind_host = "0.0.0.0"
-            print(f"[Dashboard] Same-Wi-Fi LAN access opted-in. Listening on 0.0.0.0:{PORT} (LAN IP: {self._ip})")
-
-        # HTTPS is enabled only if JARVIS_USE_SSL is explicitly set to "true".
-        use_ssl = False
-        if os.environ.get("JARVIS_USE_SSL", "").strip().lower() in ("true", "1"):
-            certs_ok = _ensure_certs()
-            use_ssl = certs_ok and self._ssl_enabled()
+        ssl_requested = allow_lan or os.environ.get("JARVIS_USE_SSL", "").strip().lower() in ("true", "1")
+        certs_ok = _ensure_certs() if ssl_requested else False
+        use_ssl = bool(certs_ok and self._ssl_enabled())
+        try:
+            bind_host = _select_dashboard_bind_host(allow_lan, use_ssl)
+        except RuntimeError as exc:
+            print(f"[Dashboard] {exc} Falling back to loopback-only access.")
+            bind_host = "127.0.0.1"
+            allow_lan = False
 
         ssl_key  = BASE_DIR / "config" / "certs" / "jarvis.key"
         ssl_cert = BASE_DIR / "config" / "certs" / "jarvis.crt"

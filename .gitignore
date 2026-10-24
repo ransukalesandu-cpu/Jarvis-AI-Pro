@@ -20,3 +20,10 @@ venv/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Runtime logs and per-user auth material must not be committed
+logs/
+config/pin_vault.dat
+config/auth_state.json
+master_voice.emb*
+*.emb.npy

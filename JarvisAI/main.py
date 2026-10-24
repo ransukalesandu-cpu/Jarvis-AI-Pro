@@ -43,6 +43,8 @@ for _stream in ("stdout", "stderr"):
 # ─────────────────────────────────────────────────────────────────────────────
 
 import asyncio
+
+from core.audio_callback_guard import enqueue_audio_frame
 import re
 import threading
 import time
@@ -60,14 +62,12 @@ from pathlib import Path
 # explicitly request GPU rasterization for the canvas-heavy Holo UI. Do this
 # before importing PyQt/WebEngine so its renderer process inherits the flags.
 # Keep user-supplied Chromium flags intact and never force past the GPU blocklist.
-_chromium_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "").split()
 if _platform.system() == "Windows":
+    _chromium_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "").split()
     for _gpu_flag in ("--enable-gpu-rasterization", "--enable-zero-copy"):
         if _gpu_flag not in _chromium_flags:
             _chromium_flags.append(_gpu_flag)
-elif _platform.system() == "Linux" and "--no-sandbox" not in _chromium_flags:
-    _chromium_flags.append("--no-sandbox")
-os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(_chromium_flags)
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(_chromium_flags)
 
 try:
     import sounddevice as sd
@@ -708,6 +708,7 @@ class JarvisLive:
         self._voice_id_audio_turn_active = False
         self._voice_id_enroll_lock = threading.Lock()
         self._voice_id_enroll_active = False
+        self._voice_id_enroll_role = "owner"
         self._voice_id_enroll_chunks: list[bytes] = []
         self._voice_id_enroll_samples = 0
         self._voice_id_enroll_challenge = ""
@@ -1251,13 +1252,14 @@ class JarvisLive:
                         self._voice_id_turn_audio = b""
                     return "Voice ID disabled. Sensitive actions will follow their normal confirmation policy."
                 if not voice_id.is_enrolled():
-                    return self._voice_id_action("enroll")
+                    return self._voice_id_action("enroll_owner")
                 voice_id.enable()
                 self._voice_id_enabled = True
                 self.ui.set_voice_id_enabled(True)
                 return "Voice ID enabled. Sensitive actions and spoken approvals will check your speaker profile."
 
-            if action == "enroll":
+            if action in ("enroll", "enroll_owner", "enroll_sister"):
+                role = "sister" if action == "enroll_sister" else "owner"
                 if not voice_id.backend_ready():
                     return ("Voice ID is unavailable. Install requirements-voice-id.txt, "
                             "and ensure your OS credential store is unlocked and available, "
@@ -1265,7 +1267,7 @@ class JarvisLive:
                 # The challenge is transcribed by the existing Live session.
                 # A deliberate enrollment click may therefore wake a sleeping
                 # session so the already-open mic can validate the sentence.
-                self.wake(reason="Voice ID enrollment")
+                self.wake(reason=f"Voice ID enrollment ({role})")
                 challenge = secrets.choice((
                     "Copper leaves drift past the harbor before sunrise.",
                     "Please verify my voice before Jarvis changes anything.",
@@ -1274,6 +1276,7 @@ class JarvisLive:
                 ))
                 with self._voice_id_enroll_lock:
                     self._voice_id_enroll_active = True
+                    self._voice_id_enroll_role = role
                     self._voice_id_enroll_chunks = []
                     self._voice_id_enroll_samples = 0
                     self._voice_id_enroll_challenge = challenge
@@ -1281,16 +1284,22 @@ class JarvisLive:
                     self._voice_id_enroll_transcript = ""
                     self._voice_id_enroll_candidate = None
                 self.ui.show_content(
-                    "VOICE ID ENROLLMENT",
+                    f"VOICE ID ENROLLMENT ({role.upper()})",
                     f"Read this sentence twice, clearly, after starting enrollment:\n\n{challenge}\n\n"
-                    "Keep the microphone close and JARVIS quiet until enrollment finishes. "
+                    f"Keep the microphone close and JARVIS quiet until enrollment finishes for the {role}. "
                     "Only clear voiced audio is used; raw audio is discarded after the local profile is created. "
                     "The encryption key stays in this device's OS credential store.",
                 )
                 threading.Timer(
                     60.0, self._expire_voice_id_enrollment, args=(challenge,),
                 ).start()
-                return f"Enrollment started. Read the sentence twice, clearly: {challenge}"
+                return f"Enrollment started for {role}. Read the sentence twice, clearly: {challenge}"
+
+            if action == "remove_sister":
+                voice_id.remove_profile("sister")
+                self._voice_id_enabled = voice_id.is_enabled()
+                self.ui.set_voice_id_enabled(self._voice_id_enabled)
+                return "Sister voice profile removed."
 
             if action == "remove":
                 voice_id.remove_profile()
@@ -1299,7 +1308,7 @@ class JarvisLive:
                 with self._voice_id_audio_lock:
                     self._voice_id_audio_chunks.clear()
                     self._voice_id_turn_audio = b""
-                return "Encrypted Voice ID profile removed and speaker checks disabled."
+                return "Encrypted Voice ID profiles removed and speaker checks disabled."
         except Exception as exc:
             return f"Voice ID could not be updated: {type(exc).__name__}: {exc}"
         return "Unknown Voice ID action."
@@ -1383,14 +1392,16 @@ class JarvisLive:
             self._begin_voice_id_save(ready_sample)
 
     def _begin_voice_id_save(self, pcm: bytes) -> None:
+        with self._voice_id_enroll_lock:
+            role = getattr(self, "_voice_id_enroll_role", "owner")
         def save_profile():
             try:
-                voice_id.enroll(np.frombuffer(pcm, dtype=np.int16))
+                voice_id.enroll(np.frombuffer(pcm, dtype=np.int16), role=role)
                 self._voice_id_enabled = voice_id.is_enabled()
                 self.ui.set_voice_id_enabled(self._voice_id_enabled)
-                self.ui.write_log("SEC: Voice ID enrollment complete. Raw recording discarded; encrypted speaker profile stored locally.")
+                self.ui.write_log(f"SEC: Voice ID enrollment complete for {role}. Raw recording discarded; encrypted speaker profile stored locally.")
             except Exception as exc:
-                self.ui.write_log(f"SEC: Voice ID enrollment failed: {type(exc).__name__}: {exc}")
+                self.ui.write_log(f"SEC: Voice ID enrollment failed for {role}: {type(exc).__name__}: {exc}")
         threading.Thread(target=save_profile, name="voice-id-enrollment", daemon=True).start()
 
     def _append_voice_id_audio(self, data: bytes) -> None:
@@ -1427,6 +1438,16 @@ class JarvisLive:
             elif recent:
                 self._voice_id_turn_audio = (self._voice_id_turn_audio + recent)[-192000:]
 
+    def _get_speaker_role_for_current_turn(self) -> str:
+        if not self._voice_id_enabled or not voice_id.is_enabled():
+            return "owner"
+        with self._voice_id_audio_lock:
+            pcm = self._voice_id_turn_audio
+        if len(pcm) < int(SEND_SAMPLE_RATE * voice_id.MIN_AUDIO_SECONDS * 2):
+            return "stranger"
+        role, score = voice_id.identify_speaker(np.frombuffer(pcm, dtype=np.int16))
+        return role
+
     def _verify_voice_id_for_current_turn(self) -> bool:
         if not self._voice_id_enabled or not voice_id.is_enabled():
             return not voice_id.is_enabled()
@@ -1435,9 +1456,10 @@ class JarvisLive:
         if len(pcm) < int(SEND_SAMPLE_RATE * voice_id.MIN_AUDIO_SECONDS * 2):
             self.ui.write_log("SEC: Voice ID needs more clear speech; spoken approval denied.")
             return False
-        matched, score = voice_id.verify(np.frombuffer(pcm, dtype=np.int16))
+        role, score = voice_id.identify_speaker(np.frombuffer(pcm, dtype=np.int16))
+        matched = (role == "owner")
         if not matched:
-            self.ui.write_log(f"SEC: Voice ID did not match (score {score:.2f}); spoken approval denied.")
+            self.ui.write_log(f"SEC: Voice ID identified speaker as '{role}' (score {score:.2f}); owner access required.")
         return matched
 
     def _on_text_command(self, text: str):
@@ -2388,8 +2410,9 @@ class JarvisLive:
                 data = indata.tobytes()
                 self._append_voice_id_audio(data)
                 loop.call_soon_threadsafe(
-                    self.out_queue.put_nowait,
-                    {"data": data, "mime_type": "audio/pcm;rate=16000"}
+                    enqueue_audio_frame,
+                    self.out_queue,
+                    {"data": data, "mime_type": "audio/pcm;rate=16000"},
                 )
                 # Feed the live mic level to the HUD so the waveform reacts to
                 # the user's actual voice while listening. Purely cosmetic — any
@@ -2448,17 +2471,12 @@ class JarvisLive:
                 # whose source went away. Chosen hardware failing must never
                 # mean the assistant cannot hear at all.
                 if _mic_dev is None:
-                    print(f"[JARVIS] ⚠️ Mic input unavailable: {_e}")
-                    return
+                    raise
                 print(f"[JARVIS] ⚠️  Mic '{_mic_name}' failed: {_e} — using default")
                 self.ui.write_log(
                     f"SYS: Microphone '{_mic_name}' unavailable — using system default."
                 )
-                try:
-                    _mic_stream = _open_mic(None)
-                except Exception as _e2:
-                    print(f"[JARVIS] ⚠️ Default mic failed: {_e2}")
-                    return
+                _mic_stream = _open_mic(None)
 
             with _mic_stream:
                 print("[JARVIS] 🎤 Mic stream open")
@@ -2466,6 +2484,7 @@ class JarvisLive:
                     await asyncio.sleep(0.1)
         except Exception as e:
             print(f"[JARVIS] ❌ Mic: {e}")
+            raise
 
     async def _flush_pending_vision(self) -> bool:
         """Send a captured frame immediately after its tool response.
@@ -2636,6 +2655,9 @@ class JarvisLive:
                                     first_audio_transcript = not self._voice_id_audio_turn_active
                                     self._voice_id_audio_turn_active = True
                                 self._snapshot_voice_id_audio(new_turn=first_audio_transcript)
+                                current_speaker_role = self._get_speaker_role_for_current_turn()
+                                if voice_id.is_enabled():
+                                    self.ui.write_log(f"SEC: Speaker identified as '{current_speaker_role}'.")
                                 security.mark_user_turn_started()
                                 if not voice_confirmation_consumed:
                                     decision = await asyncio.to_thread(
@@ -3628,6 +3650,7 @@ class JarvisLive:
             logger=self.ui.write_log,
             voice_id_required=voice_id.is_enabled,
             voice_id_verifier=self._verify_voice_id_for_current_turn,
+            voice_id_role=self._get_speaker_role_for_current_turn,
         )
         _ledger_ok, _ledger_status = security.verify_log()
         self.ui.write_log(

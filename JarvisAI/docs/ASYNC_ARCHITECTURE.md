@@ -30,3 +30,16 @@ The async methods in `JarvisAI/main.py` now call `asyncio.get_running_loop()` ra
 - Trigger a tool that runs blocking work and verify the UI remains responsive.
 - Test manual interruption, voice barge-in over speaker output, false triggers from fan/hum noise, reconnect, and orderly shutdown.
 - Test on the target Windows/Python version; static inspection alone does not prove device-specific audio behavior.
+
+
+## Diagnosing a silent voice pipeline
+
+The runtime prints one-time-per-turn checkpoints with the `[AudioTrace ...]` prefix. Read them in order:
+
+- `1/MIC`: the input stream opened and the callback received actual samples. If the stream-open line appears but the first callback does not, inspect the selected microphone, OS permissions, and PortAudio/device state.
+- `1→3`: the sender took a microphone/phone frame and sent it to Gemini Live. If mic callbacks work but no frame is sent, check whether JARVIS is asleep, muted, in push-to-talk mode without the key held, or routing input through the phone.
+- `3/LIVE`: at least one server event arrived. `2/STT` logs the first user transcription for a turn; `3/GEN` logs the first accepted assistant transcription; `3→4/AUDIO` logs returned PCM audio.
+- `4/OUTPUT`: the playback stream opened, a PCM chunk reached its queue, and the first `sounddevice.write` started/returned. A returned write means PortAudio accepted the buffer, not that audible sound was confirmed.
+- `Callback failed`, `Live audio send failed`, `Speaker write failed`, or `CRITICAL THREAD CRASH` includes exception details and/or a traceback to identify the failing stage.
+
+If a turn completes with assistant text but no PCM audio payload, the trace explicitly reports that mismatch. Do not add `pyttsx3`/COM or `PyAudio` code to this path unless the app is deliberately changed to use those engines; this runtime uses Gemini Live native audio and `sounddevice`.

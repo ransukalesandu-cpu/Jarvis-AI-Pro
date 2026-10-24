@@ -2737,6 +2737,8 @@ class JarvisLive:
         short_audio_fragment_logged = False
         output_audio_bytes_seen = 0
         audio_fragment_buffer = bytearray()
+        last_audio_event_at = None
+        last_audio_event_duration = 0.0
 
         try:
             while True:
@@ -2770,6 +2772,27 @@ class JarvisLive:
                     _audio_chunks = _live_audio_chunks(response)
                     if _audio_chunks:
                         event_bytes = sum(len(chunk) for chunk in _audio_chunks)
+                        now_audio_event = time.monotonic()
+                        event_audio_duration = event_bytes / (
+                            RECEIVE_SAMPLE_RATE * CHANNELS * 2
+                        )
+                        if last_audio_event_at is not None:
+                            arrival_gap = now_audio_event - last_audio_event_at
+                            expected_gap = last_audio_event_duration + 0.10
+                            if (
+                                arrival_gap > max(0.18, expected_gap)
+                                and arrival_gap < 3.0
+                            ):
+                                print(
+                                    f"[AudioTrace 3→4/AUDIO] Live PCM arrival gap "
+                                    f"{arrival_gap * 1000:.0f} ms after a "
+                                    f"{last_audio_event_duration * 1000:.0f} ms payload; "
+                                    f"next payload={event_bytes} bytes "
+                                    f"({event_audio_duration * 1000:.0f} ms). "
+                                    "This may explain speech stutter."
+                                )
+                        last_audio_event_at = now_audio_event
+                        last_audio_event_duration = event_audio_duration
                         if self._interrupted:
                             # Never let a fragment from a cancelled assistant turn
                             # leak into the next user's response.
@@ -2919,6 +2942,9 @@ class JarvisLive:
                                         self._inflight_user_tool_started = False
 
                         if sc.turn_complete:
+                            # Start arrival-cadence tracking fresh for the next turn.
+                            last_audio_event_at = None
+                            last_audio_event_duration = 0.0
                             # Flush a valid short tail only after Live confirms the
                             # turn ended. Streaming writes remain 50 ms aligned.
                             final_pcm = b""
@@ -3121,11 +3147,8 @@ class JarvisLive:
         output_write_wall_seconds = 0.0
         output_write_count = 0
         output_timing_diagnostic_done = False
-        output_fallback_attempted = False
         last_output_write_end = None
         last_queue_starvation_log = 0.0
-        last_audio_event_at = None
-        last_audio_event_duration = 0.0
 
         _spk_name = get_output_device()
         _spk_dev  = audio_devices.resolve(_spk_name, "output")
@@ -3418,7 +3441,6 @@ class JarvisLive:
                                     "The current endpoint may be accepting audio without "
                                     "playing it in real time; attempting a tested speaker fallback."
                                 )
-                                output_fallback_attempted = True
                                 current_device = _stream_device_index(stream, _spk_dev)
                                 fallback = await _open_verified_fallback(current_device)
                                 if fallback is None:

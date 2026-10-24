@@ -13,6 +13,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -485,7 +486,7 @@ class SelfUpdateTierTests(unittest.TestCase):
 class PersonalTrustModeTests(unittest.TestCase):
     def test_personal_mode_is_off_by_default(self):
         from core import security
-        with unittest.mock.patch.dict(os.environ, {}, clear=False):
+        with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("JARVIS_PERSONAL_MODE", None)
             self.assertFalse(security.personal_mode_enabled())
             self.assertEqual(

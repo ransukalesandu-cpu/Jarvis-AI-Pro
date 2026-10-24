@@ -2292,7 +2292,9 @@ class JarvisLive:
                     new_x = np.linspace(0, 1, n_samples)
                     resampled = np.interp(new_x, old_x, raw_mono.astype(np.float32)).astype(np.int16)
                     indata = resampled.reshape(-1, 1) if indata.ndim > 1 else resampled
-            self._capture_voice_id_enrollment(indata, frames)
+            # Voice-ID enrollment is intentionally deferred until the
+            # speaking/turn gate below. Otherwise JARVIS can enroll its own
+            # speaker echo as the user's voice while it is talking.
             # ── Wake-word gate ───────────────────────────────────────────────
             # While asleep, the mic audio NEVER goes to Gemini (nothing is
             # streamed, so JARVIS can't respond to speech not addressed to it and
@@ -2320,6 +2322,12 @@ class JarvisLive:
             response_active = bool(
                 jarvis_speaking or self._assistant_turn_pending or self._briefing_active
             )
+
+            # Never enroll the assistant's own output as the user's voice.
+            # Keep enrollment active during ordinary user-listening periods.
+            if not response_active:
+                self._capture_voice_id_enrollment(indata, frames)
+
             # Keep the local model receiving frames while idle as well. Its
             # one-shot trigger disarms after a match and needs quiet frames to
             # re-arm; without these, a single detected barge-in disables later

@@ -36,12 +36,13 @@ class HeadlessCoreAndIngestionTests(unittest.TestCase):
         self.assertEqual(ui.get_plugin_settings(), {})
 
     def test_headless_flag_uses_daemon_path(self):
+        import JarvisAI.main as jmain
         with (
-            patch.object(main.sys, "argv", ["main.py", "--headless"]),
-            patch.object(main, "JarvisLive") as live_cls,
-            patch.object(main.asyncio, "run") as run_async,
+            patch.object(jmain.sys, "argv", ["main.py", "--headless"]),
+            patch.object(jmain, "JarvisLive") as live_cls,
+            patch.object(jmain.asyncio, "run") as run_async,
         ):
-            main.main()
+            jmain.main()
             live_cls.assert_called_once()
             run_async.assert_called_once()
 

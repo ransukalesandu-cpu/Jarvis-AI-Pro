@@ -80,6 +80,7 @@ class WebSearchFallbackTests(unittest.TestCase):
         )
         with patch.object(ws, "_run_bounded", side_effect=self._run_bounded_inline), \
                 patch.object(ws, "_sri_lanka_news", return_value=no_headlines), \
+                patch.object(ws, "_direct_sri_lanka_news", return_value=no_headlines), \
                 patch.object(ws, "_gemini_search", return_value=grounded) as gemini:
             result = ws._news(
                 "Sri Lankan local news from Newsfirst and Ada Derana in Sinhala and English"
@@ -138,6 +139,7 @@ class WebSearchFallbackTests(unittest.TestCase):
         )
         with patch.object(ws, "_run_bounded", side_effect=self._run_bounded_inline), \
                 patch.object(ws, "_sri_lanka_news", return_value=no_headlines), \
+                patch.object(ws, "_direct_sri_lanka_news", return_value=no_headlines), \
                 patch.object(ws, "_gemini_search", side_effect=RuntimeError("quota exhausted")):
             result = ws._news("Sri Lankan local news")
         self.assertIn("could not be fetched right now", result)

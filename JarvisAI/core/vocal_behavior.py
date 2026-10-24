@@ -14,7 +14,7 @@ import time
 import numpy as np
 
 
-VOCAL_PROFILES = ("professional", "natural", "expressive", "minimal")
+VOCAL_PROFILES = ("professional", "natural", "expressive", "minimal", "tactical", "analytical", "empathetic", "authoritative")
 DEFAULT_SETTINGS = {
     "enabled": True,
     "breathing": True,
@@ -78,8 +78,12 @@ class VocalBehaviorEngine:
         if now - self._last_event_at < 18.0:
             return VocalPlan()
 
-        profile_factor = {"professional": 0.8, "natural": 1.0,
-                          "expressive": 1.2, "minimal": 0.35}[cfg["profile"]]
+        profile_factor = {
+            "professional": 0.8, "natural": 1.0,
+            "expressive": 1.2, "minimal": 0.35,
+            "tactical": 0.5, "analytical": 0.65,
+            "empathetic": 1.1, "authoritative": 0.75,
+        }.get(cfg["profile"], 0.8)
         probability = (cfg["event_frequency"] / 100.0)
         probability *= (0.45 + cfg["expressiveness"] / 100.0) * profile_factor
         if self._rng.random() >= min(0.72, probability):
@@ -135,7 +139,11 @@ def delivery_guidance(settings: dict | None) -> str:
         "natural": "conversational and relaxed, with modest variation",
         "expressive": "more animated when context warrants it, never theatrical",
         "minimal": "very restrained, with minimal vocal variation",
-    }[profile]
+        "tactical": "decisive, direct, crisp, and authoritative with zero hesitation",
+        "analytical": "articulate, steady, and measured with precise technical focus",
+        "empathetic": "warm, reassuring, gentle, and attentive with thoughtful pacing",
+        "authoritative": "commanding, confident, clear, and steady",
+    }.get(profile, "composed, warm, and restrained")
     pause = cfg["pause_naturalness"]
     if pause < 20:
         pauses = "Keep pauses short and avoid deliberate hesitation."

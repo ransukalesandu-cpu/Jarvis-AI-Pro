@@ -2413,39 +2413,62 @@ class JarvisLive:
                     except Exception:
                         pass
 
-                    # WebRTC VAD rejects non-speech noise first; EchoGuard then
-                    # separates the user's voice from JARVIS speaker echo.
-                    try:
-                        vad_confirms_speech = True
-                        if self._speech_vad is not None:
-                            mono = indata[:, 0] if indata.ndim > 1 else indata
-                            vad_pcm_buffer.extend(np.asarray(mono, dtype=np.int16).tobytes())
-                            while len(vad_pcm_buffer) >= 640:  # 20 ms at 16 kHz
-                                frame = bytes(vad_pcm_buffer[:640])
-                                del vad_pcm_buffer[:640]
-                                vad_recent.append(
-                                    self._speech_vad.is_speech(frame, SEND_SAMPLE_RATE)
+                    # EchoGuard needs a reference to PCM that has actually
+                    # reached the playback path. Before the first output batch,
+                    # its history can be empty and it intentionally treats any
+                    # audible input as user speech. Don't let a clap/noise frame
+                    # cancel a response while Gemini is still generating it.
+                    # The local wake-word detector above remains armed during
+                    # this window, so an explicit "Hey Jarvis" can still interrupt.
+                    output_reference_available = bool(
+                        jarvis_speaking and self._echo._hist
+                    )
+                    if output_reference_available:
+                        # WebRTC VAD rejects non-speech noise first; EchoGuard then
+                        # separates the user's voice from JARVIS speaker echo.
+                        try:
+                            vad_confirms_speech = True
+                            if self._speech_vad is not None:
+                                mono = indata[:, 0] if indata.ndim > 1 else indata
+                                vad_pcm_buffer.extend(
+                                    np.asarray(mono, dtype=np.int16).tobytes()
                                 )
-                            vad_confirms_speech = sum(vad_recent) >= 2
+                                while len(vad_pcm_buffer) >= 640:  # 20 ms at 16 kHz
+                                    frame = bytes(vad_pcm_buffer[:640])
+                                    del vad_pcm_buffer[:640]
+                                    vad_recent.append(
+                                        self._speech_vad.is_speech(
+                                            frame, SEND_SAMPLE_RATE
+                                        )
+                                    )
+                                vad_confirms_speech = sum(vad_recent) >= 2
 
-                        is_user_voice = (
-                            self._echo.is_user_speech(
-                                indata, SEND_SAMPLE_RATE, _pcm_level(indata), fast=True
+                            is_user_voice = (
+                                self._echo.is_user_speech(
+                                    indata, SEND_SAMPLE_RATE, _pcm_level(indata),
+                                    fast=True,
+                                )
+                                if vad_confirms_speech else False
                             )
-                            if vad_confirms_speech else False
-                        )
-                        if is_user_voice:
-                            self._voice_barge_in_run += 1
-                            if (
-                                self._voice_barge_in_run >= 2
-                                and not self._voice_barge_in_pending.is_set()
-                            ):
-                                self._voice_barge_in_pending.set()
-                                loop.call_soon_threadsafe(self._on_voice_barge_in)
-                        else:
+                            if is_user_voice:
+                                self._voice_barge_in_run += 1
+                                if (
+                                    self._voice_barge_in_run >= 2
+                                    and not self._voice_barge_in_pending.is_set()
+                                ):
+                                    self._voice_barge_in_pending.set()
+                                    loop.call_soon_threadsafe(self._on_voice_barge_in)
+                            else:
+                                self._voice_barge_in_run = 0
+                        except Exception:
                             self._voice_barge_in_run = 0
-                    except Exception:
+                    else:
+                        # Do not carry pre-playback VAD evidence into the first
+                        # real audio frame; that could otherwise trigger an
+                        # immediate false interruption as soon as output starts.
                         self._voice_barge_in_run = 0
+                        vad_pcm_buffer.clear()
+                        vad_recent.clear()
 
                 # Do not stream speaker echo or pending turn audio back to the model
                 # while a response or briefing is active.

@@ -78,10 +78,11 @@ _FREE_HIGH_DAILY_LADDER = (
     "gemini-3.1-flash-lite",
 )
 
-# Grounded search uses models that currently document Google Search support.
-# Gemini 2.5 is retained for existing free-tier projects; paid projects use
-# the current Gemini 3.x search-capable tier where enabled.
-_SEARCH_FREE_LADDER = ("gemini-2.5-flash-lite", "gemini-2.5-flash")
+# Grounded search must use model IDs available to newer API projects.
+# Start with the lower-cost Flash-Lite model, then fall back to Flash. The
+# previous Gemini 2.5 IDs return 404 for new users and make grounded news
+# fallback fail before it can produce headlines.
+_SEARCH_FREE_LADDER = ("gemini-3.5-flash-lite", "gemini-3.8-flash")
 _SEARCH_PAID_LADDER = ("gemini-3.8-flash", "gemini-3.5-flash-lite")
 
 _LADDERS = {

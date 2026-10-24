@@ -43,6 +43,8 @@ for _stream in ("stdout", "stderr"):
 # ─────────────────────────────────────────────────────────────────────────────
 
 import asyncio
+
+from core.audio_callback_guard import enqueue_audio_frame
 import re
 import threading
 import time
@@ -2395,8 +2397,9 @@ class JarvisLive:
                 data = indata.tobytes()
                 self._append_voice_id_audio(data)
                 loop.call_soon_threadsafe(
-                    self.out_queue.put_nowait,
-                    {"data": data, "mime_type": "audio/pcm;rate=16000"}
+                    enqueue_audio_frame,
+                    self.out_queue,
+                    {"data": data, "mime_type": "audio/pcm;rate=16000"},
                 )
                 # Feed the live mic level to the HUD so the waveform reacts to
                 # the user's actual voice while listening. Purely cosmetic — any

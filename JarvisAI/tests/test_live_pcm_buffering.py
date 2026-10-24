@@ -5,6 +5,8 @@ import unittest
 
 from main import (
     _MIN_LIVE_AUDIO_FRAME_BYTES,
+    _MIN_PREBUFFER_BYTES,
+    _OUTPUT_BLOCKSIZE,
     _PLAYBACK_SLICE_BYTES,
     _error_text,
     _is_transient_live_disconnect,
@@ -14,6 +16,11 @@ from main import (
 
 
 class LivePcmBufferingTests(unittest.TestCase):
+    def test_live_playback_prebuffer_and_output_blocksize(self):
+        # 24 kHz * mono * int16 * 0.3 seconds = 14,400 bytes.
+        self.assertEqual(_MIN_PREBUFFER_BYTES, 14_400)
+        self.assertEqual(_OUTPUT_BLOCKSIZE, 2048)
+
     def test_transient_classifier_recognizes_websocket_close_1006(self):
         class AbnormalClosure(Exception):
             code = 1006

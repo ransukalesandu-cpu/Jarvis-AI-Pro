@@ -63,3 +63,8 @@ The Newsfirst/Ada Derana scrape path runs a bounded publisher search first. A fa
 ### Gemini search transport failures and quotas
 
 Grounded search uses the current model IDs from the active search ladder. A transport-level disconnect such as HTTPX RemoteProtocolError is retried once with a fresh SDK client, paced by the normal per-model request gap. If the retry also fails, that model receives a short transient cooldown so repeated startup briefings do not continually reuse a broken connection. HTTP 429/quota errors remain on their longer server-hinted cooldown and are not retried as transport failures. The Sri Lankan news wrapper uses a 10-second per-request HTTP deadline and a bounded overall wait for the ladder/retry; unavailable headlines are reported as unavailable rather than invented.
+
+
+### Direct publisher fallback when Gemini quota is exhausted
+
+The Sri Lankan briefing tries the allowlisted Newsfirst and Ada Derana latest-news pages directly before calling search engines or Gemini grounding. This route requires no AI model quota and accepts only HTTPS article links on the expected publisher hosts. Each page has short connection/read timeouts and the four pages are fetched concurrently; inaccessible pages are skipped. If direct pages return no verified headlines, the existing search-engine and grounded-search fallbacks are still attempted, and the briefing reports unavailability rather than inventing headlines.

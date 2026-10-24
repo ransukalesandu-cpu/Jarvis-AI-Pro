@@ -35,10 +35,14 @@ class VoiceInterruptionTests(unittest.TestCase):
         live._assistant_turn_pending = True
         live._briefing_active = False
         live._echo = EchoGuard()
-        live._wake_interrupt_lock = patch("threading.Lock").start()
+        lock_patcher = patch("threading.Lock")
+        self.addCleanup(lock_patcher.stop)
+        live._wake_interrupt_lock = lock_patcher.start()
         live._wake_interrupt_audio = []
         live._voice_barge_in_run = 0
-        live._voice_barge_in_pending = patch("threading.Event").start()
+        event_patcher = patch("threading.Event")
+        self.addCleanup(event_patcher.stop)
+        live._voice_barge_in_pending = event_patcher.start()
         live._voice_barge_in_pending.is_set.return_value = False
         live._loop = MagicMock()
 

@@ -80,6 +80,7 @@ class WebSearchFallbackTests(unittest.TestCase):
         )
         with patch.object(ws, "_run_bounded", side_effect=self._run_bounded_inline), \
                 patch.object(ws, "_sri_lanka_news", return_value=no_headlines), \
+                patch.object(ws, "_direct_sri_lanka_news", return_value=no_headlines), \
                 patch.object(ws, "_gemini_search", return_value=grounded) as gemini:
             result = ws._news(
                 "Sri Lankan local news from Newsfirst and Ada Derana in Sinhala and English"
@@ -89,12 +90,57 @@ class WebSearchFallbackTests(unittest.TestCase):
         self.assertIn("Google Search", gemini.call_args.args[0])
         self.assertIn("Newsfirst", gemini.call_args.args[0])
 
+    def test_direct_publisher_fallback_works_without_gemini_search(self):
+        no_headlines = (
+            "No Sri Lankan headlines were found from Newsfirst or Ada Derana right now."
+        )
+        direct_news = (
+            "Sri Lankan local news — direct publisher pages\n\n"
+            "Newsfirst — English\n• Verified headline from publisher"
+        )
+        with patch.object(ws, "_run_bounded", side_effect=self._run_bounded_inline), \
+                patch.object(ws, "_sri_lanka_news", return_value=no_headlines) as search_mock, \
+                patch.object(ws, "_direct_sri_lanka_news", return_value=direct_news), \
+                patch.object(ws, "_gemini_search") as gemini:
+            result = ws._news("Sri Lankan local news")
+        self.assertEqual(result, direct_news)
+        search_mock.assert_not_called()
+        gemini.assert_not_called()
+
+    def test_direct_publisher_fallback_extracts_only_allowlisted_https_links(self):
+        def fake_get(url, **_kwargs):
+            host = ws.urlparse(url).hostname or ""
+            page_title = host.replace(".", " ").title()
+            html = (
+                "<html><body><article><h2><a href='https://"
+                + host
+                + "/news/example-headline'>"
+                + page_title
+                + " verified current headline with enough title text</a></h2>"
+                "<p>Short publisher summary.</p></article>"
+                "<article><h2><a href='https://external.example/fake'>"
+                "External fake headline should be rejected by the allowlist"
+                "</a></h2></article></body></html>"
+            )
+            return SimpleNamespace(
+                url=url,
+                text=html,
+                raise_for_status=lambda: None,
+            )
+
+        with patch("requests.get", side_effect=fake_get):
+            result = ws._direct_sri_lanka_news()
+        self.assertIn("verified current headline", result)
+        self.assertIn("https://www.newsfirst.lk/news/example-headline", result)
+        self.assertNotIn("external.example", result)
+
     def test_sri_lanka_news_returns_clear_message_if_grounded_fallback_fails(self):
         no_headlines = (
             "No Sri Lankan headlines were found from Newsfirst or Ada Derana right now."
         )
         with patch.object(ws, "_run_bounded", side_effect=self._run_bounded_inline), \
                 patch.object(ws, "_sri_lanka_news", return_value=no_headlines), \
+                patch.object(ws, "_direct_sri_lanka_news", return_value=no_headlines), \
                 patch.object(ws, "_gemini_search", side_effect=RuntimeError("quota exhausted")):
             result = ws._news("Sri Lankan local news")
         self.assertIn("could not be fetched right now", result)

@@ -22,6 +22,14 @@ if _platform.system() == "Windows":
 # because most of these prints sit inside the receive loop it takes the session
 # down on startup. Reconfiguring to UTF-8 with a replacement fallback costs
 # nothing and makes the app launch the same way in every locale.
+import sys
+from pathlib import Path
+
+_ROOT_DIR = Path(__file__).resolve().parent.parent
+for _p in [str(_ROOT_DIR), str(_ROOT_DIR / "JarvisAI"), str(_ROOT_DIR / "voice")]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 import sys as _sys
 
 for _stream in ("stdout", "stderr"):
@@ -36,8 +44,7 @@ for _stream in ("stdout", "stderr"):
 
 import asyncio
 
-from core import self_repair
-from core.audio_callback_guard import guarded_audio_callback
+from core.audio_callback_guard import enqueue_audio_frame
 import re
 import threading
 import time
@@ -62,7 +69,10 @@ if _platform.system() == "Windows":
             _chromium_flags.append(_gpu_flag)
     os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(_chromium_flags)
 
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except Exception:
+    sd = None
 import numpy as np
 from google import genai
 from google.genai import types
@@ -698,6 +708,7 @@ class JarvisLive:
         self._voice_id_audio_turn_active = False
         self._voice_id_enroll_lock = threading.Lock()
         self._voice_id_enroll_active = False
+        self._voice_id_enroll_role = "owner"
         self._voice_id_enroll_chunks: list[bytes] = []
         self._voice_id_enroll_samples = 0
         self._voice_id_enroll_challenge = ""
@@ -1241,13 +1252,14 @@ class JarvisLive:
                         self._voice_id_turn_audio = b""
                     return "Voice ID disabled. Sensitive actions will follow their normal confirmation policy."
                 if not voice_id.is_enrolled():
-                    return self._voice_id_action("enroll")
+                    return self._voice_id_action("enroll_owner")
                 voice_id.enable()
                 self._voice_id_enabled = True
                 self.ui.set_voice_id_enabled(True)
                 return "Voice ID enabled. Sensitive actions and spoken approvals will check your speaker profile."
 
-            if action == "enroll":
+            if action in ("enroll", "enroll_owner", "enroll_sister"):
+                role = "sister" if action == "enroll_sister" else "owner"
                 if not voice_id.backend_ready():
                     return ("Voice ID is unavailable. Install requirements-voice-id.txt, "
                             "and ensure your OS credential store is unlocked and available, "
@@ -1255,7 +1267,7 @@ class JarvisLive:
                 # The challenge is transcribed by the existing Live session.
                 # A deliberate enrollment click may therefore wake a sleeping
                 # session so the already-open mic can validate the sentence.
-                self.wake(reason="Voice ID enrollment")
+                self.wake(reason=f"Voice ID enrollment ({role})")
                 challenge = secrets.choice((
                     "Copper leaves drift past the harbor before sunrise.",
                     "Please verify my voice before Jarvis changes anything.",
@@ -1264,6 +1276,7 @@ class JarvisLive:
                 ))
                 with self._voice_id_enroll_lock:
                     self._voice_id_enroll_active = True
+                    self._voice_id_enroll_role = role
                     self._voice_id_enroll_chunks = []
                     self._voice_id_enroll_samples = 0
                     self._voice_id_enroll_challenge = challenge
@@ -1271,16 +1284,22 @@ class JarvisLive:
                     self._voice_id_enroll_transcript = ""
                     self._voice_id_enroll_candidate = None
                 self.ui.show_content(
-                    "VOICE ID ENROLLMENT",
+                    f"VOICE ID ENROLLMENT ({role.upper()})",
                     f"Read this sentence twice, clearly, after starting enrollment:\n\n{challenge}\n\n"
-                    "Keep the microphone close and JARVIS quiet until enrollment finishes. "
+                    f"Keep the microphone close and JARVIS quiet until enrollment finishes for the {role}. "
                     "Only clear voiced audio is used; raw audio is discarded after the local profile is created. "
                     "The encryption key stays in this device's OS credential store.",
                 )
                 threading.Timer(
                     60.0, self._expire_voice_id_enrollment, args=(challenge,),
                 ).start()
-                return f"Enrollment started. Read the sentence twice, clearly: {challenge}"
+                return f"Enrollment started for {role}. Read the sentence twice, clearly: {challenge}"
+
+            if action == "remove_sister":
+                voice_id.remove_profile("sister")
+                self._voice_id_enabled = voice_id.is_enabled()
+                self.ui.set_voice_id_enabled(self._voice_id_enabled)
+                return "Sister voice profile removed."
 
             if action == "remove":
                 voice_id.remove_profile()
@@ -1289,7 +1308,7 @@ class JarvisLive:
                 with self._voice_id_audio_lock:
                     self._voice_id_audio_chunks.clear()
                     self._voice_id_turn_audio = b""
-                return "Encrypted Voice ID profile removed and speaker checks disabled."
+                return "Encrypted Voice ID profiles removed and speaker checks disabled."
         except Exception as exc:
             return f"Voice ID could not be updated: {type(exc).__name__}: {exc}"
         return "Unknown Voice ID action."
@@ -1373,14 +1392,16 @@ class JarvisLive:
             self._begin_voice_id_save(ready_sample)
 
     def _begin_voice_id_save(self, pcm: bytes) -> None:
+        with self._voice_id_enroll_lock:
+            role = getattr(self, "_voice_id_enroll_role", "owner")
         def save_profile():
             try:
-                voice_id.enroll(np.frombuffer(pcm, dtype=np.int16))
+                voice_id.enroll(np.frombuffer(pcm, dtype=np.int16), role=role)
                 self._voice_id_enabled = voice_id.is_enabled()
                 self.ui.set_voice_id_enabled(self._voice_id_enabled)
-                self.ui.write_log("SEC: Voice ID enrollment complete. Raw recording discarded; encrypted speaker profile stored locally.")
+                self.ui.write_log(f"SEC: Voice ID enrollment complete for {role}. Raw recording discarded; encrypted speaker profile stored locally.")
             except Exception as exc:
-                self.ui.write_log(f"SEC: Voice ID enrollment failed: {type(exc).__name__}: {exc}")
+                self.ui.write_log(f"SEC: Voice ID enrollment failed for {role}: {type(exc).__name__}: {exc}")
         threading.Thread(target=save_profile, name="voice-id-enrollment", daemon=True).start()
 
     def _append_voice_id_audio(self, data: bytes) -> None:
@@ -1417,6 +1438,16 @@ class JarvisLive:
             elif recent:
                 self._voice_id_turn_audio = (self._voice_id_turn_audio + recent)[-192000:]
 
+    def _get_speaker_role_for_current_turn(self) -> str:
+        if not self._voice_id_enabled or not voice_id.is_enabled():
+            return "owner"
+        with self._voice_id_audio_lock:
+            pcm = self._voice_id_turn_audio
+        if len(pcm) < int(SEND_SAMPLE_RATE * voice_id.MIN_AUDIO_SECONDS * 2):
+            return "stranger"
+        role, score = voice_id.identify_speaker(np.frombuffer(pcm, dtype=np.int16))
+        return role
+
     def _verify_voice_id_for_current_turn(self) -> bool:
         if not self._voice_id_enabled or not voice_id.is_enabled():
             return not voice_id.is_enabled()
@@ -1425,9 +1456,10 @@ class JarvisLive:
         if len(pcm) < int(SEND_SAMPLE_RATE * voice_id.MIN_AUDIO_SECONDS * 2):
             self.ui.write_log("SEC: Voice ID needs more clear speech; spoken approval denied.")
             return False
-        matched, score = voice_id.verify(np.frombuffer(pcm, dtype=np.int16))
+        role, score = voice_id.identify_speaker(np.frombuffer(pcm, dtype=np.int16))
+        matched = (role == "owner")
         if not matched:
-            self.ui.write_log(f"SEC: Voice ID did not match (score {score:.2f}); spoken approval denied.")
+            self.ui.write_log(f"SEC: Voice ID identified speaker as '{role}' (score {score:.2f}); owner access required.")
         return matched
 
     def _on_text_command(self, text: str):
@@ -1442,6 +1474,7 @@ class JarvisLive:
                 wake_hint = "say 'Hey Jarvis', " + wake_hint
             self.ui.write_log(f"SYS: I'm asleep — {wake_hint} first.")
             return
+        self._interrupted = False
         security.mark_user_turn_started(voice_verified=True)
         with self._voice_id_audio_lock:
             self._voice_id_turn_audio = b""
@@ -2156,6 +2189,11 @@ class JarvisLive:
                     _label = f"{_mode.upper()} — {_query[:38]}" if _query else _mode.upper()
                     self.ui.show_content(_label, r)
 
+                # Auto Repair is a native content-panel workflow, so voice
+                # commands such as "open auto repair" visibly open its report.
+                if name == "auto_repair" and r:
+                    self.ui.show_content("JARVIS AUTO REPAIR", r)
+
             else:
                 if self._plugin_registry.has(name):
                     r = await loop.run_in_executor(
@@ -2240,7 +2278,7 @@ class JarvisLive:
         print("[JARVIS] 🎤 Mic started")
         loop = asyncio.get_event_loop()
 
-        def _callback_impl(indata, frames, time_info, status):
+        def callback(indata, frames, time_info, status):
             self._capture_voice_id_enrollment(indata, frames)
             # ── Wake-word gate ───────────────────────────────────────────────
             # While asleep, the mic audio NEVER goes to Gemini (nothing is
@@ -2284,10 +2322,14 @@ class JarvisLive:
                 det.feed(indata)
 
             if response_active:
-                if jarvis_speaking:
-                    # Keep a short, local-only pre-roll while JARVIS speaks. The
-                    # mic remains closed to Gemini until the echo-aware detector
-                    # confirms that a person (not the speaker echo) is talking.
+                # Keep a short, local-only pre-roll while JARVIS is active/speaking.
+                # The mic remains closed to Gemini until the echo-aware detector
+                # confirms that a person (not the speaker echo) is talking.
+                if (
+                    not self.ui.muted
+                    and not self._phone_active
+                    and (not self._ptt_enabled or self._ptt_held)
+                ):
                     try:
                         with self._wake_interrupt_lock:
                             self._wake_interrupt_audio.append(indata.tobytes())
@@ -2295,43 +2337,29 @@ class JarvisLive:
                         pass
 
                     # EchoGuard compares the mic's speech-band energies with
-                    # recent output. Require sustained evidence (more blocks in
-                    # difficult rooms) to avoid stopping for a single noise.
-                    if (
-                        not self.ui.muted
-                        and not self._phone_active
-                        and (not self._ptt_enabled or self._ptt_held)
-                    ):
-                        try:
-                            is_user_voice = self._echo.is_user_speech(
-                                indata, SEND_SAMPLE_RATE, _pcm_level(indata), fast=True
-                            )
-                            if is_user_voice:
-                                self._voice_barge_in_run += 1
-                                if (
-                                    self._voice_barge_in_run >= 2
-                                    and not self._voice_barge_in_pending.is_set()
-                                ):
-                                    self._voice_barge_in_pending.set()
-                                    loop.call_soon_threadsafe(self._on_voice_barge_in)
-                            else:
-                                self._voice_barge_in_run = 0
-                        except Exception:
-                            self._voice_barge_in_run = 0
-                elif detector_can_interrupt:
-                    # During a silent model/tool gap, retain pre-roll for the
-                    # local wake detector; no audio is sent unless it triggers.
+                    # recent output. Require sustained evidence (2 blocks)
+                    # to avoid stopping for a single noise.
                     try:
-                        with self._wake_interrupt_lock:
-                            self._wake_interrupt_audio.append(indata.tobytes())
+                        is_user_voice = self._echo.is_user_speech(
+                            indata, SEND_SAMPLE_RATE, _pcm_level(indata), fast=True
+                        )
+                        if is_user_voice:
+                            self._voice_barge_in_run += 1
+                            if (
+                                self._voice_barge_in_run >= 2
+                                and not self._voice_barge_in_pending.is_set()
+                            ):
+                                self._voice_barge_in_pending.set()
+                                loop.call_soon_threadsafe(self._on_voice_barge_in)
+                        else:
+                            self._voice_barge_in_run = 0
                     except Exception:
-                        pass
+                        self._voice_barge_in_run = 0
 
-                # Do not stream JARVIS's own speaker echo back to the model.
-                # In a silent tool gap, the local wake detector still gates input.
-                if jarvis_speaking or detector_can_interrupt:
-                    self._expire_voice_id_audio()
-                    return
+                # Do not stream speaker echo or pending turn audio back to the model
+                # while a response or briefing is active.
+                self._expire_voice_id_audio()
+                return
             else:
                 self._voice_barge_in_run = 0
                 self._voice_barge_in_pending.clear()
@@ -2369,8 +2397,9 @@ class JarvisLive:
                 data = indata.tobytes()
                 self._append_voice_id_audio(data)
                 loop.call_soon_threadsafe(
-                    self.out_queue.put_nowait,
-                    {"data": data, "mime_type": "audio/pcm;rate=16000"}
+                    enqueue_audio_frame,
+                    self.out_queue,
+                    {"data": data, "mime_type": "audio/pcm;rate=16000"},
                 )
                 # Feed the live mic level to the HUD so the waveform reacts to
                 # the user's actual voice while listening. Purely cosmetic — any
@@ -2381,23 +2410,11 @@ class JarvisLive:
                     pass
             else:
                 self._expire_voice_id_audio()
-        
-        def callback(indata, frames, time_info, status):
-            # PortAudio callbacks must not leak Python exceptions back into the
-            # native audio thread. Keep listening and record a rate-limited,
-            # redacted diagnostic instead of flooding the log on every block.
-            guarded_audio_callback(
-                "voice:audio_callback",
-                _callback_impl,
-                indata, frames, time_info, status,
-                on_error=lambda exc, operation: self_repair.record_error(
-                    exc, operation=operation
-                ),
-            )
-
 
         try:
             def _open_mic(dev):
+                if sd is None:
+                    raise RuntimeError("sounddevice is unavailable (PortAudio missing)")
                 return sd.InputStream(
                     samplerate=SEND_SAMPLE_RATE,
                     channels=CHANNELS,
@@ -2435,14 +2452,7 @@ class JarvisLive:
                 while True:
                     await asyncio.sleep(0.1)
         except Exception as e:
-            # Record microphone/runtime failures for later diagnosis, but never
-            # let the diagnostics layer hide the original audio exception.
-            try:
-                self_repair.record_error(e, operation="voice:microphone_stream")
-            except Exception:
-                pass
-            safe_error = self_repair.redact_secrets(e)
-            print(f"[JARVIS] ❌ Mic: {safe_error}")
+            print(f"[JARVIS] ❌ Mic: {e}")
             raise
 
     async def _flush_pending_vision(self) -> bool:
@@ -2576,14 +2586,8 @@ class JarvisLive:
 
                         if sc.output_transcription and sc.output_transcription.text:
                             txt = _clean_transcript(sc.output_transcription.text)
-                            # A turn that involves a tool call passes through
-                            # several turn_completes, and the API re-sends the
-                            # tail of the transcript across them. Comparing only
-                            # against the previous chunk missed that — once
-                            # out_buf had been flushed and emptied, the repeat
-                            # sailed straight back in, which logged the answer
-                            # twice AND made the avatar mouth it twice.
-                            if txt and not _is_repeat_chunk(txt, out_buf):
+                            # Ignore output transcriptions from an interrupted assistant turn.
+                            if txt and not self._interrupted and not _is_repeat_chunk(txt, out_buf):
                                 self._plan_vocal_response(txt)
                                 self._assistant_turn_pending = True
                                 out_buf.append(txt)
@@ -2620,6 +2624,9 @@ class JarvisLive:
                                     first_audio_transcript = not self._voice_id_audio_turn_active
                                     self._voice_id_audio_turn_active = True
                                 self._snapshot_voice_id_audio(new_turn=first_audio_transcript)
+                                current_speaker_role = self._get_speaker_role_for_current_turn()
+                                if voice_id.is_enabled():
+                                    self.ui.write_log(f"SEC: Speaker identified as '{current_speaker_role}'.")
                                 security.mark_user_turn_started()
                                 if not voice_confirmation_consumed:
                                     decision = await asyncio.to_thread(
@@ -2658,10 +2665,10 @@ class JarvisLive:
                             if self._turn_done_event:
                                 self._turn_done_event.set()
 
-                            # If this turn_complete ends an interrupted response, clear the
-                            # flag and skip all further processing for that turn.
+                            # If this turn_complete ends an interrupted response, discard
+                            # old output state and keep the interrupted flag active until
+                            # the user's new turn (input_transcription) or sc.interrupted arrives.
                             if self._interrupted and not in_buf:
-                                self._interrupted = False
                                 out_buf = []
                                 self._visemes.reset()
                                 self._vocal_plan = VocalPlan()
@@ -2784,6 +2791,8 @@ class JarvisLive:
             print(f"[JARVIS] 🔊 Output device: {_spk_name}")
 
         def _open_spk(dev):
+            if sd is None:
+                raise RuntimeError("sounddevice is unavailable (PortAudio missing)")
             st = sd.RawOutputStream(
                 samplerate=RECEIVE_SAMPLE_RATE,
                 channels=CHANNELS,
@@ -3610,6 +3619,7 @@ class JarvisLive:
             logger=self.ui.write_log,
             voice_id_required=voice_id.is_enabled,
             voice_id_verifier=self._verify_voice_id_for_current_turn,
+            voice_id_role=self._get_speaker_role_for_current_turn,
         )
         _ledger_ok, _ledger_status = security.verify_log()
         self.ui.write_log(
@@ -4017,8 +4027,6 @@ class JarvisLive:
                 return
 
 def main():
-    # Capture uncaught runtime/thread errors for diagnosis without swallowing them.
-    self_repair.install_global_exception_hooks()
     from PyQt6.QtCore import QTimer
     from PyQt6.QtWidgets import QApplication
 

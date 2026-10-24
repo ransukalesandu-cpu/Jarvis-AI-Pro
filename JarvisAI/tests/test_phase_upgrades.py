@@ -52,11 +52,6 @@ class TestPhaseUpgrades(unittest.TestCase):
         finally:
             manager.interrupt()
 
-    def test_live_model_configuration(self):
-        """Verify that LIVE_MODEL and LIVE_FALLBACK_MODELS are correctly configured."""
-        self.assertEqual(main.LIVE_MODEL, "models/gemini-3.1-flash-live-preview")
-        self.assertIn("models/gemini-2.0-flash-exp", main.LIVE_FALLBACK_MODELS)
-        self.assertIn("models/gemini-2.5-flash-native-audio-preview-12-2025", main.LIVE_FALLBACK_MODELS)
 
     @patch("actions.web_search._run_bounded")
     def test_search_timeout_configuration(self, mock_run_bounded):

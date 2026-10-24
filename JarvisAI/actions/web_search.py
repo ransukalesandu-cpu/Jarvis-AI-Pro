@@ -5,7 +5,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from core import injection_guard, self_repair
 
@@ -430,6 +430,168 @@ def _sri_lanka_news(_query: str = "") -> str:
     )
 
 
+# Direct publisher-page fallback. This does not use a search engine or a
+# Gemini grounding request, so it can still provide verified publisher links
+# when search-provider requests time out or Gemini's grounding quota is spent.
+_DIRECT_SRI_LANKA_PAGES = (
+    {
+        "label": "Newsfirst — English",
+        "url": "https://www.newsfirst.lk/latest",
+        "hosts": {"newsfirst.lk", "www.newsfirst.lk", "english.newsfirst.lk"},
+    },
+    {
+        "label": "Newsfirst — Sinhala",
+        "url": "https://www.newsfirst.lk/sinhala/latest",
+        "hosts": {"newsfirst.lk", "www.newsfirst.lk", "sinhala.newsfirst.lk"},
+    },
+    {
+        "label": "Ada Derana — English",
+        "url": "https://www.adaderana.lk/categories/latest",
+        "hosts": {"adaderana.lk", "www.adaderana.lk"},
+    },
+    {
+        "label": "Ada Derana — Sinhala",
+        "url": "https://sinhala.adaderana.lk/",
+        "hosts": {"sinhala.adaderana.lk"},
+    },
+)
+
+
+def _direct_sri_lanka_news(_query: str = "") -> str:
+    """Read recent headline links directly from the allowlisted publishers."""
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+    except Exception as exc:
+        print(f"[WebSearch] Direct publisher fallback dependencies unavailable: {exc}")
+        return "No Sri Lankan headlines were found from direct publisher pages right now."
+
+    page_results: list[list[tuple[str, str, str]]] = [
+        [] for _ in _DIRECT_SRI_LANKA_PAGES
+    ]
+
+    def _allowed_url(raw_url: str, source: dict, base_url: str) -> str:
+        try:
+            parsed = urlparse(urljoin(base_url, raw_url))
+            host = (parsed.hostname or "").lower().rstrip(".")
+            port = parsed.port
+        except (TypeError, ValueError):
+            return ""
+        if (
+            parsed.scheme != "https"
+            or host not in source["hosts"]
+            or parsed.username
+            or parsed.password
+            or port not in (None, 443)
+        ):
+            return ""
+        return parsed.geturl()
+
+    def _extract_page(index: int, source: dict) -> None:
+        try:
+            response = requests.get(
+                source["url"],
+                timeout=(2.0, 3.0),
+                headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; JARVISNewsReader/1.0)",
+                    "Accept": "text/html,application/xhtml+xml",
+                },
+                allow_redirects=True,
+            )
+            response.raise_for_status()
+            final_url = str(getattr(response, "url", "") or source["url"])
+            final_host = (urlparse(final_url).hostname or "").lower().rstrip(".")
+            if final_host not in source["hosts"]:
+                print(f"[WebSearch] Direct publisher fallback rejected redirect for {source['label']}")
+                return
+
+            soup = BeautifulSoup(response.text, "html.parser")
+            candidates = list(soup.find_all("article"))
+            if not candidates:
+                candidates = list(soup.find_all(["h1", "h2", "h3", "h4"]))
+
+            accepted: list[tuple[str, str, str]] = []
+            seen_urls: set[str] = set()
+            page_path = urlparse(final_url).path.rstrip("/") or "/"
+
+            for node in candidates:
+                heading = (
+                    node if getattr(node, "name", "") in {"h1", "h2", "h3", "h4"}
+                    else node.find(["h1", "h2", "h3", "h4"])
+                )
+                link = None
+                if heading is not None:
+                    link = heading.find("a", href=True) or heading.find_parent("a", href=True)
+                if link is None and getattr(node, "name", "") == "a" and node.get("href"):
+                    link = node
+                if link is None:
+                    link = node.find("a", href=True)
+                if link is None:
+                    continue
+
+                title = " ".join(
+                    (heading.get_text(" ", strip=True) if heading is not None
+                     else link.get_text(" ", strip=True)).split()
+                )
+                url = _allowed_url(str(link.get("href") or ""), source, final_url)
+                if not url or not title or len(title) < 12:
+                    continue
+                parsed_url = urlparse(url)
+                if (parsed_url.path.rstrip("/") or "/") == page_path:
+                    continue
+                if url in seen_urls:
+                    continue
+
+                snippet = ""
+                paragraph = node.find("p") if hasattr(node, "find") else None
+                if paragraph is not None:
+                    snippet = " ".join(paragraph.get_text(" ", strip=True).split())
+                accepted.append((title, snippet, url))
+                seen_urls.add(url)
+                if len(accepted) >= 3:
+                    break
+
+            page_results[index] = accepted
+        except Exception as exc:
+            print(
+                f"[WebSearch] Direct publisher page unavailable "
+                f"({source['label']}): {type(exc).__name__}: {exc}"
+            )
+
+    workers = [
+        threading.Thread(target=_extract_page, args=(index, source), daemon=True)
+        for index, source in enumerate(_DIRECT_SRI_LANKA_PAGES)
+    ]
+    for worker in workers:
+        worker.start()
+    deadline = time.monotonic() + 4.0
+    for worker in workers:
+        worker.join(max(0.0, deadline - time.monotonic()))
+
+    seen_urls: set[str] = set()
+    sections = []
+    for index, source in enumerate(_DIRECT_SRI_LANKA_PAGES):
+        accepted = []
+        for title, snippet, url in page_results[index]:
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            accepted.append((title, snippet, url))
+        if not accepted:
+            continue
+        lines = [source["label"]]
+        for title, snippet, url in accepted:
+            lines.append(f"• {title}")
+            if snippet:
+                lines.append(f"  {snippet[:220]}")
+            lines.append(f"  Source: {url}")
+        sections.append("\\n".join(lines))
+
+    if not seen_urls:
+        return "No Sri Lankan headlines were found from direct publisher pages right now."
+    return "Sri Lankan local news — direct publisher pages (Newsfirst and Ada Derana)\\n\\n" + "\\n\\n".join(sections)
+
+
 def _is_sri_lanka_news_request(query: str) -> bool:
     q = (query or "").casefold()
     return any(term in q for term in (
@@ -643,6 +805,16 @@ def _news(query: str) -> str:
         )
         if local_news and not local_news.startswith("No Sri Lankan headlines"):
             return local_news
+
+        # Try the publisher pages themselves before spending Gemini Search quota.
+        # This path is independent of DDG/Yahoo/Bing and does not need a model.
+        direct_news = _run_bounded(
+            lambda: _direct_sri_lanka_news(query),
+            timeout=5.0,
+            label="Direct Sri Lankan publisher pages",
+        )
+        if direct_news and not direct_news.startswith("No Sri Lankan headlines"):
+            return direct_news
 
         # The old Sri Lankan branch returned immediately when the scraping
         # providers timed out, even though other news modes already had a

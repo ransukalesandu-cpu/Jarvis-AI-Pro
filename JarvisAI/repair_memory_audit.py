@@ -74,18 +74,24 @@ def main() -> int:
         # Preserve the exact pre-repair state before inspecting or changing it.
         _backup_sources(backup_dir, db_path, key_path, anchor_path)
 
+        if db_path.exists():
+            original_memory = load_snapshot(MEMORY_PATH)
+            if not isinstance(original_memory, dict):
+                raise RuntimeError("The SQLite memory database could not be read.")
+        elif MEMORY_PATH.exists():
+            original_memory = json.loads(MEMORY_PATH.read_text(encoding="utf-8"))
+            if not isinstance(original_memory, dict):
+                raise RuntimeError("The legacy memory file is not a JSON object.")
+        else:
+            original_memory = _empty_memory()
+
         # Fail closed if the signing key has disappeared while signed records or
         # a checkpoint remain; recreating it would falsely imply prior integrity.
-        if not key_path.exists() and (
-            anchor_path.exists()
-            or (
-                db_path.exists()
-                and any(
-                    isinstance(row, dict) and row.get("hmac")
-                    for row in (load_snapshot(MEMORY_PATH) or {}).get("memory_audit", [])
-                )
-            )
-        ):
+        has_signed_history = any(
+            isinstance(row, dict) and row.get("hmac")
+            for row in original_memory.get("memory_audit", [])
+        )
+        if not key_path.exists() and (anchor_path.exists() or has_signed_history):
             raise RuntimeError(
                 "The audit signing key is missing while signed history exists. "
                 "The pre-repair backup has been preserved; manual recovery is required."
@@ -96,16 +102,7 @@ def main() -> int:
                 "The pre-repair backup has been preserved; manual recovery is required."
             )
 
-        if db_path.exists():
-            memory = load_snapshot(MEMORY_PATH)
-            if not isinstance(memory, dict):
-                raise RuntimeError("The SQLite memory database could not be read.")
-        elif MEMORY_PATH.exists():
-            memory = json.loads(MEMORY_PATH.read_text(encoding="utf-8"))
-            if not isinstance(memory, dict):
-                raise RuntimeError("The legacy memory file is not a JSON object.")
-        else:
-            memory = _empty_memory()
+        memory = original_memory
 
         memory = _migrate_memory_data(memory)
         # Preserve existing audit rows in order, then deliberately re-sign them.

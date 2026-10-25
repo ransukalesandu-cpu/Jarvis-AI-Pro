@@ -114,4 +114,3 @@ class MemoryStore:
         """Delete all stored memory facts without changing the user's opt-in setting."""
         with self._connect() as conn:
             conn.execute("DELETE FROM memories")
-

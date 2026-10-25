@@ -40,4 +40,3 @@ class DynamicPromptBuilder:
                 + memory_json
             )
         return "\n\n".join(parts)
-

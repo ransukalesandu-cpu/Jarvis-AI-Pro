@@ -46,10 +46,9 @@ class AdaptiveAuthManager:
         # Step 1: Voice verification
         if audio_sample is not None and voice_id.is_enrolled("owner"):
             try:
-                verified, score = voice_id.verify(audio_sample, role="owner")
-                if verified:
-                    self.auth_manager.grant_owner_access("voice")
-                    return True, "voice", f"Voice verification succeeded (score: {score:.2f})."
+                state, message = self.auth_manager.process_voice_authentication(audio_sample, sample_rate=16000)
+                if self.auth_manager.is_owner_access_allowed():
+                    return True, self.auth_manager.get_auth_method(), message
             except Exception as exc:
                 print(f"[AdaptiveAuth] Voice verification error: {exc}")
 

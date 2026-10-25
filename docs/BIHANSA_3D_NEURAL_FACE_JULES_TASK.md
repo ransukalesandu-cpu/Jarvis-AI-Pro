@@ -10,7 +10,7 @@ It preserves the original portrait reference while layering a facial-landmark-de
 ## 3D Wireframe Mesh Architecture
 
 ### 1. 2.5D Landmark Projection Model
-- **Landmark Mapping:** Nodes in `BIHANSA_LANDMARKS_3D` (`ui/hologram/bihansa_hologram.py`) define 82 normalized 3D facial coordinates ($X, Y, Z$) matching the key facial features of the reference portrait:
+- **Landmark Mapping:** Nodes in `BIHANSA_LANDMARKS_3D` (`ui/hologram/bihansa_hologram.py`) define 82 normalized 3D facial coordinates derived from the portrait landmark groups in PR #85 ($X, Y, Z$) matching the key facial features of the reference portrait:
   - Jawline / Face Oval (indices 0..16)
   - Eyebrows (indices 17..26)
   - Nose Bridge & Tip (indices 27..35)
@@ -18,6 +18,7 @@ It preserves the original portrait reference while layering a facial-landmark-de
   - Outer & Inner Lips (indices 48..67)
   - Forehead / Hairline (indices 68..75)
   - Cheeks / Mid-face (indices 76..81)
+- **Portrait alignment:** Projection uses the fitted image rectangle and separate image width/height scales. At rest, the eye/nose/jaw anchors match the normalized portrait coordinates; animation adds restrained parallax.
 - **Triangulated Wireframe:** `BIHANSA_MESH_EDGES` links these landmarks into structural triangles, ensuring dense wireframe geometry across expression points (eyes, nose, mouth) while keeping hairline/face framing recognizable.
 - **3D Rotation & Perspective Projection:** Applies Euler rotation matrices for Yaw ($\theta_y$), Pitch ($\theta_x$), and Roll ($\theta_z$) combined with perspective depth scaling:
   $$\text{dist} = \frac{\text{fov}}{\text{fov} + Z' + 0.4}$$

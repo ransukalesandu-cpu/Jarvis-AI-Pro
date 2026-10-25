@@ -21,7 +21,12 @@ class AIErrorRepairTests(unittest.TestCase):
             "password = 'synthetic secret with spaces'",
             'Authorization: Bearer synthetic.token/value==',
             'access_token=synthetic-token',
+            'accessToken=synthetic-token',
+            '{"clientSecret": "synthetic secret"}',
             'Bearer synthetic-token',
+            'Authorization: Basic syntheticbase64value==',
+            'Authorization: Digest username=synthetic-user, response=synthetic-response',
+            'Authorization: Negotiate synthetic-token',
         ]
         for text in samples:
             with self.subTest(text=text):
@@ -33,6 +38,11 @@ class AIErrorRepairTests(unittest.TestCase):
         prompt = build_repair_prompt('Traceback ' + ('x' * 20000), 'print("hello")')
         self.assertIn('untrusted', prompt)
         self.assertIn('proposed diff', prompt)
+        self.assertLess(len(prompt), 30000)
+
+    def test_long_traceback_preserves_the_final_exception(self):
+        prompt = build_repair_prompt('old frame\n' * 2000 + 'ValueError: synthetic final exception')
+        self.assertIn('ValueError: synthetic final exception', prompt)
         self.assertLess(len(prompt), 30000)
 
     def test_groq_is_preferred_and_suggestion_is_never_auto_applied(self):

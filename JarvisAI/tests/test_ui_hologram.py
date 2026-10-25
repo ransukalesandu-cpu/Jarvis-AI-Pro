@@ -44,6 +44,9 @@ class TestUIHologram(unittest.TestCase):
         self.bridge = VisualizerBridge()
         settings_dir = tempfile.TemporaryDirectory()
         self.addCleanup(settings_dir.cleanup)
+        config_patch = patch("memory.config_manager.CONFIG_FILE", Path(settings_dir.name) / "api_keys.json")
+        config_patch.start()
+        self.addCleanup(config_patch.stop)
         self.settings = QSettings(
             str(Path(settings_dir.name) / "settings.ini"), QSettings.Format.IniFormat
         )
@@ -183,9 +186,16 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(hud.wireframe_visualizer.get_state(), "PRIVACY_LOCK")
         self.assertEqual(hud.bihansa_visualizer.get_state(), "PRIVACY_LOCK")
 
+        # Audio state updates must not override an auth-only lock.
+        self.bridge.update_state("SPEAKING")
+        self.assertEqual(hud.bihansa_visualizer.get_state(), "PRIVACY_LOCK")
+        self.assertEqual(hud.wireframe_visualizer.get_state(), "PRIVACY_LOCK")
+
         # Clear PRIVACY_LOCK
         self.bridge.update_auth_state("FULL_ACCESS")
         self.assertTrue(hud._lock_banner.isHidden())
+        self.assertEqual(hud.bihansa_visualizer.get_state(), "SPEAKING")
+        self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
 
     def test_hologram_hud_ui_adapter(self):
         """Test HologramHUDUI adapter class wrapping HUDMainWindow."""

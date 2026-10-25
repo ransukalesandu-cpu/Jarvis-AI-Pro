@@ -67,7 +67,8 @@ _ENUM_SETTINGS = {
     ),
 }
 _SETTINGS_HELP = {
-    "voice": "JARVIS speaking voice. Choices: Charon, Puck, Kore, Fenrir, Aoede; 'female' maps to Kore and 'soft female' maps to Aoede.",
+    "assistant_mode": "Assistant mode: jarvis or bihansa.",
+    "voice": "Speaking voice. Choices: Charon, Puck, Kore, Fenrir, Aoede; 'female' maps to Kore and 'soft female' maps to Aoede.",
     "personality_mode": "Response style: " + ", ".join(MODE_DEFINITIONS) + ".",
     "neural_render_scale": "Neural visualization scale: 1.0, 0.75, or 0.6.",
     "assistant_name": "The assistant's displayed name.",
@@ -78,6 +79,7 @@ _SETTINGS_HELP = {
 def _current_settings() -> dict:
     profile = get_voice_personality()
     return {
+        "assistant_mode": cfg.get_assistant_mode(),
         "voice": cfg.get_voice(),
         "personality_mode": profile["mode"],
         "startup_intro": cfg.get_startup_video_enabled(),
@@ -105,12 +107,24 @@ def _set_setting(setting: str, raw_value) -> str:
     value = str(raw_value if raw_value is not None else "").strip()
     lowered = value.lower()
 
+    if setting == "assistant_mode":
+        mode = lowered.replace(" ", "_")
+        if mode not in cfg.ASSISTANT_MODES:
+            return f"Invalid mode. Choose 'jarvis' or 'bihansa'."
+        cfg.save_assistant_mode(mode)
+        return f"Saved assistant mode as {mode}. Live session reconnects with {cfg.get_voice()} voice."
+
     if setting == "voice":
         voice = _VOICE_ALIASES.get(lowered)
         if voice is None:
             voice = next((v for v in cfg.AVAILABLE_VOICES if v.lower() == lowered), None)
         if voice is None:
             return "Unknown voice. Choose Charon, Puck, Kore, Fenrir, or Aoede."
+        if cfg.get_assistant_mode() == "bihansa":
+            if voice not in cfg.BIHANSA_FEMALE_VOICES:
+                return f"Unsupported voice for Bihansa Mode. Choose a supported female voice ({', '.join(cfg.BIHANSA_FEMALE_VOICES)})."
+            cfg.save_bihansa_voice(voice)
+            return f"Saved Bihansa female voice as {voice}."
         cfg.save_voice(voice)
         return f"Saved JARVIS voice as {voice}. It takes effect after the Live session reconnects."
 
@@ -226,10 +240,10 @@ TOOL = {
             "setting": {
                 "type": "STRING",
                 "enum": [
-                    "voice", "personality_mode", "startup_intro", "wake_word",
-                    "push_to_talk", "thinking", "proactive_audio", "morning_brief",
-                    "memory_provider_access", "media_resolution", "hud_style",
-                    "neural_render_scale", "assistant_name", "user_name",
+                    "assistant_mode", "voice", "personality_mode", "startup_intro",
+                    "wake_word", "push_to_talk", "thinking", "proactive_audio",
+                    "morning_brief", "memory_provider_access", "media_resolution",
+                    "hud_style", "neural_render_scale", "assistant_name", "user_name",
                 ],
                 "description": "Exact setting to read or change.",
             },

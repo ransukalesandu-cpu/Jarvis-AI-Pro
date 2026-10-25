@@ -41,17 +41,20 @@ class TestOwnerIdentitySecurity(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    # 1. Owner verified at startup -> FULL_ACCESS_MODE
+    # Verified live speech, rather than a role label, grants owner access.
     def test_owner_verified_at_startup(self):
-        mock_pcm = np.ones(32000, dtype=np.int16)
-        with patch.object(voice_id, "is_enrolled", return_value=True), \
-             patch.object(voice_id, "identify_speaker", return_value=("owner", 0.90)):
-            role, score = voice_id.identify_speaker(mock_pcm)
-            self.assertEqual(role, "owner")
-            self.assertGreaterEqual(score, voice_id.SIMILARITY_THRESHOLD)
-            self.auth.grant_owner_access("voice")
-            self.assertEqual(self.auth.get_state(), FULL_ACCESS_MODE)
-            self.assertTrue(self.auth.is_owner_access_allowed())
+        from security.voice_auth import SpeakerAuthenticator
+        t = np.arange(16000, dtype=np.float32) / 16000
+        audio = (.2 + .15 * np.sin(2 * np.pi * 2 * t)) * np.sin(2 * np.pi * 440 * t)
+        self.auth.voice_authenticator = SpeakerAuthenticator(
+            anti_spoof_verifier=lambda _samples, _rate: True
+        )
+        with patch.object(voice_id, "is_enabled", return_value=True), \
+             patch.object(voice_id, "backend_ready", return_value=True), \
+             patch.object(voice_id, "verify", return_value=(True, 0.90)):
+            state, _ = self.auth.process_voice_authentication(audio)
+        self.assertEqual(state, FULL_ACCESS_MODE)
+        self.assertTrue(self.auth.is_owner_access_allowed())
 
     # 2. Stranger detected at startup -> RESTRICTED_MODE
     def test_stranger_detected_at_startup(self):
@@ -210,13 +213,46 @@ class TestOwnerIdentitySecurity(unittest.TestCase):
 
     # 13. Session authentication resetting after restart
     def test_session_authentication_resets_after_restart(self):
-        self.auth.grant_owner_access("voice")
+        self.auth.process_voice_result(True, .95, is_live=True)
         self.assertEqual(self.auth.get_state(), FULL_ACCESS_MODE)
 
         # Simulate app restart
         restarted_auth = AuthManager(vault_path=self.vault_path, state_path=self.state_path)
         self.assertEqual(restarted_auth.get_state(), RESTRICTED_MODE)
         self.assertFalse(restarted_auth.is_owner_access_allowed())
+
+    def test_guard_can_reach_pin_step_up_before_dispatcher_denial(self):
+        self.auth.set_master_pin("local-owner-123")
+        with patch.object(security, "_auth_manager", self.auth), \
+             patch.object(security, "_voice_id_is_required", return_value=False), \
+             patch.object(security, "_untrusted_context", return_value=False), \
+             patch.object(security, "_pin_prompt_cb", return_value="local-owner-123") as prompt, \
+             patch.object(security, "_turn_audio_cb", None), \
+             patch.object(security, "_voice_id_role_cb", None), \
+             patch.object(security, "_voice_id_verifier_cb", None), \
+             patch.object(security, "_rate_check", return_value=None), \
+             patch.object(security, "audit"), \
+             patch.object(security.confirm_gate, "request", return_value="pending") as confirm:
+            result = security.guard("file_controller", {"action": "delete"}, lambda: self.fail("Executed before confirmation"))
+        self.assertEqual(result, "pending")
+        prompt.assert_called_once_with()
+        confirm.assert_called_once()
+        self.assertEqual(self.auth.get_auth_method(), "pin")
+
+    def test_guard_preserves_post_cooldown_lock_until_manual_pin_reauthentication(self):
+        import time
+        self.auth.set_master_pin("local-owner-123")
+        with patch("security.auth_manager.lock_workstation"):
+            self.auth.trigger_privacy_lock()
+        self.auth.lock_until = time.time() - 1
+        self.auth._save_persistent_state()
+        with patch.object(security, "_auth_manager", self.auth), \
+             patch.object(security, "_pin_prompt_cb") as prompt, \
+             patch.object(security, "audit"):
+            result = security.guard("weather_report", {}, lambda: self.fail("Executed while locked"))
+        self.assertIn("Privacy Lock", result)
+        prompt.assert_not_called()
+        self.assertTrue(self.auth.requires_owner_reauthentication())
 
 
 if __name__ == "__main__":

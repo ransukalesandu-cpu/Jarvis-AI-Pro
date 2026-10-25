@@ -88,7 +88,7 @@ def phone_control(parameters: dict[str, Any] | None = None, player=None) -> str:
     if not adb:
         return "ADB was not found. Install Android Platform Tools and add adb to PATH."
 
-    serial, error = _resolve_device(adb, str(params.get("target_device", "")).strip())
+    serial, error = _resolve_device(adb, str(params.get("target_device") or "").strip())
     if error:
         return error
 
@@ -112,7 +112,7 @@ def phone_control(parameters: dict[str, Any] | None = None, player=None) -> str:
         return f"Phone: {model or 'Android device'}; Android {android or 'unknown'}; battery {percent}; {power}."
 
     if action == "open_app":
-        app = str(params.get("app_name", "")).strip().lower()
+        app = str(params.get("app_name") or "").strip().lower()
         package = _APP_PACKAGES.get(app)
         if not package:
             return "Unsupported app. Supported apps: " + ", ".join(sorted(_APP_PACKAGES)) + "."
@@ -140,7 +140,7 @@ def phone_control(parameters: dict[str, Any] | None = None, player=None) -> str:
         "wake_screen": ["shell", "input", "keyevent", "224"],
     }
     ok, output = run_phone(commands[action])
-    if not ok:
+    if not ok or re.search(r"(?m)^\s*Error:", output):
         return f"Phone action '{action}' failed: {output}"
     messages = {
         "home": "Sent the Home command to the phone.",

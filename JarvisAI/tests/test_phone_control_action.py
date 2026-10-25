@@ -64,6 +64,23 @@ class TestPhoneControlAction(unittest.TestCase):
         result = phone_action.phone_control({"action": "home"})
         self.assertIn("device unauthorized", result)
 
+    @patch.object(phone_action, "find_adb", return_value="adb")
+    @patch.object(phone_action, "_run", return_value=(True, "List of devices attached\nphone-1\tdevice"))
+    def test_null_device_parameter_uses_single_authorized_device(self, mock_run, _mock_find):
+        result = phone_action.phone_control({"action": "home", "target_device": None})
+        self.assertIn("Home command", result)
+        self.assertEqual(mock_run.call_args.args[0], ['adb', '-s', 'phone-1', 'shell', 'input', 'keyevent', '3'])
+
+    @patch.object(phone_action, "find_adb", return_value="adb")
+    @patch.object(phone_action, "_run", side_effect=[
+        (True, "List of devices attached\nphone-1\tdevice"),
+        (True, "Starting: Intent\nError: Activity not found"),
+    ])
+    def test_activity_error_is_not_reported_as_success(self, _mock_run, _mock_find):
+        result = phone_action.phone_control({"action": "open_dialer"})
+        self.assertIn("failed", result)
+        self.assertIn("Activity not found", result)
+
 
 if __name__ == "__main__":
     unittest.main()

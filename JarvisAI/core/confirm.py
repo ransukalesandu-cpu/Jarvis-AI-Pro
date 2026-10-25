@@ -51,7 +51,7 @@ _MANUAL_CLICK_ONLY_KEYS = {
 }
 # Keep these three operations click-only even if an unrelated environment
 # setting changes. Other confirmation-gated actions can use the exact spoken
-# approval phrase (and still pass Voice ID when it is enabled).
+# approval phrase with verified live owner speech.
 
 # Set once at startup by main.py. Signature: (title, detail) -> None for show,
 # and () -> None for hide. Both are marshalled onto the Qt thread by the UI.
@@ -116,7 +116,7 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
         )
     else:
         guidance = (
-            "The user can say 'confirm action' or click CONFIRM on the HUD; "
+            "The user can say 'confirm action' with verified live owner speech or click CONFIRM on the HUD; "
             "they can say 'cancel action' or click CANCEL instead."
         )
     return (

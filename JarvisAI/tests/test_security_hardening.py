@@ -180,17 +180,19 @@ class ConfirmTests(unittest.TestCase):
                     "sec-phone_call", "sec-code_helper", "sec-computer_control"):
             self.assertNotIn(key, confirm._MANUAL_CLICK_ONLY_KEYS, key)
 
-    def test_other_sensitive_actions_accept_voice_approval_when_voice_id_is_off(self):
+    def test_sensitive_voice_approval_without_live_verification_fails_closed(self):
         from core import confirm, security
+        from unittest.mock import patch
         confirm._pending = None
-        security.bind(voice_id_required=lambda: False, voice_id_role=lambda: "owner")
         confirm.bind(lambda t, d: None, lambda: None)
-        for key in ("sec-email_gmail", "sec-send_message", "sec-instagram_account",
-                    "sec-phone_call", "sec-computer_control", "sec-code_helper"):
-            finished = threading.Event()
-            confirm.request(key, key, "", lambda event=finished: (event.set(), "done")[-1])
-            self.assertEqual(confirm.resolve_by_voice("confirm action"), "approved", key)
-            self.assertTrue(finished.wait(2.0), key)
+        with patch.object(security, "_turn_audio_cb", None):
+            for key in ("sec-email_gmail", "sec-send_message", "sec-instagram_account",
+                        "sec-phone_call", "sec-computer_control", "sec-code_helper"):
+                finished = threading.Event()
+                confirm.request(key, key, "", lambda event=finished: (event.set(), "done")[-1])
+                self.assertEqual(confirm.resolve_by_voice("confirm action"), "voice_id_required", key)
+                self.assertFalse(finished.is_set(), key)
+                confirm.resolve(False)
 
     def test_multi_speaker_voice_id_and_access_control(self):
         from core import voice_id, security
@@ -225,30 +227,24 @@ class ConfirmTests(unittest.TestCase):
                     self.assertFalse(voice_id.is_enrolled("brother"))
                     self.assertEqual(sorted(voice_id.get_enrolled_roles()), ["owner", "sister"])
 
-                    # Test role-based access in security
-                    current_role = "owner"
-                    security.bind(
-                        voice_id_required=lambda: True,
-                        voice_id_role=lambda: current_role,
-                    )
-
-                    # Owner gets full access
-                    res_owner = security.guard("open_app", {"app_name": "unknown_app"}, lambda: "success")
-                    self.assertIn("[CONFIRMATION_PENDING]", res_owner)
-
-                    # Non-owner (sister) is denied
-                    current_role = "sister"
-                    res_sister = security.guard("open_app", {"app_name": "unknown_app"}, lambda: "success")
-                    self.assertIn("full access is reserved for the PC owner", res_sister)
-
-                    # Stranger is denied
-                    current_role = "stranger"
-                    res_stranger = security.guard("open_app", {"app_name": "unknown_app"}, lambda: "success")
-                    self.assertIn("full access is reserved for the PC owner", res_stranger)
+                    # No similarity/role label can grant access without liveness.
+                    from security.auth_manager import AuthManager
+                    auth = AuthManager(vault_path=Path(tmpdir) / "pin.dat", state_path=Path(tmpdir) / "auth.json")
+                    with patch.object(security, "_auth_manager", auth), \
+                         patch.object(security, "_voice_id_is_required", return_value=True), \
+                         patch.object(security, "_untrusted_context", return_value=False), \
+                         patch.object(security, "_turn_audio_cb", None), \
+                         patch.object(security, "_pin_prompt_cb", None):
+                        for role in ("owner", "sister", "stranger"):
+                            with self.subTest(role=role), \
+                                 patch.object(security, "_voice_id_role_cb", return_value=role):
+                                result = security.guard("open_app", {"app_name": "unknown_app"}, lambda: self.fail("Executed without authentication"))
+                                self.assertIn("full access is reserved for the PC owner", result)
+                                self.assertFalse(auth.is_owner_access_allowed())
 
             finally:
                 voice_id.PROFILE_FILE = orig_profile_file
-                security.bind(voice_id_required=lambda: False, voice_id_role=lambda: "owner")
+
 
     def test_click_only_actions_reject_voice_approval(self):
         from core import confirm

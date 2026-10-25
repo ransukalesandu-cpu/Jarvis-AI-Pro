@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import ipaddress
 import re
-from urllib.parse import quote_plus, urlparse
+import socket
+from urllib.parse import quote_plus, urlparse, urljoin
 from typing import Any
 
 
@@ -23,14 +24,21 @@ def validate_public_url(url: str) -> str:
     host = parsed.hostname.lower().rstrip(".")
     if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
         raise BrowserAutomationError("Local or internal destinations are blocked.")
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
-        address = None
-    if address and (not address.is_global):
-        raise BrowserAutomationError("Private or non-public IP destinations are blocked.")
     if parsed.username or parsed.password:
         raise BrowserAutomationError("URLs containing embedded credentials are blocked.")
+    try:
+        addresses = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+    except (OSError, UnicodeError) as exc:
+        raise BrowserAutomationError("Destination host could not be resolved.") from exc
+    if not addresses:
+        raise BrowserAutomationError("Destination host resolved to no addresses.")
+    for info in addresses:
+        try:
+            address = ipaddress.ip_address(info[4][0].split("%", 1)[0])
+        except (ValueError, IndexError, TypeError) as exc:
+            raise BrowserAutomationError("Destination host resolved to an invalid address.") from exc
+        if not address.is_global:
+            raise BrowserAutomationError("Private or non-public IP destinations are blocked.")
     return raw
 
 
@@ -74,8 +82,8 @@ class BrowserAutomation:
             route.continue_()
 
     def navigate(self, url: str) -> dict[str, str]:
-        self.open()
         target = validate_public_url(url)
+        self.open()
         self._page.goto(target, wait_until="domcontentloaded", timeout=self.timeout_ms)
         return self.read_page()
 
@@ -90,10 +98,13 @@ class BrowserAutomation:
         label = str(visible_text or "").strip()
         if not label or len(label) > 200:
             raise ValueError("Provide link text between 1 and 200 characters.")
-        # Exact/partial visible text only; never accept model-generated selectors.
-        self._page.get_by_text(label, exact=False).first.click(timeout=self.timeout_ms)
-        self._page.wait_for_load_state("domcontentloaded", timeout=self.timeout_ms)
-        return self.read_page()
+        # Resolve links only, rather than arbitrary buttons or form controls.
+        # Navigate the validated href directly so onclick handlers cannot turn a
+        # request to follow a link into a form submission or another side effect.
+        href = self._page.get_by_role("link", name=label, exact=False).first.get_attribute("href")
+        if not href:
+            raise BrowserAutomationError("The selected link has no navigation target.")
+        return self.navigate(urljoin(self._page.url, href))
 
     def read_page(self) -> dict[str, str]:
         self.open()

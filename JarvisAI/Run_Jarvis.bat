@@ -63,11 +63,12 @@ if exist "%LocalAppData%\Programs\Python\Python312\python.exe" (
 goto :python_manual
 
 :python_ready
-set "PYTHON_COMMAND=\"%PY_LAUNCHER%\" -3.12"
+set "PYTHON_EXE=%PY_LAUNCHER%"
+set "PYTHON_ARGS=-3.12"
 goto :python_verified
 
 :python_ready_direct
-set "PYTHON_COMMAND=\"%PYTHON_EXE%\""
+set "PYTHON_ARGS="
 
 :python_verified
 echo [OK] Supported Python interpreter found.
@@ -76,7 +77,7 @@ REM Create an isolated environment so system Python packages are untouched.
 if not exist ".venv\Scripts\python.exe" (
     echo.
     echo [2/4] Creating the isolated Jarvis environment...
-    %PYTHON_COMMAND% -m venv .venv
+    "%PYTHON_EXE%" %PYTHON_ARGS% -m venv .venv
     if errorlevel 1 goto :failed
 )
 if not exist ".venv\Scripts\python.exe" (

@@ -46,6 +46,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 from core.audio_callback_guard import enqueue_audio_frame
+from core.playback_interrupt import interrupt_playback
 import re
 import threading
 import time
@@ -3272,6 +3273,18 @@ class JarvisLive:
                         # Stop any audio already queued for the speakers at once;
                         # otherwise a cut-off sentence can keep playing locally.
                         if getattr(sc, "interrupted", False):
+                            # The server may report barge-in independently of the
+                            # local wake-word path. Signal the playback worker to
+                            # discard its private PCM buffer and abort audio already
+                            # submitted to the device, not just drain the asyncio queue.
+                            interrupt_playback(
+                                self._playback_interrupt_requested,
+                                self._output_stream,
+                                on_error=lambda error_type: print(
+                                    "[AudioTrace 4/OUTPUT] Device abort after "
+                                    f"server interruption failed ({error_type})."
+                                ),
+                            )
                             q = self.audio_in_queue
                             if q:
                                 while True:

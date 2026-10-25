@@ -1729,6 +1729,12 @@ class JarvisLive:
 
     async def _publish_privacy_lock(self, message: str) -> None:
         self._interrupted = True
+        # Stop the playback worker's private prebuffer as soon as the lock is
+        # published, even if no further Live receiver event arrives.
+        try:
+            self._stop_playback_for_privacy_lock()
+        except Exception:
+            pass
         self._assistant_turn_pending = False
         try:
             from security.lockdown import teardown_audio_stream
@@ -1745,10 +1751,8 @@ class JarvisLive:
                         queue.get_nowait()
                     except Exception:
                         break
-        try:
-            self.set_speaking(False)
-        except Exception:
-            pass
+        # Keep the locked UI state; playback cleanup above resets speaking
+        # bookkeeping without changing the UI back to LISTENING.
         done_event = getattr(self, "_turn_done_event", None)
         if done_event is not None:
             done_event.set()
@@ -2118,7 +2122,17 @@ class JarvisLive:
         done_event = getattr(self, "_turn_done_event", None)
         if done_event is not None:
             done_event.set()
-        self.set_speaking(False)
+        # Privacy Lock owns the UI state (LOCKED); do not let the ordinary
+        # speaking helper briefly switch the interface back to LISTENING.
+        with self._speaking_lock:
+            self._is_speaking = False
+        if hasattr(self, "_echo") and hasattr(self._echo, "set_tts_speaking"):
+            try:
+                self._echo.set_tts_speaking(False)
+            except Exception:
+                pass
+        self._tail_until = time.monotonic() + self._out_latency + _TAIL_MARGIN
+        self._out_level = 0.0
 
     def _interrupt_on_loop(self, wake_audio=None) -> None:
         """Stop current playback on the asyncio owner thread."""

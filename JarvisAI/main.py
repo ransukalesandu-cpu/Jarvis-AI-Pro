@@ -2453,9 +2453,26 @@ class JarvisLive:
                 return "Memory saved."
 
             _loop = asyncio.get_running_loop()
-            result = await _loop.run_in_executor(
-                None, lambda: security.guard(name, args, _save_memory)
-            )
+            try:
+                result = await _loop.run_in_executor(
+                    None, lambda: security.guard(name, args, _save_memory)
+                )
+            except Exception as exc:
+                # A local memory-store failure should return a tool error, not
+                # cancel the Live receive/audio TaskGroup and force reconnect.
+                detail = str(exc)
+                if "Memory audit history is invalid" in detail or "Memory audit anchor" in detail:
+                    result = (
+                        "Memory was not saved because its local audit history failed integrity checks. "
+                        "Close JARVIS, make a backup, then run Repair_Memory_Audit.bat from the JarvisAI folder. "
+                        "The repair utility preserves a backup and records that the previous chain could not be verified."
+                    )
+                else:
+                    result = f"Memory was not saved ({type(exc).__name__}). No data was confirmed saved."
+                try:
+                    self.ui.write_log(f"ERR: save_memory failed safely: {type(exc).__name__}: {detail[:240]}")
+                except Exception:
+                    pass
             if not self.ui.muted:
                 self.ui.set_state("LISTENING")
             return types.FunctionResponse(

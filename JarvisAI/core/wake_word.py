@@ -137,8 +137,21 @@ class WakeWordDetector:
         self._queue: queue.Queue = queue.Queue(maxsize=10)
         self._thread: threading.Thread | None = None
         self._running = False
+        self._paused = False
         self._model = None
         self._ready = False
+        self._armed = True
+        self._cooldown_until = 0.0
+        self._quiet_frames = 0
+
+    def pause(self) -> None:
+        """Pause processing feed frames while Gemini Live conversation session is active."""
+        self._paused = True
+        self._drain()
+
+    def resume(self) -> None:
+        """Resume processing feed frames after conversation session ends."""
+        self._paused = False
         self._armed = True
         self._cooldown_until = 0.0
         self._quiet_frames = 0
@@ -182,8 +195,8 @@ class WakeWordDetector:
 
     def feed(self, frame_int16) -> None:
         """Called from the mic callback (real-time thread). Must stay cheap and
-        never block — the frame is copied and dropped if the queue is backed up."""
-        if not self._running:
+        never block — the frame is copied and dropped if the queue is backed up or paused."""
+        if not self._running or getattr(self, "_paused", False):
             return
         try:
             # frame_int16 is a numpy int16 array (possibly 2-D mono) — flatten to 1-D

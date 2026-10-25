@@ -3,7 +3,7 @@ import subprocess as _subprocess
 import os
 import sys
 import threading
-from PyQt5.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication
 
 # Import your new upgrade modules
 from JarvisAI.voice.voice_engine import JarvisVoiceEngine
@@ -2436,15 +2436,56 @@ class JarvisLive:
                 self._expire_voice_id_audio()
 
         try:
+            def _resample_pcm16(indata_arr: np.ndarray, orig_sr: int, target_sr: int = 16000) -> np.ndarray:
+                if orig_sr == target_sr:
+                    return indata_arr
+                flat = indata_arr.flatten()
+                n_in = len(flat)
+                if n_in == 0:
+                    return np.empty((0, 1), dtype=np.int16)
+                n_out = int(round(n_in * target_sr / orig_sr))
+                if n_out == 0:
+                    return np.empty((0, 1), dtype=np.int16)
+                x_in = np.linspace(0, 1, n_in, endpoint=False)
+                x_out = np.linspace(0, 1, n_out, endpoint=False)
+                resampled_float = np.interp(x_out, x_in, flat.astype(np.float32))
+                resampled_int16 = np.clip(resampled_float, -32768, 32767).astype(np.int16)
+                return resampled_int16.reshape(-1, 1)
+
             def _open_mic(dev):
-                return sd.InputStream(
-                    samplerate=SEND_SAMPLE_RATE,
-                    channels=CHANNELS,
-                    dtype="int16",
-                    blocksize=CHUNK_SIZE,
-                    device=dev,
-                    callback=callback,
-                )
+                try:
+                    return sd.InputStream(
+                        samplerate=SEND_SAMPLE_RATE,
+                        channels=CHANNELS,
+                        dtype="int16",
+                        blocksize=CHUNK_SIZE,
+                        device=dev,
+                        callback=callback,
+                    )
+                except Exception as ex_16k:
+                    try:
+                        dev_info = (
+                            sd.query_devices(dev, "input")
+                            if dev is not None
+                            else sd.query_devices(kind="input")
+                        )
+                        native_sr = int(dev_info.get("default_samplerate", 44100))
+                    except Exception:
+                        native_sr = 44100
+                    native_block = int(CHUNK_SIZE * (native_sr / SEND_SAMPLE_RATE))
+
+                    def callback_wrapper(indata, frames, time_info, status):
+                        resampled = _resample_pcm16(indata, native_sr, SEND_SAMPLE_RATE)
+                        callback(resampled, len(resampled), time_info, status)
+
+                    return sd.InputStream(
+                        samplerate=native_sr,
+                        channels=CHANNELS,
+                        dtype="int16",
+                        blocksize=native_block,
+                        device=dev,
+                        callback=callback_wrapper,
+                    )
 
             # Which microphone. resolve() returns None for "system default" and
             # for a saved device that is no longer present — so a headset
@@ -3705,11 +3746,14 @@ class JarvisLive:
                     }
                 )
 
-                async with (
-                    client.aio.live.connect(model=self._active_live_model, config=config) as session,
-                    asyncio.TaskGroup() as tg,
-                ):
-                    self.session          = session
+                if self._wake_detector is not None:
+                    self._wake_detector.pause()
+                try:
+                    async with (
+                        client.aio.live.connect(model=self._active_live_model, config=config) as session,
+                        asyncio.TaskGroup() as tg,
+                    ):
+                        self.session          = session
                     self._live_switch_context = ""
                     self.audio_in_queue   = asyncio.Queue()
                     self.out_queue        = asyncio.Queue(maxsize=200)
@@ -3832,6 +3876,10 @@ class JarvisLive:
                     if not self._briefing_sent and get_brief_enabled() and self._awake:
                         self._briefing_sent = True
                         tg.create_task(self._send_startup_briefing())
+
+                finally:
+                    if self._wake_detector is not None:
+                        self._wake_detector.resume()
 
             except KeyboardInterrupt:
                 raise

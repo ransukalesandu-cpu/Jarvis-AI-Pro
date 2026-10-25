@@ -16,9 +16,10 @@ from typing import Any
 
 logger = logging.getLogger("Jarvis.LLMRouter")
 
-_PROVIDER_ORDER = ("gemini", "openai", "claude", "ollama")
+_PROVIDER_ORDER = ("gemini", "groq", "openai", "claude", "ollama")
 _KEY_ENV = {
     "gemini": "GEMINI_API_KEY",
+    "groq": "GROQ_API_KEY",
     "openai": "OPENAI_API_KEY",
     "claude": "ANTHROPIC_API_KEY",
 }
@@ -53,6 +54,7 @@ class HybridLLMRouter:
         self.local_model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
         self.providers = {
             "gemini": self._call_gemini,
+            "groq": self._call_groq,
             "openai": self._call_openai,
             "claude": self._call_claude,
             "ollama": self._call_ollama,
@@ -145,6 +147,34 @@ class HybridLLMRouter:
             config={"system_instruction": system_prompt},
         )
         return {"text": response.text or "", "model": model}
+
+    def _call_groq(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+        """Call Groq's OpenAI-compatible chat-completions API without an extra SDK."""
+        model = str(kwargs.get("groq_model") or kwargs.get("model") or
+                    os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"))
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.4,
+        }
+        request = urllib.request.Request(
+            "https://api.groq.com/openai/v1/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + self._key("groq"),
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        choices = data.get("choices") or []
+        message = choices[0].get("message", {}) if choices else {}
+        return {"text": str(message.get("content") or "").strip(),
+                "model": str((data.get("model") or model))}
 
     def _call_openai(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
         from openai import OpenAI

@@ -12,26 +12,26 @@ class HybridLLMRouterTests(unittest.TestCase):
 
     def test_provider_failure_falls_back_to_next_configured_provider(self):
         router = HybridLLMRouter(
-            api_keys={"gemini": "test-gemini", "openai": "test-openai"},
+            api_keys={"gemini": "test-gemini", "groq": "test-groq", "openai": "test-openai"},
             online_check=False,
         )
         router.is_online = lambda: True
         router.providers["gemini"] = lambda *a, **k: (_ for _ in ()).throw(TimeoutError())
-        router.providers["openai"] = lambda *a, **k: {"text": "answer", "model": "test-model"}
+        router.providers["groq"] = lambda *a, **k: {"text": "answer", "model": "test-model"}
         result = router.query("hello")
         self.assertEqual(result["text"], "answer")
-        self.assertEqual(result["provider"], "openai")
+        self.assertEqual(result["provider"], "groq")
         self.assertEqual(result["mode"], "cloud")
         self.assertGreaterEqual(result["latency_ms"], 0)
 
     def test_empty_provider_response_is_treated_as_failure(self):
         router = HybridLLMRouter(
-            api_keys={"gemini": "test-gemini", "openai": "test-openai"},
+            api_keys={"gemini": "test-gemini", "groq": "test-groq", "openai": "test-openai"},
             online_check=False,
         )
         router.is_online = lambda: True
         router.providers["gemini"] = lambda *a, **k: {"text": "  "}
-        router.providers["openai"] = lambda *a, **k: {"text": "recovered"}
+        router.providers["groq"] = lambda *a, **k: {"text": "recovered"}
         self.assertEqual(router.query("hello")["text"], "recovered")
 
     def test_offline_uses_only_local_provider(self):

@@ -49,6 +49,9 @@ def get_active_provider() -> str:
 
 def get_provider_api_key(provider: str) -> str:
     provider = str(provider or "").strip().lower()
+    if provider == "groq":
+        env_key = os.environ.get("GROQ_API_KEY", "").strip()
+        return env_key or str(_read().get("groq_api_key", "") or "").strip()
     if provider == "openai":
         env_key = os.environ.get("OPENAI_API_KEY", "").strip()
         return env_key or str(_read().get("openai_api_key", "") or "").strip()
@@ -69,6 +72,7 @@ def get_provider_settings() -> dict:
         "openai_model_reasoning": str(data.get("openai_model_reasoning") or _DEFAULTS["openai_reasoning_model"]),
         "anthropic_model_fast": str(data.get("anthropic_model_fast") or _DEFAULTS["anthropic_fast_model"]),
         "anthropic_model_reasoning": str(data.get("anthropic_model_reasoning") or _DEFAULTS["anthropic_reasoning_model"]),
+        "has_groq_key": bool(os.environ.get("GROQ_API_KEY", "").strip() or data.get("groq_api_key")),
         "has_openai_key": bool(os.environ.get("OPENAI_API_KEY", "").strip() or data.get("openai_api_key")),
         "has_anthropic_key": bool(os.environ.get("ANTHROPIC_API_KEY", "").strip() or data.get("anthropic_api_key")),
     }
@@ -77,6 +81,7 @@ def get_provider_settings() -> dict:
 def save_provider_settings(
     provider: str,
     *,
+    groq_api_key: str = "",
     openai_api_key: str = "",
     anthropic_api_key: str = "",
     openai_model_fast: str = "",
@@ -90,6 +95,8 @@ def save_provider_settings(
     with _LOCK:
         data = _read()
         data["ai_provider"] = provider
+        if groq_api_key.strip():
+            data["groq_api_key"] = groq_api_key.strip()
         if openai_api_key.strip():
             data["openai_api_key"] = openai_api_key.strip()
         if anthropic_api_key.strip():

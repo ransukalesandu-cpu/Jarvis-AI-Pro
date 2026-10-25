@@ -2095,6 +2095,7 @@ class ProviderTile(QPushButton):
 
 
 class SetupOverlay(QWidget):
+    """Compact first-run credentials panel for the JARVIS hybrid AI router."""
     done = pyqtSignal(object)
 
     def __init__(self, parent=None):
@@ -2102,228 +2103,95 @@ class SetupOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
             SetupOverlay {{
-                background: rgba(0, 6, 10, 245);
+                background: rgba(0, 6, 10, 248);
                 border: 1px solid {C.BORDER_B};
-                border-radius: 6px;
+                border-radius: 8px;
             }}
         """)
-
-        detected = {"darwin": "mac", "windows": "windows"}.get(
-            _OS.lower(), "linux"
-        )
-        self._sel_os = detected
+        config = _read_full_config()
         try:
             from core.provider_settings import get_provider_settings
             provider_settings = get_provider_settings()
         except Exception:
-            provider_settings = {"provider": "gemini"}
-        self._provider_settings = provider_settings
+            provider_settings = {}
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(30, 22, 30, 22)
-        layout.setSpacing(8)
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(6)
 
-        def _lbl(txt, font_size=9, bold=False, color=C.PRI,
-                 align=Qt.AlignmentFlag.AlignCenter):
+        def _lbl(txt, size=8, bold=False, color=C.TEXT_DIM):
             w = QLabel(txt)
-            w.setAlignment(align)
-            w.setFont(QFont("Courier New", font_size,
+            w.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            w.setFont(QFont("Courier New", size,
                             QFont.Weight.Bold if bold else QFont.Weight.Normal))
             w.setStyleSheet(f"color: {color}; background: transparent;")
             return w
 
-        layout.addWidget(_lbl("◈  INITIALISATION REQUIRED", 13, True))
-        layout.addWidget(_lbl("Configure J.A.R.V.I.S. before first boot.", 9, color=C.PRI_DIM))
-        layout.addSpacing(6)
+        title = _lbl("J.A.R.V.I.S  /  CORE SETUP", 13, True, C.PRI)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+        subtitle = _lbl("Configure AI providers. Keys stay on this PC.", 8, False, C.TEXT_MED)
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(subtitle)
+        layout.addSpacing(5)
 
-        layout.addWidget(_lbl("ONE-SHOT AI PROVIDER", 8, color=C.TEXT_DIM,
-                               align=Qt.AlignmentFlag.AlignLeft))
-        self._provider = QComboBox()
-        self._provider.addItem("Gemini  ·  recommended", "gemini")
-        self._provider.addItem("OpenAI  ·  GPT API", "openai")
-        self._provider.addItem("Anthropic  ·  Claude API", "anthropic")
-        provider_idx = self._provider.findData(provider_settings.get("provider", "gemini"))
-        self._provider.setCurrentIndex(max(0, provider_idx))
-        self._provider.hide()  # internal value model; visible choice uses logo tiles below
-        layout.addWidget(self._provider)
-        self._provider_tiles: dict[str, ProviderTile] = {}
-        provider_row = QHBoxLayout()
-        provider_row.setSpacing(7)
-        for provider, title, subtitle, accent in (
-            ("gemini", "GEMINI", "GOOGLE AI", "#63CFFF"),
-            ("openai", "GPT", "OPENAI API", "#D4E9E2"),
-            ("anthropic", "CLAUDE", "ANTHROPIC API", "#E98562"),
-        ):
-            tile = ProviderTile(provider, title, subtitle, accent, self)
-            tile.clicked.connect(
-                lambda _checked=False, key=provider: self._select_provider(key)
-            )
-            provider_row.addWidget(tile, 1)
-            self._provider_tiles[provider] = tile
-        layout.addLayout(provider_row)
-        self._provider_note = _lbl(
-            "Gemini remains required for live voice, tool routing, and Google-grounded search.",
-            8, color=C.TEXT_MED, align=Qt.AlignmentFlag.AlignLeft,
-        )
-        self._provider_note.setWordWrap(True)
-        layout.addWidget(self._provider_note)
+        self._key_fields = {}
+        fields = [
+            ("gemini_api_key", "GEMINI LIVE API KEY  ·  REQUIRED", config.get("gemini_api_key", ""), "AIza…"),
+            ("groq_api_key", "GROQ API KEY  ·  FAST FALLBACK", config.get("groq_api_key", ""), "gsk_… (optional)"),
+            ("openai_api_key", "OPENAI API KEY  ·  OPTIONAL", config.get("openai_api_key", ""), "sk-…"),
+            ("anthropic_api_key", "ANTHROPIC / CLAUDE KEY  ·  OPTIONAL", config.get("anthropic_api_key", ""), "sk-ant-…"),
+        ]
+        for key_name, caption, saved_value, placeholder in fields:
+            layout.addWidget(_lbl(caption, 8, True, C.TEXT_DIM))
+            field = QLineEdit()
+            field.setEchoMode(QLineEdit.EchoMode.Password)
+            field.setPlaceholderText("Saved locally · leave blank to keep" if saved_value else placeholder)
+            field.setFixedHeight(30)
+            field.setFont(QFont("Courier New", 9))
+            field.setStyleSheet(f"""
+                QLineEdit {{
+                    background: #000d12; color: {C.TEXT};
+                    border: 1px solid {C.BORDER}; border-radius: 4px; padding: 4px 8px;
+                }}
+                QLineEdit:focus {{ border: 1px solid {C.PRI}; }}
+            """)
+            layout.addWidget(field)
+            self._key_fields[key_name] = field
 
-        self._external_key_label = _lbl("", 8, color=C.TEXT_DIM,
-                                        align=Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(self._external_key_label)
-        self._external_key_input = QLineEdit()
-        self._external_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self._external_key_input.setFont(QFont("Courier New", 10))
-        self._external_key_input.setFixedHeight(32)
-        self._external_key_input.setStyleSheet(f"""
-            QLineEdit {{ background: #000d12; color: {C.TEXT};
-                border: 1px solid {C.BORDER}; border-radius: 3px; padding: 4px 8px; }}
-            QLineEdit:focus {{ border: 1px solid {C.PRI}; }}
-        """)
-        layout.addWidget(self._external_key_input)
-        self._provider.currentIndexChanged.connect(self._update_provider_fields)
-        self._update_provider_fields()
-        layout.addSpacing(4)
+        note = _lbl("Gemini powers live voice. Groq is tried next for text fallback.", 8, False, C.ACC2)
+        note.setWordWrap(True)
+        layout.addSpacing(2)
+        layout.addWidget(note)
 
-        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color: {C.BORDER};"); layout.addWidget(sep)
-        layout.addSpacing(4)
-
-        layout.addWidget(_lbl("GEMINI API KEY", 8, color=C.TEXT_DIM,
-                               align=Qt.AlignmentFlag.AlignLeft))
-        self._key_input = QLineEdit()
-        self._key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self._key_input.setPlaceholderText("AIza…")
-        self._key_input.setFont(QFont("Courier New", 10))
-        self._key_input.setFixedHeight(32)
-        self._key_input.setStyleSheet(f"""
-            QLineEdit {{
-                background: #000d12; color: {C.TEXT};
-                border: 1px solid {C.BORDER}; border-radius: 3px; padding: 4px 8px;
-            }}
-            QLineEdit:focus {{ border: 1px solid {C.PRI}; }}
-        """)
-        layout.addWidget(self._key_input)
-        layout.addSpacing(12)
-
-        sep2 = QFrame(); sep2.setFrameShape(QFrame.Shape.HLine)
-        sep2.setStyleSheet(f"color: {C.BORDER};"); layout.addWidget(sep2)
-        layout.addSpacing(4)
-
-        layout.addWidget(_lbl("OPERATING SYSTEM", 8, color=C.TEXT_DIM,
-                               align=Qt.AlignmentFlag.AlignLeft))
-        det_name = {"windows": "Windows", "mac": "macOS", "linux": "Linux"}[detected]
-        layout.addWidget(_lbl(f"Auto-detected: {det_name}", 8, color=C.ACC2,
-                               align=Qt.AlignmentFlag.AlignLeft))
-
-        os_row = QHBoxLayout(); os_row.setSpacing(6)
-        self._os_btns: dict[str, QPushButton] = {}
-        for key, label in [("windows","⊞  Windows"),("mac","  macOS"),("linux","🐧  Linux")]:
-            btn = QPushButton(label)
-            btn.setFont(QFont("Courier New", 9, QFont.Weight.Bold))
-            btn.setFixedHeight(32)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.clicked.connect(lambda _, k=key: self._sel(k))
-            os_row.addWidget(btn)
-            self._os_btns[key] = btn
-        layout.addLayout(os_row)
-        self._sel(detected)
-        layout.addSpacing(12)
-
-        init_btn = QPushButton("▸  INITIALISE SYSTEMS")
+        init_btn = QPushButton("INITIALISE J.A.R.V.I.S")
         init_btn.setFont(QFont("Courier New", 10, QFont.Weight.Bold))
-        init_btn.setFixedHeight(36)
+        init_btn.setFixedHeight(34)
         init_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         init_btn.setStyleSheet(f"""
             QPushButton {{
-                background: transparent; color: {C.PRI};
-                border: 1px solid {C.PRI_DIM}; border-radius: 3px;
+                background: #001a22; color: {C.PRI};
+                border: 1px solid {C.PRI_DIM}; border-radius: 4px;
             }}
             QPushButton:hover {{
                 background: {C.PRI_GHO}; border: 1px solid {C.PRI};
             }}
         """)
         init_btn.clicked.connect(self._submit)
+        layout.addSpacing(4)
         layout.addWidget(init_btn)
 
-    def _select_provider(self, provider: str) -> None:
-        index = self._provider.findData(provider)
-        if index >= 0:
-            self._provider.setCurrentIndex(index)
-
-    def _sel(self, key: str):
-        self._sel_os = key
-        pal = {"windows":(C.PRI,"#001a22"),"mac":(C.ACC2,"#1a1400"),"linux":(C.GREEN,"#001a0d")}
-        for k, btn in self._os_btns.items():
-            if k == key:
-                fg, bg = pal[k]
-                btn.setStyleSheet(f"""
-                    QPushButton {{
-                        background: {fg}; color: {bg};
-                        border: none; border-radius: 3px; font-weight: bold;
-                    }}
-                """)
-            else:
-                btn.setStyleSheet(f"""
-                    QPushButton {{
-                        background: #000d12; color: {C.TEXT_DIM};
-                        border: 1px solid {C.BORDER}; border-radius: 3px;
-                    }}
-                    QPushButton:hover {{ color: {C.TEXT}; border: 1px solid {C.BORDER_B}; }}
-                """)
-
-    def _update_provider_fields(self, *_):
-        provider = str(self._provider.currentData() or "gemini")
-        for key, tile in self._provider_tiles.items():
-            tile.setChecked(key == provider)
-        if provider == "openai":
-            self._external_key_label.setText("OPENAI API KEY  ·  OPTIONAL IF ALREADY CONFIGURED")
-            has_key = bool(self._provider_settings.get("has_openai_key"))
-            self._external_key_input.setPlaceholderText(
-                "Saved locally; leave blank to keep it" if has_key else "Paste OpenAI API key"
-            )
-            self._external_key_input.show()
-            self._external_key_label.show()
-        elif provider == "anthropic":
-            self._external_key_label.setText("ANTHROPIC API KEY  ·  OPTIONAL IF ALREADY CONFIGURED")
-            has_key = bool(self._provider_settings.get("has_anthropic_key"))
-            self._external_key_input.setPlaceholderText(
-                "Saved locally; leave blank to keep it" if has_key else "Paste Anthropic API key"
-            )
-            self._external_key_input.show()
-            self._external_key_label.show()
-        else:
-            self._external_key_input.clear()
-            self._external_key_input.hide()
-            self._external_key_label.hide()
-
     def _submit(self):
-        key = self._key_input.text().strip()
+        key = self._key_fields["gemini_api_key"].text().strip()
         if not key:
-            self._key_input.setStyleSheet(
-                self._key_input.styleSheet() +
-                f" QLineEdit {{ border: 1px solid {C.RED}; }}"
-            )
-            return
-        provider = str(self._provider.currentData() or "gemini")
-        external_key = self._external_key_input.text().strip()
-        has_key = bool(
-            self._provider_settings.get("has_openai_key" if provider == "openai"
-                                       else "has_anthropic_key")
-        ) if provider in ("openai", "anthropic") else True
-        if provider in ("openai", "anthropic") and not (external_key or has_key):
-            self._external_key_input.setStyleSheet(
-                self._external_key_input.styleSheet() +
-                f" QLineEdit {{ border: 1px solid {C.RED}; }}"
-            )
-            self._provider_note.setText("Enter a key for the selected provider, or configure it in your environment first.")
-            self._provider_note.setStyleSheet(f"color: {C.RED}; background: transparent;")
+            field = self._key_fields["gemini_api_key"]
+            field.setStyleSheet(field.styleSheet() + f" QLineEdit {{ border: 1px solid {C.RED}; }}")
             return
         self.done.emit({
             "gemini_api_key": key,
-            "os_system": self._sel_os,
-            "provider": provider,
-            "external_api_key": external_key,
+            "groq_api_key": self._key_fields["groq_api_key"].text().strip(),
+            "openai_api_key": self._key_fields["openai_api_key"].text().strip(),
+            "anthropic_api_key": self._key_fields["anthropic_api_key"].text().strip(),
         })
 
 
@@ -7565,7 +7433,7 @@ class MainWindow(QMainWindow):
         if not API_FILE.exists(): return False
         try:
             d = json.loads(API_FILE.read_text(encoding="utf-8"))
-            return bool(d.get("gemini_api_key")) and bool(d.get("os_system"))
+            return bool(d.get("gemini_api_key"))
         except Exception:
             return False
 
@@ -7574,7 +7442,7 @@ class MainWindow(QMainWindow):
             self._leave_immersive_view()
         ov = SetupOverlay(self.centralWidget())
         cw = self.centralWidget()
-        ow, oh = 540, 560
+        ow, oh = 440, 490
         ov.setGeometry(
             (cw.width()  - ow) // 2,
             (cw.height() - oh) // 2,
@@ -7586,21 +7454,22 @@ class MainWindow(QMainWindow):
 
     def _on_setup_done(self, setup: dict):
         key = str(setup.get("gemini_api_key", "")).strip()
-        os_name = str(setup.get("os_system", "windows"))
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        # Preserve the rest of the user's local config when setup is re-run.
+        # Preserve unrelated local preferences; update only credentials supplied here.
         config = _read_full_config()
         config["gemini_api_key"] = key
-        config["os_system"] = os_name
+        for config_key in ("groq_api_key", "openai_api_key", "anthropic_api_key"):
+            supplied = str(setup.get(config_key, "") or "").strip()
+            if supplied:
+                config[config_key] = supplied
         from memory.config_manager import write_api_config
         write_api_config(config)
         from core.provider_settings import save_provider_settings
-        provider = str(setup.get("provider", "gemini"))
-        provider_key = str(setup.get("external_api_key", ""))
         save_provider_settings(
-            provider,
-            openai_api_key=provider_key if provider == "openai" else "",
-            anthropic_api_key=provider_key if provider == "anthropic" else "",
+            "gemini",
+            groq_api_key=str(setup.get("groq_api_key", "") or ""),
+            openai_api_key=str(setup.get("openai_api_key", "") or ""),
+            anthropic_api_key=str(setup.get("anthropic_api_key", "") or ""),
         )
         self._ready = True
         if self._overlay:
@@ -7608,7 +7477,7 @@ class MainWindow(QMainWindow):
             self._overlay = None
         self._apply_state("LISTENING")
         self._assistant_name = _read_full_config().get("assistant_name", "JARVIS") or "JARVIS"
-        self._log.append_log(f"SYS: Initialised. OS={os_name.upper()}. {self._assistant_name} online.")
+        self._log.append_log(f"SYS: AI providers initialised. {self._assistant_name} online.")
         if self.hud.hud_style in ("neural", "neural_orb"):
             QTimer.singleShot(0, self._enter_immersive_view)
 

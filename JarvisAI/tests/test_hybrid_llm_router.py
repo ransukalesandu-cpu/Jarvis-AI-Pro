@@ -34,7 +34,7 @@ class HybridLLMRouterTests(unittest.TestCase):
         router.providers["groq"] = lambda *a, **k: {"text": "recovered"}
         self.assertEqual(router.query("hello")["text"], "recovered")
 
-    def test_offline_uses_only_local_provider(self):
+    def test_offline_prefers_local_provider_when_it_succeeds(self):
         router = HybridLLMRouter(api_keys={"gemini": "configured"}, online_check=True)
         router.is_online = lambda: False
         calls = []
@@ -44,6 +44,24 @@ class HybridLLMRouterTests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertEqual(result["provider"], "ollama")
         self.assertEqual(result["mode"], "local-offline")
+
+    def test_false_offline_probe_falls_back_to_cloud_if_local_fails(self):
+        router = HybridLLMRouter(
+            api_keys={"gemini": "configured"}, online_check=True
+        )
+        router.is_online = lambda: False
+        calls = []
+        router.providers["ollama"] = lambda *a, **k: (
+            (_ for _ in ()).throw(ConnectionError("local Ollama unavailable"))
+        )
+        router.providers["gemini"] = lambda *a, **k: (
+            calls.append("gemini") or {"text": "cloud recovered", "model": "test-model"}
+        )
+        result = router.query("hello")
+        self.assertEqual(calls, ["gemini"])
+        self.assertEqual(result["text"], "cloud recovered")
+        self.assertEqual(result["provider"], "gemini")
+        self.assertEqual(result["mode"], "cloud")
 
     def test_missing_cloud_keys_are_skipped_without_calling_provider(self):
         router = HybridLLMRouter(online_check=False)

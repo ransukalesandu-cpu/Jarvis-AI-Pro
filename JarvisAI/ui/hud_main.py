@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 from audio.visualizer_bridge import get_visualizer_bridge, VisualizerBridge
 from ui.hologram.wireframe_head import NeuralWireframeHead
 from ui.hologram.bihansa_hologram import BihansaHologramWidget
+from ui.hologram.bihansa_settings import BihansaModeSettings, BihansaSettingsDialog
 from ui.panels.hybrid_brain_panel import HybridBrainPanel
 from ui.panels.security_panel import SecurityPanel
 from ui.panels.memory_panel import MemoryPanel
@@ -79,6 +80,7 @@ class HUDMainWindow(QMainWindow):
         self._bihansa_toggle.setChecked(enabled)
         self._bihansa_effects.setChecked(self._settings.value("bihansa/effects", True, type=bool))
         self._bihansa_voice_reactive.setChecked(self._settings.value("bihansa/voice_reactive", True, type=bool))
+        self._apply_bihansa_preferences()
         self._set_bihansa_enabled(self._bihansa_toggle.isChecked())
 
         # Update timer for periodic state polling (memory/scheduler/auth)
@@ -116,6 +118,14 @@ class HUDMainWindow(QMainWindow):
         )
         self._bihansa_toggle.toggled.connect(self._set_bihansa_enabled)
         hdr_layout.addWidget(self._bihansa_toggle)
+
+        self._bihansa_settings_btn = QPushButton("⚙ SETTINGS")
+        self._bihansa_settings_btn.setStyleSheet(
+            "QPushButton { color: #c8d9d5; background: #101923; border: 1px solid #42606b; padding: 8px 12px; }"
+            "QPushButton:hover { color: #ffb3e2; border-color: #ff4fc8; }"
+        )
+        self._bihansa_settings_btn.clicked.connect(self._open_bihansa_settings)
+        hdr_layout.addWidget(self._bihansa_settings_btn)
 
         main_layout.addLayout(hdr_layout)
 
@@ -228,12 +238,38 @@ class HUDMainWindow(QMainWindow):
             self.bihansa_visualizer if enabled else self.wireframe_visualizer
         )
         self._bihansa_toggle.setText("BIHANSA MODE: ON" if enabled else "BIHANSA MODE: OFF")
+        # Keep BIHANSA-only controls out of the standard JARVIS view.
+        self._bihansa_effects.setVisible(enabled)
+        self._bihansa_voice_reactive.setVisible(enabled)
         self._settings.setValue("bihansa/enabled", enabled)
         from memory.config_manager import save_assistant_mode
         save_assistant_mode("bihansa" if enabled else "jarvis")
         self.sig_mode_changed.emit()
         self._lbl_hud_status.setText("✦ BIHANSA NEURAL MODE" if enabled else "● SYSTEM STANDBY")
         self._lbl_hud_status.setStyleSheet("color: #ff75d4;" if enabled else "color: #00e5ff;")
+
+    def _open_bihansa_settings(self):
+        """Open the real preferences dialog and apply changes to the live HUD."""
+        prefs = BihansaModeSettings(self._settings)
+        dialog = BihansaSettingsDialog(self, settings=prefs, on_applied=self._apply_bihansa_preferences)
+        dialog.exec()
+
+    def _apply_bihansa_preferences(self):
+        """Apply persisted appearance preferences to the active hologram widget."""
+        prefs = BihansaModeSettings(self._settings)
+        self.bihansa_visualizer.set_reduced_motion(prefs.reduced_motion)
+        self.bihansa_visualizer.set_glow_intensity(prefs.glow_intensity)
+        self.bihansa_visualizer.set_animation_speed(prefs.animation_speed)
+        self.bihansa_visualizer.set_effects_enabled(
+            self._bihansa_effects.isChecked() if hasattr(self, "_bihansa_effects") else True
+        )
+        self.bihansa_visualizer.set_voice_reactive(
+            self._bihansa_voice_reactive.isChecked() if hasattr(self, "_bihansa_voice_reactive") else True
+        )
+        if hasattr(self, "_bihansa_toggle"):
+            desired = prefs.assistant_mode == "bihansa"
+            if self._bihansa_toggle.isChecked() != desired:
+                self._bihansa_toggle.setChecked(desired)
 
     def _update_clock(self):
         self._lbl_clock.setText(time.strftime("%H:%M:%S"))

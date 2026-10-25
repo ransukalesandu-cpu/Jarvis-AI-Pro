@@ -63,12 +63,15 @@ from pathlib import Path
 # explicitly request GPU rasterization for the canvas-heavy Holo UI. Do this
 # before importing PyQt/WebEngine so its renderer process inherits the flags.
 # Keep user-supplied Chromium flags intact and never force past the GPU blocklist.
-if _platform.system() == "Windows":
-    _chromium_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "").split()
+_chromium_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "").split()
+if _platform.system() == "Linux":
+    if "--no-sandbox" not in _chromium_flags:
+        _chromium_flags.append("--no-sandbox")
+elif _platform.system() == "Windows":
     for _gpu_flag in ("--enable-gpu-rasterization", "--enable-zero-copy"):
         if _gpu_flag not in _chromium_flags:
             _chromium_flags.append(_gpu_flag)
-    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(_chromium_flags)
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(_chromium_flags)
 
 try:
     import sounddevice as sd
@@ -2774,7 +2777,8 @@ class JarvisLive:
                 if n_samples > 0 and len(raw_mono) > 1:
                     old_x = np.linspace(0, 1, len(raw_mono))
                     new_x = np.linspace(0, 1, n_samples)
-                    resampled = np.interp(new_x, old_x, raw_mono.astype(np.float32)).astype(np.int16)
+                    resampled_float = np.interp(new_x, old_x, raw_mono.astype(np.float32))
+                    resampled = np.clip(resampled_float, -32768, 32767).astype(np.int16)
                     indata = resampled.reshape(-1, 1) if indata.ndim > 1 else resampled
             # Voice-ID enrollment is intentionally deferred until the
             # speaking/turn gate below. Otherwise JARVIS can enroll its own

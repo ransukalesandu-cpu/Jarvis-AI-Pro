@@ -3678,7 +3678,7 @@ class JarvisLive:
                 # Maintain a ~300 ms jitter buffer before the first write and
                 # whenever the local buffer falls below target. This gives Live
                 # audio a chance to arrive before the speaker queue runs dry.
-                while len(pending_pcm) < _MIN_PREBUFFER_BYTES:
+                while len(pending_pcm) < _MIN_PREBUFFER_BYTES and not playback_started:
                     if self._playback_interrupt_requested.is_set():
                         pending_pcm.clear()
                         playback_started = False
@@ -3770,16 +3770,39 @@ class JarvisLive:
                         continue
 
                 if not pending_pcm:
-                    turn_complete = bool(
-                        self._turn_done_event
-                        and self._turn_done_event.is_set()
-                    )
-                    if turn_complete and self.audio_in_queue.empty():
+                    # Only prebuffer the beginning of a response. Once playback
+                    # has started, wait for the next PCM chunk instead of spinning
+                    # or rebuilding the 300 ms prebuffer after every batch.
+                    try:
+                        next_chunk = await asyncio.wait_for(
+                            self.audio_in_queue.get(), timeout=0.1
+                        )
+                    except asyncio.TimeoutError:
+                        turn_complete = bool(
+                            self._turn_done_event
+                            and self._turn_done_event.is_set()
+                        )
+                        if turn_complete and self.audio_in_queue.empty():
+                            self.set_speaking(False)
+                            self._turn_done_event.clear()
+                            playback_started = False
+                            prebuffer_logged = False
+                        continue
+
+                    if self._playback_interrupt_requested.is_set():
+                        self._playback_interrupt_requested.clear()
                         self.set_speaking(False)
-                        self._turn_done_event.clear()
+                        pending_pcm.clear()
                         playback_started = False
-                        prebuffer_logged = False
-                    continue
+                        try:
+                            if not stream.active:
+                                stream.start()
+                        except Exception as exc:
+                            print(f"[JARVIS] Could not resume output after interrupt: {exc}")
+                        continue
+                    pending_pcm.extend(next_chunk)
+                    if not pending_pcm:
+                        continue
 
                 batch = bytearray(pending_pcm[:4800])
                 del pending_pcm[:len(batch)]

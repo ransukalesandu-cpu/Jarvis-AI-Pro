@@ -44,6 +44,33 @@ The runtime prints one-time-per-turn checkpoints with the `[AudioTrace ...]` pre
 
 If a turn completes with assistant text but no PCM audio payload, the trace explicitly reports that mismatch. Do not add `pyttsx3`/COM or `PyAudio` code to this path unless the app is deliberately changed to use those engines; this runtime uses Gemini Live native audio and `sounddevice`.
 
+### Optional legacy speech and the `pyttsx3` test message
+
+The `[Voice] Playback error: No module named 'pyttsx3'` message in
+[CI run 40198481278](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/actions/runs/40198481278)
+came from `test_phase_upgrades.py::test_speech_engine_fallback_handling`.
+That test queued real work on `voice/speech_engine.py`'s `SafeSpeechManager`
+and returned without waiting for playback. Its daemon worker then lazily
+imported the absent package and printed the caught exception, sometimes after
+the test had finished. This was a logged worker error, not a failing pytest
+warning or an application startup error.
+
+Repository callers of `SafeSpeechManager` are limited to tests. It is an
+optional legacy wrapper, not the assistant's automatic fallback. Normal and
+error speech requests use `JarvisLive.speak()` and the Gemini Live session;
+received PCM uses the existing `sounddevice` output worker. The separate
+`core/tts.py` factory defaults to Edge TTS, which is declared in requirements.
+None of those paths imports `pyttsx3`, so adding it as a required dependency
+would not repair or improve the active Live audio path.
+
+The legacy wrapper now explains when its optional package is absent, while
+other import, engine, and playback failures remain visible. Its tests use fake
+engines and a synchronously driven worker, assert queue completion/error
+recovery/interruption, and capture the expected absence message. A fake Live
+session also verifies normal/error speech dispatch with `pyttsx3` unavailable.
+These checks use no audio hardware, API keys or live services; they do not
+establish audible playback or device-specific runtime reliability.
+
 
 ### Tiny PCM payloads and silent output
 

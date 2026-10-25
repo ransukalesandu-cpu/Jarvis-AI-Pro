@@ -1,3 +1,4 @@
+"""Legacy optional pyttsx3 wrapper, separate from Gemini Live audio output."""
 import threading
 import time
 import queue
@@ -61,8 +62,16 @@ class SafeSpeechManager:
         Play audio in small chunks so that stop_event.is_set() 
         breaks out in milliseconds without crashing the audio driver.
         """
-        # Example using pyttsx3 safely inside its own dedicated loop:
-        import pyttsx3
+        try:
+            import pyttsx3
+        except ModuleNotFoundError as exc:
+            if exc.name != "pyttsx3":
+                raise
+            print(
+                "[Voice] Optional legacy speech is unavailable: pyttsx3 is not installed. "
+                "Gemini Live audio uses a separate pipeline."
+            )
+            return
         engine = pyttsx3.init()
 
         # Break long sentences into short phrases

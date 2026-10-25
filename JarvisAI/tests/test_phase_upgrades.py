@@ -5,7 +5,6 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 from actions.desktop_automation import launch_app, desktop_automation
-from voice.speech_engine import SafeSpeechManager
 import main
 
 
@@ -42,16 +41,6 @@ class TestPhaseUpgrades(unittest.TestCase):
         res = launch_app("missing-app")
         self.assertIn("Application not found", res)
         mock_popen.assert_not_called()
-
-    def test_speech_engine_fallback_handling(self):
-        """Verify that SafeSpeechManager handles _play_audio_stream gracefully."""
-        manager = SafeSpeechManager()
-        # Ensure _play_audio_stream executes without throwing unhandled exceptions
-        try:
-            manager.speak("Testing fallback TTS")
-        finally:
-            manager.interrupt()
-
 
     @patch("actions.web_search._run_bounded")
     def test_search_timeout_configuration(self, mock_run_bounded):

@@ -4443,6 +4443,7 @@ class MainWindow(QMainWindow):
     _quiz_sig       = pyqtSignal(str, object, object)  # (topic, questions, grader)
     _quiz_hide_sig  = pyqtSignal()
     _review_sig     = pyqtSignal(str, str, object, object)  # document review payload
+    _voice_id_enabled_sig = pyqtSignal(bool)
 
     def __init__(self, face_path: str):
         super().__init__()
@@ -4635,6 +4636,7 @@ class MainWindow(QMainWindow):
         self._neural_hand_start_sig.connect(self._start_neural_hand_control_after_confirmation)
         self._cam_stream_sig.connect(self._on_cam_stream)
         self._cam_frame_sig.connect(self._on_cam_frame)
+        self._voice_id_enabled_sig.connect(self._apply_voice_id_enabled)
         self._clipboard_sig.connect(self._show_clipboard_panel)
         self._wake_dl_sig.connect(self._on_wake_install_done)
         self._quiz_sig.connect(self._show_quiz)
@@ -7132,7 +7134,10 @@ class MainWindow(QMainWindow):
                 self._log.append_log(f"ERR: Voice ID — {e}")
 
     def set_voice_id_enabled(self, enabled: bool):
-        """Reflect the enforced Voice ID state in the settings control."""
+        """Reflect the enforced Voice ID state in the settings control (thread-safe)."""
+        self._voice_id_enabled_sig.emit(bool(enabled))
+
+    def _apply_voice_id_enabled(self, enabled: bool):
         button = getattr(self, "_voice_id_btn", None)
         if button is None:
             return

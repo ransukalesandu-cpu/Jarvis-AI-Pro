@@ -17,9 +17,11 @@ if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFOR
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 import unittest
+import tempfile
+from unittest.mock import patch
 import numpy as np
 
-from PyQt6.QtCore import QSettings
+from PyQt6.QtCore import QSettings, QCoreApplication, QEvent
 from PyQt6.QtWidgets import QApplication
 
 # Ensure QApplication exists before testing Qt widgets
@@ -40,11 +42,22 @@ class TestUIHologram(unittest.TestCase):
 
     def setUp(self):
         self.bridge = VisualizerBridge()
-        self.settings = QSettings("JarvisAI", "JarvisAIPro")
-        self.settings.setValue("bihansa/enabled", False)
+        settings_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(settings_dir.cleanup)
+        self.settings = QSettings(
+            str(Path(settings_dir.name) / "settings.ini"), QSettings.Format.IniFormat
+        )
+        settings_patch = patch("ui.hud_main.QSettings", return_value=self.settings)
+        settings_patch.start()
+        self.addCleanup(settings_patch.stop)
 
-    def tearDown(self):
-        self.settings.setValue("bihansa/enabled", False)
+    def _track_widget(self, widget):
+        def dispose():
+            widget.close()
+            widget.deleteLater()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.addCleanup(dispose)
+        return widget
 
     def test_visualizer_bridge_rms_and_signals(self):
         """Test RMS energy computation, lerp, and Qt signal emissions."""
@@ -146,7 +159,7 @@ class TestUIHologram(unittest.TestCase):
 
     def test_hud_main_window_shell(self):
         """Test HUD Main Window creation and Privacy Lock state handling."""
-        hud = HUDMainWindow(bridge=self.bridge)
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
         hud.show()
         self.assertIsNotNone(hud)
 
@@ -167,6 +180,8 @@ class TestUIHologram(unittest.TestCase):
         # Simulate PRIVACY_LOCK auth state change
         self.bridge.update_auth_state("PRIVACY_LOCK")
         self.assertFalse(hud._lock_banner.isHidden())
+        self.assertEqual(hud.wireframe_visualizer.get_state(), "PRIVACY_LOCK")
+        self.assertEqual(hud.bihansa_visualizer.get_state(), "PRIVACY_LOCK")
 
         # Clear PRIVACY_LOCK
         self.bridge.update_auth_state("FULL_ACCESS")
@@ -175,6 +190,7 @@ class TestUIHologram(unittest.TestCase):
     def test_hologram_hud_ui_adapter(self):
         """Test HologramHUDUI adapter class wrapping HUDMainWindow."""
         ui = HologramHUDUI(bridge=self.bridge)
+        self._track_widget(ui._win)
         self.assertIsNotNone(ui)
         ui.set_state("SPEAKING")
         self.assertEqual(self.bridge.current_state, "SPEAKING")

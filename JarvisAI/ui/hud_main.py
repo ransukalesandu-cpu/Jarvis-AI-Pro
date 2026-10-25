@@ -268,6 +268,7 @@ class HUDMainWindow(QMainWindow):
     def _handle_privacy_lock(self):
         """Engage privacy lockdown profile on HUD and trigger LockWorkStation."""
         self.wireframe_visualizer.set_state("PRIVACY_LOCK")
+        self.bihansa_visualizer.set_state("PRIVACY_LOCK")
         self._lbl_hud_status.setText("⊘ PRIVACY LOCK ENGAGED")
         self._lbl_hud_status.setStyleSheet("color: #ff1744;")
         self._lock_banner.show()

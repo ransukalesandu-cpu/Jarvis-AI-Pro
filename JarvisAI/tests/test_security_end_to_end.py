@@ -56,6 +56,9 @@ class VoiceAntiSpoofTests(unittest.TestCase):
 
 
 class _OwnerSession:
+    def is_privacy_lock_active(self):
+        return False
+
     def get_state(self):
         from core.security import FULL_ACCESS_MODE
         return FULL_ACCESS_MODE

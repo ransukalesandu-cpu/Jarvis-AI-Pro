@@ -1,6 +1,6 @@
 """
 Automated UI Hologram Smoke Tests for Jarvis AI Pro Neural Wireframe HUD.
-Verifies widget creation, state transitions, audio energy calculations, and signal handling.
+Verifies widget creation, state transitions, audio energy calculations, signal handling, and Bihansa Hologram mode.
 """
 
 import os
@@ -19,6 +19,8 @@ if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFOR
 import unittest
 import numpy as np
 
+from PyQt6.QtCore import QSize
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QApplication
 
 # Ensure QApplication exists before testing Qt widgets
@@ -26,6 +28,7 @@ app = QApplication.instance() or QApplication(sys.argv)
 
 from audio.visualizer_bridge import VisualizerBridge, get_visualizer_bridge
 from ui.hologram.wireframe_head import NeuralWireframeHead
+from ui.hologram.bihansa_hologram import BihansaHologramWidget
 from ui.panels.hybrid_brain_panel import HybridBrainPanel
 from ui.panels.security_panel import SecurityPanel
 from ui.panels.memory_panel import MemoryPanel
@@ -80,6 +83,36 @@ class TestUIHologram(unittest.TestCase):
         head.set_audio_energy(0.75)
         self.assertEqual(head._target_energy, 0.75)
 
+    def test_bihansa_hologram_widget(self):
+        """Test Bihansa 2.5D Neural Face Visualizer widget states, options, visemes, and fallback."""
+        widget = BihansaHologramWidget()
+        self.assertIsNotNone(widget)
+        self.assertEqual(widget.get_state(), "IDLE")
+
+        # Test state transitions
+        for st in ["LISTENING", "THINKING", "SPEAKING", "IDLE"]:
+            widget.set_state(st)
+            self.assertEqual(widget.get_state(), st)
+
+        # Test audio energy and visemes
+        widget.set_audio_energy(0.85)
+        self.assertEqual(widget._target_energy, 0.85)
+
+        widget.set_viseme("open")
+        self.assertEqual(widget._current_viseme, "open")
+
+        widget.set_effects_enabled(False)
+        self.assertFalse(widget._effects_enabled)
+
+        widget.set_voice_reactive(False)
+        self.assertFalse(widget._voice_reactive)
+        self.assertEqual(widget._energy, 0.0)
+
+        # Test fallback rendering when portrait pixmap is null
+        widget._portrait = QPixmap()
+        widget.resize(400, 400)
+        widget.repaint()
+
     def test_telemetry_panels_creation_and_updates(self):
         """Test modular telemetry panels."""
         # 1. Hybrid Brain Panel
@@ -111,15 +144,28 @@ class TestUIHologram(unittest.TestCase):
         self.assertIsNotNone(ring)
         ring.update_metrics()
 
-    def test_hud_main_window_shell(self):
-        """Test HUD Main Window creation and Privacy Lock state handling."""
+    def test_hud_main_window_shell_and_bihansa_toggle(self):
+        """Test HUD Main Window shell, Bihansa toggle, and Privacy Lock state handling."""
         hud = HUDMainWindow(bridge=self.bridge)
         hud.show()
         self.assertIsNotNone(hud)
 
-        # Simulate state changes via bridge
-        self.bridge.update_state("LISTENING")
-        self.assertEqual(hud.wireframe_visualizer.get_state(), "LISTENING")
+        # Confirm default OFF mode uses normal JARVIS wireframe visualizer
+        self.assertEqual(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
+
+        # Toggle Bihansa Mode ON
+        hud._bihansa_toggle.setChecked(True)
+        self.assertEqual(hud._visualizer_stack.currentWidget(), hud.bihansa_visualizer)
+
+        # Simulate state and energy changes via bridge
+        self.bridge.update_state("SPEAKING")
+        self.bridge.push_audio_energy(0.65)
+        self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
+        self.assertEqual(hud.bihansa_visualizer.get_state(), "SPEAKING")
+
+        # Toggle Bihansa Mode OFF
+        hud._bihansa_toggle.setChecked(False)
+        self.assertEqual(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
 
         # Simulate PRIVACY_LOCK auth state change
         self.bridge.update_auth_state("PRIVACY_LOCK")

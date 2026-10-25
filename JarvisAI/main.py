@@ -3742,12 +3742,17 @@ class JarvisLive:
                         print(f"[JARVIS] Could not resume output after interrupt: {exc}")
                     continue
 
+                if self._shutdown_requested:
+                    break
+
                 interrupted_while_buffering = False
 
                 # Maintain a ~300 ms jitter buffer before the first write and
                 # whenever the local buffer falls below target. This gives Live
                 # audio a chance to arrive before the speaker queue runs dry.
                 while len(pending_pcm) < _MIN_PREBUFFER_BYTES and not playback_started:
+                    if self._shutdown_requested:
+                        break
                     if self._playback_interrupt_requested.is_set():
                         pending_pcm.clear()
                         playback_started = False
@@ -3765,6 +3770,8 @@ class JarvisLive:
                             self.audio_in_queue.get(), timeout=0.1
                         )
                     except asyncio.TimeoutError:
+                        if self._shutdown_requested:
+                            break
                         now_mono = time.monotonic()
                         turn_complete = bool(
                             self._turn_done_event

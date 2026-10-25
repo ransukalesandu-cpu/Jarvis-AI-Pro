@@ -18,8 +18,10 @@ _MAX_TRACEBACK_CHARS = 12_000
 _MAX_SOURCE_CHARS = 16_000
 _MAX_FILE_BYTES = 512_000
 _SECRET_PATTERNS = (
-    re.compile(r"(?i)(api[_-]?key|token|secret|password|authorization)(\\s*[:=]\\s*)([^\\s,;]+)"),
+    # Match the whole authorization value before the generic key/value rule.
+    re.compile(r"(?i)(authorization\\s*[:=]\\s*Bearer\\s+)[A-Za-z0-9._~+/-]+=*"),
     re.compile(r"(?i)(Bearer\\s+)[A-Za-z0-9._~+/-]+=*"),
+    re.compile(r"(?i)(api[_-]?key|token|secret|password|authorization)(\\s*[:=]\\s*)([^\\s,;]+)"),
     re.compile(r"(?i)(sk-[A-Za-z0-9_-]{8,})"),
 )
 

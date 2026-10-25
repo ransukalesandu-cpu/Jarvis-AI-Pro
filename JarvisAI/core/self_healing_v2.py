@@ -68,17 +68,31 @@ class SelfHealingSentinel:
     def _check_audio_subsystem(self):
         """Detects if microphone / speaker devices have been severed."""
         try:
-            import pyaudio
-            p = pyaudio.PyAudio()
-            count = p.get_device_count()
-            p.terminate()
-            if count == 0:
+            # Prefer sounddevice, which is already used by the main audio path.
+            # PyAudio is an optional fallback for installations that lack it.
+            import sounddevice as sd
+            devices = sd.query_devices()
+            if len(devices) == 0:
                 self.health_metrics["audio_ok"] = False
                 logger.warning("[SELF-HEALING] No audio I/O devices detected.")
             else:
                 self.health_metrics["audio_ok"] = True
         except Exception:
-            pass
+            try:
+                import pyaudio
+                p = pyaudio.PyAudio()
+                try:
+                    count = p.get_device_count()
+                finally:
+                    p.terminate()
+                self.health_metrics["audio_ok"] = (count > 0)
+                if count == 0:
+                    logger.warning("[SELF-HEALING] No audio I/O devices detected.")
+            except Exception:
+                # Do not mark audio healthy/unhealthy when neither backend
+                # can query devices; the optional self-healing check must not
+                # crash the main assistant.
+                pass
 
     def _request_approval(self, title: str, details: str) -> bool:
         if self.approval_callback:

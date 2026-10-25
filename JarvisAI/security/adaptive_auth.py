@@ -43,13 +43,20 @@ class AdaptiveAuthManager:
         if self.auth_manager.is_privacy_lock_active():
             return False, "none", "Privacy Lock is active. Sensitive operations are blocked."
 
-        # Step 1: Voice verification
+        # Step 1: Voice verification. Speaker similarity alone can be fooled by
+        # replayed or synthetic audio, so it must never unlock sensitive actions.
+        # The adapter fails closed unless a separately validated anti-spoof verifier
+        # is supplied. Until that is configured, continue to the local PIN fallback.
         if audio_sample is not None and voice_id.is_enrolled("owner"):
             try:
-                verified, score = voice_id.verify(audio_sample, role="owner")
-                if verified:
+                from security.voice_auth import SpeakerAuthenticator
+                authenticator = SpeakerAuthenticator()
+                verified, score, verified_live = authenticator.verify(
+                    audio_sample, sample_rate=16000
+                )
+                if verified and verified_live:
                     self.auth_manager.grant_owner_access("voice")
-                    return True, "voice", f"Voice verification succeeded (score: {score:.2f})."
+                    return True, "voice", f"Live voice verification succeeded (score: {score:.2f})."
             except Exception as exc:
                 print(f"[AdaptiveAuth] Voice verification error: {exc}")
 

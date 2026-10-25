@@ -33,21 +33,27 @@ class LiveAudioLifecycleTests(unittest.TestCase):
         self.assertEqual(len(pcm), 0)
         self.assertEqual(len(buffer), _MIN_LIVE_AUDIO_FRAME_BYTES - 2)
 
-    def test_take_playback_pcm_odd_byte_fragment_alignment_and_retention(self):
-        # 2401 bytes: 2400 bytes (1 full 50ms slice) + 1 odd trailing byte
+    def test_take_playback_pcm_sample_split_across_fragments(self):
+        # 16-bit PCM sample split across fragments:
+        # Fragment 1: 2400 bytes (1 full 50ms slice) + 1st byte of a split 16-bit sample (0x03)
         buffer = bytearray(b"\x01\x02" * 1200 + b"\x03")
-        pcm = _take_playback_pcm(buffer, final=False)
-        self.assertEqual(len(pcm), _PLAYBACK_SLICE_BYTES)
-        self.assertEqual(len(pcm) % 2, 0)  # Always even sample alignment
-        self.assertEqual(len(buffer), 1)  # Odd trailing byte retained
+        pcm1 = _take_playback_pcm(buffer, final=False)
+
+        self.assertEqual(len(pcm1), _PLAYBACK_SLICE_BYTES)
+        self.assertEqual(len(pcm1) % 2, 0)  # Always 16-bit sample aligned
+        self.assertEqual(len(buffer), 1)    # Incomplete 1-byte retained
         self.assertEqual(buffer[0], 0x03)
 
-        # Append 1 byte to complete the 16-bit sample (0x03, 0x04) + enough bytes for a valid frame
-        buffer.extend(b"\x04" + b"\x00" * _MIN_LIVE_AUDIO_FRAME_BYTES)
-        final_pcm = _take_playback_pcm(buffer, final=True)
-        self.assertGreaterEqual(len(final_pcm), _MIN_LIVE_AUDIO_FRAME_BYTES)
-        self.assertEqual(len(final_pcm) % 2, 0)
-        self.assertEqual(final_pcm[:2], b"\x03\x04")
+        # Fragment 2 arrives with the 2nd byte of the split sample (0x04) + additional frame bytes
+        fragment2 = b"\x04" + b"\x05\x06" * (_MIN_LIVE_AUDIO_FRAME_BYTES // 2)
+        buffer.extend(fragment2)
+
+        pcm2 = _take_playback_pcm(buffer, final=True)
+        self.assertGreaterEqual(len(pcm2), _MIN_LIVE_AUDIO_FRAME_BYTES + 2)
+        self.assertEqual(len(pcm2) % 2, 0)
+        # Verify reconstructed 16-bit sample (0x03, 0x04)
+        self.assertEqual(pcm2[:2], b"\x03\x04")
+        self.assertEqual(len(buffer), 0)
 
 
 class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
@@ -59,7 +65,7 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
         self.jarvis.audio_in_queue = asyncio.Queue()
         self.jarvis.out_queue = asyncio.Queue()
         self.jarvis._turn_done_event = asyncio.Event()
-        self.jarvis._playback_interrupt_requested = MagicMock()
+        self.jarvis._playback_interrupt_requested = threading.Event()
         self.jarvis._output_stream = MagicMock()
         self.jarvis._speaking_lock = MagicMock()
         self.jarvis._is_speaking = False
@@ -76,6 +82,8 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
         self.jarvis._play_cursor = 0.0
         self.jarvis._out_latency = 0.20
         self.jarvis._tail_until = 0.0
+        self.jarvis._phone_active = False
+        self.jarvis._shutdown_requested = False
 
     async def test_interrupt_on_loop_clears_audio_queues_and_resets_turn_state(self):
         await self.jarvis.audio_in_queue.put(b"audio_chunk_1")
@@ -89,22 +97,74 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.jarvis._assistant_turn_pending)
         self.jarvis.ui.write_log.assert_called_with("SYS: Interrupted — listening...")
 
-    async def test_playback_worker_discards_local_pending_pcm_when_interrupted(self):
-        # Simulate local pending_pcm buffer populated before interruption flag is set
-        pending_pcm = bytearray(b"\x00" * 4800)
-        playback_started = True
-        interrupt_event = threading.Event()
-        interrupt_event.set()
+    async def test_completed_turn_interruption_aborts_output_stream_and_requests_cancellation(self):
+        # Setup completed-turn state with empty audio queue and turn_done_event set
+        self.jarvis._assistant_turn_pending = False
+        self.jarvis._turn_done_event.set()
+        self.jarvis._is_speaking = True  # Or actively playing completion tail
 
-        # Execute interruption check as done inside _play_audio loop
-        if interrupt_event.is_set():
-            pending_pcm.clear()
-            playback_started = False
-            interrupt_event.clear()
+        self.jarvis._interrupt_on_loop()
 
-        self.assertEqual(len(pending_pcm), 0)
-        self.assertFalse(playback_started)
-        self.assertFalse(interrupt_event.is_set())
+        # Verify playback interrupt event is set and output stream abort was called
+        self.assertTrue(self.jarvis._playback_interrupt_requested.is_set())
+        self.jarvis._output_stream.abort.assert_called_once()
+        self.assertTrue(self.jarvis._interrupted)
+
+    async def test_real_play_audio_worker_discards_local_pending_pcm_on_interruption(self):
+        written_chunks = []
+        write_called = asyncio.Event()
+
+        main_loop = self.jarvis._loop
+
+        class FakeStream:
+            def __init__(self):
+                self.active = True
+                self.latency = 0.05
+            def start(self):
+                self.active = True
+            def stop(self):
+                self.active = False
+            def close(self):
+                self.active = False
+            def abort(self):
+                self.active = False
+            def write(self, data):
+                written_chunks.append(data)
+                # Signal that worker is executing write
+                main_loop.call_soon_threadsafe(write_called.set)
+
+        fake_stream = FakeStream()
+        fake_sd = MagicMock()
+        fake_sd.RawOutputStream.return_value = fake_stream
+
+        with patch("JarvisAI.main.sd", fake_sd), \
+             patch("JarvisAI.main.get_output_device", return_value=""), \
+             patch("JarvisAI.core.audio_devices.resolve", return_value=None):
+
+            # Put enough PCM for prebuffering (>_MIN_PREBUFFER_BYTES = 14400 bytes)
+            pcm_chunk = b"\x00\x01" * 8000
+            await self.jarvis.audio_in_queue.put(pcm_chunk)
+
+            # Start worker in background
+            play_task = asyncio.create_task(self.jarvis._play_audio())
+
+            # Wait until write_called is triggered (local pending_pcm populated & write entered)
+            await asyncio.wait_for(write_called.wait(), timeout=2.0)
+
+            # Trigger interruption while play_audio worker is active with local pending_pcm buffered
+            self.jarvis._interrupt_on_loop()
+
+            # Wait for _play_audio worker to process interruption and clear flag before setting shutdown
+            for _ in range(50):
+                if not self.jarvis._playback_interrupt_requested.is_set():
+                    break
+                await asyncio.sleep(0.01)
+
+            self.jarvis._shutdown_requested = True
+            await asyncio.wait_for(play_task, timeout=2.0)
+
+            # Verify interruption event was cleared and handled by the worker
+            self.assertFalse(self.jarvis._playback_interrupt_requested.is_set())
 
 
 if __name__ == "__main__":

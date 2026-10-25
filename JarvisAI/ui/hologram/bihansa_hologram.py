@@ -205,10 +205,10 @@ class BihansaHologram(QWidget):
             (cx + unit * .20, cy + unit * .40),
         ]
         painter.setPen(QPen(QColor(255, 114, 198, 150), 0.9))
-        painter.drawLine(nodes[0][0], nodes[0][1], nodes[2][0], nodes[2][1])
-        painter.drawLine(nodes[1][0], nodes[1][1], nodes[3][0], nodes[3][1])
-        painter.drawLine(nodes[2][0], nodes[2][1], nodes[4][0], nodes[4][1])
-        painter.drawLine(nodes[3][0], nodes[3][1], nodes[4][0], nodes[4][1])
+        painter.drawLine(QPointF(nodes[0][0], nodes[0][1]), QPointF(nodes[2][0], nodes[2][1]))
+        painter.drawLine(QPointF(nodes[1][0], nodes[1][1]), QPointF(nodes[3][0], nodes[3][1]))
+        painter.drawLine(QPointF(nodes[2][0], nodes[2][1]), QPointF(nodes[4][0], nodes[4][1]))
+        painter.drawLine(QPointF(nodes[3][0], nodes[3][1]), QPointF(nodes[4][0], nodes[4][1]))
         painter.setPen(Qt.PenStyle.NoPen)
         for x, y in nodes:
             painter.setBrush(self.COLOR_SECONDARY)

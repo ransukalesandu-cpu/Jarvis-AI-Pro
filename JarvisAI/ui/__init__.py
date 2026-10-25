@@ -4443,10 +4443,6 @@ class MainWindow(QMainWindow):
     _quiz_sig       = pyqtSignal(str, object, object)  # (topic, questions, grader)
     _quiz_hide_sig  = pyqtSignal()
     _review_sig     = pyqtSignal(str, str, object, object)  # document review payload
-    _open_settings_drawer_sig = pyqtSignal()
-    _close_settings_drawer_sig = pyqtSignal()
-    _set_ui_color_sig = pyqtSignal(str)
-    _set_hud_style_sig = pyqtSignal(str)
 
     def __init__(self, face_path: str):
         super().__init__()
@@ -4509,7 +4505,6 @@ class MainWindow(QMainWindow):
         body.setSpacing(0)
 
         self._left_panel = self._build_left_panel()
-        self._left_panel.hide()
         body.addWidget(self._left_panel, stretch=0)
 
         # Center column: HUD + resizable content panel via QSplitter
@@ -4600,7 +4595,6 @@ class MainWindow(QMainWindow):
         body.addWidget(self._center_split, stretch=5)
 
         self._right_panel = self._build_right_panel()
-        self._right_panel.hide()
         body.addWidget(self._right_panel, stretch=0)
 
         root.addLayout(body, stretch=1)
@@ -4623,10 +4617,6 @@ class MainWindow(QMainWindow):
         self._metric_tmr.start(2000)
         self._update_metrics()
 
-        self._open_settings_drawer_sig.connect(self._open_settings_drawer)
-        self._close_settings_drawer_sig.connect(self._close_settings_drawer)
-        self._set_ui_color_sig.connect(self._on_set_ui_color)
-        self._set_hud_style_sig.connect(self._on_set_hud_style)
         self._close_sig.connect(self.close)
         self._log_sig.connect(self._log.append_log)
         self._state_sig.connect(self._apply_state)
@@ -5962,14 +5952,6 @@ class MainWindow(QMainWindow):
         lay.addWidget(provider_btn)
         lay.addWidget(personality_btn)
 
-        bihansa_btn = QPushButton("🌸  BIHANSA COMPANION MODE")
-        bihansa_btn.setFixedHeight(26)
-        bihansa_btn.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
-        bihansa_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        bihansa_btn.setStyleSheet(_BTN_STYLE_DIM)
-        bihansa_btn.clicked.connect(self._toggle_bihansa_mode)
-        lay.addWidget(bihansa_btn)
-
         self._brief_btn = QPushButton()
         self._brief_btn.setFixedHeight(26)
         self._brief_btn.setFont(QFont("Courier New", 7))
@@ -6078,30 +6060,8 @@ class MainWindow(QMainWindow):
         w.adjustSize()
         return w
 
-    def toggle_side_panels(self, show: bool | None = None):
-        if show is None:
-            show = not (self._left_panel.isVisible() or self._right_panel.isVisible())
-        if show:
-            self._left_panel.show()
-            self._right_panel.show()
-            self._log.append_log("SYS: Telemetry and transcript side panels visible.")
-        else:
-            self._left_panel.hide()
-            self._right_panel.hide()
-            self._log.append_log("SYS: Side panels hidden. Hologram Command Center active.")
-
-    def _toggle_bihansa_mode(self):
-        from memory.voice_personality import get_voice_personality
-        from actions.change_personality import change_personality
-        current = get_voice_personality()
-        target = "jarvis" if current.get("mode") == "custom" and current.get("custom_name") == "Bihansa" else "bihansa"
-        res = change_personality({"mode": target}, apply_voice_change=self.on_voice_change, apply_personality=self.on_voice_personality_change)
-        self._log.append_log(f"SYS: {res}")
-
-    def _toggle_drawer(self, show: bool | None = None):
-        if show is None:
-            show = not self._quick_drawer.isVisible()
-        if show:
+    def _toggle_drawer(self, checked: bool):
+        if checked:
             self._refresh_wake_btns()   # resolve wake state on open (lazy)
             self._position_quick_drawer()
             self._quick_drawer.show()
@@ -6109,62 +6069,13 @@ class MainWindow(QMainWindow):
         else:
             self._quick_drawer.hide()
 
-    def _open_settings_drawer(self):
-        if hasattr(self, "_drawer_btn"):
-            self._drawer_btn.setChecked(True)
-        self._toggle_drawer(True)
-
-    def _close_settings_drawer(self):
-        if hasattr(self, "_drawer_btn"):
-            self._drawer_btn.setChecked(False)
-        self._toggle_drawer(False)
-        for ov in (
-            getattr(self, "_customize_overlay", None),
-            getattr(self, "_personality_overlay", None),
-            getattr(self, "_provider_overlay", None),
-            getattr(self, "_audio_overlay", None),
-            getattr(self, "_memory_overlay", None),
-            getattr(self, "_plugin_manager_overlay", None),
-            getattr(self, "_plugin_settings_overlay", None),
-            getattr(self, "_remote_overlay", None),
-        ):
-            if ov is not None and ov.isVisible():
-                ov.hide()
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key.Key_Escape:
-            closed_something = False
-            for ov in (
-                getattr(self, "_quick_drawer", None),
-                getattr(self, "_customize_overlay", None),
-                getattr(self, "_personality_overlay", None),
-                getattr(self, "_provider_overlay", None),
-                getattr(self, "_audio_overlay", None),
-                getattr(self, "_memory_overlay", None),
-                getattr(self, "_plugin_manager_overlay", None),
-                getattr(self, "_plugin_settings_overlay", None),
-                getattr(self, "_remote_overlay", None),
-            ):
-                if ov is not None and ov.isVisible():
-                    ov.hide()
-                    if ov is getattr(self, "_quick_drawer", None):
-                        if hasattr(self, "_drawer_btn"):
-                            self._drawer_btn.setChecked(False)
-                    closed_something = True
-            if not closed_something and self.on_interrupt:
-                self.on_interrupt()
-            event.accept()
-            return
-        super().keyPressEvent(event)
-
     def _position_quick_drawer(self):
         if not hasattr(self, '_quick_drawer'):
             return
-        _W = 240
+        _W = 220
         self._quick_drawer.setFixedWidth(_W)
         self._quick_drawer.adjustSize()
-        max_h = min(self.centralWidget().height() - 60, 580)
-        self._quick_drawer.setGeometry(12, 54, _W, min(self._quick_drawer.sizeHint().height(), max_h))
+        self._quick_drawer.setGeometry(12, 54, _W, self._quick_drawer.sizeHint().height())
 
     def _build_input_row(self) -> QHBoxLayout:
         row = QHBoxLayout(); row.setSpacing(5)
@@ -7758,21 +7669,6 @@ class JarvisUI:
     def muted(self, v: bool):
         if v != self._win._muted:
             self._win._toggle_mute()
-
-    def open_settings_drawer(self):
-        self._win._open_settings_drawer_sig.emit()
-
-    def close_settings_drawer(self):
-        self._win._close_settings_drawer_sig.emit()
-
-    def set_ui_color(self, color_hex: str):
-        self._win._set_ui_color_sig.emit(color_hex)
-
-    def set_hud_style(self, style_name: str):
-        self._win._set_hud_style_sig.emit(style_name)
-
-    def toggle_side_panels(self, show: bool | None = None):
-        self._win.toggle_side_panels(show)
 
     @property
     def current_file(self) -> str | None:

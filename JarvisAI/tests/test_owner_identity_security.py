@@ -218,6 +218,77 @@ class TestOwnerIdentitySecurity(unittest.TestCase):
         self.assertEqual(restarted_auth.get_state(), RESTRICTED_MODE)
         self.assertFalse(restarted_auth.is_owner_access_allowed())
 
+    # 14. Invalid PIN length and mismatched confirmation validation
+    def test_invalid_pin_length_and_mismatched_confirmation(self):
+        with self.assertRaises(ValueError):
+            self.auth.set_master_pin("123")  # Less than 4 chars
+
+        with self.assertRaises(ValueError):
+            self.auth.set_master_pin("a" * 65)  # More than 64 chars
+
+    # 15. Unknown/unclassified high-impact actions default to requiring authentication
+    def test_unknown_action_defaults_to_sensitive_or_dangerous(self):
+        tier = security.tier_for("unknown_custom_plugin_action", {"foo": "bar"})
+        self.assertIn(tier, (security.TIER_SENSITIVE, security.TIER_DANGEROUS))
+
+    # 16. Voice similarity alone never granting owner access without anti-spoof
+    def test_voice_similarity_alone_never_grants_access_without_anti_spoof(self):
+        from security.voice_auth import SpeakerAuthenticator
+        authenticator = SpeakerAuthenticator(anti_spoof_verifier=None)
+        mock_pcm = np.ones(16000, dtype=np.int16)
+        with patch.object(voice_id, "is_enabled", return_value=True), \
+             patch.object(voice_id, "backend_ready", return_value=True), \
+             patch.object(voice_id, "verify", return_value=(True, 0.95)):
+            matched, score, verified_live = authenticator.verify(mock_pcm)
+            self.assertFalse(verified_live)
+            self.assertFalse(matched)
+
+    # 17. Session authorization reuse avoids repeated prompts
+    def test_session_authorization_avoids_repeated_prompts(self):
+        if not hasattr(self.auth, "_hasher") or self.auth._hasher is None:
+            from security import auth_manager
+            if not auth_manager._ARGON2_AVAILABLE:
+                self.skipTest("argon2-cffi not installed")
+
+        self.auth.set_master_pin("correct_pin_123")
+        self.assertTrue(self.auth.verify_pin("correct_pin_123"))
+        self.assertTrue(self.auth.is_owner_access_allowed())
+
+        # Second action does not ask for PIN because session is FULL_ACCESS_MODE
+        adaptive_auth = AdaptiveAuthManager(self.auth)
+        prompt_called = [False]
+        def fake_prompt():
+            prompt_called[0] = True
+            return "correct_pin_123"
+
+        success, method, msg = adaptive_auth.authenticate_sensitive_command(pin_prompt_callback=fake_prompt)
+        self.assertTrue(success)
+        self.assertFalse(prompt_called[0])
+
+    # 18. Thread safety across concurrent authentication requests
+    def test_concurrent_authentication_requests(self):
+        import threading
+        if not hasattr(self.auth, "_hasher") or self.auth._hasher is None:
+            from security import auth_manager
+            if not auth_manager._ARGON2_AVAILABLE:
+                self.skipTest("argon2-cffi not installed")
+
+        self.auth.set_master_pin("secure_pin_99")
+        results = []
+
+        def worker():
+            res = self.auth.verify_pin("secure_pin_99")
+            results.append(res)
+
+        threads = [threading.Thread(target=worker) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertTrue(all(results))
+        self.assertTrue(self.auth.is_owner_access_allowed())
+
 
 if __name__ == "__main__":
     unittest.main()

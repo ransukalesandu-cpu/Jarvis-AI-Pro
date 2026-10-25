@@ -72,6 +72,9 @@ class _OwnerSession:
     def requires_owner_reauthentication(self):
         return False
 
+    def is_privacy_lock_active(self):
+        return False
+
 
 DANGEROUS_CALLS = (
     ("file_controller", {"action": "delete", "path": "/tmp/example.txt"}),

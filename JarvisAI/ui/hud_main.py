@@ -356,21 +356,6 @@ class HologramHUDUI:
     def wait_for_api_key(self, stop_event=None) -> bool:
         return True
 
-    def open_settings_drawer(self):
-        pass
-
-    def close_settings_drawer(self):
-        pass
-
-    def set_ui_color(self, color_hex: str):
-        pass
-
-    def set_hud_style(self, style_name: str):
-        pass
-
-    def toggle_side_panels(self, show: bool | None = None):
-        pass
-
     def prompt_reconfig(self):
         pass
 

@@ -906,35 +906,9 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
         audit("call", name, tier, "denied", "Privacy Lock / owner re-authentication required")
         return "JARVIS Privacy Lock is active. Private operations are blocked."
 
-    # Promote only from an actual enrolled Voice ID callback, never from a typed
-    # command's manual-turn marker. A successful PIN remains valid for this
-    # process even if subsequent voice verification is uncertain.
-    if auth_state != FULL_ACCESS_MODE and not auth.requires_owner_reauthentication() and _voice_id_is_required():
-        role = "stranger"
-        if _voice_id_role_cb is not None:
-            try:
-                role = str(_voice_id_role_cb() or "stranger").strip().lower()
-            except Exception:
-                role = "stranger"
-        if role == "owner":
-            try:
-                auth.grant_owner_access("voice")
-                auth_state = FULL_ACCESS_MODE
-            except (PermissionError, ValueError):
-                auth_state = auth.get_state()
-    elif auth_state == FULL_ACCESS_MODE and auth.get_auth_method() == "voice" and _voice_id_is_required():
-        # If an already voice-authenticated session is subsequently used by an
-        # unrecognized speaker, downgrade it. PIN-authenticated sessions are
-        # deliberately not downgraded by voice uncertainty.
-        role = "stranger"
-        if _voice_id_role_cb is not None:
-            try:
-                role = str(_voice_id_role_cb() or "stranger").strip().lower()
-            except Exception:
-                role = "stranger"
-        if role != "owner":
-            auth.set_state(RESTRICTED_MODE)
-            auth_state = RESTRICTED_MODE
+    # Speaker similarity alone is not proof of a live speaker. Do not grant owner
+    # access from the role label; adaptive_auth must validate a live-speaker
+    # verifier before voice can unlock sensitive actions. PIN remains the fallback.
 
     # HUD media controls skip the confirmation banner, but they must still be
     # traceable to a fresh user request so untrusted page/email content cannot
@@ -971,11 +945,6 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
                 turn_audio = _turn_audio_cb()
             except Exception:
                 turn_audio = None
-
-        if _voice_id_role_cb is not None or _voice_id_verifier_cb is not None:
-            speaker_role = get_current_speaker_role()
-            if speaker_role == "owner":
-                _auth_manager.grant_owner_access("voice")
 
         if not _auth_manager.is_owner_access_allowed():
             success, method_used, auth_msg = adaptive_auth.authenticate_sensitive_command(

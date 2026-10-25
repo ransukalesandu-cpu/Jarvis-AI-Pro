@@ -557,7 +557,7 @@ TOOL = {
             },
             "url": {
                 "type": "STRING",
-                "description": "Optional YouTube/direct video URL or full local video file path for HUD playback"
+                "description": "Optional YouTube/direct video URL or full local video file path for HUD playback; video URL for get_info"
             },
             "save": {
                 "type": "BOOLEAN",
@@ -570,10 +570,6 @@ TOOL = {
             "seconds": {
                 "type": "INTEGER",
                 "description": "Seconds to skip forward (5–120, default 10), used by fast_forward/seek"
-            },
-            "url": {
-                "type": "STRING",
-                "description": "Video URL for get_info action"
             }
         },
         "required": []

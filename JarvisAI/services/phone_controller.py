@@ -84,7 +84,7 @@ class AndroidPhoneController:
             "whatsapp": "com.whatsapp/.HomeActivity",
             "youtube": "com.google.android.youtube/com.google.android.apps.youtube.app.WatchWhileActivity",
             "spotify": "com.spotify.music/.MainActivity",
-            "camera": "android.intent.action.MAIN -c android.intent.category.LAUNCHER",
+            "camera": "android.media.action.STILL_IMAGE_CAMERA",
             "settings": "com.android.settings/.Settings",
             "chrome": "com.android.chrome/com.google.android.apps.chrome.Main"
         }
@@ -95,14 +95,15 @@ class AndroidPhoneController:
             out = self._run_adb(["shell", "monkey", "-p", app_name, "-c", "android.intent.category.LAUNCHER", "1"])
             return {"status": "executed", "app": app_name, "raw": out}
 
-        out = self._run_adb(["shell", "am", "start", "-n", target])
+        out = self._run_adb(["shell", "am", "start", "-a" if app_name.lower() == "camera" else "-n", target])
         return {"status": "launched", "app": app_name}
 
     def get_battery(self) -> Dict[str, Any]:
         """Retrieves real-time phone battery level and charging state."""
         dump = self._run_adb(["shell", "dumpsys", "battery"])
         level = re.search(r"level:\s*(\d+)", dump)
-        charging = "USB" in dump or "AC" in dump or "Wireless" in dump
+        status = re.search(r"(?m)^\s*status:\s*(\d+)", dump)
+        charging = status is not None and status.group(1) in {"2", "5"}
         
         return {
             "level": int(level.group(1)) if level else "Unknown",
@@ -123,6 +124,10 @@ class AndroidPhoneController:
         return self._run_adb(["shell", "input", "text", escaped])
 
     def take_screenshot_b64(self) -> str:
-        """Captures the phone screen and returns base64 JPEG for Gemini Vision inspection."""
-        proc = subprocess.run(["adb", "exec-out", "screencap", "-p"], capture_output=True)
+        """Captures the selected phone screen and returns base64 PNG bytes."""
+        cmd = ["adb"]
+        if self.device_id:
+            cmd.extend(["-s", self.device_id])
+        proc = subprocess.run(cmd + ["exec-out", "screencap", "-p"],
+                              capture_output=True, timeout=12, check=True)
         return base64.b64encode(proc.stdout).decode("utf-8")

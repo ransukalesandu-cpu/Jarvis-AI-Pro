@@ -367,7 +367,7 @@ def flight_finder(parameters: dict, player=None, speak=None) -> str:
         return "Please provide a departure date, sir."
 
     # Normalise cabin value
-    if cabin not in _CABIN_CODE:
+    if cabin not in {"economy", "premium", "business", "first"}:
         cabin = "economy"
 
     try:

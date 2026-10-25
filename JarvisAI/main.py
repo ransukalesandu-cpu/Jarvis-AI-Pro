@@ -3272,6 +3272,20 @@ class JarvisLive:
                         # Stop any audio already queued for the speakers at once;
                         # otherwise a cut-off sentence can keep playing locally.
                         if getattr(sc, "interrupted", False):
+                            # The server may report barge-in independently of the
+                            # local wake-word path. Signal the playback worker to
+                            # discard its private PCM buffer and abort audio already
+                            # submitted to the device, not just drain the asyncio queue.
+                            self._playback_interrupt_requested.set()
+                            output_stream = self._output_stream
+                            if output_stream is not None:
+                                try:
+                                    output_stream.abort()
+                                except Exception as exc:
+                                    print(
+                                        "[AudioTrace 4/OUTPUT] Device abort after "
+                                        f"server interruption failed ({type(exc).__name__})."
+                                    )
                             q = self.audio_in_queue
                             if q:
                                 while True:

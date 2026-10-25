@@ -133,26 +133,38 @@ class BihansaHologramWidget(QWidget):
 
     @staticmethod
     def _face_surface(u: float, v: float, t: float, mouth_open: float) -> Tuple[float, float, float]:
-        """Return a point on a stylized face surface in normalized 3D coordinates."""
-        # v=-1 chin, v=+1 forehead. Cheeks widen the mid-face; jaw tapers down.
-        width = 0.57 * (0.78 + 0.22 * math.cos((v + .05) * math.pi / 2))
+        """Procedural feminine face surface; no portrait or texture is sampled."""
+        # v=-1 chin, v=+1 forehead. Width profile makes the jaw/chin visibly taper.
+        profile = (
+            (0.30 * math.exp(-((v + .92) / .16) ** 2)) +
+            (0.57 * math.exp(-((v + .62) / .29) ** 2)) +
+            (0.96 * math.exp(-((v + .12) / .62) ** 2)) +
+            (0.80 * math.exp(-((v - .60) / .42) ** 2))
+        )
+        width = 0.57 * min(1.0, profile)
         x = u * width
         y = v * 0.88
-        z = 0.10 + 0.16 * math.sqrt(max(0.0, 1.0 - u * u)) * math.sqrt(max(0.0, 1.0 - v * v * .72))
+        edge_rounding = math.sqrt(max(0.0, 1.0 - u * u))
+        vertical_rounding = math.sqrt(max(0.0, 1.0 - v * v * .70))
+        z = 0.055 + 0.15 * edge_rounding * vertical_rounding
         gauss = lambda a, b, sx, sy: math.exp(-((u-a)/sx)**2 - ((v-b)/sy)**2)
-        # Forward facial volume: brow ridge, cheeks, nose bridge/tip, lips and chin.
-        z += .12 * gauss(0, .02, .13, .58)
-        z += .10 * gauss(0, -.02, .075, .22)
-        z += .19 * gauss(0, -.13, .09, .12)
-        z += .065 * (gauss(-.48, -.13, .22, .20) + gauss(.48, -.13, .22, .20))
-        z += .08 * gauss(0, -.66, .25, .13)
-        # Eye sockets sit back; orbital ridges frame them.
-        z -= .095 * (gauss(-.34, .18, .20, .105) + gauss(.34, .18, .20, .105))
-        z += .055 * (gauss(-.34, .30, .23, .07) + gauss(.34, .30, .23, .07))
-        # Subtle lips with an animated opening seam.
-        mouth_region = gauss(0, -.39, .24, .105)
-        z += .09 * mouth_region
-        y -= mouth_open * gauss(0, -.42, .22, .075) * (1.0 if v < -.39 else -0.15)
+
+        # Cheekbones and temples give the front surface a recognizable face volume.
+        z += .075 * (gauss(-.48, -.12, .24, .22) + gauss(.48, -.12, .24, .22))
+        z += .035 * (gauss(-.76, .30, .18, .34) + gauss(.76, .30, .18, .34))
+        # Brow ridges, recessed eye sockets, and raised nose bridge/tip.
+        z += .060 * (gauss(-.34, .30, .23, .075) + gauss(.34, .30, .23, .075))
+        z -= .070 * (gauss(-.34, .18, .19, .105) + gauss(.34, .18, .19, .105))
+        z += .105 * gauss(0, .015, .075, .25)
+        z += .165 * gauss(0, -.14, .095, .115)
+        z += .045 * (gauss(-.12, -.17, .07, .055) + gauss(.12, -.17, .07, .055))
+        # Philtrum, lips and chin pad.
+        z += .018 * gauss(0, -.285, .07, .09)
+        z += .075 * gauss(0, -.405, .235, .085)
+        z += .065 * gauss(0, -.70, .26, .14)
+        # Audio-driven jaw opening shifts the lower lip/chin subtly downwards.
+        lower_mouth = gauss(0, -.445, .22, .085)
+        y -= mouth_open * lower_mouth * (1.0 if v < -.40 else -0.08)
         return x, y, z
 
     def _project(self, u: float, v: float, t: float, mouth_open: float, w: float, h: float) -> QPointF:

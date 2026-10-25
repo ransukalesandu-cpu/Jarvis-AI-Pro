@@ -1,16 +1,20 @@
 """
 Voice verification adapter for the existing encrypted JARVIS Voice ID profile.
 
-The acoustic liveness test is a heuristic only; it is not proof against replay or
-voice cloning. The owner profile itself is managed by core.voice_id and is never
-written as a plaintext embedding by this module.
+The amplitude/RMS check below is only an audio-quality filter. It is not
+anti-spoofing and cannot distinguish a live speaker from a replay or cloned
+voice. Sensitive owner verification therefore requires an explicitly supplied
+anti-spoof verifier. Without one, verification fails closed.
 """
 from __future__ import annotations
+
+from collections.abc import Callable
 
 import numpy as np
 
 EMBEDDING_DIM = 192
 COSINE_THRESHOLD = 0.35
+AntiSpoofVerifier = Callable[[np.ndarray, int], bool]
 
 
 def compute_cosine_similarity(v1, v2) -> float:
@@ -25,17 +29,28 @@ def compute_cosine_similarity(v1, v2) -> float:
 
 
 class SpeakerAuthenticator:
-    """Thin wrapper around core.voice_id; does not store separate plaintext voice embeddings."""
+    """Encrypted Voice ID adapter with fail-closed anti-spoof verification.
 
-    def __init__(self, emb_path=None):
+    `anti_spoof_verifier` must be a separately implemented and validated
+    detector that evaluates replay/synthetic-voice risk. The built-in acoustic
+    check is intentionally not accepted as a substitute.
+    """
+
+    def __init__(self, emb_path=None, anti_spoof_verifier: AntiSpoofVerifier | None = None):
         self.emb_path = emb_path
+        self._anti_spoof_verifier = anti_spoof_verifier
 
     def check_liveness(self, audio, sample_rate: int = 16000) -> tuple[bool, str]:
+        """Check basic signal quality only; this is NOT proof of live speech."""
         samples = self._float_audio(audio)
+        if sample_rate <= 0:
+            return False, "Invalid sample rate."
+        if not np.isfinite(samples).all():
+            return False, "Audio contains invalid samples."
         if len(samples) < max(320, int(sample_rate * 0.25)):
             return False, "Audio sample too short."
-        if not np.isfinite(samples).all() or float(np.max(np.abs(samples))) < 0.003:
-            return False, "Silent or invalid audio sample."
+        if float(np.max(np.abs(samples))) < 0.003:
+            return False, "Silent audio sample."
         frame = max(1, int(sample_rate * 0.02))
         usable = (len(samples) // frame) * frame
         if usable < frame * 4:
@@ -43,14 +58,14 @@ class SpeakerAuthenticator:
         framed = samples[:usable].reshape(-1, frame)
         rms = np.sqrt(np.mean(np.square(framed), axis=1))
         if float(np.std(rms)) < 1e-5:
-            return False, "No natural amplitude variation detected."
-        # This weak check only rejects obvious silence/static samples. It does not
-        # establish liveness against replay or synthetic voice.
-        return True, "Basic acoustic check passed."
+            return False, "No amplitude variation detected."
+        return True, "Basic audio-quality check passed; liveness is unverified."
 
     @staticmethod
     def _float_audio(audio):
         if isinstance(audio, bytes):
+            if len(audio) % 2:
+                return np.array([], dtype=np.float32)
             return np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
         samples = np.asarray(audio).reshape(-1)
         if samples.dtype.kind in "iu":
@@ -58,6 +73,16 @@ class SpeakerAuthenticator:
         else:
             samples = samples.astype(np.float32)
         return samples
+
+    def _passes_anti_spoof(self, samples: np.ndarray, sample_rate: int) -> bool:
+        detector = self._anti_spoof_verifier
+        if not callable(detector):
+            return False
+        try:
+            # A detector failure or exception must never grant owner access.
+            return detector(samples.copy(), sample_rate) is True
+        except Exception:
+            return False
 
     def extract_embedding(self, audio, sample_rate: int = 16000):
         try:
@@ -79,13 +104,16 @@ class SpeakerAuthenticator:
         return None
 
     def verify(self, audio, sample_rate: int = 16000, master_emb_path=None):
-        """Return (match, score, basic_liveness); fail closed unless encrypted Voice ID is enabled."""
+        """Return (match, score, verified_live); fail closed without anti-spoofing."""
         try:
             from core import voice_id
-            live, _reason = self.check_liveness(audio, sample_rate=sample_rate)
-            if not live or not voice_id.is_enabled() or not voice_id.backend_ready():
-                return False, 0.0, live
-            match, score = voice_id.verify(self._float_audio(audio), role="owner")
-            return bool(match and live), float(score), bool(live)
+            samples = self._float_audio(audio)
+            quality_ok, _reason = self.check_liveness(samples, sample_rate=sample_rate)
+            if not quality_ok or not self._passes_anti_spoof(samples, sample_rate):
+                return False, 0.0, False
+            if not voice_id.is_enabled() or not voice_id.backend_ready():
+                return False, 0.0, False
+            match, score = voice_id.verify(samples, role="owner")
+            return bool(match), float(score), True
         except Exception:
             return False, 0.0, False

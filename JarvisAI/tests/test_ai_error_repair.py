@@ -41,6 +41,7 @@ class AIErrorRepairTests(unittest.TestCase):
             )
             factory.assert_called_once()
             self.assertEqual(factory.call_args.kwargs['preferred_provider'], 'groq')
+            self.assertFalse(factory.call_args.kwargs['online_check'])
             router.query.assert_called_once()
             self.assertEqual(result['provider'], 'groq')
             self.assertFalse(result['applied'])

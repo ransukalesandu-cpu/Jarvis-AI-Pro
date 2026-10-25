@@ -106,6 +106,7 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.jarvis._turn_done_event.is_set())
         self.assertFalse(self.jarvis._assistant_turn_pending)
         self.assertFalse(self.jarvis._is_speaking)
+        self.jarvis.ui.set_state.assert_not_called()
 
     async def test_interrupt_on_loop_clears_audio_queues_and_resets_turn_state(self):
         await self.jarvis.audio_in_queue.put(b"audio_chunk_1")

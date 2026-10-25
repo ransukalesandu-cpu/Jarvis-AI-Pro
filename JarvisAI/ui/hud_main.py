@@ -17,15 +17,16 @@ if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFOR
 import threading
 from typing import Optional, Callable
 
-from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal, QTimer, QSettings
 from PyQt6.QtGui import QFont, QColor
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QFrame, QGraphicsBlurEffect
+    QPushButton, QFrame, QGraphicsBlurEffect, QCheckBox, QStackedWidget
 )
 
 from audio.visualizer_bridge import get_visualizer_bridge, VisualizerBridge
 from ui.hologram.wireframe_head import NeuralWireframeHead
+from ui.hologram.bihansa_hologram import BihansaHologramWidget
 from ui.panels.hybrid_brain_panel import HybridBrainPanel
 from ui.panels.security_panel import SecurityPanel
 from ui.panels.memory_panel import MemoryPanel
@@ -69,6 +70,11 @@ class HUDMainWindow(QMainWindow):
 
         self._init_ui()
         self._wire_signals()
+        self._settings = QSettings("JarvisAI", "JarvisAIPro")
+        self._bihansa_toggle.setChecked(self._settings.value("bihansa/enabled", False, type=bool))
+        self._bihansa_effects.setChecked(self._settings.value("bihansa/effects", True, type=bool))
+        self._bihansa_voice_reactive.setChecked(self._settings.value("bihansa/voice_reactive", True, type=bool))
+        self._set_bihansa_enabled(self._bihansa_toggle.isChecked())
 
         # Update timer for periodic state polling (memory/scheduler/auth)
         self._poll_timer = QTimer(self)
@@ -97,6 +103,15 @@ class HUDMainWindow(QMainWindow):
         self._lbl_clock.setStyleSheet("color: #00e5ff;")
         hdr_layout.addWidget(self._lbl_clock)
 
+        self._bihansa_toggle = QPushButton("BIHANSA MODE: OFF")
+        self._bihansa_toggle.setCheckable(True)
+        self._bihansa_toggle.setStyleSheet(
+            "QPushButton { color: #ff9be8; background: #21101f; border: 1px solid #ff4fc8; padding: 8px 12px; font-weight: bold; }"
+            "QPushButton:checked { color: #100613; background: #ff75d4; }"
+        )
+        self._bihansa_toggle.toggled.connect(self._set_bihansa_enabled)
+        hdr_layout.addWidget(self._bihansa_toggle)
+
         main_layout.addLayout(hdr_layout)
 
         # 2. Main Holographic Workspace (Left Panels, Central Hologram, Right Panels)
@@ -120,8 +135,28 @@ class HUDMainWindow(QMainWindow):
         center_col = QVBoxLayout()
         center_col.setSpacing(8)
 
+        self._visualizer_stack = QStackedWidget(self)
         self.wireframe_visualizer = NeuralWireframeHead(self)
-        center_col.addWidget(self.wireframe_visualizer, stretch=1)
+        self.bihansa_visualizer = BihansaHologramWidget(self)
+        self._visualizer_stack.addWidget(self.wireframe_visualizer)
+        self._visualizer_stack.addWidget(self.bihansa_visualizer)
+        self._visualizer_stack.setCurrentWidget(self.wireframe_visualizer)
+        center_col.addWidget(self._visualizer_stack, stretch=1)
+
+        # Optional visual and voice-reactivity controls; they never enable the microphone or camera.
+        controls_layout = QHBoxLayout()
+        self._bihansa_effects = QCheckBox("NEURAL EFFECTS")
+        self._bihansa_effects.setChecked(True)
+        self._bihansa_effects.setStyleSheet("QCheckBox { color: #ff9be8; spacing: 6px; }")
+        self._bihansa_voice_reactive = QCheckBox("VOICE REACTIVE VISUALS")
+        self._bihansa_voice_reactive.setChecked(True)
+        self._bihansa_voice_reactive.setStyleSheet("QCheckBox { color: #ff9be8; spacing: 6px; }")
+        controls_layout.addWidget(self._bihansa_effects)
+        controls_layout.addWidget(self._bihansa_voice_reactive)
+        controls_layout.addStretch()
+        center_col.addLayout(controls_layout)
+        self._bihansa_effects.toggled.connect(self.bihansa_visualizer.set_effects_enabled)
+        self._bihansa_voice_reactive.toggled.connect(self.bihansa_visualizer.set_voice_reactive)
 
         # Status Banner underneath wireframe
         self._lbl_hud_status = QLabel("● SYSTEM STANDBY")
@@ -176,6 +211,22 @@ class HUDMainWindow(QMainWindow):
         self._bridge.sig_audio_energy.connect(self.wireframe_visualizer.set_audio_energy)
         self._bridge.sig_state_changed.connect(self._on_state_changed)
         self._bridge.sig_auth_state_changed.connect(self._on_auth_state_changed)
+        self._bridge.sig_audio_energy.connect(self.bihansa_visualizer.set_audio_energy)
+        self._bridge.sig_state_changed.connect(self.bihansa_visualizer.set_state)
+        self._bihansa_effects.toggled.connect(lambda value: self._settings.setValue("bihansa/effects", value) if hasattr(self, "_settings") else None)
+        self._bihansa_voice_reactive.toggled.connect(lambda value: self._settings.setValue("bihansa/voice_reactive", value) if hasattr(self, "_settings") else None)
+
+    @pyqtSlot(bool)
+    def _set_bihansa_enabled(self, enabled: bool):
+        """Switch only the central visualizer; normal JARVIS remains available."""
+        enabled = bool(enabled)
+        self._visualizer_stack.setCurrentWidget(
+            self.bihansa_visualizer if enabled else self.wireframe_visualizer
+        )
+        self._bihansa_toggle.setText("BIHANSA MODE: ON" if enabled else "BIHANSA MODE: OFF")
+        self._settings.setValue("bihansa/enabled", enabled)
+        self._lbl_hud_status.setText("✦ BIHANSA NEURAL MODE" if enabled else "● SYSTEM STANDBY")
+        self._lbl_hud_status.setStyleSheet("color: #ff75d4;" if enabled else "color: #00e5ff;")
 
     def _update_clock(self):
         self._lbl_clock.setText(time.strftime("%H:%M:%S"))
@@ -184,6 +235,7 @@ class HUDMainWindow(QMainWindow):
     def _on_state_changed(self, state: str):
         st = str(state or "IDLE").upper()
         self.wireframe_visualizer.set_state(st)
+        self.bihansa_visualizer.set_state(st)
 
         if st == "LISTENING":
             self._lbl_hud_status.setText("● LISTENING")

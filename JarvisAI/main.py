@@ -3612,6 +3612,7 @@ class JarvisLive:
         output_timing_diagnostic_done = False
         last_output_write_end = None
         last_queue_starvation_log = 0.0
+        write_recovery_attempted = False
 
         _spk_name = get_output_device()
         _spk_dev  = audio_devices.resolve(_spk_name, "output")
@@ -4092,6 +4093,64 @@ class JarvisLive:
                             break
                         print(f"[AudioTrace 4/OUTPUT] Speaker write failed: {type(exc).__name__}: {exc}")
                         traceback.print_exc()
+
+                        # A device may open successfully but fail on its first real
+                        # write (for example after Windows changes the default route).
+                        # Try the system-default endpoint once, then fail clearly if
+                        # that route also cannot accept audio.
+                        if not write_recovery_attempted and _spk_dev is not None:
+                            write_recovery_attempted = True
+                            fallback_stream = None
+                            try:
+                                fallback_stream = await asyncio.to_thread(_open_spk, None)
+                                old_stream = stream
+                                stream = fallback_stream
+                                self._output_stream = stream
+                                _spk_name = ""
+                                _spk_dev = None
+                                try:
+                                    old_stream.stop()
+                                except Exception:
+                                    pass
+                                try:
+                                    old_stream.close()
+                                except Exception:
+                                    pass
+                                print(
+                                    "[AudioTrace 4/OUTPUT] Recovered from speaker write "
+                                    "failure by switching to the system-default output; "
+                                    "retrying the current PCM batch once."
+                                )
+                                retry_started = time.perf_counter()
+                                await asyncio.get_running_loop().run_in_executor(
+                                    _AUDIO_OUTPUT_EXECUTOR, stream.write, bytes(batch)
+                                )
+                                retry_elapsed = max(0.0, time.perf_counter() - retry_started)
+                                retry_audio_seconds = len(batch) / (
+                                    RECEIVE_SAMPLE_RATE * CHANNELS * 2
+                                )
+                                output_audio_seconds += retry_audio_seconds
+                                output_write_wall_seconds += retry_elapsed
+                                output_write_count += 1
+                                last_output_write_end = time.monotonic()
+                                continue
+                            except asyncio.CancelledError:
+                                raise
+                            except Exception as recovery_exc:
+                                print(
+                                    "[AudioTrace 4/OUTPUT] System-default speaker recovery "
+                                    f"failed: {type(recovery_exc).__name__}: {recovery_exc}"
+                                )
+                                if fallback_stream is not None:
+                                    try:
+                                        fallback_stream.stop()
+                                    except Exception:
+                                        pass
+                                    try:
+                                        fallback_stream.close()
+                                    except Exception:
+                                        pass
+                                self._output_stream = None
                         raise
         except Exception as e:
             print(f"[JARVIS] ❌ Play: {e}")

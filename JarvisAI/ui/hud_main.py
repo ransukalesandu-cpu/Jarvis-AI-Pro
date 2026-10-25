@@ -52,6 +52,7 @@ class HUDMainWindow(QMainWindow):
     sig_mode_changed = pyqtSignal()
     sig_viseme_schedule = pyqtSignal(object, float, float)
     sig_avatar_text = pyqtSignal(str)
+    sig_hybrid_telemetry = pyqtSignal(str, float, str, str)
 
     def __init__(self, bridge: Optional[VisualizerBridge] = None, parent=None):
         super().__init__(parent)
@@ -238,6 +239,7 @@ class HUDMainWindow(QMainWindow):
         self._bridge.sig_audio_energy.connect(self.bihansa_visualizer.set_audio_energy)
         self.sig_viseme_schedule.connect(self._schedule_visemes)
         self.sig_avatar_text.connect(self._show_avatar_text)
+        self.sig_hybrid_telemetry.connect(self._panel_brain.update_telemetry)
         self._bihansa_effects.toggled.connect(lambda value: self._settings.setValue("bihansa/effects", value) if hasattr(self, "_settings") else None)
         self._bihansa_voice_reactive.toggled.connect(lambda value: self._settings.setValue("bihansa/voice_reactive", value) if hasattr(self, "_settings") else None)
 
@@ -491,6 +493,18 @@ class HologramHUDUI:
 
     def react_avatar_text(self, text: str):
         self._win.sig_avatar_text.emit(str(text or ""))
+
+    def update_hybrid_telemetry(self, route: str, latency_ms: float, language: str = "Auto", model: str = ""):
+        """Publish real hybrid fallback telemetry safely from worker threads."""
+        try:
+            self._win.sig_hybrid_telemetry.emit(
+                str(route or "Unknown"),
+                max(0.0, float(latency_ms)),
+                str(language or "Auto"),
+                str(model or ""),
+            )
+        except (TypeError, ValueError, RuntimeError):
+            pass
 
     def show_content(self, title: str, text: str):
         print(f"[HUDContent] {title}\n{text}")

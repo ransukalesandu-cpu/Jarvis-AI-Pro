@@ -7712,7 +7712,7 @@ class MainWindow(QMainWindow):
                     self._log.append_log(f"SEC: {status}")
                     QMessageBox.information(
                         self, "Voice ID enrollment",
-                        status + "\\n\\nVoice matching is optional. If secure live-speaker verification "
+                        status + "\n\nVoice matching is optional. If secure live-speaker verification "
                         "is unavailable, JARVIS will fall back to your PIN/password."
                     )
                 except Exception as exc:

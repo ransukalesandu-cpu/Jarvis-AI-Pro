@@ -7768,6 +7768,10 @@ class JarvisUI:
         self.root = _RootShim(self._app)
         self._win.show()
         QTimer.singleShot(0, self._win._present_default_view)
+        # Existing API configuration with no owner PIN is an incomplete first-run
+        # setup; show the privacy enrollment once, not a password prompt on startup.
+        if self._win._check_config():
+            QTimer.singleShot(350, self._win._show_owner_privacy_setup_if_needed)
 
     @property
     def muted(self) -> bool:

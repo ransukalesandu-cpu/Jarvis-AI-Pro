@@ -1,9 +1,15 @@
 """Deterministic unit and regression tests for Gemini Live audio lifecycle, buffering, prebuffering, interruption, and turn-completion."""
 
 import asyncio
+import sys
 import threading
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from JarvisAI.main import (
     JarvisLive,
@@ -103,20 +109,31 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
         self.jarvis._is_speaking = False
         self.jarvis._assistant_turn_pending = False
         self.jarvis._turn_done_event.set()
+        self.assertTrue(self.jarvis.audio_in_queue.empty())
 
         self.jarvis._interrupt_on_loop()
 
         # Verify playback interrupt event is set, stream abort called, and state marked interrupted
         self.assertTrue(self.jarvis._playback_interrupt_requested.is_set())
-        self.jarvis._output_stream.abort.assert_called_once()
+        self.jarvis._output_stream.abort.assert_called_once_with()
         self.assertTrue(self.jarvis._interrupted)
 
     async def test_real_play_audio_worker_discards_local_pending_pcm_on_interruption(self):
         written_chunks = []
         write_started = asyncio.Event()
         write_unblock = threading.Event()
+        playback_drained = asyncio.Event()
 
         main_loop = self.jarvis._loop
+
+        class TurnDoneEvent(asyncio.Event):
+            def clear(self):
+                super().clear()
+                # The real worker consumes completion only after local PCM
+                # has been discarded or written. Observe that boundary.
+                playback_drained.set()
+
+        self.jarvis._turn_done_event = TurnDoneEvent()
 
         class FakeStream:
             def __init__(self):
@@ -132,8 +149,10 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
                 self.active = False
             def write(self, data):
                 written_chunks.append(data)
-                main_loop.call_soon_threadsafe(write_started.set)
-                write_unblock.wait(timeout=2.0)
+                if len(written_chunks) == 1:
+                    main_loop.call_soon_threadsafe(write_started.set)
+                    if not write_unblock.wait(timeout=5.0):
+                        raise AssertionError("Test did not release the in-flight write")
 
         fake_stream = FakeStream()
         fake_sd = MagicMock()
@@ -141,7 +160,7 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
 
         with patch("JarvisAI.main.sd", fake_sd), \
              patch("JarvisAI.main.get_output_device", return_value="custom_speaker"), \
-             patch("core.audio_devices.resolve", return_value=None):
+             patch("core.audio_devices.resolve", return_value=7) as resolve:
 
             # Enqueue 24000 bytes (5 full 4800-byte batches)
             pcm_chunk = b"\x00\x01" * 12000
@@ -150,27 +169,37 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
             # Start real play_audio worker in background
             play_task = asyncio.create_task(self.jarvis._play_audio())
 
-            # Wait until worker enters write for batch 1
-            await asyncio.wait_for(write_started.wait(), timeout=2.0)
+            try:
+                await asyncio.wait_for(write_started.wait(), timeout=2.0)
+                resolve.assert_called_once_with("custom_speaker", "output")
+                self.assertEqual(fake_sd.RawOutputStream.call_args.kwargs["device"], 7)
+                self.assertTrue(self.jarvis.audio_in_queue.empty())
+                self.assertEqual(written_chunks, [pcm_chunk[:4800]])
+                # The whole chunk was dequeued, but only its first batch is
+                # in flight. The remainder must still be local to the worker.
+                self.assertGreater(len(pcm_chunk), len(written_chunks[0]))
 
-            # Issue interruption while batch 1 is in-flight and batch 2..5 remain in pending_pcm
-            self.jarvis._interrupt_on_loop()
+                self.jarvis._interrupt_on_loop()
+                self.assertTrue(self.jarvis._playback_interrupt_requested.is_set())
+                write_unblock.set()
 
-            # Release write call for batch 1
-            write_unblock.set()
+                # Keep the worker alive through completion consumption. If
+                # local PCM survives interruption, it is written before this
+                # signal and the exact output assertion below fails.
+                await asyncio.wait_for(playback_drained.wait(), timeout=2.0)
+                self.assertFalse(self.jarvis._playback_interrupt_requested.is_set())
+                self.assertEqual(written_chunks, [pcm_chunk[:4800]])
+            finally:
+                write_unblock.set()
+                self.jarvis._shutdown_requested = True
+                try:
+                    await asyncio.wait_for(play_task, timeout=2.0)
+                finally:
+                    if not play_task.done():
+                        play_task.cancel()
+                    await asyncio.gather(play_task, return_exceptions=True)
 
-            # Wait for worker to process interruption and clear the interrupt flag
-            for _ in range(50):
-                if not self.jarvis._playback_interrupt_requested.is_set():
-                    break
-                await asyncio.sleep(0.01)
-
-            self.jarvis._shutdown_requested = True
-            await asyncio.wait_for(play_task, timeout=2.0)
-
-            # Assert ONLY batch 1 was written; the remaining 4 batches in local pending_pcm were discarded
-            self.assertEqual(len(written_chunks), 1)
-            self.assertFalse(self.jarvis._playback_interrupt_requested.is_set())
+            self.assertEqual(written_chunks, [pcm_chunk[:4800]])
 
 
 if __name__ == "__main__":

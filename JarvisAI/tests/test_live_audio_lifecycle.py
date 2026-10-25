@@ -202,7 +202,7 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(written_chunks, [pcm_chunk[:4800]])
 
 
-    async def test_shutdown_during_playback_stops_worker_and_closes_stream(self):
+    async def test_shutdown_during_playback_stops_worker_and_tears_down_stream(self):
         written_chunks = []
         write_started = asyncio.Event()
         release_write = threading.Event()

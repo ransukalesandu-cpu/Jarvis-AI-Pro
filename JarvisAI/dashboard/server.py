@@ -758,6 +758,9 @@ class DashboardServer:
         async def wake_ep(req: Request):
             if not _auth(req):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            manager = _get_auth_manager_for_dashboard()
+            if manager and manager.is_silent():
+                return JSONResponse({"error": "Privacy Lock or owner re-authentication is active"}, status_code=423)
             if self._wake_callback:
                 self._wake_callback()
             return JSONResponse({"ok": True})
@@ -769,6 +772,10 @@ class DashboardServer:
             tok = token.strip()
             if not self._token_valid(tok):
                 await websocket.close(code=4001)
+                return
+            manager = _get_auth_manager_for_dashboard()
+            if manager and manager.is_silent():
+                await websocket.close(code=4003, reason="Privacy Lock or owner re-authentication is active")
                 return
             await websocket.accept()
             previous = self._phone_audio_ws
@@ -784,6 +791,10 @@ class DashboardServer:
             try:
                 while True:
                     data = await websocket.receive_bytes()
+                    manager = _get_auth_manager_for_dashboard()
+                    if manager and manager.is_silent():
+                        await websocket.close(code=4003, reason="Privacy Lock or owner re-authentication is active")
+                        break
                     try:
                         self._phone_audio_queue.put_nowait(
                             {"data": data, "mime_type": "audio/pcm"}

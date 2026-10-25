@@ -1303,6 +1303,29 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
         p.setPen(QPen(qcol(C.BORDER), 1.0))
         p.drawLines(_ticks)
 
+        # Privacy Lock overlay is driven by the existing shared AuthManager.
+        # Do not create a second security state machine in the UI.
+        try:
+            from core.security import get_auth_manager
+            _privacy_locked = get_auth_manager().is_silent()
+        except Exception:
+            _privacy_locked = False
+        if _privacy_locked:
+            p.fillRect(self.rect(), qcol("#090002"))
+            p.setPen(QPen(qcol("#FF5268"), 3))
+            p.setBrush(QBrush(qcol("#200005")))
+            shield_r = min(W, H) * 0.25
+            p.drawEllipse(QRectF(cx - shield_r, cy - shield_r, shield_r * 2, shield_r * 2))
+            p.setFont(QFont("Courier New", 16, QFont.Weight.Bold))
+            p.setPen(QPen(qcol("#FF5268"), 1))
+            p.drawText(QRectF(0, cy - 20, W, 40), Qt.AlignmentFlag.AlignCenter, "PRIVACY LOCK")
+            p.setFont(QFont("Courier New", 9, QFont.Weight.Bold))
+            p.setPen(QPen(qcol(C.TEXT_DIM), 1))
+            p.drawText(QRectF(0, cy + 30, W, 34), Qt.AlignmentFlag.AlignCenter,
+                       "SYSTEM LOCKED — PRIVATE ACCESS BLOCKED")
+            p.end()
+            return
+
         # status text
         sy = _sy_status
         if self.muted:

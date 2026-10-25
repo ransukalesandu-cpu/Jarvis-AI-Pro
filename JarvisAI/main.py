@@ -1689,7 +1689,8 @@ class JarvisLive:
     async def _publish_privacy_lock(self, message: str) -> None:
         self._interrupted = True
         self._assistant_turn_pending = False
-        for queue in (getattr(self, "out_queue", None), getattr(self, "audio_in_queue", None)):
+        phone_audio_queue = getattr(getattr(self, "_dashboard", None), "_phone_audio_queue", None)
+        for queue in (getattr(self, "out_queue", None), getattr(self, "audio_in_queue", None), phone_audio_queue):
             if queue is not None:
                 while True:
                     try:
@@ -1708,16 +1709,49 @@ class JarvisLive:
             self.ui.write_log("SEC: Privacy Lock activated. Private audio and responses are suppressed.")
         except Exception:
             pass
+        manager = security.get_auth_manager()
+        duration = manager.cooldown_remaining()
+        try:
+            from notifications.alert_service import build_privacy_lock_alert, send_twilio_alert
+            payload = build_privacy_lock_alert(duration, message=message)
+            # Network I/O must not block the real-time voice/event loop.
+            asyncio.create_task(asyncio.to_thread(send_twilio_alert, payload["message"]))
+        except Exception as exc:
+            print(f"[Privacy Lock] Optional SMS alert scheduling failed: {type(exc).__name__}")
+            payload = {
+                "event": "PRIVACY_LOCK",
+                "duration": duration,
+                "message": message,
+                "type": "privacy_lock",
+                "text": message,
+                "cooldown_remaining": duration,
+            }
+
         dashboard = getattr(self, "_dashboard", None)
         if dashboard is not None:
             try:
-                await dashboard.broadcast({
-                    "type": "privacy_lock",
-                    "text": "JARVIS Privacy Lock activated on your laptop. Owner verification failed three times. Private access is blocked.",
-                    "cooldown_remaining": security.get_auth_manager().cooldown_remaining(),
-                })
+                # Send the privacy alert before revoking active companion sessions.
+                await dashboard.broadcast(payload)
             except Exception as exc:
                 print(f"[Privacy Lock] Connected-device notification failed: {type(exc).__name__}")
+            finally:
+                try:
+                    dashboard.revoke_all_sessions()
+                    sockets = list(getattr(dashboard, "_clients", ()))
+                    phone_socket = getattr(dashboard, "_phone_audio_ws", None)
+                    if phone_socket is not None:
+                        sockets.append(phone_socket)
+                    for ws in sockets:
+                        try:
+                            await ws.close(code=4003, reason="Privacy Lock is active")
+                        except Exception:
+                            pass
+                    if hasattr(dashboard, "_clients"):
+                        dashboard._clients.clear()
+                    if getattr(dashboard, "_phone_audio_ws", None) is phone_socket:
+                        dashboard._phone_audio_ws = None
+                except Exception as exc:
+                    print(f"[Privacy Lock] Session revocation failed: {type(exc).__name__}")
 
     def _on_text_command(self, text: str):
         # Owner PIN/password input is intercepted locally and is never sent to

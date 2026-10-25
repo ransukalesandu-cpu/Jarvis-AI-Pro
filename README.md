@@ -2682,3 +2682,9 @@ Every contribution helps move Jarvis closer to becoming a fully capable personal
 ### Built by Sathija Balachandra
 
 **Jarvis AI — Hear. See. Speak. Think. Act.**
+
+## 🔐 Privacy Lock alerts
+
+The existing local `AuthManager` remains the authority for the three-failure Privacy Lock and Windows workstation lock. When the lock activates, JARVIS suppresses pending voice output, publishes a `privacy_lock` dashboard event, blocks remote commands, and revokes active companion sessions. The HUD displays a Privacy Lock overlay.
+
+An emergency SMS is optional. It is sent only when Twilio is configured with an explicit `alert_recipient_number` that differs from the sender number. Missing credentials or recipient configuration safely disables SMS; network delivery runs outside the real-time audio event loop. No SMS delivery is claimed when the provider is unavailable or rejects the request.

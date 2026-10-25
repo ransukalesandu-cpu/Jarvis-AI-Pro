@@ -47,3 +47,11 @@ Do not send passwords, API secrets, or unnecessary sensitive personal informatio
 Please allow the maintainer reasonable time to investigate and address a reported vulnerability before publicly disclosing technical details.
 
 Thank you for helping improve Jarvis AI security.
+
+## Privacy Lock alert integration
+
+Privacy Lock uses the existing `JarvisAI/security/auth_manager.py` state machine, persistent lockout handling, and Argon2/DPAPI-backed PIN vault. The alert integration does not replace or duplicate that authentication system.
+
+When the state machine activates a lock, the application suppresses pending voice output, clears queued microphone audio, publishes a non-sensitive dashboard event, and revokes active companion sessions. Remote command, wake, and phone-audio entry points reject activity while the lock is active.
+
+Twilio SMS is an optional best-effort alert. It requires valid configured credentials and an explicit `alert_recipient_number`; it is not sent to the Twilio sender number by default. SMS delivery is performed off the real-time audio loop. Missing configuration or provider failure does not disable local Privacy Lock protections.

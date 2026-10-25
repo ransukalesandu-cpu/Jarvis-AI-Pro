@@ -4547,9 +4547,29 @@ class MainWindow(QMainWindow):
         )
         _cam_v.addWidget(self._cam_live_lbl, stretch=1)
 
-        # Stack: 0 = animated HUD, 1 = live camera
+        # Bihansa Mode Hologram & Preferences
+        try:
+            from ui.hologram.bihansa_hologram import BihansaHologram
+            from ui.hologram.bihansa_settings import BihansaModeSettings
+            self._bihansa_settings = BihansaModeSettings()
+            self._bihansa_hologram = BihansaHologram(
+                self.centralWidget(),
+                reduced_motion=self._bihansa_settings.reduced_motion
+            )
+            self._bihansa_hologram.set_glow_intensity(self._bihansa_settings.glow_intensity)
+            self._bihansa_hologram.set_animation_speed(self._bihansa_settings.animation_speed)
+        except Exception:
+            self._bihansa_settings = None
+            self._bihansa_hologram = None
+
+        self._hologram_mode_stack = QStackedWidget()
+        self._hologram_mode_stack.addWidget(self.hud)
+        if self._bihansa_hologram is not None:
+            self._hologram_mode_stack.addWidget(self._bihansa_hologram)
+
+        # Stack: 0 = animated HUD (mode stack), 1 = live camera
         self._hud_cam_stack = QStackedWidget()
-        self._hud_cam_stack.addWidget(self.hud)
+        self._hud_cam_stack.addWidget(self._hologram_mode_stack)
         self._hud_cam_stack.addWidget(_cam_cont)
         self._earth_panel = EarthGlobePanel()
         self._earth_panel.close_requested.connect(self._close_earth)
@@ -6000,6 +6020,24 @@ class MainWindow(QMainWindow):
 
         self._refresh_talk_btns()
 
+        self._mode_btn = QComboBox()
+        self._mode_btn.setFixedHeight(26)
+        self._mode_btn.setFont(QFont("Courier New", 7))
+        self._mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._mode_btn.addItem("MODE: JARVIS", "jarvis")
+        self._mode_btn.addItem("MODE: BIHANSA", "bihansa")
+        self._mode_btn.currentIndexChanged.connect(self._on_assistant_mode_selected)
+        lay.addWidget(self._mode_btn)
+        self._refresh_assistant_mode_btn()
+
+        bihansa_btn = QPushButton("⚙  BIHANSA SETTINGS")
+        bihansa_btn.setFixedHeight(26)
+        bihansa_btn.setFont(QFont("Courier New", 7))
+        bihansa_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        bihansa_btn.setStyleSheet(_BTN_STYLE_DIM)
+        bihansa_btn.clicked.connect(self._open_bihansa_settings_dialog)
+        lay.addWidget(bihansa_btn)
+
         self._hud_btn = QComboBox()
         self._hud_btn.setFixedHeight(26)
         self._hud_btn.setFont(QFont("Courier New", 7))
@@ -6989,6 +7027,49 @@ class MainWindow(QMainWindow):
             self._immersive_overlay.hud.trigger_activity()
             self._immersive_overlay.hud.update()
 
+    def _refresh_assistant_mode_btn(self):
+        from memory.config_manager import get_assistant_mode
+        mode = get_assistant_mode()
+        idx = 1 if mode == "bihansa" else 0
+        if hasattr(self, "_mode_btn"):
+            self._mode_btn.blockSignals(True)
+            self._mode_btn.setCurrentIndex(idx)
+            self._mode_btn.blockSignals(False)
+        if hasattr(self, "_hologram_mode_stack"):
+            self._hologram_mode_stack.setCurrentIndex(1 if mode == "bihansa" and self._bihansa_hologram else 0)
+
+    def _on_assistant_mode_selected(self, index: int):
+        from memory.config_manager import save_assistant_mode
+        want = self._mode_btn.itemData(index) or "jarvis"
+        if want not in {"jarvis", "bihansa"}:
+            want = "jarvis"
+        save_assistant_mode(want)
+        if hasattr(self, "_bihansa_settings") and self._bihansa_settings:
+            self._bihansa_settings.assistant_mode = want
+        if hasattr(self, "_hologram_mode_stack"):
+            self._hologram_mode_stack.setCurrentIndex(1 if want == "bihansa" and self._bihansa_hologram else 0)
+        self._log.append_log(f"SYS: Assistant mode set to '{want.upper()}'.")
+        if callable(getattr(self, "on_voice_change", None)):
+            self.on_voice_change()
+
+    def _open_bihansa_settings_dialog(self):
+        try:
+            from ui.hologram.bihansa_settings import BihansaSettingsDialog
+            dlg = BihansaSettingsDialog(self, settings=self._bihansa_settings, on_applied=self._on_bihansa_settings_applied)
+            dlg.exec()
+        except Exception as exc:
+            self._log.append_log(f"ERR: Failed to open Bihansa settings: {exc}")
+
+    def _on_bihansa_settings_applied(self):
+        if hasattr(self, "_bihansa_settings") and self._bihansa_settings:
+            if hasattr(self, "_bihansa_hologram") and self._bihansa_hologram:
+                self._bihansa_hologram.set_reduced_motion(self._bihansa_settings.reduced_motion)
+                self._bihansa_hologram.set_glow_intensity(self._bihansa_settings.glow_intensity)
+                self._bihansa_hologram.set_animation_speed(self._bihansa_settings.animation_speed)
+        self._refresh_assistant_mode_btn()
+        if callable(getattr(self, "on_voice_change", None)):
+            self.on_voice_change()
+
     def _on_hud_style_selected(self, index: int):
         """Persist and immediately display the selected HUD centrepiece."""
         from memory.config_manager import save_hud_style
@@ -7519,6 +7600,12 @@ class MainWindow(QMainWindow):
                 overlay.hud.set_audio_level(level)
             except (RuntimeError, TypeError, ValueError):
                 pass
+        bihansa = getattr(self, "_bihansa_hologram", None)
+        if bihansa is not None:
+            try:
+                bihansa.set_audio_energy(level)
+            except (RuntimeError, TypeError, ValueError):
+                pass
 
     def _apply_visemes(self, frames, hop: float, at: float) -> None:
         """Apply mouth-animation frames only on the Qt GUI thread."""
@@ -7540,6 +7627,11 @@ class MainWindow(QMainWindow):
             self._jarvis_logo_overlay.set_state(state)
         if hasattr(self, "_immersive_overlay"):
             self._immersive_overlay.set_state(state)
+        if hasattr(self, "_bihansa_hologram") and self._bihansa_hologram is not None:
+            try:
+                self._bihansa_hologram.set_state(state)
+            except (RuntimeError, TypeError, ValueError):
+                pass
         self._refresh_wake_btns()
         if hasattr(self, "_core_status_lbl"):
             display = state.replace("_", " ").upper()

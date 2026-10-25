@@ -200,6 +200,7 @@ from core.wake_word            import (
     WakeWordDetector, is_ready as wake_is_ready, install_and_download as wake_install,
 )
 from core.clap_wake             import DoubleClapDetector
+from core.hybrid_llm_router import HybridLLMRouter
 
 # How long the assistant stays awake with no user speech before it auto-sleeps
 # again after the configured idle interval.
@@ -1760,6 +1761,87 @@ class JarvisLive:
                 except Exception as exc:
                     print(f"[Privacy Lock] Session revocation failed: {type(exc).__name__}")
 
+    def _start_hybrid_text_fallback(self, text: str) -> None:
+        """Answer typed prompts through the hybrid text router while Live is down.
+
+        This is deliberately text-only: it never executes computer actions,
+        cannot bypass the existing auth/Privacy Lock/wake gates, and does not
+        replace the real-time Gemini Live audio/tool session.
+        """
+        if not text:
+            return
+        manager = security.get_auth_manager()
+        if manager.is_privacy_lock_active() or manager.is_silent() or manager.needs_pin():
+            return
+
+        self._interrupted = False
+        security.mark_user_turn_started(voice_verified=True)
+        self.ui.set_state("THINKING")
+        self.ui.write_log("SYS: Gemini Live is disconnected; trying Hybrid Brain text fallback.")
+
+        def _work() -> None:
+            try:
+                config = {}
+                try:
+                    with open(API_CONFIG_PATH, "r", encoding="utf-8") as stream:
+                        loaded = json.load(stream)
+                    if isinstance(loaded, dict):
+                        config = loaded
+                except (OSError, ValueError, TypeError):
+                    config = {}
+
+                # Provider credentials are read only from local config or the
+                # environment; never log, display, or persist their values.
+                keys = {
+                    "gemini": str(config.get("gemini_api_key") or "").strip(),
+                    "openai": str(config.get("openai_api_key") or "").strip(),
+                    "claude": str(
+                        config.get("anthropic_api_key") or config.get("claude_api_key") or ""
+                    ).strip(),
+                }
+                preferred = str(config.get("llm_provider") or "gemini").strip().lower()
+                router = HybridLLMRouter(preferred_provider=preferred, api_keys=keys)
+                system_prompt = (
+                    _load_system_prompt()
+                    + "\\n\\nHYBRID TEXT FALLBACK RULES: You are in a text-only fallback "
+                    "with no live tools or computer-control capability. Never claim you "
+                    "opened apps, changed files, searched the web, or completed an action. "
+                    "Explain limitations honestly and answer informational questions directly."
+                )
+                result = router.query(text, system_prompt=system_prompt)
+                answer = str(result.get("text") or "").strip()
+                provider = str(result.get("provider") or "unknown")
+                if not answer:
+                    raise RuntimeError("Provider returned an empty answer.")
+
+                # A lock may have activated while the network request was running.
+                manager_now = security.get_auth_manager()
+                if manager_now.is_privacy_lock_active() or manager_now.is_silent() or manager_now.needs_pin():
+                    return
+                self.ui.show_content("JARVIS — Hybrid Text Fallback", answer)
+                self.ui.write_log(
+                    f"SYS: Hybrid fallback answered via {provider} "
+                    f"({result.get('latency_ms', 0)} ms)."
+                )
+            except Exception as exc:
+                try:
+                    self.ui.write_log(
+                        "ERR: Hybrid text fallback unavailable: "
+                        f"{type(exc).__name__}. Check provider keys or local Ollama."
+                    )
+                except Exception:
+                    pass
+            finally:
+                try:
+                    manager_now = security.get_auth_manager()
+                    if not (manager_now.is_privacy_lock_active() or manager_now.is_silent()
+                            or manager_now.needs_pin()):
+                        self.ui.set_state("LISTENING")
+                except Exception:
+                    pass
+
+        threading.Thread(target=_work, name="jarvis-hybrid-text-fallback", daemon=True).start()
+
     def _on_text_command(self, text: str):
         # Owner PIN/password input is intercepted locally and is never sent to
         # Gemini, added to conversation history, or written to logs.
@@ -1783,16 +1865,16 @@ class JarvisLive:
             return
         if manager.is_silent():
             return
-        if not self._loop or not self.session:
-            return
-        # Respect wake-word sleep: a typed command must not be answered while
-        # asleep either (the sleep gate is not just for the mic). Wake first with
-        # "Hey Jarvis" or the WAKE NOW button.
+        # Respect wake-word sleep before either the Live path or text fallback.
+        # A disconnected Live session must not bypass the existing wake/security gates.
         if not self._awake:
             wake_hint = "clap twice or tap WAKE NOW"
             if self._wake_enabled:
                 wake_hint = "say 'Hey Jarvis', " + wake_hint
             self.ui.write_log(f"SYS: I'm asleep — {wake_hint} first.")
+            return
+        if not self._loop or not self.session:
+            self._start_hybrid_text_fallback(str(text or "").strip())
             return
         self._interrupted = False
         security.mark_user_turn_started(voice_verified=True)

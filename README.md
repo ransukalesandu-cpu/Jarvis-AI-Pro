@@ -89,9 +89,8 @@ the command field, or use the matching HUD panel. Common starting requests are:
 | “Start a 20 minute timer” / “Set a reminder…” | Visible countdown or scheduled reminder. |
 | “Quiz me on [topic]” | Spoken interactive quiz, when the Quiz plugin is enabled. |
 
-Sensitive operations still use JARVIS's normal security checks and approval
-flow. A panel or card is for viewing and navigation; opening one does not grant
-permission to send messages, change system settings, or perform another action.
+JARVIS operates under the **Autonomous Biometric Authority & Privacy Defense Model**.
+Panels and cards provide viewing and navigation without requiring manual confirmation pop-ups for verified owners.
 
 ## 🌍 Interactive Earth, Place Search, and Routes
 
@@ -1206,17 +1205,28 @@ All discovered capabilities are passed through the security layer before executi
 
 ---
 
-# 🔐 Owner Access, Voice ID & Privacy Lock
+# 🔐 Autonomous Biometric Authority & Privacy Defense Model
 
-JARVIS starts in restricted mode and ships with **no default owner PIN**.
+JARVIS operates on an **Autonomous Biometric Authority & Privacy Defense Model**:
 
-1. Run `python scripts/setup_owner_auth.py` in a local Windows terminal to enroll the owner PIN/password. It is hashed with Argon2id and protected with Windows DPAPI; the raw credential is never written to disk.
-2. To enroll Voice ID, install the optional local SpeechBrain/Torch and platform key-store dependencies, then run `python scripts/enroll_master.py`. Voice ID is a convenience identity check, not proof against a replay or voice clone; PIN fallback remains available.
-3. Three consecutive incorrect PIN/password attempts activate Privacy Lock, attempt to lock Windows, suppress private assistant output and notify connected paired dashboard clients.
-4. The cooldown defaults to 1 minute. Set `JARVIS_PRIVACY_LOCK_MINUTES` to `1`, `2`, `3`, `4`, or `5` before launch to select an allowed 1–5 minute duration. After the timer, JARVIS stays silent until owner PIN re-authentication succeeds. Windows itself is never automatically unlocked.
-5. Type PIN/password fallback into the local JARVIS command box or paired dashboard. Do not speak it; microphone input is intentionally not sent to Gemini during a PIN challenge.
+* **Verified Owner:** Full autonomous system control without interactive GUI confirmation pop-ups once enrolled owner voice ID or master PIN is verified.
+* **Stranger Mode:** Sandboxed to Tier-1 basic tasks (weather, time, web search, system telemetry reads).
+* **Challenge Mode:** Secure PIN fallback if voice is degraded, noisy, or unverified.
+* **3-Strike Privacy Lock:** Automatically locks the Windows desktop (`LockWorkStation`), mutes audio graph, wipes sensitive memory, and broadcasts emergency alerts for a strictly clamped 1–5 minute duration (`max(60, min(duration, 300))`).
 
-Restricted mode permits basic public queries. Private files/memory, system controls, and unknown actions require owner access. Existing confirmations for dangerous actions remain active.
+### Enrolling Owner Voice ID
+
+Run `python scripts/enroll_master.py` to record or enroll owner voice samples into the encrypted local Voice ID profile store (`JarvisAI/config/voice_id.dat`):
+
+```powershell
+python scripts/enroll_master.py
+```
+
+Optional float32 PCM sample files can also be passed with `--files`:
+
+```powershell
+python scripts/enroll_master.py --files sample1.raw sample2.raw sample3.raw
+```
 
 See [Owner Security Setup](docs/OWNER_SECURITY.md).
 

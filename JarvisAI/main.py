@@ -1689,6 +1689,13 @@ class JarvisLive:
     async def _publish_privacy_lock(self, message: str) -> None:
         self._interrupted = True
         self._assistant_turn_pending = False
+        try:
+            from security.lockdown import teardown_audio_stream
+            output_stream = getattr(self, "_output_stream", None)
+            if output_stream is not None:
+                teardown_audio_stream(output_stream)
+        except Exception:
+            pass
         phone_audio_queue = getattr(getattr(self, "_dashboard", None), "_phone_audio_queue", None)
         for queue in (getattr(self, "out_queue", None), getattr(self, "audio_in_queue", None), phone_audio_queue):
             if queue is not None:
@@ -1879,6 +1886,11 @@ class JarvisLive:
     def set_speaking(self, value: bool):
         with self._speaking_lock:
             self._is_speaking = value
+        if hasattr(self, "_echo") and hasattr(self._echo, "set_tts_speaking"):
+            try:
+                self._echo.set_tts_speaking(value)
+            except Exception:
+                pass
         if value:
             self._tail_until = 0.0
         else:
@@ -3891,12 +3903,20 @@ class JarvisLive:
             raise
         finally:
             self.set_speaking(False)
+            output_stream = self._output_stream
             self._output_stream = None
             try:
-                stream.stop()
+                from security.lockdown import teardown_audio_stream
+                teardown_audio_stream(output_stream or stream)
             except Exception:
-                pass
-            stream.close()
+                try:
+                    stream.stop()
+                except Exception:
+                    pass
+                try:
+                    stream.close()
+                except Exception:
+                    pass
 
     # ── Morning briefing ────────────────────────────────────────────────────────
 

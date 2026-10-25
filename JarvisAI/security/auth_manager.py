@@ -41,6 +41,18 @@ MAX_FAILED_PIN_ATTEMPTS = 3
 DEFAULT_COOLDOWN_SECONDS = 60
 
 
+def ensure_restricted_dir(path: Path | str) -> Path:
+    """Ensure directory exists with restricted permissions (0700 on POSIX)."""
+    target = Path(path)
+    os.makedirs(target, exist_ok=True)
+    if os.name != "nt":
+        try:
+            os.chmod(target, 0o700)
+        except OSError:
+            pass
+    return target
+
+
 def configured_cooldown_seconds(value: str | None = None) -> int:
     """Read the 1–5 minute lock duration. Invalid values fail back to 1 minute."""
     raw = os.environ.get("JARVIS_PRIVACY_LOCK_MINUTES", "1") if value is None else value
@@ -95,12 +107,25 @@ def _dpapi_unprotect(data: bytes) -> bytes:
 
 def lock_workstation() -> bool:
     """Lock the current Windows workstation without attempting to unlock it later."""
-    if sys.platform != "win32":
-        return False
     try:
-        return bool(ctypes.windll.user32.LockWorkStation())
+        from security.lockdown import lock_workstation as _lock_ws
+        success, err = _lock_ws()
+        if not success and sys.platform == "win32":
+            print(f"[AuthManager] LockWorkStation failed with error code: {err}")
+        return success
     except Exception:
-        return False
+        if sys.platform != "win32":
+            return False
+        try:
+            res = ctypes.windll.user32.LockWorkStation()
+            if res == 0:
+                err = ctypes.GetLastError()
+                print(f"[AuthManager] LockWorkStation returned 0; GetLastError={err}")
+                return False
+            return True
+        except Exception as exc:
+            print(f"[AuthManager] LockWorkStation failed: {exc}")
+            return False
 
 
 class AuthManager:
@@ -171,7 +196,7 @@ class AuthManager:
             "requires_owner_reauth": self._requires_owner_reauth,
             "updated_at": time.time(),
         }
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_restricted_dir(self.state_path.parent)
         temp = self.state_path.with_name(self.state_path.name + ".tmp")
         try:
             temp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -229,7 +254,8 @@ class AuthManager:
             raise RuntimeError("Install argon2-cffi before configuring an owner PIN.")
         hashed = self._hasher.hash(value)
         protected = _dpapi_protect(json.dumps({"hashed_pin": hashed}).encode("utf-8"))
-        self.vault_path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_restricted_dir(self.vault_path.parent)
+        vault_dir = ensure_restricted_dir(self.vault_path.parent.parent / "security" / "vault")
         temp = self.vault_path.with_name(self.vault_path.name + ".tmp")
         try:
             temp.write_bytes(protected)

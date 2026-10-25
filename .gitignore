@@ -10,9 +10,20 @@ dist/
 
 # Secrets and configuration
 config/api_keys.json
+config/secrets.json
 .env
 .venv/
 venv/
+
+# Biometric vault, credentials, received files, and databases
+*.emb
+*.emb.npy
+*.vault
+*.hash
+*.db
+*.sqlite
+*.sqlite3
+Jarvis_Received_Files/
 
 # Editors and operating systems
 .vscode/
@@ -37,5 +48,4 @@ JarvisAI/config/voice_id.tmp
 JarvisAI/logs/
 logs/
 master_voice.emb*
-*.emb
-*.emb.npy
+Jarvis_Received_Files/

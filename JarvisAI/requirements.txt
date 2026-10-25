@@ -13,6 +13,7 @@
 PyQt6>=6.6,<7
 PyQt6-WebEngine>=6.6,<7
 sounddevice>=0.4,<1
+webrtcvad-wheels>=2.0.14,<3  # lightweight speech/noise gate for voice barge-in
 edge-tts>=7,<8             # default cloud TTS engine
 miniaudio>=1.59,<3         # decodes Edge TTS audio for sounddevice playback
 numpy>=1.24,<3

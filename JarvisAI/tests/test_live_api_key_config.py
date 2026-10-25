@@ -10,7 +10,7 @@ from main import _get_api_key
 
 class LiveAPIKeyConfigTests(unittest.TestCase):
     def _with_config_path(self, path, callback):
-        with patch("main.API_CONFIG_PATH", Path(path)):
+        with patch("main.API_CONFIG_PATH", Path(path)), patch("JarvisAI.main.API_CONFIG_PATH", Path(path)):
             return callback()
 
     def test_valid_key_is_trimmed(self):
@@ -23,7 +23,7 @@ class LiveAPIKeyConfigTests(unittest.TestCase):
     def test_missing_file_has_actionable_error(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "missing.json"
-            with patch("main.API_CONFIG_PATH", path):
+            with patch("main.API_CONFIG_PATH", path), patch("JarvisAI.main.API_CONFIG_PATH", path):
                 with self.assertRaisesRegex(RuntimeError, "configuration file is missing"):
                     _get_api_key()
 
@@ -31,7 +31,7 @@ class LiveAPIKeyConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "api_keys.json"
             path.write_text('{"gemini_api_key": "SECRET', encoding="utf-8")
-            with patch("main.API_CONFIG_PATH", path):
+            with patch("main.API_CONFIG_PATH", path), patch("JarvisAI.main.API_CONFIG_PATH", path):
                 with self.assertRaisesRegex(RuntimeError, "unreadable or invalid JSON") as caught:
                     _get_api_key()
         self.assertNotIn("SECRET", str(caught.exception))
@@ -40,7 +40,7 @@ class LiveAPIKeyConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "api_keys.json"
             path.write_text("[]", encoding="utf-8")
-            with patch("main.API_CONFIG_PATH", path):
+            with patch("main.API_CONFIG_PATH", path), patch("JarvisAI.main.API_CONFIG_PATH", path):
                 with self.assertRaisesRegex(RuntimeError, "JSON object"):
                     _get_api_key()
 
@@ -50,7 +50,7 @@ class LiveAPIKeyConfigTests(unittest.TestCase):
                 with tempfile.TemporaryDirectory() as directory:
                     path = Path(directory) / "api_keys.json"
                     path.write_text(json.dumps(config), encoding="utf-8")
-                    with patch("main.API_CONFIG_PATH", path):
+                    with patch("main.API_CONFIG_PATH", path), patch("JarvisAI.main.API_CONFIG_PATH", path):
                         with self.assertRaisesRegex(RuntimeError, "gemini_api_key entry"):
                             _get_api_key()
 

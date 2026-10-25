@@ -35,9 +35,10 @@ def _parse_json(text: str) -> dict[str, Any]:
 class BehaviorExtractionEngine:
     """Extract low-risk personalization candidates; never persists or diagnoses."""
 
-    def __init__(self, memory_store: MemoryStore, router_factory: Any = HybridLLMRouter):
+    def __init__(self, memory_store: MemoryStore, router_factory: Any = HybridLLMRouter, api_keys: dict[str, str] | None = None):
         self.store = memory_store
         self.router_factory = router_factory
+        self.api_keys = dict(api_keys or {})
 
     def extract_candidates(self, user_text: str) -> dict[str, Any]:
         if not self.store.enabled:
@@ -45,7 +46,7 @@ class BehaviorExtractionEngine:
         text = _redact(str(user_text or "").strip())
         if not text:
             return {"candidates": [], "tone_hint": "neutral", "reason": "Empty input."}
-        router = self.router_factory(preferred_provider="gemini", online_check=False, timeout=15.0)
+        router = self.router_factory(preferred_provider="gemini", api_keys=self.api_keys, online_check=False, timeout=15.0)
         result = router.query(
             "Extract only explicit, low-risk personalization facts the user states about themself. "
             "Return JSON: {\"candidates\":[{\"category\":\"preference|habit|interest|routine|tone|goal|accessibility\","

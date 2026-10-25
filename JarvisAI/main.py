@@ -1814,6 +1814,7 @@ class JarvisLive:
                 # environment; never log, display, or persist their values.
                 keys = {
                     "gemini": str(config.get("gemini_api_key") or "").strip(),
+                    "groq": str(config.get("groq_api_key") or "").strip(),
                     "openai": str(config.get("openai_api_key") or "").strip(),
                     "claude": str(
                         config.get("anthropic_api_key") or config.get("claude_api_key") or ""

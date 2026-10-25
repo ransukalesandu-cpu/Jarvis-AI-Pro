@@ -64,8 +64,15 @@ class HybridLLMRouter:
         return self.api_keys.get(provider, "") or os.getenv(_KEY_ENV.get(provider, ""), "").strip()
 
     @staticmethod
-    def is_online(host: str = "1.1.1.1", port: int = 53, timeout: float = 1.0) -> bool:
-        """Check connectivity without mutating the process-wide socket timeout."""
+    def is_online(host: str = "1.1.1.1", port: int = 443, timeout: float = 1.0) -> bool:
+        """Check outbound TCP connectivity on HTTPS port 443.
+
+        DNS port 53 is commonly blocked on managed, school, and public networks,
+        which can incorrectly force the router into local-only mode despite
+        working internet access. Port 443 is a more representative reachability
+        probe for the cloud APIs used by this router. This is only a heuristic;
+        provider requests still handle their own connection failures.
+        """
         try:
             with socket.create_connection((host, port), timeout=max(0.1, float(timeout))):
                 return True

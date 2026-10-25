@@ -56,8 +56,9 @@ class HybridLLMRouterTests(unittest.TestCase):
         self.assertEqual(result["provider"], "ollama")
 
     def test_connectivity_check_does_not_change_global_socket_timeout(self):
-        with patch("core.hybrid_llm_router.socket.create_connection", side_effect=OSError):
+        with patch("core.hybrid_llm_router.socket.create_connection", side_effect=OSError) as connect:
             self.assertFalse(HybridLLMRouter.is_online(timeout=0.2))
+        connect.assert_called_once_with(("1.1.1.1", 443), timeout=0.2)
 
 
 if __name__ == "__main__":

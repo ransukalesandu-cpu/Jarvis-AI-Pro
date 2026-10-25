@@ -1,6 +1,6 @@
 # Open PR reconciliation
 
-PR #86 consolidates the fixes and compatible remaining integrations. The original PR branches are not rewritten or merged; their historical check results and branch conflicts remain until the maintainer updates or closes them.
+PR #86 consolidates the fixes and compatible remaining integrations. At the user’s request to merge all passing work, it also reconciles the histories of PRs #68, #72, #74, #75, #76, #78, #79, #80, #82, #83, #84 and #85. Their heads are recorded as merge parents while retaining the validated consolidated implementation described below. This resolves overlapping implementations and conflicts without reintroducing their historical failures or weaker voice authorization. Original branch histories are preserved.
 
 | Original PR | Consolidated result |
 | --- | --- |

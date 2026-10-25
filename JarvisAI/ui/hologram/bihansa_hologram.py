@@ -22,6 +22,8 @@ class BihansaHologramWidget(QWidget):
         super().__init__(parent)
         self.setMinimumSize(320, 320)
         self._state = "IDLE"
+        self._effects_enabled = True
+        self._voice_reactive = True
         self._energy = 0.0
         self._target_energy = 0.0
         self._started = time.monotonic()
@@ -43,9 +45,20 @@ class BihansaHologramWidget(QWidget):
         self._state = str(state or "IDLE").upper()
         self.update()
 
+    def set_effects_enabled(self, enabled: bool):
+        self._effects_enabled = bool(enabled)
+        self.update()
+
+    def set_voice_reactive(self, enabled: bool):
+        self._voice_reactive = bool(enabled)
+        if not self._voice_reactive:
+            self._energy = 0.0
+            self._target_energy = 0.0
+        self.update()
+
     def set_audio_energy(self, level: float):
         try:
-            self._target_energy = max(0.0, min(1.0, float(level)))
+            self._target_energy = max(0.0, min(1.0, float(level))) if self._voice_reactive else 0.0
         except (TypeError, ValueError):
             self._target_energy = 0.0
 
@@ -67,21 +80,23 @@ class BihansaHologramWidget(QWidget):
         cyan = QColor("#67eaff")
 
         # Soft radial-looking glow, orbital rings and HUD arcs.
-        p.setPen(Qt.PenStyle.NoPen)
-        for radius, alpha in ((min(w, h) * .39, 12), (min(w, h) * .32, 10)):
-            p.setBrush(QColor(255, 45, 190, alpha))
-            p.drawEllipse(QPointF(cx, cy), radius, radius * 1.12)
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QPen(QColor(255, 79, 200, 150), 1.1))
-        p.drawEllipse(QPointF(cx, cy), min(w, h) * .37, min(w, h) * .43)
-        p.setPen(QPen(QColor(255, 155, 232, 95), 1, Qt.PenStyle.DashLine))
-        p.drawEllipse(QPointF(cx, cy), min(w, h) * .42, min(w, h) * .47)
-        arc = QRectF(cx - min(w, h)*.43, cy - min(w, h)*.45,
-                     min(w, h)*.86, min(w, h)*.90)
-        p.setPen(QPen(hot, 2.0))
-        p.drawArc(arc, int((t * 24 % 360) * 16), 112 * 16)
-        p.setPen(QPen(pink, 1.5))
-        p.drawArc(arc.adjusted(9, 9, -9, -9), int((-t * 31 % 360) * 16), 72 * 16)
+        if self._effects_enabled:
+            p.setPen(Qt.PenStyle.NoPen)
+        if self._effects_enabled:
+            for radius, alpha in ((min(w, h) * .39, 12), (min(w, h) * .32, 10)):
+                p.setBrush(QColor(255, 45, 190, alpha))
+                p.drawEllipse(QPointF(cx, cy), radius, radius * 1.12)
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(QColor(255, 79, 200, 150), 1.1))
+            p.drawEllipse(QPointF(cx, cy), min(w, h) * .37, min(w, h) * .43)
+            p.setPen(QPen(QColor(255, 155, 232, 95), 1, Qt.PenStyle.DashLine))
+            p.drawEllipse(QPointF(cx, cy), min(w, h) * .42, min(w, h) * .47)
+            arc = QRectF(cx - min(w, h)*.43, cy - min(w, h)*.45,
+                         min(w, h)*.86, min(w, h)*.90)
+            p.setPen(QPen(hot, 2.0))
+            p.drawArc(arc, int((t * 24 % 360) * 16), 112 * 16)
+            p.setPen(QPen(pink, 1.5))
+            p.drawArc(arc.adjusted(9, 9, -9, -9), int((-t * 31 % 360) * 16), 72 * 16)
 
         # Portrait is scaled with aspect ratio preserved and softly clipped.
         margin_x = w * .12
@@ -105,14 +120,15 @@ class BihansaHologramWidget(QWidget):
             # Light hologram tint and fine horizontal scan lines, not face replacement.
             p.save()
             p.setClipRect(QRectF(px, py, scaled.width(), scaled.height()))
-            p.fillRect(QRectF(px, py, scaled.width(), scaled.height()),
-                       QColor(255, 45, 190, 24))
-            scan_y = py + self._scan * scaled.height()
-            p.setPen(QPen(QColor(255, 155, 232, 135), 1.2))
-            p.drawLine(QPointF(px, scan_y), QPointF(px + scaled.width(), scan_y))
-            p.setPen(QPen(QColor(255, 105, 220, 24), 1))
-            for yy in range(int(py), int(py + scaled.height()), 5):
-                p.drawLine(int(px), yy, int(px + scaled.width()), yy)
+            if self._effects_enabled:
+                p.fillRect(QRectF(px, py, scaled.width(), scaled.height()),
+                           QColor(255, 45, 190, 24))
+                scan_y = py + self._scan * scaled.height()
+                p.setPen(QPen(QColor(255, 155, 232, 135), 1.2))
+                p.drawLine(QPointF(px, scan_y), QPointF(px + scaled.width(), scan_y))
+                p.setPen(QPen(QColor(255, 105, 220, 24), 1))
+                for yy in range(int(py), int(py + scaled.height()), 5):
+                    p.drawLine(int(px), yy, int(px + scaled.width()), yy)
             p.restore()
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.setPen(QPen(hot, 1.2))
@@ -126,7 +142,7 @@ class BihansaHologramWidget(QWidget):
 
         # Neural particles drift around the portrait.
         p.setPen(Qt.PenStyle.NoPen)
-        for nx, ny, size, speed, phase in self._particles:
+        for nx, ny, size, speed, phase in (self._particles if self._effects_enabled else []):
             drift = math.sin(t * speed + phase) * 0.018
             x = (nx + drift) * w
             y = (ny + math.cos(t * speed + phase) * .012) * h

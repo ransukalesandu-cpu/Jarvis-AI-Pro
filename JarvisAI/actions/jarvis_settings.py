@@ -89,9 +89,12 @@ def _current_settings() -> dict:
         "memory_provider_access": cfg.get_memory_provider_access_enabled(),
         "media_resolution": cfg.get_media_resolution(),
         "hud_style": cfg.get_hud_style(),
+        "ui_color": cfg.get_ui_color(),
         "neural_render_scale": cfg.get_neural_render_scale(),
         "assistant_name": cfg.get_assistant_name(),
         "user_name": cfg.get_user_name(),
+        "settings_drawer": "closed",
+        "side_panels": "hidden",
     }
 
 
@@ -101,7 +104,53 @@ def _parse_bool(value) -> bool | None:
     return _BOOL_VALUES.get(str(value or "").strip().lower())
 
 
-def _set_setting(setting: str, raw_value) -> str:
+def _set_setting(setting: str, raw_value, **kwargs) -> str:
+    value = str(raw_value if raw_value is not None else "").strip()
+    lowered = value.lower()
+
+    player = kwargs.get("player")
+
+    if setting == "settings_drawer":
+        if lowered in ("open", "show", "on", "true", "1", "arinna", "අරින්න"):
+            if player and hasattr(player, "open_settings_drawer"):
+                player.open_settings_drawer()
+            return "Opening settings."
+        elif lowered in ("close", "hide", "off", "false", "0", "vahanna", "වහන්න"):
+            if player and hasattr(player, "close_settings_drawer"):
+                player.close_settings_drawer()
+            return "Closing settings."
+        return "Say 'open' or 'close' for settings."
+
+    if setting == "side_panels":
+        if lowered in ("hide", "off", "0", "false", "vahanna", "වහන්න"):
+            if player and hasattr(player, "toggle_side_panels"):
+                player.toggle_side_panels(False)
+            return "Hiding side panels."
+        elif lowered in ("show", "on", "1", "true", "arinna", "අරින්න"):
+            if player and hasattr(player, "toggle_side_panels"):
+                player.toggle_side_panels(True)
+            return "Showing side panels."
+        elif lowered in ("toggle", "maru"):
+            if player and hasattr(player, "toggle_side_panels"):
+                player.toggle_side_panels(None)
+            return "Toggling side panels."
+        return "Say 'show' or 'hide' for side panels."
+
+    if setting == "ui_color":
+        color_map = {
+            "blue": "#00e5ff", "cyan": "#00e5ff", "nil": "#00e5ff", "නිල්": "#00e5ff",
+            "violet": "#7c4dff", "purple": "#7c4dff", "dammunu": "#7c4dff", "දම්": "#7c4dff",
+            "green": "#00e676", "kola": "#00e676", "කොළ": "#00e676",
+            "red": "#ff1744", "rathu": "#ff1744", "රතු": "#ff1744",
+            "amber": "#ffab00", "gold": "#ffab00", "kaha": "#ffab00", "කහ": "#ffab00",
+        }
+        color_hex = color_map.get(lowered, lowered)
+        if not (color_hex.startswith("#") and len(color_hex) == 7):
+            return "Choose a color like blue, cyan, violet, green, red, or amber."
+        cfg.save_ui_color(color_hex)
+        if player and hasattr(player, "set_ui_color"):
+            player.set_ui_color(color_hex)
+        return f"Changed hologram UI color to {color_hex}."
     value = str(raw_value if raw_value is not None else "").strip()
     lowered = value.lower()
 
@@ -200,21 +249,21 @@ def jarvis_settings(parameters: dict, **_kwargs) -> str:
             return "Choose one setting: " + ", ".join(_current_settings()) + "."
         if "value" not in parameters:
             return "Tell me the value to set. No setting was changed."
-        return _set_setting(setting, parameters.get("value"))
+        return _set_setting(setting, parameters.get("value"), **_kwargs)
     return "Choose operation 'get' or 'set'."
 
 
 TOOL = {
     "name": "jarvis_settings",
     "description": (
-        "Understand natural spoken requests to inspect or change JARVIS's own allowlisted "
-        "preferences. Use operation=get to read all settings or one named setting. Use "
+        "Understand natural spoken requests in English, Sinhala, or Singlish to inspect or change JARVIS's own allowlisted "
+        "preferences or settings UI. Use operation=get to read all settings or one named setting. Use "
         "operation=set to change exactly one setting using its setting name and value. "
-        "Examples: set voice to 'female' (Kore), startup_intro to 'off', wake_word to "
-        "'on', media_resolution to 'high', personality_mode to 'concise'. Never invent "
-        "unsupported settings or values. Ask the user to clarify if the requested setting "
-        "or value is ambiguous. Never change API keys, security controls, files, or OS settings. "
-        "Voice/personality changes are persisted and apply after the Live session reconnects."
+        "Examples: set settings_drawer to 'open' ('settings arinna', 'සැකසුම් අරින්න') or 'close' ('settings vahanna'), "
+        "set ui_color to 'blue' ('pata nil karanna') or 'cyan', set voice to 'female' (Kore), "
+        "startup_intro to 'off', wake_word to 'on', media_resolution to 'high', personality_mode to 'concise'. "
+        "Never invent unsupported settings or values. Ask the user to clarify if the requested setting or value is ambiguous. "
+        "Never change API keys, security controls, files, or OS settings from interpreted voice input."
     ),
     "parameters": {
         "type": "OBJECT",
@@ -229,13 +278,14 @@ TOOL = {
                     "voice", "personality_mode", "startup_intro", "wake_word",
                     "push_to_talk", "thinking", "proactive_audio", "morning_brief",
                     "memory_provider_access", "media_resolution", "hud_style",
-                    "neural_render_scale", "assistant_name", "user_name",
+                    "ui_color", "settings_drawer", "side_panels", "neural_render_scale",
+                    "assistant_name", "user_name",
                 ],
                 "description": "Exact setting to read or change.",
             },
             "value": {
                 "type": "STRING",
-                "description": "New setting value, such as female, off, high, concise, or 0.75.",
+                "description": "New setting value, such as open, close, blue, cyan, female, off, high, concise, or 0.75.",
             },
         },
         "required": ["operation"],

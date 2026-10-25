@@ -119,6 +119,14 @@ def get_user_name() -> str:
     return load_api_keys().get("user_name", "")
 
 
+def get_ui_color() -> str:
+    return load_api_keys().get("ui_color", "") or "#00e5ff"
+
+
+def save_ui_color(color_hex: str) -> None:
+    _patch_config(ui_color=(color_hex or "").strip().lower())
+
+
 def save_assistant_config(assistant_name: str, user_name: str) -> None:
     """Persist assistant name and user name to config."""
     ensure_config_dir()

@@ -1,58 +1,32 @@
-# JARVIS Owner First-Launch Security Plan
+# JARVIS Owner Privacy Setup and Sensitive-Action Authentication
 
-## Goal
+## Intended behavior
 
-Require an owner-created PIN/password before JARVIS can start its assistant session. Offer optional owner voice enrollment and optional face verification. Preserve existing security controls and avoid duplicating the current authentication implementation.
+- After API-key setup on the first run, show a local **Privacy & Owner Security** dialog.
+- Require an owner-created PIN/password and confirmation. Use the existing `AuthManager` and Argon2 hash; never store or send the raw credential.
+- Voice enrollment is optional and uses the existing encrypted Voice ID enrollment flow.
+- Face authorization remains disabled until a reliable local verifier, secure enrollment, liveness checks, and tests are available.
+- On later launches, start normally without asking for the PIN at startup.
+- Harmless conversation/basic commands remain available. Before a sensitive action executes, verify the owner if the current session has not already authenticated them.
+- Successful PIN verification authorizes the current app session. Restart/lockout clears the authorization; a command that is cancelled or not verified must not execute.
+- Keep the authorization gate central so tools and plugins cannot bypass it. Preserve the separate confirmation prompt for dangerous operations.
 
-## Existing code to reuse
+## Code changed on this branch
 
-- `JarvisAI/security/auth_manager.py`: `AuthManager`, Argon2 password hashing, restricted/challenge/full-access states, failed-attempt lockout and session-only full access.
-- `JarvisAI/core/security.py`: public accessors for the existing authentication manager.
-- `JarvisAI/core/voice_id.py`: encrypted local Voice ID enrollment/profile support.
-- `JarvisAI/security/voice_auth.py`: speaker verification adapter. It intentionally fails closed for owner verification unless a separately validated anti-spoof verifier is supplied.
-- `JarvisAI/ui/__init__.py` and `JarvisAI/main.py`: inspect the real startup/UI lifecycle before wiring a gate.
+- `JarvisAI/ui/__init__.py`: adds the first-run Privacy & Owner Security dialog after API setup and resumes incomplete enrollment on a later launch. It asks for and confirms a local PIN/password, offers optional Voice ID enrollment, and explicitly keeps Face authorization unavailable.
+- `JarvisAI/core/security.py`: runs adaptive owner verification before the privileged-action dispatcher rejects a sensitive action. Speaker similarity by itself no longer grants owner access.
+- `JarvisAI/security/adaptive_auth.py`: requires a verified-live voice result before voice can unlock sensitive actions; without a validated anti-spoof verifier, the flow falls back to the local PIN/password. Face verification remains disabled by `security/face_auth.py`.
+- `JarvisAI/security/auth_manager.py`: existing Argon2 PIN hashing, Windows DPAPI vault protection, three-failure Privacy Lock, and session-only full access are reused.
 
-Do not create a parallel PIN store or store plaintext PINs, passwords, voice embeddings, or face templates.
+## Current biometric limitations
 
-## Required first-run flow
+The repository has speaker matching but no validated anti-spoof detector configured. Therefore, optional Voice ID enrollment can be performed, but **it must not automatically unlock sensitive actions yet**; the safe fallback is the PIN/password. Face authorization is explicitly disabled. These controls must not be described as complete biometric unlock until their verification backends are implemented and tested.
 
-1. Before opening the normal assistant session, detect whether an owner PIN/password has been enrolled.
-2. If not enrolled, show a local first-run Owner Setup dialog. Require password/PIN entry and confirmation. Reject empty/weak input and persist only using the existing AuthManager/Argon2 flow.
-3. After owner credential setup, show an optional Voice ID step: **Set up voice verification** or **Skip for now**. Enrollment must use the existing encrypted Voice ID flow and explain that a voice match alone is not reliable proof of liveness.
-4. Show an optional Face Verification step: **Set up face verification** or **Skip for now**. Do not enable face verification unless a local implementation, secure template storage, reasonable liveness checks, and tests are actually available. Never upload face images/templates to an AI provider.
-5. Show a final confirmation screen, then continue to the normal JARVIS UI.
+## Validation still required
 
-## Subsequent launches
-
-- Start in restricted/challenge state; never restore a prior full-access session.
-- Require local PIN/password unlock before enabling private memory, tools, computer control, or other owner-only actions.
-- Voice or face can be offered as an optional convenience/second factor only if the implementation is available and passes its security checks. Always retain PIN/password fallback.
-- Voice matching without anti-spoof verification must not unlock owner access. A recording or cloned voice may imitate a speaker.
-- If face verification is unavailable, disabled, or fails, fall back to PIN/password; do not lock the owner out permanently.
-- Apply the existing failed-attempt/Privacy Lock policy. Avoid silently launching a headless or background assistant with owner access when authentication is missing.
-
-## UI and lifecycle integration requirements
-
-- Inspect both normal GUI launch and headless/background launch paths.
-- Put the authentication gate before Gemini Live sessions, microphone streaming, camera streaming, proactive actions, plugins, and computer-control dispatch start.
-- Keep the UI responsive; never block the Qt main thread with model loading or biometric inference.
-- Do not log or send credential text/audio/images to Gemini, logs, telemetry, or crash reports.
-- Provide a visible settings screen to re-enroll voice, configure optional face verification, change the PIN/password after current-owner verification, and disable biometrics.
-- Keep the current JARVIS experience and all unrelated features intact.
-
-## Tests and acceptance criteria
-
-- First run cannot enter the assistant before PIN/password enrollment succeeds.
-- Empty/mismatched credentials are rejected; the password hash is stored through AuthManager, never plaintext.
-- Relaunch requires authentication; full access is not persisted.
-- Three incorrect PIN attempts follow the existing lockout behavior.
-- Skipping voice/face enrollment works without breaking the app.
-- Voice verification fails closed when its anti-spoof dependency is missing or errors.
-- Face verification cannot unlock access when disabled/unavailable or when liveness checks fail.
-- GUI and headless/background startup both fail closed.
-- Existing tests and new authentication tests pass on the project's supported platforms.
-- Do not merge the PR automatically; report exact files changed, test commands, and actual results.
-
-## Scope note
-
-This PR is a plan for safe integration, not a claim that startup authentication or face verification is already wired. Face verification is optional and should only be enabled after the implementation is validated.
+- Run syntax checks and the repository's available tests/CI on a supported environment.
+- Test first-run PIN enrollment, ordinary startup without PIN prompts, sensitive-action PIN fallback, cancellation/wrong PIN denial, and session-only access.
+- Test that all tool/plugin/background dispatch paths use the same gate.
+- Implement and validate anti-spoof voice verification before enabling automatic voice unlock.
+- Implement and validate face verification before enabling face unlock.
+- Keep this pull request unmerged until the above checks are reviewed.

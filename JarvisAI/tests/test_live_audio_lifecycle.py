@@ -202,5 +202,72 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(written_chunks, [pcm_chunk[:4800]])
 
 
+    async def test_shutdown_during_playback_stops_worker_and_tears_down_stream(self):
+        written_chunks = []
+        write_started = asyncio.Event()
+        release_write = threading.Event()
+        main_loop = self.jarvis._loop
+
+        class FakeStream:
+            def __init__(self):
+                self.active = True
+                self.latency = 0.05
+                self.stop_called = False
+                self.close_called = False
+
+            def start(self):
+                self.active = True
+
+            def stop(self):
+                self.stop_called = True
+                self.active = False
+
+            def close(self):
+                self.close_called = True
+                self.active = False
+
+            def abort(self):
+                self.active = False
+
+            def write(self, data):
+                written_chunks.append(data)
+                if len(written_chunks) == 1:
+                    main_loop.call_soon_threadsafe(write_started.set)
+                    if not release_write.wait(timeout=5.0):
+                        raise AssertionError("Test did not release the in-flight write")
+
+        fake_stream = FakeStream()
+        fake_sd = MagicMock()
+        fake_sd.RawOutputStream.return_value = fake_stream
+
+        with patch("JarvisAI.main.sd", fake_sd), \
+             patch("JarvisAI.main.get_output_device", return_value="custom_speaker"), \
+             patch("core.audio_devices.resolve", return_value=7), \
+             patch("security.lockdown.teardown_audio_stream") as teardown:
+            pcm_chunk = b"\x00\x01" * 12000
+            await self.jarvis.audio_in_queue.put(pcm_chunk)
+            play_task = asyncio.create_task(self.jarvis._play_audio())
+
+            try:
+                await asyncio.wait_for(write_started.wait(), timeout=2.0)
+                self.assertEqual(written_chunks, [pcm_chunk[:4800]])
+                self.assertGreater(len(pcm_chunk), len(written_chunks[0]))
+
+                # Request shutdown while a real playback write is in flight.
+                self.jarvis._shutdown_requested = True
+                release_write.set()
+                await asyncio.wait_for(play_task, timeout=2.0)
+
+                self.assertEqual(written_chunks, [pcm_chunk[:4800]])
+                teardown.assert_called_once_with(fake_stream)
+                self.assertFalse(self.jarvis._is_speaking)
+            finally:
+                release_write.set()
+                self.jarvis._shutdown_requested = True
+                if not play_task.done():
+                    play_task.cancel()
+                await asyncio.gather(play_task, return_exceptions=True)
+
+
 if __name__ == "__main__":
     unittest.main()

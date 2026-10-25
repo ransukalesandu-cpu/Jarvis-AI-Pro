@@ -26,7 +26,7 @@ class HybridLLMRouterTests(unittest.TestCase):
 
     def test_empty_provider_response_is_treated_as_failure(self):
         router = HybridLLMRouter(
-            api_keys={"gemini": "test-gemini", "openai": "test-openai"},
+            api_keys={"gemini": "test-gemini", "groq": "test-groq", "openai": "test-openai"},
             online_check=False,
         )
         router.is_online = lambda: True

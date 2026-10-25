@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ctypes
 import json
+import math
 import os
 import sys
 import threading
@@ -278,10 +279,12 @@ class AuthManager:
         except Exception:
             return None
 
-    def grant_owner_access(self, method: str) -> None:
-        """Grant only after successful PIN or actual enrolled Voice ID verification."""
+    def grant_owner_access(self, method: str, *, verified_live: bool = False) -> None:
+        """Grant after local PIN verification or explicitly verified live owner speech."""
         if method not in {"pin", "voice"}:
             raise ValueError("Owner access must be verified by PIN or Voice ID.")
+        if method == "voice" and verified_live is not True:
+            raise PermissionError("Voice authorization requires verified live speech.")
         with self._lock:
             if self.state == PRIVACY_LOCK and time.time() < self.lock_until:
                 raise PermissionError("Privacy Lock cooldown has not expired.")
@@ -317,7 +320,7 @@ class AuthManager:
             self.trigger_privacy_lock()
         return False
 
-    def process_voice_result(self, is_master: bool, similarity: float, is_live: bool = True, is_stranger: bool = False) -> tuple[str, str]:
+    def process_voice_result(self, is_master: bool, similarity: float, is_live: bool = False, is_stranger: bool = False) -> tuple[str, str]:
         """Handle an already-computed enrolled Voice ID result; never voice-unlock after Privacy Lock."""
         state = self.get_state()
         if state == PRIVACY_LOCK or self.requires_owner_reauthentication():
@@ -325,24 +328,31 @@ class AuthManager:
         method = self.get_auth_method()
         if state == FULL_ACCESS_MODE and method == "pin":
             return FULL_ACCESS_MODE, "Owner PIN verification remains valid for this session."
-        if is_master and similarity >= COSINE_THRESHOLD and is_live:
-            self.grant_owner_access("voice")
+        if is_master is True and is_live is True and math.isfinite(similarity) and similarity >= COSINE_THRESHOLD:
+            self.grant_owner_access("voice", verified_live=True)
             return FULL_ACCESS_MODE, "Owner voice verified."
-        if is_stranger and state != FULL_ACCESS_MODE:
+        if is_stranger:
             self.set_state(RESTRICTED_MODE)
             return RESTRICTED_MODE, "Unrecognized speaker; basic access only."
-        if state != FULL_ACCESS_MODE:
-            self.set_state(CHALLENGE_MODE)
-            return CHALLENGE_MODE, "Voice not verified. Enter the owner PIN/password using the local input."
-        return state, "Owner access unchanged."
+        self.set_state(CHALLENGE_MODE)
+        return CHALLENGE_MODE, "Live voice not verified. Enter the owner PIN/password using the local input."
+
+    def verify_owner_voice(self, audio, sample_rate: int = 16000) -> tuple[bool, float, bool]:
+        """Require both an encrypted owner match and validated anti-spoof result."""
+        try:
+            if self.voice_authenticator is None:
+                if SpeakerAuthenticator is None:
+                    return False, 0.0, False
+                self.voice_authenticator = SpeakerAuthenticator()
+            matched, score, live = self.voice_authenticator.verify(audio, sample_rate=sample_rate)
+            score = float(score)
+            authorized = matched is True and live is True and math.isfinite(score) and score >= COSINE_THRESHOLD
+            return authorized, score if math.isfinite(score) else 0.0, live is True
+        except Exception:
+            return False, 0.0, False
 
     def process_voice_authentication(self, audio, sample_rate: int = 16000) -> tuple[str, str]:
-        if self.voice_authenticator is None:
-            if SpeakerAuthenticator is None:
-                self.set_state(CHALLENGE_MODE)
-                return CHALLENGE_MODE, "Voice verification unavailable; enter the owner PIN."
-            self.voice_authenticator = SpeakerAuthenticator()
-        matched, score, live = self.voice_authenticator.verify(audio, sample_rate=sample_rate)
+        matched, score, live = self.verify_owner_voice(audio, sample_rate=sample_rate)
         return self.process_voice_result(matched, score, live, is_stranger=not matched)
 
     def is_privacy_lock_active(self) -> bool:

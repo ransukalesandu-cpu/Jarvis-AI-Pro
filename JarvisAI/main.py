@@ -1647,18 +1647,10 @@ class JarvisLive:
         return role
 
     def _verify_voice_id_for_current_turn(self) -> bool:
-        if not self._voice_id_enabled or not voice_id.is_enabled():
-            return not voice_id.is_enabled()
-        with self._voice_id_audio_lock:
-            pcm = self._voice_id_turn_audio
-        if len(pcm) < int(SEND_SAMPLE_RATE * voice_id.MIN_AUDIO_SECONDS * 2):
-            self.ui.write_log("SEC: Voice ID needs more clear speech; spoken approval denied.")
-            return False
-        role, score = voice_id.identify_speaker(np.frombuffer(pcm, dtype=np.int16))
-        matched = (role == "owner")
-        if not matched:
-            self.ui.write_log(f"SEC: Voice ID identified speaker as '{role}' (score {score:.2f}); owner access required.")
-        return matched
+        """Require anti-spoof validation as well as the enrolled owner match."""
+        manager = security.get_auth_manager()
+        matched, _score, live = manager.verify_owner_voice(self._get_current_turn_audio())
+        return matched is True and live is True
 
     def _get_current_turn_audio(self) -> bytes:
         if not hasattr(self, "_voice_id_audio_lock"):
@@ -3324,13 +3316,10 @@ class JarvisLive:
                                     self.ui.write_log(f"SEC: Speaker identified as '{current_speaker_role}'.")
                                     manager = security.get_auth_manager()
                                     if not manager.is_silent() and not manager.requires_owner_reauthentication():
-                                        if current_speaker_role == "owner":
-                                            try:
-                                                manager.grant_owner_access("voice")
-                                            except (PermissionError, ValueError):
-                                                pass
-                                        elif manager.get_state() == "FULL_ACCESS_MODE" and manager.get_auth_method() == "voice":
-                                            manager.set_state("RESTRICTED_MODE")
+                                        await asyncio.to_thread(
+                                            manager.process_voice_authentication,
+                                            self._get_current_turn_audio(),
+                                        )
                                     self._queue_auth_state_broadcast()
                                 security.mark_user_turn_started()
                                 if not voice_confirmation_consumed:

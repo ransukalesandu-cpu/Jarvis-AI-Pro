@@ -32,54 +32,88 @@ from PyQt6.QtWidgets import QWidget
 # Cheek nodes: 76..81
 
 BIHANSA_LANDMARKS_3D: List[Tuple[float, float, float]] = [
-    # --- Jawline & Face Oval (0 to 16) ---
-    (-0.72, -0.70, -0.30), (-0.70, -0.45, -0.25), (-0.68, -0.20, -0.20),
-    (-0.64,  0.05, -0.15), (-0.58,  0.30, -0.10), (-0.48,  0.55, -0.05),
-    (-0.32,  0.78,  0.05), (-0.16,  0.92,  0.12), ( 0.00,  0.98,  0.15), # Chin
-    ( 0.16,  0.92,  0.12), ( 0.32,  0.78,  0.05), ( 0.48,  0.55, -0.05),
-    ( 0.58,  0.30, -0.10), ( 0.64,  0.05, -0.15), ( 0.68, -0.20, -0.20),
-    ( 0.70, -0.45, -0.25), ( 0.72, -0.70, -0.30),
-
-    # --- Eyebrows (17 to 26) ---
-    # Right eyebrow (17..21)
-    (-0.52, -0.42, 0.15), (-0.42, -0.48, 0.22), (-0.30, -0.49, 0.25),
-    (-0.18, -0.46, 0.24), (-0.08, -0.40, 0.20),
-    # Left eyebrow (22..26)
-    ( 0.08, -0.40, 0.20), ( 0.18, -0.46, 0.24), ( 0.30, -0.49, 0.25),
-    ( 0.42, -0.48, 0.22), ( 0.52, -0.42, 0.15),
-
-    # --- Nose Bridge & Nostrils (27 to 35) ---
-    ( 0.00, -0.35, 0.22), ( 0.00, -0.22, 0.28), ( 0.00, -0.08, 0.35), ( 0.00,  0.06, 0.42), # Nose bridge
-    (-0.16,  0.12, 0.30), (-0.08,  0.16, 0.38), ( 0.00,  0.18, 0.42), # Tip/Nostril
-    ( 0.08,  0.16, 0.38), ( 0.16,  0.12, 0.30),
-
-    # --- Right Eye (36 to 41) ---
-    (-0.45, -0.28, 0.18), (-0.36, -0.34, 0.22), (-0.24, -0.33, 0.22),
-    (-0.16, -0.27, 0.18), (-0.24, -0.22, 0.16), (-0.36, -0.23, 0.16),
-
-    # --- Left Eye (42 to 47) ---
-    ( 0.16, -0.27, 0.18), ( 0.24, -0.33, 0.22), ( 0.36, -0.34, 0.22),
-    ( 0.45, -0.28, 0.18), ( 0.36, -0.23, 0.16), ( 0.24, -0.22, 0.16),
-
-    # --- Outer Lips (48 to 59) ---
-    (-0.28,  0.35, 0.25), (-0.18,  0.30, 0.30), (-0.08,  0.28, 0.33),
-    ( 0.00,  0.29, 0.34), ( 0.08,  0.28, 0.33), ( 0.18,  0.30, 0.30),
-    ( 0.28,  0.35, 0.25), ( 0.18,  0.46, 0.28), ( 0.08,  0.50, 0.30),
-    ( 0.00,  0.51, 0.31), (-0.08,  0.50, 0.30), (-0.18,  0.46, 0.28),
-
-    # --- Inner Lips (60 to 67) ---
-    (-0.22,  0.36, 0.26), (-0.08,  0.34, 0.31), ( 0.00,  0.35, 0.32),
-    ( 0.08,  0.34, 0.31), ( 0.22,  0.36, 0.26), ( 0.08,  0.42, 0.29),
-    ( 0.00,  0.44, 0.30), (-0.08,  0.42, 0.29),
-
-    # --- Forehead & Hairline Contour (68 to 75) ---
-    (-0.68, -0.85, -0.25), (-0.48, -0.92, -0.10), (-0.24, -0.96,  0.05),
-    ( 0.00, -0.98,  0.10), ( 0.24, -0.96,  0.05), ( 0.48, -0.92, -0.10),
-    ( 0.68, -0.85, -0.25), ( 0.00, -0.65,  0.12),
-
-    # --- Cheeks & Mid-Face Anchor Nodes (76 to 81) ---
-    (-0.48, -0.05, 0.05), (-0.38,  0.15, 0.12), (-0.26,  0.25, 0.18),
-    ( 0.26,  0.25, 0.18), ( 0.38,  0.15, 0.12), ( 0.48, -0.05, 0.05),
+    (-0.810000, -0.125000, 0.100000),
+    (-0.794375, 0.031250, 0.131250),
+    (-0.766250, 0.187500, 0.167500),
+    (-0.719375, 0.343750, 0.211250),
+    (-0.635000, 0.487500, 0.260000),
+    (-0.528750, 0.618750, 0.310000),
+    (-0.372500, 0.712500, 0.360000),
+    (-0.193750, 0.774375, 0.395000),
+    (0.000000, 0.815000, 0.420000),
+    (0.196875, 0.765000, 0.395000),
+    (0.377500, 0.688750, 0.360000),
+    (0.533750, 0.573125, 0.310000),
+    (0.640000, 0.425000, 0.260000),
+    (0.724375, 0.265625, 0.211250),
+    (0.771250, 0.093750, 0.167500),
+    (0.799375, -0.068750, 0.131250),
+    (0.815000, -0.225000, 0.100000),
+    (-0.610000, -0.275000, 0.250000),
+    (-0.485000, -0.335000, 0.300000),
+    (-0.335000, -0.350000, 0.350000),
+    (-0.185000, -0.325000, 0.380000),
+    (-0.085000, -0.285000, 0.390000),
+    (0.090000, -0.300000, 0.390000),
+    (0.215000, -0.365000, 0.380000),
+    (0.365000, -0.385000, 0.350000),
+    (0.515000, -0.365000, 0.300000),
+    (0.640000, -0.300000, 0.250000),
+    (0.000000, -0.285000, 0.400000),
+    (0.000000, -0.150000, 0.450000),
+    (0.000000, 0.000000, 0.500000),
+    (0.000000, 0.135000, 0.550000),
+    (-0.135000, 0.175000, 0.480000),
+    (-0.060000, 0.205000, 0.540000),
+    (0.000000, 0.215000, 0.580000),
+    (0.065000, 0.205000, 0.540000),
+    (0.140000, 0.165000, 0.480000),
+    (-0.510000, -0.185000, 0.320000),
+    (-0.410000, -0.235000, 0.340000),
+    (-0.310000, -0.235000, 0.350000),
+    (-0.210000, -0.185000, 0.340000),
+    (-0.310000, -0.135000, 0.330000),
+    (-0.410000, -0.135000, 0.330000),
+    (0.190000, -0.215000, 0.340000),
+    (0.290000, -0.285000, 0.350000),
+    (0.390000, -0.285000, 0.340000),
+    (0.490000, -0.265000, 0.320000),
+    (0.390000, -0.215000, 0.330000),
+    (0.290000, -0.215000, 0.330000),
+    (-0.285000, 0.415000, 0.350000),
+    (-0.201667, 0.381667, 0.370000),
+    (-0.106667, 0.365000, 0.393333),
+    (0.000000, 0.365000, 0.420000),
+    (0.110000, 0.355000, 0.393333),
+    (0.206667, 0.361667, 0.370000),
+    (0.290000, 0.385000, 0.350000),
+    (0.206667, 0.438333, 0.370000),
+    (0.110000, 0.471667, 0.393333),
+    (0.000000, 0.485000, 0.420000),
+    (-0.106667, 0.471667, 0.393333),
+    (-0.201667, 0.448333, 0.370000),
+    (-0.235000, 0.415000, 0.360000),
+    (-0.110000, 0.400000, 0.390000),
+    (0.000000, 0.400000, 0.410000),
+    (0.115000, 0.390000, 0.390000),
+    (0.240000, 0.390000, 0.360000),
+    (0.115000, 0.425000, 0.390000),
+    (0.000000, 0.435000, 0.410000),
+    (-0.110000, 0.425000, 0.390000),
+    (-0.710000, -0.625000, 0.180000),
+    (-0.510000, -0.725000, 0.226667),
+    (-0.273333, -0.791667, 0.266667),
+    (0.000000, -0.825000, 0.300000),
+    (0.260000, -0.825000, 0.266667),
+    (0.490000, -0.791667, 0.226667),
+    (0.690000, -0.725000, 0.180000),
+    (0.000000, -0.500000, 0.300000),
+    (-0.660000, 0.175000, 0.220000),
+    (-0.510000, 0.265000, 0.280000),
+    (-0.385000, 0.350000, 0.320000),
+    (0.415000, 0.335000, 0.320000),
+    (0.540000, 0.225000, 0.280000),
+    (0.665000, 0.100000, 0.220000),
 ]
 
 # Triangulation indices linking landmark nodes into structural facial mesh
@@ -116,6 +150,32 @@ BIHANSA_MESH_EDGES: List[Tuple[int, int]] = [
     (48,60),(51,62),(54,64),(57,66),
 ]
 
+# Surface patches join eye, nose, cheek and chin contours into triangles.
+BIHANSA_MESH_TRIANGLES = (
+    (17, 18, 36), (18, 36, 37), (18, 19, 37), (19, 37, 38),
+    (19, 20, 38), (20, 21, 39), (20, 38, 39),
+    (22, 23, 42), (23, 42, 43), (23, 24, 43), (24, 25, 44),
+    (24, 43, 44), (25, 26, 45), (25, 44, 45),
+    (39, 27, 28), (42, 27, 28), (39, 28, 29), (42, 28, 29),
+    (40, 39, 31), (39, 29, 31), (29, 30, 31), (30, 31, 33),
+    (47, 42, 35), (42, 29, 35), (29, 30, 35), (30, 33, 35),
+    (36, 41, 76), (41, 40, 76), (40, 31, 76),
+    (45, 46, 81), (46, 47, 81), (47, 35, 81),
+    (76, 31, 77), (31, 48, 77), (77, 48, 78),
+    (81, 35, 80), (35, 54, 80), (80, 54, 79),
+    (3, 4, 76), (4, 5, 48), (4, 48, 76), (5, 6, 48),
+    (13, 12, 81), (12, 11, 54), (12, 54, 81), (11, 10, 54),
+    (6, 7, 59), (6, 48, 59), (7, 8, 58), (7, 58, 59),
+    (8, 57, 58), (8, 9, 57), (9, 55, 57), (9, 10, 55), (10, 54, 55),
+)
+BIHANSA_MESH_EDGES = sorted(set(
+    tuple(sorted(edge)) for edge in BIHANSA_MESH_EDGES
+) | {
+    tuple(sorted((triangle[i], triangle[(i + 1) % 3])))
+    for triangle in BIHANSA_MESH_TRIANGLES for i in range(3)
+})
+
+
 
 class BihansaHologramWidget(QWidget):
     """3D-style portrait-derived neural hologram visualizer for Bihansa mode."""
@@ -126,6 +186,9 @@ class BihansaHologramWidget(QWidget):
         super().__init__(parent)
         self.setMinimumSize(320, 320)
 
+        self._reduced_motion = False
+        self._glow_intensity = 1.0
+        self._animation_speed = 1.0
         self._state = "IDLE"
         self._effects_enabled = True
         self._voice_reactive = True
@@ -171,6 +234,18 @@ class BihansaHologramWidget(QWidget):
     # -----------------------------------------------------------------------
     # Control API
     # -----------------------------------------------------------------------
+    def set_reduced_motion(self, enabled: bool):
+        self._reduced_motion = bool(enabled)
+        self._tick()
+
+    def set_glow_intensity(self, intensity: float):
+        self._glow_intensity = max(0.0, min(1.5, float(intensity)))
+        self.update()
+
+    def set_animation_speed(self, speed: float):
+        self._animation_speed = max(0.0, min(2.0, float(speed)))
+        self.update()
+
     @pyqtSlot(str)
     def set_state(self, state: str):
         self._state = str(state or "IDLE").upper()
@@ -212,7 +287,7 @@ class BihansaHologramWidget(QWidget):
     # Tick Update Loop
     # -----------------------------------------------------------------------
     def _tick(self):
-        t = time.monotonic() - self._start_time
+        t = 0.0 if self._reduced_motion else (time.monotonic() - self._start_time) * self._animation_speed
 
         # Audio energy smooth lerp
         self._audio_energy += (self._target_energy - self._audio_energy) * 0.22
@@ -236,7 +311,11 @@ class BihansaHologramWidget(QWidget):
         self._breath_scale = 1.0 + 0.03 * math.sin(t * 1.2) + (self._audio_energy * 0.08)
 
         # Scan line progression
-        self._scan = (self._scan + (0.015 if self._state == "SPEAKING" else 0.007)) % 1.0
+        if self._reduced_motion or self._animation_speed == 0:
+            self._yaw = self._pitch = self._roll = 0.0
+            self._breath_scale = 1.0
+        else:
+            self._scan = (self._scan + self._animation_speed * (0.015 if self._state == "SPEAKING" else 0.007)) % 1.0
 
         self.update()
 
@@ -252,13 +331,12 @@ class BihansaHologramWidget(QWidget):
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
         w, h = self.width(), self.height()
-        t = time.monotonic() - self._start_time
+        t = 0.0 if self._reduced_motion else (time.monotonic() - self._start_time) * self._animation_speed
 
         # Dark sleek background
         p.fillRect(self.rect(), QColor("#0e0512"))
 
         cx, cy = w / 2.0, h * 0.44
-        face_box_size = min(w, h) * 0.42
 
         # --- 1. Background Orbital Rings & Neural Glow ---
         if self._effects_enabled:
@@ -271,6 +349,7 @@ class BihansaHologramWidget(QWidget):
         portrait_h = h * 0.78
         target_rect = QRectF(margin_x, top_y, portrait_w, portrait_h)
 
+        p_rect = target_rect
         if not self._portrait.isNull():
             scaled_p = self._portrait.scaled(
                 int(portrait_w), int(portrait_h),
@@ -306,7 +385,11 @@ class BihansaHologramWidget(QWidget):
 
         # --- 3. Landmark-Aligned 3D Triangulated Mesh Overlay ---
         if self._effects_enabled:
-            self._draw_3d_face_mesh(p, cx, cy, face_box_size * self._breath_scale)
+            p.save()
+            p.setClipRect(p_rect)
+            p.setOpacity(min(1.0, self._glow_intensity))
+            self._draw_3d_face_mesh(p, p_rect)
+            p.restore()
 
         # --- 4. Floating Neural Particles ---
         if self._effects_enabled:
@@ -340,8 +423,8 @@ class BihansaHologramWidget(QWidget):
         p.setPen(QPen(pink, 1.2, Qt.PenStyle.DashLine))
         p.drawArc(arc_rect.adjusted(10, 10, -10, -10), int((-t * 28 % 360) * 16), 80 * 16)
 
-    def _draw_3d_face_mesh(self, p: QPainter, cx: float, cy: float, scale: float):
-        """Projects 3D face landmarks with yaw/pitch/roll into 2D canvas coordinates."""
+    def _project_face_mesh(self, rect: QRectF) -> List[Tuple[float, float, float]]:
+        """Project the mesh into the exact fitted portrait rectangle."""
         cos_y, sin_y = math.cos(self._yaw), math.sin(self._yaw)
         cos_p, sin_p = math.cos(self._pitch), math.sin(self._pitch)
         cos_r, sin_r = math.cos(self._roll), math.sin(self._roll)
@@ -376,11 +459,19 @@ class BihansaHologramWidget(QWidget):
             # Perspective projection
             fov = 3.2
             dist = fov / (fov + z2 + 0.4)
-            px = cx + x3 * scale * dist
-            py = cy + y3 * scale * dist
+            # Normalize perspective against the rest pose so landmarks match
+            # the portrait at zero rotation; animation adds restrained parallax.
+            rest_dist = fov / (fov + z0 + 0.4)
+            perspective = dist / rest_dist
+            px = rect.x() + (0.492 + x3 * 0.2 * perspective * self._breath_scale) * rect.width()
+            py = rect.y() + (0.385 + y3 * 0.2 * perspective * self._breath_scale) * rect.height()
 
             projected_pts.append((px, py, z2))
 
+        return projected_pts
+
+    def _draw_3d_face_mesh(self, p: QPainter, rect: QRectF):
+        projected_pts = self._project_face_mesh(rect)
         # Render Wireframe Mesh Edges
         primary_col = QColor("#ff6fe2") if self._state != "LISTENING" else QColor("#67eaff")
         edge_pen_width = 1.4 if self._state in ("SPEAKING", "LISTENING") else 1.0

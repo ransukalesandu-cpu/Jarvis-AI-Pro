@@ -1,6 +1,7 @@
 import unittest
 import numpy as np
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QCoreApplication, QEvent
 import sys
 
 class PR68FixesTests(unittest.TestCase):
@@ -23,7 +24,12 @@ class PR68FixesTests(unittest.TestCase):
         """Verify MainWindow_voice_id_enabled_sig exists and is connected."""
         from ui import MainWindow
         win = MainWindow("face.png")
-        self.assertTrue(hasattr(win, "_voice_id_enabled_sig"))
+        try:
+            self.assertTrue(hasattr(win, "_voice_id_enabled_sig"))
+        finally:
+            win.close()
+            win.deleteLater()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 if __name__ == "__main__":
     unittest.main()

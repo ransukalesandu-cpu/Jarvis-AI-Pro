@@ -53,7 +53,7 @@ Thank you for helping improve Jarvis AI security.
 JARVIS uses a 4-state authentication state machine in `JarvisAI/security/auth_manager.py` backed by local Argon2id PIN vault hashing and DPAPI / native OS credential encryption:
 
 1. **`RESTRICTED_MODE` (Stranger Mode):** Default unverified state. Access is sandboxed to Tier-1 basic tasks (weather, time, web search, public telemetry reads).
-2. **`FULL_ACCESS_MODE` (Verified Owner):** Session-only verified state granted via enrolled Voice ID or local PIN entry. Permits autonomous system control without interactive pop-ups.
+2. **`FULL_ACCESS_MODE` (Verified Owner):** Session-only verified state granted via local PIN entry or an enrolled owner match plus explicit anti-spoof verification of live speech. Speaker similarity, role labels, and disabled Voice ID never authorize access by themselves. Dangerous actions still require confirmation.
 3. **`CHALLENGE_MODE`:** Prompted when voice identification is unverified or degraded, requiring local PIN re-authentication.
 4. **`PRIVACY_LOCK`:** Activated after 3 consecutive failed PIN attempts or explicit trigger.
 
@@ -65,3 +65,7 @@ When `PRIVACY_LOCK` triggers:
 - Suppresses pending assistant output and wipes sensitive memory buffers.
 - Enforces a monotonic hardware timer clamp `max(60, min(duration, 300))` ensuring the lock duration stays strictly bounded between 60 seconds (1 minute) and 300 seconds (5 minutes).
 - Broadcasts emergency alerts via paired dashboard devices and optional Twilio SMS.
+
+### Voice authorization and PIN fallback
+
+Voice-based owner access and spoken confirmations require `SpeakerAuthenticator` to verify both the encrypted owner profile and a separately validated anti-spoof detector returning literal `True`. The acoustic quality check is not liveness proof. No anti-spoof detector is installed/configured by default: missing or failing verification denies voice authorization and falls back to local PIN/password entry or the manual HUD confirmation path. PIN-authenticated sessions remain usable when voice verification is unavailable. Privacy Lock, including the post-cooldown PIN reauthentication requirement, remains enforced.

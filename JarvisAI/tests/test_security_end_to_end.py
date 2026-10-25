@@ -56,6 +56,9 @@ class VoiceAntiSpoofTests(unittest.TestCase):
 
 
 class _OwnerSession:
+    def is_privacy_lock_active(self):
+        return False
+
     def get_state(self):
         from core.security import FULL_ACCESS_MODE
         return FULL_ACCESS_MODE
@@ -123,6 +126,98 @@ class DangerousActionGateTests(unittest.TestCase):
                 self.assertIn("rather than from you directly", result)
                 self.assertEqual(executed, [])
                 request.assert_not_called()
+
+class LiveOwnerAuthorizationTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from security.auth_manager import AuthManager
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.auth = AuthManager(vault_path=root / 'pin.dat', state_path=root / 'auth.json')
+        self.audio = _variable_audio()
+
+    def test_direct_voice_grant_and_implicit_liveness_are_rejected(self):
+        from security.auth_manager import FULL_ACCESS_MODE
+        with self.assertRaises(PermissionError):
+            self.auth.grant_owner_access('voice')
+        for live in (False, None, 1):
+            with self.subTest(live=live):
+                state, _ = self.auth.process_voice_result(True, .99, is_live=live)
+                self.assertNotEqual(state, FULL_ACCESS_MODE)
+        state, _ = self.auth.process_voice_result(True, .99)
+        self.assertNotEqual(state, FULL_ACCESS_MODE)
+
+    def test_missing_failing_or_raising_detector_uses_local_pin(self):
+        from core import voice_id
+        from security.voice_auth import SpeakerAuthenticator
+        from security.adaptive_auth import AdaptiveAuthManager
+        self.auth.set_master_pin('synthetic-local-pin')
+        for detector in (None, lambda _s, _r: False,
+                         lambda _s, _r: (_ for _ in ()).throw(RuntimeError('unavailable'))):
+            with self.subTest(detector=detector), \
+                 mock.patch.object(voice_id, 'is_enrolled', return_value=True), \
+                 mock.patch.object(voice_id, 'is_enabled', return_value=True), \
+                 mock.patch.object(voice_id, 'backend_ready', return_value=True), \
+                 mock.patch.object(voice_id, 'verify', return_value=(True, .99)), \
+                 mock.patch.object(self.auth, 'voice_authenticator', SpeakerAuthenticator(anti_spoof_verifier=detector)):
+                self.auth.set_state('RESTRICTED_MODE')
+                prompt = mock.Mock(return_value='synthetic-local-pin')
+                success, method, _ = AdaptiveAuthManager(self.auth).authenticate_sensitive_command(
+                    audio_sample=self.audio, pin_prompt_callback=prompt)
+                self.assertTrue(success)
+                self.assertEqual(method, 'pin')
+                prompt.assert_called_once_with()
+
+    def test_live_voice_authorizes_confirmation_but_role_or_pin_alone_does_not(self):
+        from core import security, voice_id, confirm
+        from security.voice_auth import SpeakerAuthenticator
+        self.auth.voice_authenticator = SpeakerAuthenticator(anti_spoof_verifier=lambda _s, _r: True)
+        with mock.patch.object(security, '_auth_manager', self.auth), \
+             mock.patch.object(security, '_turn_audio_cb', return_value=self.audio), \
+             mock.patch.object(voice_id, 'is_enabled', return_value=True), \
+             mock.patch.object(voice_id, 'backend_ready', return_value=True), \
+             mock.patch.object(voice_id, 'verify', return_value=(True, .99)):
+            self.assertTrue(security.authorize_voice_confirmation())
+            # Exercise the actual pending-confirmation gate with live verification.
+            with mock.patch.object(confirm, '_pending', None), \
+                 mock.patch.object(confirm, '_show_cb', mock.Mock()), \
+                 mock.patch.object(confirm, '_hide_cb', mock.Mock()):
+                confirm.request('sec-send_message', 'Send', '', lambda: 'sent')
+                self.assertEqual(confirm.resolve_by_voice('confirm action'), 'approved')
+            self.auth.voice_authenticator = SpeakerAuthenticator()
+            self.assertFalse(security.authorize_voice_confirmation())
+            self.auth.grant_owner_access('pin')
+            self.assertFalse(security.authorize_voice_confirmation())
+            self.assertTrue(self.auth.is_owner_access_allowed())
+
+    def test_voice_session_is_revoked_when_next_speech_fails_liveness(self):
+        from security.voice_auth import SpeakerAuthenticator
+        self.auth.process_voice_result(True, .99, is_live=True)
+        self.assertTrue(self.auth.is_owner_access_allowed())
+        self.auth.voice_authenticator = SpeakerAuthenticator()
+        self.auth.process_voice_authentication(self.audio)
+        self.assertFalse(self.auth.is_owner_access_allowed())
+
+    def test_guard_falls_back_to_pin_even_with_owner_role_and_similarity_callback(self):
+        from core import security, voice_id
+        self.auth.set_master_pin('synthetic-local-pin')
+        with mock.patch.object(security, '_auth_manager', self.auth), \
+             mock.patch.object(security, '_voice_id_is_required', return_value=True), \
+             mock.patch.object(security, '_voice_id_role_cb', return_value='owner'), \
+             mock.patch.object(security, '_voice_id_verifier_cb', return_value=True), \
+             mock.patch.object(security, '_turn_audio_cb', return_value=self.audio), \
+             mock.patch.object(security, '_pin_prompt_cb', return_value='synthetic-local-pin') as prompt, \
+             mock.patch.object(security, '_untrusted_context', return_value=False), \
+             mock.patch.object(security, '_rate_check', return_value=None), \
+             mock.patch.object(security, 'audit'), \
+             mock.patch.object(security.confirm_gate, 'request', return_value='pending'), \
+             mock.patch.object(voice_id, 'is_enrolled', return_value=True), \
+             mock.patch.object(voice_id, 'verify', return_value=(True, .99)):
+            result = security.guard('file_controller', {'action': 'delete'}, lambda: self.fail('Unconfirmed action'))
+        self.assertEqual(result, 'pending')
+        prompt.assert_called_once_with()
+        self.assertEqual(self.auth.get_auth_method(), 'pin')
 
 
 if __name__ == "__main__":

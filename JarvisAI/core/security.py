@@ -466,22 +466,17 @@ def get_current_speaker_role() -> str:
 
 
 def _voice_id_authorized() -> bool:
-    if _auth_manager.is_owner_access_allowed():
-        return True
-    if not _voice_id_is_required():
-        return True
-    # Do not let a manual typed turn count as biometrics for spoken approvals.
-    if _voice_id_role_cb is not None:
-        try:
-            return str(_voice_id_role_cb() or "").strip().lower() == "owner"
-        except Exception:
+    """A role label, disabled Voice ID, or PIN session is not live-speech proof."""
+    try:
+        if _auth_manager.is_silent() or _turn_audio_cb is None:
             return False
-    if _voice_id_verifier_cb is not None:
-        try:
-            return bool(_voice_id_verifier_cb())
-        except Exception:
+        audio = _turn_audio_cb()
+        if audio is None:
             return False
-    return False
+        matched, _score, live = _auth_manager.verify_owner_voice(audio)
+        return matched is True and live is True
+    except Exception:
+        return False
 
 
 def voice_id_required() -> bool:
@@ -490,8 +485,8 @@ def voice_id_required() -> bool:
 
 
 def authorize_voice_confirmation() -> bool:
-    """Check actual Voice ID or an owner-authenticated PIN session for approval."""
-    return _auth_manager.is_owner_access_allowed() or (not _voice_id_is_required()) or _voice_id_authorized()
+    """Require live owner speech for spoken approval; local HUD approval remains available."""
+    return _voice_id_authorized()
 
 
 def mark_untrusted_seen() -> None:
@@ -898,7 +893,7 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
     """
     tier = tier_for(name, params)
     auth = _auth_manager
-    auth_state = auth.get_state()
+    auth.get_state()
 
     # During Privacy Lock (including the post-cooldown PIN re-auth window), no
     # tool may produce data or trigger a side effect.
@@ -906,62 +901,11 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
         audit("call", name, tier, "denied", "Privacy Lock / owner re-authentication required")
         return "JARVIS Privacy Lock is active. Private operations are blocked."
 
-    # Promote only from an actual enrolled Voice ID callback, never from a typed
-    # command's manual-turn marker. A successful PIN remains valid for this
-    # process even if subsequent voice verification is uncertain.
-    if auth_state != FULL_ACCESS_MODE and not auth.requires_owner_reauthentication() and _voice_id_is_required():
-        role = "stranger"
-        if _voice_id_role_cb is not None:
-            try:
-                role = str(_voice_id_role_cb() or "stranger").strip().lower()
-            except Exception:
-                role = "stranger"
-        if role == "owner":
-            try:
-                auth.grant_owner_access("voice")
-                auth_state = FULL_ACCESS_MODE
-            except (PermissionError, ValueError):
-                auth_state = auth.get_state()
-    elif auth_state == FULL_ACCESS_MODE and auth.get_auth_method() == "voice" and _voice_id_is_required():
-        # If an already voice-authenticated session is subsequently used by an
-        # unrecognized speaker, downgrade it. PIN-authenticated sessions are
-        # deliberately not downgraded by voice uncertainty.
-        role = "stranger"
-        if _voice_id_role_cb is not None:
-            try:
-                role = str(_voice_id_role_cb() or "stranger").strip().lower()
-            except Exception:
-                role = "stranger"
-        if role != "owner":
-            auth.set_state(RESTRICTED_MODE)
-            auth_state = RESTRICTED_MODE
-
-    allowed, permission_message = ActionDispatcher.can_dispatch(name, auth.get_state())
-    if not allowed:
-        if _voice_id_is_required() and tier in (TIER_SENSITIVE, TIER_DANGEROUS):
-            current_role = "stranger"
-            if _voice_id_role_cb is not None:
-                try:
-                    current_role = str(_voice_id_role_cb() or "stranger").strip().lower()
-                except Exception:
-                    current_role = "stranger"
-            if current_role != "owner":
-                audit("call", name, tier, "denied", f"Voice ID role '{current_role}' denied full access")
-                return (
-                    f"I cannot perform '{_confirmation_label(name)}' because full access is reserved "
-                    f"for the PC owner (recognized as {current_role if current_role != 'stranger' else 'not recognized as the owner'})."
-                )
-        if auth.is_pin_enrolled():
-            auth.set_state(CHALLENGE_MODE)
-            return (
-                "Owner verification is required for this action. Ask the user to type the "
-                "owner PIN/password into the local JARVIS command input or paired dashboard. "
-                "Do not ask them to speak the credential; it must not be sent to cloud AI."
-            )
-        return (
-            "This action requires owner verification, but no owner PIN is configured. "
-            "Ask the laptop owner to run scripts/setup_owner_auth.py locally."
-        )
+    # Speaker-role labels are informational; they never grant owner access.
+    # Recheck a voice-authenticated session against the current sensitive turn.
+    if (tier in (TIER_SENSITIVE, TIER_DANGEROUS)
+            and auth.get_auth_method() == "voice" and not _voice_id_authorized()):
+        auth.set_state(RESTRICTED_MODE)
 
     # HUD media controls skip the confirmation banner, but they must still be
     # traceable to a fresh user request so untrusted page/email content cannot
@@ -999,11 +943,6 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
             except Exception:
                 turn_audio = None
 
-        if _voice_id_role_cb is not None or _voice_id_verifier_cb is not None:
-            speaker_role = get_current_speaker_role()
-            if speaker_role == "owner":
-                _auth_manager.grant_owner_access("voice")
-
         if not _auth_manager.is_owner_access_allowed():
             success, method_used, auth_msg = adaptive_auth.authenticate_sensitive_command(
                 audio_sample=turn_audio,
@@ -1015,9 +954,36 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
                 speaker_role = get_current_speaker_role()
                 role_label = f"recognized as {speaker_role}" if speaker_role != "stranger" else "not recognized as the owner"
                 return (
-                    f"I cannot perform '{_confirmation_label(name)}' because full access is reserved for the verified PC owner "
+                    f"I cannot perform '{_confirmation_label(name)}' because full access is reserved for the PC owner "
                     f"({role_label}). Adaptive authentication requirement: {auth_msg}"
                 )
+
+    allowed, permission_message = ActionDispatcher.can_dispatch(name, auth.get_state())
+    if not allowed:
+        if _voice_id_is_required() and tier in (TIER_SENSITIVE, TIER_DANGEROUS):
+            current_role = "stranger"
+            if _voice_id_role_cb is not None:
+                try:
+                    current_role = str(_voice_id_role_cb() or "stranger").strip().lower()
+                except Exception:
+                    current_role = "stranger"
+            if current_role != "owner":
+                audit("call", name, tier, "denied", f"Voice ID role '{current_role}' denied full access")
+                return (
+                    f"I cannot perform '{_confirmation_label(name)}' because full access is reserved "
+                    f"for the PC owner (recognized as {current_role if current_role != 'stranger' else 'not recognized as the owner'})."
+                )
+        if auth.is_pin_enrolled():
+            auth.set_state(CHALLENGE_MODE)
+            return (
+                "Owner verification is required for this action. Ask the user to type the "
+                "owner PIN/password into the local JARVIS command input or paired dashboard. "
+                "Do not ask them to speak the credential; it must not be sent to cloud AI."
+            )
+        return (
+            "This action requires owner verification, but no owner PIN is configured. "
+            "Ask the laptop owner to run scripts/setup_owner_auth.py locally."
+        )
 
     # 2) rate limit — independent of confirmation, catches loops.
     # Preflight without charging the quota. A pending or rejected confirmation

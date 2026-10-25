@@ -421,7 +421,7 @@ inside broad-control tools fail closed to confirmation. Examples include:
 * Phone calls
 * Other actions classified as dangerous
 
-You can approve or cancel a pending request by clicking **CONFIRM** or **CANCEL** on the HUD, or by saying **"confirm action"** or **"cancel action"**. Voice phrases are accepted only while a confirmation is pending; a plain "yes" is not enough. On a fresh install, the confirmation UI and audit ledger initialize on the first JARVIS launch; API keys and a Voice ID profile are not needed for HUD confirmation prompts. Voice approvals use Voice ID only when it is enabled. **Dev Agent** and **memory export/import** require a manual HUD click. Other confirmation-gated actions—including email, messages, Instagram, phone calls, and computer controls—can be approved by voice; Voice ID is checked when enabled and supported on that platform.
+You can approve or cancel a pending request by clicking **CONFIRM** or **CANCEL** on the HUD, or by saying **"confirm action"** or **"cancel action"**. Voice phrases are accepted only while a confirmation is pending; a plain "yes" is not enough. On a fresh install, the confirmation UI and audit ledger initialize on the first JARVIS launch; API keys and a Voice ID profile are not needed for HUD confirmation prompts. Voice approvals use Voice ID only when it is enabled. **Dev Agent** and **memory export/import** require a manual HUD click. Other confirmation-gated actions—including email, messages, Instagram, phone calls, and computer controls—can be approved by voice; Spoken approvals require verified live owner speech with anti-spoof validation; if verification is unavailable, use the manual HUD confirmation.
 
 ### Self-Healing System — Version 1
 
@@ -467,7 +467,7 @@ The speaker model runs locally and downloads its model files to the user-level H
 
 Install `requirements-voice-id.txt` separately on every device where you want Voice ID. Windows DPAPI profiles cannot be moved to another device or OS, and macOS/Linux profiles also depend on that device's OS credential vault. Enroll again on each device. Python 3.12 is recommended for the optional SpeechBrain packages.
 
-Voice ID is a convenience speaker check, not proof against replayed recordings or voice-cloning attacks. Keep the manual confirmation path available for sensitive actions.
+Voice ID alone is a convenience speaker check, not proof against replayed recordings or voice-cloning attacks. Voice authorization requires a separately validated anti-spoof detector; none is configured by default. When live-speech verification is missing or fails, use the local owner PIN/password and manual confirmation path.
 
 The intended execution flow is:
 
@@ -1209,7 +1209,7 @@ All discovered capabilities are passed through the security layer before executi
 
 JARVIS operates on an **Autonomous Biometric Authority & Privacy Defense Model**:
 
-* **Verified Owner:** Full autonomous system control without interactive GUI confirmation pop-ups once enrolled owner voice ID or master PIN is verified.
+* **Verified Owner:** Session owner access after local PIN verification or an enrolled voice match with verified live speech and anti-spoof validation. Dangerous actions still require confirmation.
 * **Stranger Mode:** Sandboxed to Tier-1 basic tasks (weather, time, web search, system telemetry reads).
 * **Challenge Mode:** Secure PIN fallback if voice is degraded, noisy, or unverified.
 * **3-Strike Privacy Lock:** Automatically locks the Windows desktop (`LockWorkStation`), mutes audio graph, wipes sensitive memory, and broadcasts emergency alerts for a strictly clamped 1–5 minute duration (`max(60, min(duration, 300))`).

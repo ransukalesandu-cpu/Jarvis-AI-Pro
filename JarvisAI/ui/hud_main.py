@@ -48,6 +48,7 @@ class HUDMainWindow(QMainWindow):
     """
 
     sig_state_changed = pyqtSignal(str)
+    sig_mode_changed = pyqtSignal()
 
     def __init__(self, bridge: Optional[VisualizerBridge] = None, parent=None):
         super().__init__(parent)
@@ -68,10 +69,14 @@ class HUDMainWindow(QMainWindow):
         self._bridge = bridge or get_visualizer_bridge()
         self._auth_manager = get_auth_manager() if callable(get_auth_manager) else None
 
+        self._privacy_locked = False
         self._init_ui()
         self._wire_signals()
         self._settings = QSettings("JarvisAI", "JarvisAIPro")
-        self._bihansa_toggle.setChecked(self._settings.value("bihansa/enabled", False, type=bool))
+        from memory.config_manager import get_assistant_mode, load_api_keys
+        enabled = (get_assistant_mode() == "bihansa" if "assistant_mode" in load_api_keys()
+                   else self._settings.value("bihansa/enabled", False, type=bool))
+        self._bihansa_toggle.setChecked(enabled)
         self._bihansa_effects.setChecked(self._settings.value("bihansa/effects", True, type=bool))
         self._bihansa_voice_reactive.setChecked(self._settings.value("bihansa/voice_reactive", True, type=bool))
         self._set_bihansa_enabled(self._bihansa_toggle.isChecked())
@@ -212,7 +217,6 @@ class HUDMainWindow(QMainWindow):
         self._bridge.sig_state_changed.connect(self._on_state_changed)
         self._bridge.sig_auth_state_changed.connect(self._on_auth_state_changed)
         self._bridge.sig_audio_energy.connect(self.bihansa_visualizer.set_audio_energy)
-        self._bridge.sig_state_changed.connect(self.bihansa_visualizer.set_state)
         self._bihansa_effects.toggled.connect(lambda value: self._settings.setValue("bihansa/effects", value) if hasattr(self, "_settings") else None)
         self._bihansa_voice_reactive.toggled.connect(lambda value: self._settings.setValue("bihansa/voice_reactive", value) if hasattr(self, "_settings") else None)
 
@@ -225,6 +229,9 @@ class HUDMainWindow(QMainWindow):
         )
         self._bihansa_toggle.setText("BIHANSA MODE: ON" if enabled else "BIHANSA MODE: OFF")
         self._settings.setValue("bihansa/enabled", enabled)
+        from memory.config_manager import save_assistant_mode
+        save_assistant_mode("bihansa" if enabled else "jarvis")
+        self.sig_mode_changed.emit()
         self._lbl_hud_status.setText("✦ BIHANSA NEURAL MODE" if enabled else "● SYSTEM STANDBY")
         self._lbl_hud_status.setStyleSheet("color: #ff75d4;" if enabled else "color: #00e5ff;")
 
@@ -234,8 +241,11 @@ class HUDMainWindow(QMainWindow):
     @pyqtSlot(str)
     def _on_state_changed(self, state: str):
         st = str(state or "IDLE").upper()
-        self.wireframe_visualizer.set_state(st)
-        self.bihansa_visualizer.set_state(st)
+        visual_state = "PRIVACY_LOCK" if self._privacy_locked else st
+        self.wireframe_visualizer.set_state(visual_state)
+        self.bihansa_visualizer.set_state(visual_state)
+        if self._privacy_locked:
+            return
 
         if st == "LISTENING":
             self._lbl_hud_status.setText("● LISTENING")
@@ -267,7 +277,9 @@ class HUDMainWindow(QMainWindow):
 
     def _handle_privacy_lock(self):
         """Engage privacy lockdown profile on HUD and trigger LockWorkStation."""
+        self._privacy_locked = True
         self.wireframe_visualizer.set_state("PRIVACY_LOCK")
+        self.bihansa_visualizer.set_state("PRIVACY_LOCK")
         self._lbl_hud_status.setText("⊘ PRIVACY LOCK ENGAGED")
         self._lbl_hud_status.setStyleSheet("color: #ff1744;")
         self._lock_banner.show()
@@ -289,7 +301,12 @@ class HUDMainWindow(QMainWindow):
 
     def _clear_privacy_lock(self):
         """Restore normal HUD view."""
+        was_locked = self._privacy_locked
+        self._privacy_locked = False
         self._lock_banner.hide()
+        if was_locked:
+            state = self._bridge.current_state
+            self._on_state_changed("IDLE" if state in ("PRIVACY_LOCK", "LOCKDOWN") else state)
         self._panel_memory.setGraphicsEffect(None)
         self._panel_scheduler.setGraphicsEffect(None)
 
@@ -343,6 +360,9 @@ class HologramHUDUI:
         self.on_wake_toggle: Optional[Callable] = None
         self.on_wake_manual: Optional[Callable] = None
         self.wake_get_state: Optional[Callable] = None
+        self._win.sig_mode_changed.connect(
+            lambda: self.on_voice_change() if callable(self.on_voice_change) else None
+        )
 
     @property
     def muted(self) -> bool:

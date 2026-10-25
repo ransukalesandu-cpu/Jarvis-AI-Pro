@@ -133,16 +133,48 @@ def save_assistant_config(assistant_name: str, user_name: str) -> None:
     _write_config(data)
 
 
-# ── Assistant voice ──────────────────────────────────────────────────────────
+# ── Assistant mode & voice ──────────────────────────────────────────────────
+ASSISTANT_MODES = ("jarvis", "bihansa")
+DEFAULT_ASSISTANT_MODE = "jarvis"
+
 # Gemini Live prebuilt voices. Names are proper nouns — identical in every
 # language, so this list is safe to show verbatim in any locale.
 AVAILABLE_VOICES = ["Charon", "Puck", "Kore", "Fenrir", "Aoede"]
 DEFAULT_VOICE    = "Charon"
+BIHANSA_FEMALE_VOICES = ["Kore", "Aoede"]
+DEFAULT_BIHANSA_VOICE = "Kore"
+
+
+def get_assistant_mode() -> str:
+    """Return 'jarvis' or 'bihansa'."""
+    m = str(load_api_keys().get("assistant_mode", DEFAULT_ASSISTANT_MODE)).strip().lower()
+    return m if m in ASSISTANT_MODES else DEFAULT_ASSISTANT_MODE
+
+
+def save_assistant_mode(mode: str) -> None:
+    """Persist assistant mode ('jarvis' or 'bihansa')."""
+    m = str(mode or "").strip().lower()
+    _save_flag("assistant_mode", m if m in ASSISTANT_MODES else DEFAULT_ASSISTANT_MODE)
+
+
+def get_bihansa_voice() -> str:
+    """Return the configured female voice for Bihansa mode."""
+    v = str(load_api_keys().get("bihansa_voice", DEFAULT_BIHANSA_VOICE)).strip()
+    return v if v in BIHANSA_FEMALE_VOICES else DEFAULT_BIHANSA_VOICE
+
+
+def save_bihansa_voice(voice_name: str) -> None:
+    """Persist chosen Bihansa female voice if valid; else fall back to default."""
+    v = str(voice_name or "").strip()
+    _save_flag("bihansa_voice", v if v in BIHANSA_FEMALE_VOICES else DEFAULT_BIHANSA_VOICE)
 
 
 def get_voice() -> str:
-    """Return the configured Live voice, falling back to the default if unset
+    """Return the configured Live voice, falling back to mode defaults if unset
     or if the stored value is not a voice we recognise."""
+    mode = get_assistant_mode()
+    if mode == "bihansa":
+        return get_bihansa_voice()
     v = load_api_keys().get("voice_name", DEFAULT_VOICE) or DEFAULT_VOICE
     return v if v in AVAILABLE_VOICES else DEFAULT_VOICE
 

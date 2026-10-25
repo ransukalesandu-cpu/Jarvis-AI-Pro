@@ -3746,14 +3746,11 @@ class JarvisLive:
                     }
                 )
 
-                if self._wake_detector is not None:
-                    self._wake_detector.pause()
-                try:
-                    async with (
-                        client.aio.live.connect(model=self._active_live_model, config=config) as session,
-                        asyncio.TaskGroup() as tg,
-                    ):
-                        self.session          = session
+                async with (
+                    client.aio.live.connect(model=self._active_live_model, config=config) as session,
+                    asyncio.TaskGroup() as tg,
+                ):
+                    self.session          = session
                     self._live_switch_context = ""
                     self.audio_in_queue   = asyncio.Queue()
                     self.out_queue        = asyncio.Queue(maxsize=200)
@@ -3876,10 +3873,6 @@ class JarvisLive:
                     if not self._briefing_sent and get_brief_enabled() and self._awake:
                         self._briefing_sent = True
                         tg.create_task(self._send_startup_briefing())
-
-                finally:
-                    if self._wake_detector is not None:
-                        self._wake_detector.resume()
 
             except KeyboardInterrupt:
                 raise

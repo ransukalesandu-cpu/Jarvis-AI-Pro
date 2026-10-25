@@ -1729,6 +1729,12 @@ class JarvisLive:
 
     async def _publish_privacy_lock(self, message: str) -> None:
         self._interrupted = True
+        # Stop the playback worker's private prebuffer as soon as the lock is
+        # published, even if no further Live receiver event arrives.
+        try:
+            self._stop_playback_for_privacy_lock()
+        except Exception:
+            pass
         self._assistant_turn_pending = False
         try:
             from security.lockdown import teardown_audio_stream
@@ -1745,10 +1751,8 @@ class JarvisLive:
                         queue.get_nowait()
                     except Exception:
                         break
-        try:
-            self.set_speaking(False)
-        except Exception:
-            pass
+        # Keep the locked UI state; playback cleanup above resets speaking
+        # bookkeeping without changing the UI back to LISTENING.
         done_event = getattr(self, "_turn_done_event", None)
         if done_event is not None:
             done_event.set()
@@ -2090,6 +2094,45 @@ class JarvisLive:
             loop.call_soon_threadsafe(self._interrupt_on_loop)
         else:
             self._interrupt_on_loop()
+
+    def _stop_playback_for_privacy_lock(self) -> None:
+        """Abort device output and discard every local/queued PCM buffer.
+
+        The receive loop can stop accepting cloud events while the playback
+        worker still owns PCM in its private prebuffer. Signalling the same
+        interrupt path used for barge-in ensures that audio cannot continue
+        playing after Privacy Lock becomes active.
+        """
+        interrupt_playback(
+            self._playback_interrupt_requested,
+            getattr(self, "_output_stream", None),
+            on_error=lambda error_type: print(
+                "[AudioTrace 4/OUTPUT] Device abort for Privacy Lock failed "
+                f"({error_type}); the playback worker will still discard its buffer."
+            ),
+        )
+        queue = getattr(self, "audio_in_queue", None)
+        if queue is not None:
+            while True:
+                try:
+                    queue.get_nowait()
+                except Exception:
+                    break
+        self._assistant_turn_pending = False
+        done_event = getattr(self, "_turn_done_event", None)
+        if done_event is not None:
+            done_event.set()
+        # Privacy Lock owns the UI state (LOCKED); do not let the ordinary
+        # speaking helper briefly switch the interface back to LISTENING.
+        with self._speaking_lock:
+            self._is_speaking = False
+        if hasattr(self, "_echo") and hasattr(self._echo, "set_tts_speaking"):
+            try:
+                self._echo.set_tts_speaking(False)
+            except Exception:
+                pass
+        self._tail_until = time.monotonic() + self._out_latency + _TAIL_MARGIN
+        self._out_level = 0.0
 
     def _interrupt_on_loop(self, wake_audio=None) -> None:
         """Stop current playback on the asyncio owner thread."""
@@ -3173,17 +3216,7 @@ class JarvisLive:
                             audio_fragment_buffer.clear()
                             out_buf.clear()
                             in_buf.clear()
-                            self._assistant_turn_pending = False
-                            queue = getattr(self, "audio_in_queue", None)
-                            if queue is not None:
-                                while True:
-                                    try:
-                                        queue.get_nowait()
-                                    except Exception:
-                                        break
-                            done_event = getattr(self, "_turn_done_event", None)
-                            if done_event is not None:
-                                done_event.set()
+                            self._stop_playback_for_privacy_lock()
                             continue
                     except Exception:
                         continue

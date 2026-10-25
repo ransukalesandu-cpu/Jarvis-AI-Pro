@@ -91,6 +91,23 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
         self.jarvis._phone_active = False
         self.jarvis._shutdown_requested = False
 
+    async def test_privacy_lock_aborts_device_and_discards_queued_audio(self):
+        self.jarvis._output_stream = MagicMock()
+        self.jarvis._assistant_turn_pending = True
+        self.jarvis._is_speaking = True
+        self.jarvis.audio_in_queue.put_nowait(b"private buffered speech")
+        self.jarvis._turn_done_event.clear()
+
+        self.jarvis._stop_playback_for_privacy_lock()
+
+        self.assertTrue(self.jarvis._playback_interrupt_requested.is_set())
+        self.jarvis._output_stream.abort.assert_called_once_with()
+        self.assertTrue(self.jarvis.audio_in_queue.empty())
+        self.assertTrue(self.jarvis._turn_done_event.is_set())
+        self.assertFalse(self.jarvis._assistant_turn_pending)
+        self.assertFalse(self.jarvis._is_speaking)
+        self.jarvis.ui.set_state.assert_not_called()
+
     async def test_interrupt_on_loop_clears_audio_queues_and_resets_turn_state(self):
         await self.jarvis.audio_in_queue.put(b"audio_chunk_1")
         await self.jarvis.audio_in_queue.put(b"audio_chunk_2")

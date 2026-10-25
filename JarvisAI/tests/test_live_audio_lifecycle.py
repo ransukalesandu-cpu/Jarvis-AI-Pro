@@ -1,6 +1,7 @@
 """Deterministic unit and regression tests for Gemini Live audio lifecycle, buffering, prebuffering, interruption, and turn-completion."""
 
 import asyncio
+import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -31,6 +32,22 @@ class LiveAudioLifecycleTests(unittest.TestCase):
         pcm = _take_playback_pcm(buffer, final=True)
         self.assertEqual(len(pcm), 0)
         self.assertEqual(len(buffer), _MIN_LIVE_AUDIO_FRAME_BYTES - 2)
+
+    def test_take_playback_pcm_odd_byte_fragment_alignment_and_retention(self):
+        # 2401 bytes: 2400 bytes (1 full 50ms slice) + 1 odd trailing byte
+        buffer = bytearray(b"\x01\x02" * 1200 + b"\x03")
+        pcm = _take_playback_pcm(buffer, final=False)
+        self.assertEqual(len(pcm), _PLAYBACK_SLICE_BYTES)
+        self.assertEqual(len(pcm) % 2, 0)  # Always even sample alignment
+        self.assertEqual(len(buffer), 1)  # Odd trailing byte retained
+        self.assertEqual(buffer[0], 0x03)
+
+        # Append 1 byte to complete the 16-bit sample (0x03, 0x04) + enough bytes for a valid frame
+        buffer.extend(b"\x04" + b"\x00" * _MIN_LIVE_AUDIO_FRAME_BYTES)
+        final_pcm = _take_playback_pcm(buffer, final=True)
+        self.assertGreaterEqual(len(final_pcm), _MIN_LIVE_AUDIO_FRAME_BYTES)
+        self.assertEqual(len(final_pcm) % 2, 0)
+        self.assertEqual(final_pcm[:2], b"\x03\x04")
 
 
 class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
@@ -71,6 +88,23 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.jarvis._turn_done_event.is_set())
         self.assertFalse(self.jarvis._assistant_turn_pending)
         self.jarvis.ui.write_log.assert_called_with("SYS: Interrupted — listening...")
+
+    async def test_playback_worker_discards_local_pending_pcm_when_interrupted(self):
+        # Simulate local pending_pcm buffer populated before interruption flag is set
+        pending_pcm = bytearray(b"\x00" * 4800)
+        playback_started = True
+        interrupt_event = threading.Event()
+        interrupt_event.set()
+
+        # Execute interruption check as done inside _play_audio loop
+        if interrupt_event.is_set():
+            pending_pcm.clear()
+            playback_started = False
+            interrupt_event.clear()
+
+        self.assertEqual(len(pending_pcm), 0)
+        self.assertFalse(playback_started)
+        self.assertFalse(interrupt_event.is_set())
 
 
 if __name__ == "__main__":

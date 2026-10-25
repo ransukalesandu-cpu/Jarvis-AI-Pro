@@ -109,7 +109,12 @@ class HybridLLMRouter:
             provider for provider in _PROVIDER_ORDER if provider != self.preferred_provider
         ]
         if not online:
-            order = ["ollama"]
+            # Connectivity probes can be false negatives on restricted networks.
+            # Prefer local Ollama when the probe says offline, but retain configured
+            # cloud providers as fallback if local inference is unavailable or fails.
+            order = ["ollama"] + [
+                provider for provider in order if provider != "ollama"
+            ]
 
         failures: list[str] = []
         for provider in order:

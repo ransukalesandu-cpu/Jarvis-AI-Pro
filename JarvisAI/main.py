@@ -5438,7 +5438,32 @@ def main():
             splash.close()
 
         if args.hologram_hud and HologramHUDUI is not None:
-            ui = HologramHUDUI()
+            # The hologram adapter intentionally has no API-key or owner-PIN
+            # enrollment dialogs. On a fresh install, route through the full
+            # desktop UI so its existing first-run API and PIN setup can run.
+            # Once both are configured, subsequent launches can use the HUD.
+            try:
+                from memory.config_manager import is_configured as _api_is_configured
+                from core.security import get_auth_manager as _get_auth_manager
+                _setup_complete = (
+                    _api_is_configured()
+                    and _get_auth_manager().is_pin_enrolled()
+                )
+            except Exception as _setup_check_error:
+                print(
+                    "[JARVIS] First-run setup check failed; opening setup UI: "
+                    f"{type(_setup_check_error).__name__}"
+                )
+                _setup_complete = False
+
+            if _setup_complete:
+                ui = HologramHUDUI()
+            else:
+                print(
+                    "[JARVIS] API/PIN setup is incomplete; opening the setup-capable UI. "
+                    "After setup, restart to use --hologram-hud."
+                )
+                ui = JarvisUI("face.png")
         else:
             ui = JarvisUI("face.png")
         startup["ui"] = ui

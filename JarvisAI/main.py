@@ -123,6 +123,9 @@ class HeadlessJarvisUI:
         if callback:
             callback(False)
 
+    def prompt_pin(self) -> str | None:
+        return None
+
     def hide_confirm(self) -> None:
         pass
 
@@ -1653,6 +1656,21 @@ class JarvisLive:
         if not matched:
             self.ui.write_log(f"SEC: Voice ID identified speaker as '{role}' (score {score:.2f}); owner access required.")
         return matched
+
+    def _get_current_turn_audio(self) -> bytes:
+        if not hasattr(self, "_voice_id_audio_lock"):
+            return b""
+        with self._voice_id_audio_lock:
+            return bytes(getattr(self, "_voice_id_turn_audio", b"") or b"")
+
+    def _prompt_owner_pin(self) -> str | None:
+        if hasattr(self.ui, "prompt_pin"):
+            try:
+                return self.ui.prompt_pin()
+            except Exception as exc:
+                print(f"[JARVIS] PIN prompt error: {exc}")
+                return None
+        return None
 
     def _queue_auth_state_broadcast(self) -> None:
         """Publish only non-sensitive auth state to already-paired dashboard clients."""
@@ -4745,6 +4763,8 @@ class JarvisLive:
             voice_id_required=voice_id.is_enabled,
             voice_id_verifier=self._verify_voice_id_for_current_turn,
             voice_id_role=self._get_speaker_role_for_current_turn,
+            turn_audio_provider=self._get_current_turn_audio,
+            pin_prompt_callback=self._prompt_owner_pin,
         )
         _ledger_ok, _ledger_status = security.verify_log()
         self.ui.write_log(

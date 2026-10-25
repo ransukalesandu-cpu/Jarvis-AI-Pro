@@ -128,6 +128,8 @@ _log_cb: Optional[Callable[[str], None]] = None
 _voice_id_required_cb: Optional[Callable[[], bool]] = None
 _voice_id_verifier_cb: Optional[Callable[[], bool]] = None
 _voice_id_role_cb: Optional[Callable[[], str]] = None
+_turn_audio_cb: Optional[Callable[[], bytes]] = None
+_pin_prompt_cb: Optional[Callable[[], Optional[str]]] = None
 _manual_user_turn = False
 _manual_user_turn_lock = threading.Lock()
 
@@ -137,13 +139,17 @@ def bind(
     voice_id_required: Callable[[], bool] | None = None,
     voice_id_verifier: Callable[[], bool] | None = None,
     voice_id_role: Callable[[], str] | None = None,
+    turn_audio_provider: Callable[[], bytes] | None = None,
+    pin_prompt_callback: Callable[[], Optional[str]] | None = None,
 ) -> None:
-    """Wire logging and optional owner-speaker checks from main.py."""
-    global _log_cb, _voice_id_required_cb, _voice_id_verifier_cb, _voice_id_role_cb
+    """Wire logging, owner checks, turn audio provider, and PIN prompt callback from main.py."""
+    global _log_cb, _voice_id_required_cb, _voice_id_verifier_cb, _voice_id_role_cb, _turn_audio_cb, _pin_prompt_cb
     _log_cb = logger
     _voice_id_required_cb = voice_id_required
     _voice_id_verifier_cb = voice_id_verifier
     _voice_id_role_cb = voice_id_role
+    _turn_audio_cb = turn_audio_provider
+    _pin_prompt_cb = pin_prompt_callback
 
 
 def _log(msg: str) -> None:
@@ -981,19 +987,37 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
                 f"something I just read rather than from you directly. Ask me for "
                 f"it yourself if you want it done.")
 
-    # When Voice ID is enabled, check speaker role before allowing SENSITIVE or DANGEROUS
-    # actions. Full access is granted to the owner. Non-owner speakers (sister, stranger)
-    # are denied sensitive and dangerous system operations.
-    if _voice_id_is_required() and not _auth_manager.is_owner_access_allowed():
-        speaker_role = get_current_speaker_role()
-        if speaker_role != "owner" and tier in (TIER_SENSITIVE, TIER_DANGEROUS):
-            audit("call", name, tier, "denied", f"Voice ID role '{speaker_role}' denied full access")
-            _log(f"VOICE ID blocked '{name}' — speaker is '{speaker_role}', owner access required.")
-            role_label = f"recognized as {speaker_role}" if speaker_role != "stranger" else "not recognized as the owner"
-            return (
-                f"I cannot perform '{_confirmation_label(name)}' because full access is reserved for the PC owner "
-                f"({role_label})."
+    # When unauthenticated for SENSITIVE or DANGEROUS operations, attempt step-up adaptive authentication.
+    if tier in (TIER_SENSITIVE, TIER_DANGEROUS) and not _auth_manager.is_owner_access_allowed():
+        from security.adaptive_auth import AdaptiveAuthManager
+        adaptive_auth = AdaptiveAuthManager(_auth_manager)
+
+        turn_audio = None
+        if _turn_audio_cb is not None:
+            try:
+                turn_audio = _turn_audio_cb()
+            except Exception:
+                turn_audio = None
+
+        if _voice_id_role_cb is not None or _voice_id_verifier_cb is not None:
+            speaker_role = get_current_speaker_role()
+            if speaker_role == "owner":
+                _auth_manager.grant_owner_access("voice")
+
+        if not _auth_manager.is_owner_access_allowed():
+            success, method_used, auth_msg = adaptive_auth.authenticate_sensitive_command(
+                audio_sample=turn_audio,
+                pin_prompt_callback=_pin_prompt_cb,
             )
+            if not success:
+                audit("call", name, tier, "denied", f"Adaptive step-up authentication failed: {auth_msg}")
+                _log(f"ADAPTIVE AUTH blocked '{name}' — {auth_msg}")
+                speaker_role = get_current_speaker_role()
+                role_label = f"recognized as {speaker_role}" if speaker_role != "stranger" else "not recognized as the owner"
+                return (
+                    f"I cannot perform '{_confirmation_label(name)}' because full access is reserved for the verified PC owner "
+                    f"({role_label}). Adaptive authentication requirement: {auth_msg}"
+                )
 
     # 2) rate limit — independent of confirmation, catches loops.
     # Preflight without charging the quota. A pending or rejected confirmation

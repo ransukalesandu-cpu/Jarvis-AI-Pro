@@ -8003,6 +8003,42 @@ class JarvisUI:
         self._win._ready = False
         self._win._reconfig_sig.emit()
 
+    def prompt_pin(self) -> Optional[str]:
+        """Thread-safe dialog asking for owner PIN/password input."""
+        if not hasattr(self, "_win") or self._win is None:
+            return None
+        from PyQt6.QtWidgets import QInputDialog, QLineEdit, QApplication
+        from PyQt6.QtCore import QThread, QTimer
+        import threading
+
+        app = QApplication.instance()
+        if app is None:
+            return None
+
+        result: list[Optional[str]] = [None]
+        done_event = threading.Event()
+
+        def _show():
+            try:
+                text, ok = QInputDialog.getText(
+                    self._win,
+                    "JARVIS Owner Verification",
+                    "Enter Owner PIN / Password:",
+                    QLineEdit.EchoMode.Password,
+                )
+                if ok and text:
+                    result[0] = text
+            finally:
+                done_event.set()
+
+        if QThread.currentThread() == app.thread():
+            _show()
+        else:
+            QTimer.singleShot(0, _show)
+            done_event.wait(timeout=30.0)
+
+        return result[0]
+
     def show_camera_frame(self, img_bytes: bytes):
         """Thread-safe: show a webcam frame in the small overlay (screen captures)."""
         self._win._camera_sig.emit(img_bytes)

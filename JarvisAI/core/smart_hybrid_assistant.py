@@ -5,7 +5,7 @@ from typing import Any, Callable
 
 from core.browser_automation import BrowserAutomation
 from core.hybrid_llm_router import HybridLLMRouter
-from core.smart_intent_router import SmartIntentRouter
+from core.smart_intent_router import SmartIntentRouter, _configured_keys
 
 
 class SmartHybridAssistant:
@@ -34,7 +34,7 @@ class SmartHybridAssistant:
             raise ValueError("A non-empty user request is required")
         route = self.intent_router.route(request)
         if route["intent"] != "BROWSER":
-            router = self.chat_router_factory(preferred_provider="gemini", online_check=False)
+            router = self.chat_router_factory(\n                preferred_provider="gemini",\n                api_keys=_configured_keys(),\n                online_check=False,\n            )
             result = router.query(request)
             return {"intent": "CHAT", "result": result}
 

@@ -902,9 +902,9 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
 
     # During Privacy Lock (including the post-cooldown PIN re-auth window), no
     # tool may produce data or trigger a side effect.
-    if auth.is_silent():
-        audit("call", name, tier, "denied", "Privacy Lock / owner re-authentication required")
-        return "JARVIS Privacy Lock is active. Private operations are blocked."
+    if auth.is_privacy_lock_active():
+        audit("call", name, tier, "denied", "Privacy Lock cooldown is active")
+        return "JARVIS Privacy Lock cooldown is active. Sensitive operations are blocked until it expires."
 
     # Speaker similarity alone is not proof of a live speaker. Do not grant owner
     # access from the role label; adaptive_auth must validate a live-speaker

@@ -2453,11 +2453,13 @@ class JarvisLive:
                 return "Memory saved."
 
             _loop = asyncio.get_running_loop()
+            silent = True
             try:
                 result = await _loop.run_in_executor(
                     None, lambda: security.guard(name, args, _save_memory)
                 )
             except Exception as exc:
+                silent = False
                 # A local memory-store failure should return a tool error, not
                 # cancel the Live receive/audio TaskGroup and force reconnect.
                 detail = str(exc)
@@ -2477,7 +2479,7 @@ class JarvisLive:
                 self.ui.set_state("LISTENING")
             return types.FunctionResponse(
                 id=fc.id, name=name,
-                response={"result": result, "silent": True}
+                response={"result": result, "silent": silent}
             )
 
         if name in {"memory_health", "purge_memory", "memory_export", "memory_import"}:

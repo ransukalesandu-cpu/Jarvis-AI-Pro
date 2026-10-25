@@ -7,8 +7,13 @@ Binds to real application state (Voice Biometrics, AuthState, Memory, Scheduler,
 
 from __future__ import annotations
 
+import os
 import sys
 import time
+
+if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFORM" not in os.environ:
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
 import threading
 from typing import Optional, Callable
 
@@ -28,10 +33,11 @@ from ui.panels.scheduler_panel import SchedulerPanel
 from ui.panels.system_telemetry_ring import SystemTelemetryRing
 
 try:
-    from security.auth_manager import AuthManager, PRIVACY_LOCK
+    from security.auth_manager import AuthManager, PRIVACY_LOCK, lock_workstation
     from core.security import get_auth_manager
 except Exception:
     get_auth_manager = None
+    lock_workstation = lambda: False
     PRIVACY_LOCK = "PRIVACY_LOCK"
 
 
@@ -208,7 +214,7 @@ class HUDMainWindow(QMainWindow):
             self._clear_privacy_lock()
 
     def _handle_privacy_lock(self):
-        """Engage privacy lockdown profile on HUD."""
+        """Engage privacy lockdown profile on HUD and trigger LockWorkStation."""
         self.wireframe_visualizer.set_state("PRIVACY_LOCK")
         self._lbl_hud_status.setText("⊘ PRIVACY LOCK ENGAGED")
         self._lbl_hud_status.setStyleSheet("color: #ff1744;")
@@ -222,6 +228,12 @@ class HUDMainWindow(QMainWindow):
         blur_sched = QGraphicsBlurEffect()
         blur_sched.setBlurRadius(12)
         self._panel_scheduler.setGraphicsEffect(blur_sched)
+
+        # Hand focus to native Windows LockWorkStation call
+        try:
+            lock_workstation()
+        except Exception:
+            pass
 
     def _clear_privacy_lock(self):
         """Restore normal HUD view."""

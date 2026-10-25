@@ -8,6 +8,8 @@ perspective projection, floating particle flow, and state-reactive morphing
 
 from __future__ import annotations
 
+import os
+import sys
 import math
 import random
 import time
@@ -15,13 +17,16 @@ from typing import List, Tuple, Optional
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, pyqtSignal, QRectF, QPointF
 from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPainterPath
+from PyQt6.QtWidgets import QWidget
 
-try:
-    from PyQt6.QtOpenGLWidgets import QOpenGLWidget
-    _BASE_CANVAS = QOpenGLWidget
-except Exception:
-    from PyQt6.QtWidgets import QWidget
+if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
     _BASE_CANVAS = QWidget
+else:
+    try:
+        from PyQt6.QtOpenGLWidgets import QOpenGLWidget
+        _BASE_CANVAS = QOpenGLWidget
+    except Exception:
+        _BASE_CANVAS = QWidget
 
 
 class NeuralWireframeHead(_BASE_CANVAS):
@@ -191,7 +196,7 @@ class NeuralWireframeHead(_BASE_CANVAS):
             # Dynamic outward expansion scaled by RMS energy
             scale_mod = 1.0 + self._audio_energy * 0.45
             primary_col = self.COLOR_CYAN
-            secondary_col = QColor("#00e5ff")
+            secondary_col = self.COLOR_CYAN
         elif self._state == "THINKING":
             scale_mod = 1.05 + 0.08 * math.sin(t * 6.0)
             primary_col = self.COLOR_VIOLET

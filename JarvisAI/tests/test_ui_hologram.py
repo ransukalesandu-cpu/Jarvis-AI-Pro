@@ -3,7 +3,19 @@ Automated UI Hologram Smoke Tests for Jarvis AI Pro Neural Wireframe HUD.
 Verifies widget creation, state transitions, audio energy calculations, and signal handling.
 """
 
+import os
 import sys
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+JARVIS_DIR = ROOT_DIR / "JarvisAI"
+for p in (str(ROOT_DIR), str(JARVIS_DIR)):
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
+if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFORM" not in os.environ:
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
 import unittest
 import numpy as np
 

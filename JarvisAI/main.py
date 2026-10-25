@@ -2060,7 +2060,16 @@ class JarvisLive:
         """Stop current playback on the asyncio owner thread."""
         with self._speaking_lock:
             speaking = self._is_speaking
-        turn_pending = bool(self._assistant_turn_pending)
+        # A Live turn can be complete while its final PCM is still in the
+        # playback worker's local prebuffer. In that window, the receiver has
+        # already cleared _assistant_turn_pending and the speaker has not yet
+        # set _is_speaking. Treat the completion event / queued PCM as pending
+        # playback so an interrupt also clears audio already dequeued locally.
+        playback_pending = bool(
+            (self._turn_done_event is not None and self._turn_done_event.is_set())
+            or (self.audio_in_queue is not None and not self.audio_in_queue.empty())
+        )
+        turn_pending = bool(self._assistant_turn_pending or playback_pending)
         briefing_active = bool(self._briefing_active)
         self._interrupted = speaking or turn_pending or briefing_active
         if self._interrupted:

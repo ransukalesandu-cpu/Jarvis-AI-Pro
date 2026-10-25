@@ -225,26 +225,32 @@ class ConfirmTests(unittest.TestCase):
                     self.assertFalse(voice_id.is_enrolled("brother"))
                     self.assertEqual(sorted(voice_id.get_enrolled_roles()), ["owner", "sister"])
 
-                    # Test role-based access in security
+                    # A speaker-role label alone is not proof of a live owner.
+                    # Without a validated anti-spoof verifier or a PIN, all roles
+                    # must fail closed and the sensitive action must not run.
                     current_role = "owner"
                     security.bind(
                         voice_id_required=lambda: True,
                         voice_id_role=lambda: current_role,
+                        turn_audio_provider=lambda: None,
+                        pin_prompt_callback=lambda: None,
                     )
 
-                    # Owner gets full access
                     res_owner = security.guard("open_app", {"app_name": "unknown_app"}, lambda: "success")
-                    self.assertIn("[CONFIRMATION_PENDING]", res_owner)
+                    self.assertIn("Sensitive command locked", res_owner)
+                    self.assertNotIn("[CONFIRMATION_PENDING]", res_owner)
 
-                    # Non-owner (sister) is denied
+                    # Non-owner (sister) is denied too.
                     current_role = "sister"
                     res_sister = security.guard("open_app", {"app_name": "unknown_app"}, lambda: "success")
-                    self.assertIn("full access is reserved for the PC owner", res_sister)
+                    self.assertIn("Sensitive command locked", res_sister)
+                    self.assertNotIn("[CONFIRMATION_PENDING]", res_sister)
 
-                    # Stranger is denied
+                    # Stranger is denied as well.
                     current_role = "stranger"
                     res_stranger = security.guard("open_app", {"app_name": "unknown_app"}, lambda: "success")
-                    self.assertIn("full access is reserved for the PC owner", res_stranger)
+                    self.assertIn("Sensitive command locked", res_stranger)
+                    self.assertNotIn("[CONFIRMATION_PENDING]", res_stranger)
 
             finally:
                 voice_id.PROFILE_FILE = orig_profile_file

@@ -6,10 +6,23 @@ No synthetic fallback samples and no plaintext master_voice.emb.npy are created.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 import numpy as np
+
+
+def ensure_restricted_dir(path: Path | str) -> Path:
+    """Ensure directory exists with restricted permissions (0700 on POSIX)."""
+    target = Path(path)
+    os.makedirs(target, exist_ok=True)
+    if os.name != "nt":
+        try:
+            os.chmod(target, 0o700)
+        except OSError:
+            pass
+    return target
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 JARVIS_DIR = ROOT_DIR / "JarvisAI"
@@ -63,6 +76,8 @@ def enroll_master(sample_files: list[str] | None = None) -> Path:
     else:
         samples = _record_three_samples()
 
+    target_dir = ensure_restricted_dir(voice_id.PROFILE_FILE.parent)
+    vault_dir = ensure_restricted_dir(JARVIS_DIR / "security" / "vault")
     voice_id.enroll(np.concatenate(samples).astype(np.float32), role="owner")
     return voice_id.PROFILE_FILE
 

@@ -48,10 +48,20 @@ Please allow the maintainer reasonable time to investigate and address a reporte
 
 Thank you for helping improve Jarvis AI security.
 
-## Privacy Lock alert integration
+## 🔐 Autonomous Biometric Authority & Authentication State Machine
 
-Privacy Lock uses the existing `JarvisAI/security/auth_manager.py` state machine, persistent lockout handling, and Argon2/DPAPI-backed PIN vault. The alert integration does not replace or duplicate that authentication system.
+JARVIS uses a 4-state authentication state machine in `JarvisAI/security/auth_manager.py` backed by local Argon2id PIN vault hashing and DPAPI / native OS credential encryption:
 
-When the state machine activates a lock, the application suppresses pending voice output, clears queued microphone audio, publishes a non-sensitive dashboard event, and revokes active companion sessions. Remote command, wake, and phone-audio entry points reject activity while the lock is active.
+1. **`RESTRICTED_MODE` (Stranger Mode):** Default unverified state. Access is sandboxed to Tier-1 basic tasks (weather, time, web search, public telemetry reads).
+2. **`FULL_ACCESS_MODE` (Verified Owner):** Session-only verified state granted via enrolled Voice ID or local PIN entry. Permits autonomous system control without interactive pop-ups.
+3. **`CHALLENGE_MODE`:** Prompted when voice identification is unverified or degraded, requiring local PIN re-authentication.
+4. **`PRIVACY_LOCK`:** Activated after 3 consecutive failed PIN attempts or explicit trigger.
 
-Twilio SMS is an optional best-effort alert. It requires valid configured credentials and an explicit `alert_recipient_number`; it is not sent to the Twilio sender number by default. SMS delivery is performed off the real-time audio loop. Missing configuration or provider failure does not disable local Privacy Lock protections.
+### Privacy Lock & Hardware Timer Clamping
+
+When `PRIVACY_LOCK` triggers:
+- Attempts to lock the Windows desktop via `ctypes.windll.user32.LockWorkStation()`, verifying non-zero return code and logging `ctypes.GetLastError()` on failure.
+- Mutes the audio graph cleanly via defensive `teardown_audio_stream`.
+- Suppresses pending assistant output and wipes sensitive memory buffers.
+- Enforces a monotonic hardware timer clamp `max(60, min(duration, 300))` ensuring the lock duration stays strictly bounded between 60 seconds (1 minute) and 300 seconds (5 minutes).
+- Broadcasts emergency alerts via paired dashboard devices and optional Twilio SMS.

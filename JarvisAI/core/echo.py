@@ -131,6 +131,18 @@ class EchoGuard:
         self._floor = 0.10        # typical echo residual here; learned
         self._run = 0             # consecutive blocks called speech
         self._head = 0.13         # near-worst echo residual here; learned
+        self._tts_speaking = False
+        self._tts_speaking_start_time = 0.0
+        self._speech_start_time = 0.0
+
+    def set_tts_speaking(self, is_speaking: bool, when: float | None = None) -> None:
+        """Inform EchoGuard whether TTS playback is active for refractory & adaptive thresholds."""
+        t = time.monotonic() if when is None else when
+        if is_speaking and not self._tts_speaking:
+            self._tts_speaking_start_time = t
+        elif not is_speaking:
+            self._speech_start_time = 0.0
+        self._tts_speaking = is_speaking
 
     # ── diagnostics, for the log and for tests ──────────────────────────────
 
@@ -200,10 +212,21 @@ class EchoGuard:
         filtering keeps the conservative default.
         """
         try:
+            t = time.monotonic() if when is None else when
+            # 350ms refractory guardband immediately after TTS playback onset
+            if self._tts_speaking and (t - self._tts_speaking_start_time) < 0.350:
+                self._speech_start_time = 0.0
+                self._run = 0
+                return False
+
+            # Adaptive factor of 1.75x applied when TTS is actively speaking
+            adaptive_factor = 1.75 if (fast or self._tts_speaking) else 1.0
+
             # During active barge-in, allow quieter user voices through; the
             # echo residual test below still guards against the speaker's own sound.
-            min_level = 0.002 if fast else _MIN_LEVEL
+            min_level = (0.002 if fast else _MIN_LEVEL) * adaptive_factor
             if level < min_level:
+                self._speech_start_time = 0.0
                 # We are playing and the microphone hears nothing back:
                 # this setup returns no echo at all (headphones, or a mic
                 # far from the speaker). Record that, or the window stays
@@ -247,6 +270,12 @@ class EchoGuard:
 
             # Nothing in the window explained it at all — that is not our sound.
             if best_level <= 0.0:
+                if self._tts_speaking:
+                    if self._speech_start_time == 0.0:
+                        self._speech_start_time = t
+                    duration = t - self._speech_start_time
+                    if duration < 0.150:
+                        return False
                 return True
 
             # Learning happens in two stages, and the order matters both times.
@@ -267,21 +296,34 @@ class EchoGuard:
                 # tail filtering, but can hide a person speaking over JARVIS.
                 # Cap it for barge-in while retaining a residual floor and the
                 # two-consecutive-block confirmation in the microphone callback.
-                thr = max(0.06, min(thr, 0.10))
+                thr = max(0.06, min(thr, 0.10)) * adaptive_factor
+            elif self._tts_speaking:
+                thr = thr * adaptive_factor
+
             speech = (fast or not warming) and best_res >= thr
 
             if speech:
                 self._run += 1
+                if self._speech_start_time == 0.0:
+                    self._speech_start_time = t
+                duration = t - self._speech_start_time
+
+                # Require continuous detected speech for >150ms during TTS playback
+                if self._tts_speaking and duration < 0.150:
+                    return False
+
                 # A run this long is not someone interrupting — nobody talks
                 # over an assistant for seconds on end. The room changed under
                 # us (volume, headphones unplugged), so characterise it again.
                 if self._run > _RELEARN_RUN:
                     self._residuals.clear()
                     self._run = 0
+                    self._speech_start_time = 0.0
                     return False
                 return True
 
             self._run = 0
+            self._speech_start_time = 0.0
             self._residuals.append(best_res)
             if len(self._residuals) > _FLOOR_WINDOW:
                 del self._residuals[:-_FLOOR_WINDOW]

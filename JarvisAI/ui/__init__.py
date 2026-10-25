@@ -7682,9 +7682,7 @@ class MainWindow(QMainWindow):
         buttons = QHBoxLayout()
         save_button = QPushButton("SAVE & CONTINUE", dialog)
         save_button.setStyleSheet(f"background: {C.PRI}; color: #061018; font-weight: bold;")
-        later_button = QPushButton("SET UP LATER", dialog)
         buttons.addWidget(save_button)
-        buttons.addWidget(later_button)
         layout.addLayout(buttons)
 
         def save_pin():
@@ -7706,7 +7704,6 @@ class MainWindow(QMainWindow):
             dialog.accept()
 
         save_button.clicked.connect(save_pin)
-        later_button.clicked.connect(dialog.reject)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._log.append_log("SEC: Owner PIN enrolled locally; startup remains unlocked for ordinary use.")
             if voice_check.isChecked() and self.on_voice_id_action:

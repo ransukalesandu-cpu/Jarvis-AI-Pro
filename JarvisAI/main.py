@@ -1803,7 +1803,7 @@ class JarvisLive:
                 router = HybridLLMRouter(preferred_provider=preferred, api_keys=keys)
                 system_prompt = (
                     _load_system_prompt()
-                    + "\\n\\nHYBRID TEXT FALLBACK RULES: You are in a text-only fallback "
+                    + "\n\nHYBRID TEXT FALLBACK RULES: You are in a text-only fallback "
                     "with no live tools or computer-control capability. Never claim you "
                     "opened apps, changed files, searched the web, or completed an action. "
                     "Explain limitations honestly and answer informational questions directly."

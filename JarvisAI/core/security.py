@@ -936,33 +936,6 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
             auth.set_state(RESTRICTED_MODE)
             auth_state = RESTRICTED_MODE
 
-    allowed, permission_message = ActionDispatcher.can_dispatch(name, auth.get_state())
-    if not allowed:
-        if _voice_id_is_required() and tier in (TIER_SENSITIVE, TIER_DANGEROUS):
-            current_role = "stranger"
-            if _voice_id_role_cb is not None:
-                try:
-                    current_role = str(_voice_id_role_cb() or "stranger").strip().lower()
-                except Exception:
-                    current_role = "stranger"
-            if current_role != "owner":
-                audit("call", name, tier, "denied", f"Voice ID role '{current_role}' denied full access")
-                return (
-                    f"I cannot perform '{_confirmation_label(name)}' because full access is reserved "
-                    f"for the PC owner (recognized as {current_role if current_role != 'stranger' else 'not recognized as the owner'})."
-                )
-        if auth.is_pin_enrolled():
-            auth.set_state(CHALLENGE_MODE)
-            return (
-                "Owner verification is required for this action. Ask the user to type the "
-                "owner PIN/password into the local JARVIS command input or paired dashboard. "
-                "Do not ask them to speak the credential; it must not be sent to cloud AI."
-            )
-        return (
-            "This action requires owner verification, but no owner PIN is configured. "
-            "Ask the laptop owner to run scripts/setup_owner_auth.py locally."
-        )
-
     # HUD media controls skip the confirmation banner, but they must still be
     # traceable to a fresh user request so untrusted page/email content cannot
     # silently stop playback or enable audio.
@@ -1018,6 +991,36 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
                     f"I cannot perform '{_confirmation_label(name)}' because full access is reserved for the verified PC owner "
                     f"({role_label}). Adaptive authentication requirement: {auth_msg}"
                 )
+
+    # Authorization must run before the dispatcher rejects privileged actions,
+    # otherwise the adaptive PIN/voice/face step-up can never be reached.
+    allowed, permission_message = ActionDispatcher.can_dispatch(name, auth.get_state())
+    if not allowed:
+        if _voice_id_is_required() and tier in (TIER_SENSITIVE, TIER_DANGEROUS):
+            current_role = "stranger"
+            if _voice_id_role_cb is not None:
+                try:
+                    current_role = str(_voice_id_role_cb() or "stranger").strip().lower()
+                except Exception:
+                    current_role = "stranger"
+            if current_role != "owner":
+                audit("call", name, tier, "denied", f"Voice ID role '{current_role}' denied full access")
+                return (
+                    f"I cannot perform '{_confirmation_label(name)}' because full access is reserved "
+                    f"for the PC owner (recognized as {current_role if current_role != 'stranger' else 'not recognized as the owner'})."
+                )
+        if auth.is_pin_enrolled():
+            auth.set_state(CHALLENGE_MODE)
+            return (
+                "Owner verification is required for this action. Ask the user to type the "
+                "owner PIN/password into the local JARVIS command input or paired dashboard. "
+                "Do not ask them to speak the credential; it must not be sent to cloud AI."
+            )
+        return (
+            "This action requires owner verification, but no owner PIN is configured. "
+            "Ask the laptop owner to run scripts/setup_owner_auth.py locally."
+        )
+
 
     # 2) rate limit — independent of confirmation, catches loops.
     # Preflight without charging the quota. A pending or rejected confirmation

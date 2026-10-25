@@ -16,6 +16,7 @@ class TestPhoneControlAction(unittest.TestCase):
     @patch.object(phone_action, "_run", return_value=(True, "List of devices attached\nphone-1\tdevice"))
     def test_status_reads_model_android_and_battery(self, mock_run, _mock_find):
         mock_run.side_effect = [
+            (True, "List of devices attached\\nphone-1\\tdevice"),
             (True, "moto g75 5G"),
             (True, "16"),
             (True, "AC powered: false\nUSB powered: true\nstatus: 2\nlevel: 81"),

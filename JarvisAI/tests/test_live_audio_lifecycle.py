@@ -67,14 +67,14 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
         self.jarvis._turn_done_event = asyncio.Event()
         self.jarvis._playback_interrupt_requested = threading.Event()
         self.jarvis._output_stream = MagicMock()
-        self.jarvis._speaking_lock = MagicMock()
+        self.jarvis._speaking_lock = threading.Lock()
         self.jarvis._is_speaking = False
         self.jarvis._assistant_turn_pending = True
         self.jarvis._briefing_active = False
         self.jarvis._briefing_cancelled = False
         self.jarvis._briefing_task = None
         self.jarvis._wake_interrupt_audio = []
-        self.jarvis._wake_interrupt_lock = MagicMock()
+        self.jarvis._wake_interrupt_lock = threading.Lock()
         self.jarvis._visemes = MagicMock()
         self.jarvis._vocal_plan = MagicMock()
         self.jarvis._vocal_plan_ready = False
@@ -98,21 +98,23 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
         self.jarvis.ui.write_log.assert_called_with("SYS: Interrupted — listening...")
 
     async def test_completed_turn_interruption_aborts_output_stream_and_requests_cancellation(self):
-        # Setup completed-turn state with empty audio queue and turn_done_event set
+        # Isolate completed-turn playback_pending branch:
+        # _is_speaking = False, _assistant_turn_pending = False, but _turn_done_event is set
+        self.jarvis._is_speaking = False
         self.jarvis._assistant_turn_pending = False
         self.jarvis._turn_done_event.set()
-        self.jarvis._is_speaking = True  # Or actively playing completion tail
 
         self.jarvis._interrupt_on_loop()
 
-        # Verify playback interrupt event is set and output stream abort was called
+        # Verify playback interrupt event is set, stream abort called, and state marked interrupted
         self.assertTrue(self.jarvis._playback_interrupt_requested.is_set())
         self.jarvis._output_stream.abort.assert_called_once()
         self.assertTrue(self.jarvis._interrupted)
 
     async def test_real_play_audio_worker_discards_local_pending_pcm_on_interruption(self):
         written_chunks = []
-        write_called = asyncio.Event()
+        write_started = asyncio.Event()
+        write_unblock = threading.Event()
 
         main_loop = self.jarvis._loop
 
@@ -130,31 +132,34 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
                 self.active = False
             def write(self, data):
                 written_chunks.append(data)
-                # Signal that worker is executing write
-                main_loop.call_soon_threadsafe(write_called.set)
+                main_loop.call_soon_threadsafe(write_started.set)
+                write_unblock.wait(timeout=2.0)
 
         fake_stream = FakeStream()
         fake_sd = MagicMock()
         fake_sd.RawOutputStream.return_value = fake_stream
 
         with patch("JarvisAI.main.sd", fake_sd), \
-             patch("JarvisAI.main.get_output_device", return_value=""), \
-             patch("JarvisAI.core.audio_devices.resolve", return_value=None):
+             patch("JarvisAI.main.get_output_device", return_value="custom_speaker"), \
+             patch("core.audio_devices.resolve", return_value=None):
 
-            # Put enough PCM for prebuffering (>_MIN_PREBUFFER_BYTES = 14400 bytes)
-            pcm_chunk = b"\x00\x01" * 8000
+            # Enqueue 24000 bytes (5 full 4800-byte batches)
+            pcm_chunk = b"\x00\x01" * 12000
             await self.jarvis.audio_in_queue.put(pcm_chunk)
 
-            # Start worker in background
+            # Start real play_audio worker in background
             play_task = asyncio.create_task(self.jarvis._play_audio())
 
-            # Wait until write_called is triggered (local pending_pcm populated & write entered)
-            await asyncio.wait_for(write_called.wait(), timeout=2.0)
+            # Wait until worker enters write for batch 1
+            await asyncio.wait_for(write_started.wait(), timeout=2.0)
 
-            # Trigger interruption while play_audio worker is active with local pending_pcm buffered
+            # Issue interruption while batch 1 is in-flight and batch 2..5 remain in pending_pcm
             self.jarvis._interrupt_on_loop()
 
-            # Wait for _play_audio worker to process interruption and clear flag before setting shutdown
+            # Release write call for batch 1
+            write_unblock.set()
+
+            # Wait for worker to process interruption and clear the interrupt flag
             for _ in range(50):
                 if not self.jarvis._playback_interrupt_requested.is_set():
                     break
@@ -163,7 +168,8 @@ class LiveAudioInterruptionAndTurnTests(unittest.IsolatedAsyncioTestCase):
             self.jarvis._shutdown_requested = True
             await asyncio.wait_for(play_task, timeout=2.0)
 
-            # Verify interruption event was cleared and handled by the worker
+            # Assert ONLY batch 1 was written; the remaining 4 batches in local pending_pcm were discarded
+            self.assertEqual(len(written_chunks), 1)
             self.assertFalse(self.jarvis._playback_interrupt_requested.is_set())
 
 

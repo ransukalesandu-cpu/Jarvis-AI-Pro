@@ -83,8 +83,10 @@ from google import genai
 from google.genai import types
 try:
     from ui import JarvisUI, configure_qt_graphics_backend
+    from ui.hud_main import HologramHUDUI
 except ImportError:
     JarvisUI = None
+    HologramHUDUI = None
     configure_qt_graphics_backend = None
 
 
@@ -5174,6 +5176,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="JARVIS AI Personal Assistant")
     parser.add_argument("--headless", action="store_true", help="Run in headless background daemon mode")
+    parser.add_argument("--hologram-hud", action="store_true", help="Launch Neural Wireframe Hologram HUD")
     args, _ = parser.parse_known_args()
 
     if args.headless:
@@ -5222,7 +5225,10 @@ def main():
         if splash is not None:
             splash.close()
 
-        ui = JarvisUI("face.png")
+        if args.hologram_hud and HologramHUDUI is not None:
+            ui = HologramHUDUI()
+        else:
+            ui = JarvisUI("face.png")
         startup["ui"] = ui
 
         def runner():

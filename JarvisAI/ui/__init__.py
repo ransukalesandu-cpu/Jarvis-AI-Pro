@@ -5,6 +5,10 @@ import math
 import os
 import platform
 import random
+import sys
+
+if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFORM" not in os.environ:
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
 import subprocess
 import sys
 import threading
@@ -7793,6 +7797,8 @@ class JarvisUI:
             value = float(level)
             self._win._audio_level_sig.emit(value)
             self._win._logo_level_sig.emit(value)
+            from audio.visualizer_bridge import get_visualizer_bridge
+            get_visualizer_bridge().push_audio_energy(value)
         except (RuntimeError, TypeError, ValueError):
             pass
 

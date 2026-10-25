@@ -7,8 +7,8 @@ import pytest
 from PyQt6.QtCore import QSettings
 from PyQt6.QtWidgets import QApplication
 
-from JarvisAI.ui.hologram.bihansa_settings import BihansaModeSettings
-from JarvisAI.ui.hologram.bihansa_hologram import BihansaHologram
+from ui.hologram.bihansa_settings import BihansaModeSettings
+from ui.hologram.bihansa_hologram import BihansaHologram
 
 
 @pytest.fixture(scope="module")

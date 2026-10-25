@@ -592,8 +592,32 @@ def _render_prompt(template: str, values: dict) -> str:
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    """Load a non-empty Gemini API key without exposing credentials in errors."""
+    try:
+        with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+            config = json.load(f)
+    except FileNotFoundError:
+        raise RuntimeError(
+            "Gemini API configuration file is missing. Create "
+            "config/api_keys.json and add a non-empty gemini_api_key entry."
+        ) from None
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        raise RuntimeError(
+            "Gemini API configuration is unreadable or invalid JSON. "
+            "Check config/api_keys.json; API-key values are not included in this error."
+        ) from None
+
+    if not isinstance(config, dict):
+        raise RuntimeError(
+            "Gemini API configuration must be a JSON object containing gemini_api_key."
+        )
+    api_key = config.get("gemini_api_key")
+    if not isinstance(api_key, str) or not api_key.strip():
+        raise RuntimeError(
+            "Gemini API key is missing from config/api_keys.json. "
+            "Add a non-empty gemini_api_key entry."
+        )
+    return api_key.strip()
 
 
 def _load_system_prompt() -> str:

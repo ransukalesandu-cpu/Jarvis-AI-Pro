@@ -3799,6 +3799,26 @@ class JarvisLive:
                             self._turn_done_event.clear()
                             playback_started = False
                             prebuffer_logged = False
+                        elif (
+                            self._assistant_turn_pending
+                            and not turn_complete
+                            and self.audio_in_queue.empty()
+                        ):
+                            # Live audio can arrive in bursts. If the speaker queue
+                            # has actually run dry mid-turn, re-arm the jitter buffer
+                            # so the next burst is not played after a single 50 ms
+                            # slice. This cannot hide long server/network stalls, but
+                            # it smooths short underruns instead of repeatedly
+                            # starting playback with no reserve.
+                            playback_started = False
+                            prebuffer_logged = False
+                            now_mono = time.monotonic()
+                            if now_mono - last_queue_starvation_log >= 1.0:
+                                print(
+                                    "[AudioTrace 4/BUFFER] Output underrun; "
+                                    "rebuffering before playback resumes."
+                                )
+                                last_queue_starvation_log = now_mono
                         continue
 
                     if self._playback_interrupt_requested.is_set():

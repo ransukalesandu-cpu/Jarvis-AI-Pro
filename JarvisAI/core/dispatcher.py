@@ -1,36 +1,49 @@
 """
-JarvisAI Core — Action Dispatcher
-
-Dual-tier action access control integrated with security AuthManager state.
+Central restricted/basic versus owner-privileged action policy.
+Unknown actions are privileged by default.
 """
+from __future__ import annotations
 
-from typing import Any, Callable, Optional
-from security.auth_manager import get_auth_manager, STATE_PRIVACY_LOCK, STATE_RESTRICTED_MODE, STATE_NORMAL
+from security.auth_manager import (
+    RESTRICTED_MODE, FULL_ACCESS_MODE, CHALLENGE_MODE, PRIVACY_LOCK,
+)
+
+TIER_1_BASIC = "TIER_1_BASIC"
+TIER_2_PRIVILEGED = "TIER_2_PRIVILEGED"
+
+# Basic, non-private tasks only. Do not add filesystem, memory, system-control,
+# account, messaging, camera, or unknown plugin tools to this allowlist.
+_TIER_1_ACTIONS = {
+    "weather_report",
+    "weather",
+    "web_search",
+    "news_search",
+    "deep_reasoning",
+    "general_llm_qa",
+    "unit_converter",
+    "local_time",
+    "current_time",
+    "timer",
+    "quiz",
+    "earth_globe",
+}
 
 
 class ActionDispatcher:
-    """Dispatches tool/action execution checking current security state."""
+    """Fail-closed permission classifier used before any tool handler is called."""
 
-    def __init__(self, action_registry=None):
-        self.action_registry = action_registry
-        self.auth_manager = get_auth_manager()
+    @staticmethod
+    def get_action_tier(action_name: str) -> str:
+        name = str(action_name or "").strip().lower()
+        return TIER_1_BASIC if name in _TIER_1_ACTIONS else TIER_2_PRIVILEGED
 
-    def can_execute(self, action_name: str, user_role: str = "owner") -> tuple[bool, str]:
-        """Check if action execution is allowed under current state."""
-        state = self.auth_manager.get_state()
-        if state == STATE_PRIVACY_LOCK:
-            return False, "System is in PRIVACY_LOCK state. All commands are blocked."
-
-        if state == STATE_RESTRICTED_MODE:
-            # Restricted mode limits access to high-tier/sensitive actions unless owner
-            if user_role != "owner":
-                return False, f"Action '{action_name}' rejected in RESTRICTED_MODE for role '{user_role}'."
-
-        return True, ""
-
-    def dispatch(self, action_name: str, params: dict, run_func: Callable[[], Any], user_role: str = "owner") -> Any:
-        """Dispatch action execution if authorized."""
-        allowed, reason = self.can_execute(action_name, user_role)
-        if not allowed:
-            raise PermissionError(reason)
-        return run_func()
+    @classmethod
+    def can_dispatch(cls, action_name: str, auth_state: str) -> tuple[bool, str]:
+        tier = cls.get_action_tier(action_name)
+        if auth_state == PRIVACY_LOCK:
+            return False, "Privacy Lock is active. Private actions are blocked."
+        if auth_state == FULL_ACCESS_MODE:
+            return True, "Allowed"
+        if tier == TIER_1_BASIC:
+            return True, "Allowed"
+        return False, "Owner verification is required for this action."

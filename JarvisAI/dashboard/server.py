@@ -287,6 +287,15 @@ def _read(name: str) -> str:
 
 # ── DashboardServer ───────────────────────────────────────────────────────────
 
+def _get_auth_manager_for_dashboard():
+    """Resolve shared auth lazily to avoid dashboard/core import cycles."""
+    try:
+        from core.security import get_auth_manager
+        return get_auth_manager()
+    except Exception:
+        return None
+
+
 class DashboardServer:
 
     def __init__(self):
@@ -319,12 +328,6 @@ class DashboardServer:
         self._app_html                    = _read("app.html")
         self.app                          = self._build_app()
         self.twilio_app                   = self._build_twilio_app()
-
-        try:
-            from notifications.alert_service import register_websocket_broadcast_callback
-            register_websocket_broadcast_callback(self.broadcast)
-        except Exception as e:
-            print(f"[Dashboard] Alert service callback registration error: {e}")
 
     # ── one-time key management ───────────────────────────────────────────
 
@@ -462,6 +465,13 @@ class DashboardServer:
     # ── broadcast ────────────────────────────────────────────────────────
 
     async def broadcast(self, msg: dict) -> None:
+        # Before owner verification only generic status/security events may be
+        # stored or sent. Private logs/transcripts must not leak to paired HUDs.
+        manager = _get_auth_manager_for_dashboard()
+        allowed = {"status", "wake", "privacy_lock", "auth_state"}
+        owner_ok = bool(manager and manager.is_owner_access_allowed() and not manager.is_silent())
+        if not owner_ok and msg.get("type") not in allowed:
+            return
         self._history.append(msg)
         if len(self._history) > 300:
             self._history = self._history[-300:]
@@ -494,6 +504,12 @@ class DashboardServer:
         def _auth(req: Request) -> bool:
             tok = req.headers.get("authorization", "").removeprefix("Bearer ").strip()
             return self._token_valid(tok)
+
+        def _owner_auth(req: Request) -> bool:
+            if not _auth(req):
+                return False
+            manager = _get_auth_manager_for_dashboard()
+            return bool(manager and manager.is_owner_access_allowed() and not manager.is_silent())
 
         # CORS / CSRF origin validation middleware for state-changing endpoints
         @app.middleware("http")
@@ -535,6 +551,24 @@ class DashboardServer:
         @app.get("/login", response_class=HTMLResponse)
         async def login_page():
             return HTMLResponse(self._login_html)
+
+        @app.get("/api/auth/status")
+        async def auth_status(req: Request):
+            if not _auth(req):
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            manager = _get_auth_manager_for_dashboard()
+            if manager is None:
+                return JSONResponse({"state":"RESTRICTED_MODE","pin_enrolled":False,
+                                     "pin_required":False,"privacy_lock_active":False,
+                                     "cooldown_remaining":0,"owner_verified":False})
+            return JSONResponse({
+                "state": manager.get_state(),
+                "pin_enrolled": manager.is_pin_enrolled(),
+                "pin_required": manager.needs_pin(),
+                "privacy_lock_active": manager.is_privacy_lock_active(),
+                "cooldown_remaining": manager.cooldown_remaining(),
+                "owner_verified": manager.is_owner_access_allowed(),
+            })
 
         @app.get("/", response_class=HTMLResponse)
         async def index():
@@ -702,9 +736,9 @@ class DashboardServer:
         async def command(req: Request):
             if not _auth(req):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
-            from security.auth_manager import get_auth_manager
-            if get_auth_manager().is_locked():
-                return JSONResponse({"error": "System is in PRIVACY_LOCK state. Commands rejected."}, status_code=423)
+            manager = _get_auth_manager_for_dashboard()
+            if manager and manager.is_privacy_lock_active():
+                return JSONResponse({"error": "Privacy Lock is active"}, status_code=423)
             body  = await req.json()
             token = req.headers.get("authorization", "").removeprefix("Bearer ").strip()
             enc   = body.get("enc", "")
@@ -724,6 +758,9 @@ class DashboardServer:
         async def wake_ep(req: Request):
             if not _auth(req):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            manager = _get_auth_manager_for_dashboard()
+            if manager and manager.is_silent():
+                return JSONResponse({"error": "Privacy Lock or owner re-authentication is active"}, status_code=423)
             if self._wake_callback:
                 self._wake_callback()
             return JSONResponse({"ok": True})
@@ -735,6 +772,10 @@ class DashboardServer:
             tok = token.strip()
             if not self._token_valid(tok):
                 await websocket.close(code=4001)
+                return
+            manager = _get_auth_manager_for_dashboard()
+            if manager and manager.is_silent():
+                await websocket.close(code=4003, reason="Privacy Lock or owner re-authentication is active")
                 return
             await websocket.accept()
             previous = self._phone_audio_ws
@@ -750,9 +791,10 @@ class DashboardServer:
             try:
                 while True:
                     data = await websocket.receive_bytes()
-                    from security.auth_manager import get_auth_manager
-                    if get_auth_manager().is_locked():
-                        continue
+                    manager = _get_auth_manager_for_dashboard()
+                    if manager and manager.is_silent():
+                        await websocket.close(code=4003, reason="Privacy Lock or owner re-authentication is active")
+                        break
                     try:
                         self._phone_audio_queue.put_nowait(
                             {"data": data, "mime_type": "audio/pcm"}
@@ -780,6 +822,8 @@ class DashboardServer:
             async def upload_file(req: Request, file: UploadFile = FastAPIFile(...)):
                 if not _auth(req):
                     return JSONResponse({"error": "Unauthorized"}, status_code=401)
+                if not _owner_auth(req):
+                    return JSONResponse({"error": "Owner verification required for private file uploads"}, status_code=403)
 
                 # A paired device must not be able to fill the disk.
                 try:
@@ -821,13 +865,42 @@ class DashboardServer:
                         pass
                     return JSONResponse({"error": str(exc)}, status_code=500)
 
+                # Run document parsing in a worker thread so large/slow uploads
+                # do not block the FastAPI event loop or other dashboard clients.
+                def _run_ingestion():
+                    try:
+                        from actions.file_processor import file_processor
+                        result = file_processor({"file_path": str(dest), "action": "summarize"})
+                        if isinstance(result, str) and result.strip():
+                            error_prefixes = ("File not found", "Could not", "Unsupported", "Error:", "Failed:")
+                            if not result.startswith(error_prefixes):
+                                return True, result[:300]
+                    except Exception as exc:
+                        print(f"[Dashboard Upload] AI ingestion failed: {type(exc).__name__}: {exc}")
+                    return False, ""
+
+                try:
+                    loop = asyncio.get_running_loop()
+                    ai_ingested, ingestion_summary = await loop.run_in_executor(None, _run_ingestion)
+                except Exception as exc:
+                    print(f"[Dashboard Upload] Could not schedule ingestion: {type(exc).__name__}: {exc}")
+                    ai_ingested, ingestion_summary = False, ""
+
                 asyncio.create_task(self.broadcast({
                     "type": "file_received",
                     "name": dest.name,
                     "size": size,
                     "saved_to": str(self._uploads_dir),
+                    "ai_ingested": ai_ingested,
+                    "summary": ingestion_summary,
                 }))
-                return JSONResponse({"ok": True, "name": dest.name, "size": size})
+                return JSONResponse({
+                    "ok": True,
+                    "name": dest.name,
+                    "size": size,
+                    "ai_ingested": ai_ingested,
+                    "summary": ingestion_summary,
+                })
         else:
             @app.post("/api/upload")
             async def upload_unavailable(req: Request):
@@ -840,6 +913,8 @@ class DashboardServer:
         async def list_files(req: Request):
             if not _auth(req):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            if not _owner_auth(req):
+                return JSONResponse({"error": "Owner verification required for private files"}, status_code=403)
             files = []
             try:
                 for f in sorted(
@@ -858,6 +933,9 @@ class DashboardServer:
             tok = token.strip()
             if not self._token_valid(tok):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            manager = _get_auth_manager_for_dashboard()
+            if not manager or not manager.is_owner_access_allowed() or manager.is_silent():
+                return JSONResponse({"error": "Owner verification required for private downloads"}, status_code=403)
             safe = _safe_filename(filename)
             base = self._uploads_dir.resolve()
             path = (base / safe).resolve()
@@ -875,7 +953,13 @@ class DashboardServer:
                 return
             await websocket.accept()
             self._clients.add(websocket)
-            for entry in self._history[-50:]:
+            manager = _get_auth_manager_for_dashboard()
+            owner_ok = bool(manager and manager.is_owner_access_allowed() and not manager.is_silent())
+            history = self._history[-50:] if owner_ok else [
+                x for x in self._history[-50:]
+                if x.get("type") in {"status", "wake", "privacy_lock", "auth_state"}
+            ]
+            for entry in history:
                 try:
                     await websocket.send_json(entry)
                 except Exception:
@@ -883,10 +967,15 @@ class DashboardServer:
             try:
                 while True:
                     data = await websocket.receive_json()
-                    from security.auth_manager import get_auth_manager
-                    if get_auth_manager().is_locked():
-                        continue
                     if data.get("type") == "command":
+                        manager = _get_auth_manager_for_dashboard()
+                        if manager and manager.is_privacy_lock_active():
+                            await websocket.send_json({
+                                "type": "privacy_lock",
+                                "text": "JARVIS Privacy Lock is active. Private access is blocked.",
+                                "cooldown_remaining": manager.cooldown_remaining(),
+                            })
+                            continue
                         enc = data.get("enc", "")
                         t   = self._decrypt(tok, enc) if enc else (data.get("text") or "").strip()
                         if t:

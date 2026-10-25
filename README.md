@@ -289,17 +289,11 @@ The security architecture currently includes:
 * Process-level sandboxing
 * Scrubbed execution environments
 * Memory and execution limits
-* Voice Biometric Authorization & Argon2/DPAPI PIN Vault (`security/voice_auth.py`, `security/auth_manager.py`, `core/dispatcher.py`)
-* 3-Strike Emergency Privacy Lockout (`security/lockdown.py`) & Multi-Device Alert Dispatcher (`notifications/alert_service.py`)
 
 The security system is implemented primarily under:
 
 ```text
 core/security.py
-security/auth_manager.py
-security/voice_auth.py
-security/lockdown.py
-notifications/alert_service.py
 core/injection_guard.py
 core/confirm.py
 core/sandbox.py
@@ -456,16 +450,6 @@ settings, or modify user data need their own safety checks and approval flows.
 Future versions will not silently inherit permission to perform those actions;
 each newly supported repair must be reviewed and must request your approval
 before it changes anything.
-
-### 🔐 3-Strike Privacy Lockout Protocol
-
-When 3 consecutive incorrect PIN/credential attempts occur, JARVIS immediately executes the emergency Privacy Lock defense sequence:
-
-1. **Windows OS Lock (`ctypes.windll.user32.LockWorkStation()`):** Immediately switches the master desktop to the Windows lock screen.
-2. **Process Silencing:** Instantly terminates active TTS speech playback and suspends microphone streaming (PyAudio/WASAPI). JARVIS becomes silent and unresponsive to all voice commands and wake-words while locked.
-3. **Block Private Information:** Zeroes out sensitive conversation memory (`SecureZeroMemory`), revokes active session tokens, and closes/unmounts active handles to private vaults or user files.
-4. **Strictly Clamped Hardware-Monotonic Timer:** Enforces a hardware countdown using `time.monotonic()` strictly clamped between 60s (1 min) and 300s (5 min) (`effective_duration = max(60, min(configured_duration, 300))`), ignoring clock/timezone changes. Upon expiration, resets failed attempts to 0 and restores microphone in `RESTRICTED_MODE`.
-5. **Multi-Device Emergency Alerts:** Sends an emergency SMS via Twilio and broadcasts a WebSocket payload `{"event": "PRIVACY_LOCK", "duration": effective_duration}` to all connected companion HUDs and devices. Companion HUDs switch to a red lockdown shield UI and reject remote commands until cleared.
 
 ### Optional Voice ID
 
@@ -1219,6 +1203,22 @@ All discovered capabilities are passed through the security layer before executi
 | 💻 `code_helper`         | Assists with code                                  |
 | 🤖 `dev_agent`           | Provides development assistance                    |
 | 🖥️ `desktop`            | Performs desktop operations                        |
+
+---
+
+# 🔐 Owner Access, Voice ID & Privacy Lock
+
+JARVIS starts in restricted mode and ships with **no default owner PIN**.
+
+1. Run `python scripts/setup_owner_auth.py` in a local Windows terminal to enroll the owner PIN/password. It is hashed with Argon2id and protected with Windows DPAPI; the raw credential is never written to disk.
+2. To enroll Voice ID, install the optional local SpeechBrain/Torch and platform key-store dependencies, then run `python scripts/enroll_master.py`. Voice ID is a convenience identity check, not proof against a replay or voice clone; PIN fallback remains available.
+3. Three consecutive incorrect PIN/password attempts activate Privacy Lock, attempt to lock Windows, suppress private assistant output and notify connected paired dashboard clients.
+4. The cooldown defaults to 1 minute. Set `JARVIS_PRIVACY_LOCK_MINUTES` to `1`, `2`, `3`, `4`, or `5` before launch to select an allowed 1–5 minute duration. After the timer, JARVIS stays silent until owner PIN re-authentication succeeds. Windows itself is never automatically unlocked.
+5. Type PIN/password fallback into the local JARVIS command box or paired dashboard. Do not speak it; microphone input is intentionally not sent to Gemini during a PIN challenge.
+
+Restricted mode permits basic public queries. Private files/memory, system controls, and unknown actions require owner access. Existing confirmations for dangerous actions remain active.
+
+See [Owner Security Setup](docs/OWNER_SECURITY.md).
 
 ---
 
@@ -2682,3 +2682,9 @@ Every contribution helps move Jarvis closer to becoming a fully capable personal
 ### Built by Sathija Balachandra
 
 **Jarvis AI — Hear. See. Speak. Think. Act.**
+
+## 🔐 Privacy Lock alerts
+
+The existing local `AuthManager` remains the authority for the three-failure Privacy Lock and Windows workstation lock. When the lock activates, JARVIS suppresses pending voice output, publishes a `privacy_lock` dashboard event, blocks remote commands, and revokes active companion sessions. The HUD displays a Privacy Lock overlay.
+
+An emergency SMS is optional. It is sent only when Twilio is configured with an explicit `alert_recipient_number` that differs from the sender number. Missing credentials or recipient configuration safely disables SMS; network delivery runs outside the real-time audio event loop. No SMS delivery is claimed when the provider is unavailable or rejects the request.

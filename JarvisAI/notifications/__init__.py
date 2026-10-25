@@ -1,3 +1,1 @@
-"""
-JarvisAI Notifications Package
-"""
+"""Optional notifications for Jarvis AI."""

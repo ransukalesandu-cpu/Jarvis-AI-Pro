@@ -81,7 +81,82 @@ except Exception:
 import numpy as np
 from google import genai
 from google.genai import types
-from ui import JarvisUI, configure_qt_graphics_backend
+try:
+    from ui import JarvisUI, configure_qt_graphics_backend
+except ImportError:
+    JarvisUI = None
+    configure_qt_graphics_backend = None
+
+
+class HeadlessJarvisUI:
+    """Headless UI adapter for JARVIS Lite Core running silently in background mode."""
+
+    def __init__(self):
+        self.muted = False
+        self.current_file = None
+        self.state = "INITIALIZING"
+
+    def write_log(self, text: str) -> None:
+        print(f"[CoreLog] {text}")
+
+    def set_state(self, state: str) -> None:
+        self.state = state
+        print(f"[CoreState] {state}")
+
+    def set_audio_level(self, level: float) -> None:
+        pass
+
+    def react_avatar_text(self, text: str) -> None:
+        pass
+
+    def push_visemes(self, frames, hop, at) -> None:
+        pass
+
+    def show_content(self, title: str, text: str) -> None:
+        print(f"[CoreContent] {title}\n{text}")
+
+    def show_confirm(self, action_id: str, prompt: str, callback) -> None:
+        print(f"[CoreConfirm] Confirmation gated in headless mode for {action_id}: {prompt}")
+        # In headless mode without interactive approval, deny dangerous actions by default
+        if callback:
+            callback(False)
+
+    def hide_confirm(self) -> None:
+        pass
+
+    def start_camera_stream(self) -> None:
+        pass
+
+    def stop_camera_stream(self) -> None:
+        pass
+
+    def set_voice_id_enabled(self, enabled: bool) -> None:
+        pass
+
+    def notify_phone_connected(self) -> None:
+        print("[CoreStatus] Phone connected")
+
+    def hud_video_is_active(self) -> bool:
+        return False
+
+    def get_plugins(self) -> list:
+        return []
+
+    def get_plugin_settings(self) -> dict:
+        return {}
+
+    def request_say(self, text: str) -> None:
+        print(f"[CoreSay] {text}")
+
+    def wait_for_api_key(self, stop_event=None) -> bool:
+        return True
+
+    def prompt_reconfig() -> None:
+        pass
+
+    def request_close() -> None:
+        pass
+
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
     save_session_summary, pop_last_session,
@@ -1576,7 +1651,131 @@ class JarvisLive:
             self.ui.write_log(f"SEC: Voice ID identified speaker as '{role}' (score {score:.2f}); owner access required.")
         return matched
 
+    def _queue_auth_state_broadcast(self) -> None:
+        """Publish only non-sensitive auth state to already-paired dashboard clients."""
+        try:
+            manager = security.get_auth_manager()
+            state = manager.get_state()
+            payload = {
+                "type": "auth_state",
+                "state": "owner_verified" if manager.is_owner_access_allowed() else (
+                    "privacy_lock" if manager.is_privacy_lock_active() else (
+                        "pin_required" if manager.needs_pin() else "restricted"
+                    )
+                ),
+                "owner_verified": manager.is_owner_access_allowed(),
+                "pin_required": manager.needs_pin(),
+                "privacy_lock_active": manager.is_privacy_lock_active(),
+            }
+            if self._dashboard is not None and self._loop is not None:
+                asyncio.run_coroutine_threadsafe(self._dashboard.broadcast(payload), self._loop)
+        except Exception:
+            pass
+
+    def _handle_privacy_lock_activated(self, message: str) -> None:
+        """Thread-safe callback invoked by AuthManager after it persists the lock."""
+        loop = getattr(self, "_loop", None)
+        if loop is None:
+            try:
+                self.ui.write_log("SEC: Privacy Lock activated; private output is blocked.")
+            except Exception:
+                pass
+            return
+        try:
+            asyncio.run_coroutine_threadsafe(self._publish_privacy_lock(message), loop)
+        except Exception as exc:
+            print(f"[Privacy Lock] Notification scheduling failed: {type(exc).__name__}")
+
+    async def _publish_privacy_lock(self, message: str) -> None:
+        self._interrupted = True
+        self._assistant_turn_pending = False
+        phone_audio_queue = getattr(getattr(self, "_dashboard", None), "_phone_audio_queue", None)
+        for queue in (getattr(self, "out_queue", None), getattr(self, "audio_in_queue", None), phone_audio_queue):
+            if queue is not None:
+                while True:
+                    try:
+                        queue.get_nowait()
+                    except Exception:
+                        break
+        try:
+            self.set_speaking(False)
+        except Exception:
+            pass
+        done_event = getattr(self, "_turn_done_event", None)
+        if done_event is not None:
+            done_event.set()
+        try:
+            self.ui.set_state("LOCKED")
+            self.ui.write_log("SEC: Privacy Lock activated. Private audio and responses are suppressed.")
+        except Exception:
+            pass
+        manager = security.get_auth_manager()
+        duration = manager.cooldown_remaining()
+        try:
+            from notifications.alert_service import build_privacy_lock_alert, send_twilio_alert
+            payload = build_privacy_lock_alert(duration, message=message)
+            # Network I/O must not block the real-time voice/event loop.
+            asyncio.create_task(asyncio.to_thread(send_twilio_alert, payload["message"]))
+        except Exception as exc:
+            print(f"[Privacy Lock] Optional SMS alert scheduling failed: {type(exc).__name__}")
+            payload = {
+                "event": "PRIVACY_LOCK",
+                "duration": duration,
+                "message": message,
+                "type": "privacy_lock",
+                "text": message,
+                "cooldown_remaining": duration,
+            }
+
+        dashboard = getattr(self, "_dashboard", None)
+        if dashboard is not None:
+            try:
+                # Send the privacy alert before revoking active companion sessions.
+                await dashboard.broadcast(payload)
+            except Exception as exc:
+                print(f"[Privacy Lock] Connected-device notification failed: {type(exc).__name__}")
+            finally:
+                try:
+                    dashboard.revoke_all_sessions()
+                    sockets = list(getattr(dashboard, "_clients", ()))
+                    phone_socket = getattr(dashboard, "_phone_audio_ws", None)
+                    if phone_socket is not None:
+                        sockets.append(phone_socket)
+                    for ws in sockets:
+                        try:
+                            await ws.close(code=4003, reason="Privacy Lock is active")
+                        except Exception:
+                            pass
+                    if hasattr(dashboard, "_clients"):
+                        dashboard._clients.clear()
+                    if getattr(dashboard, "_phone_audio_ws", None) is phone_socket:
+                        dashboard._phone_audio_ws = None
+                except Exception as exc:
+                    print(f"[Privacy Lock] Session revocation failed: {type(exc).__name__}")
+
     def _on_text_command(self, text: str):
+        # Owner PIN/password input is intercepted locally and is never sent to
+        # Gemini, added to conversation history, or written to logs.
+        manager = security.get_auth_manager()
+        if manager.is_privacy_lock_active():
+            return
+        if manager.needs_pin():
+            accepted = manager.verify_pin(str(text or "").strip())
+            if accepted:
+                self._interrupted = False
+                self._queue_auth_state_broadcast()
+                try:
+                    self.ui.write_log("SEC: Owner credential verified.")
+                except Exception:
+                    pass
+            elif not manager.is_privacy_lock_active():
+                try:
+                    self.ui.write_log("SEC: Owner credential was not accepted.")
+                except Exception:
+                    pass
+            return
+        if manager.is_silent():
+            return
         if not self._loop or not self.session:
             return
         # Respect wake-word sleep: a typed command must not be answered while
@@ -2360,6 +2559,12 @@ class JarvisLive:
         print("[AudioTrace 1→3] Sender running; waiting for microphone/phone audio frames.")
         while True:
             msg = await self.out_queue.get()
+            try:
+                manager = security.get_auth_manager()
+                if manager.is_silent() or manager.needs_pin():
+                    continue
+            except Exception:
+                continue
             # Gemini 3.x Live rejects the old realtime_input.media_chunks field
             # (what `media=...` maps to) and closes the socket with a 1007. Send
             # mic / phone PCM through the new `audio` field instead. Queue items
@@ -2432,6 +2637,16 @@ class JarvisLive:
 
         def _mic_callback_impl(indata, frames, time_info, status):
             nonlocal actual_sr, mic_callback_count
+            # Once a PIN challenge or Privacy Lock is active, don't forward or
+            # retain mic frames. PIN entry is typed into the local authenticated UI.
+            try:
+                manager = security.get_auth_manager()
+                if manager.is_silent() or manager.needs_pin():
+                    vad_pcm_buffer.clear()
+                    self._expire_voice_id_audio()
+                    return
+            except Exception:
+                return
             mic_callback_count += 1
             if mic_callback_count == 1:
                 print(
@@ -2795,6 +3010,28 @@ class JarvisLive:
         try:
             while True:
                 async for response in self.session.receive():
+                    # Drain cloud responses without rendering/speaking them while
+                    # Privacy Lock or the mandatory post-lock re-auth state is active.
+                    try:
+                        manager = security.get_auth_manager()
+                        if manager.is_silent():
+                            audio_fragment_buffer.clear()
+                            out_buf.clear()
+                            in_buf.clear()
+                            self._assistant_turn_pending = False
+                            queue = getattr(self, "audio_in_queue", None)
+                            if queue is not None:
+                                while True:
+                                    try:
+                                        queue.get_nowait()
+                                    except Exception:
+                                        break
+                            done_event = getattr(self, "_turn_done_event", None)
+                            if done_event is not None:
+                                done_event.set()
+                            continue
+                    except Exception:
+                        continue
                     live_events_received += 1
                     if live_events_received == 1:
                         print("[AudioTrace 3/LIVE] First server event received from Gemini Live.")
@@ -2966,6 +3203,16 @@ class JarvisLive:
                                 current_speaker_role = self._get_speaker_role_for_current_turn()
                                 if voice_id.is_enabled():
                                     self.ui.write_log(f"SEC: Speaker identified as '{current_speaker_role}'.")
+                                    manager = security.get_auth_manager()
+                                    if not manager.is_silent() and not manager.requires_owner_reauthentication():
+                                        if current_speaker_role == "owner":
+                                            try:
+                                                manager.grant_owner_access("voice")
+                                            except (PermissionError, ValueError):
+                                                pass
+                                        elif manager.get_state() == "FULL_ACCESS_MODE" and manager.get_auth_method() == "voice":
+                                            manager.set_state("RESTRICTED_MODE")
+                                    self._queue_auth_state_broadcast()
                                 security.mark_user_turn_started()
                                 if not voice_confirmation_consumed:
                                     decision = await asyncio.to_thread(
@@ -4228,6 +4475,28 @@ class JarvisLive:
                 )
                 if not text:
                     continue
+                manager = security.get_auth_manager()
+                if manager.is_privacy_lock_active():
+                    continue
+                if manager.needs_pin():
+                    # Credential text from a paired dashboard is checked locally and
+                    # is never sent to Gemini or written to logs/history.
+                    accepted = manager.verify_pin(str(text).strip())
+                    if accepted:
+                        self._interrupted = False
+                        self._queue_auth_state_broadcast()
+                    elif not manager.is_privacy_lock_active() and self._dashboard is not None:
+                        await self._dashboard.broadcast({
+                            "type": "auth_state",
+                            "state": "pin_required",
+                            "owner_verified": False,
+                            "pin_required": True,
+                            "privacy_lock_active": False,
+                            "message": "Owner PIN/password was not accepted.",
+                        })
+                    continue
+                if manager.is_silent():
+                    continue
                 # Wait up to 8s for session to become ready after a wake
                 for _ in range(80):
                     if self.session:
@@ -4350,15 +4619,6 @@ class JarvisLive:
             voice_id_verifier=self._verify_voice_id_for_current_turn,
             voice_id_role=self._get_speaker_role_for_current_turn,
         )
-
-        from security.lockdown import register_silencing_hooks
-        register_silencing_hooks(
-            tts_stop=self.interrupt,
-            mic_suspend=lambda: self.ui._toggle_mute() if not self.ui._muted else None,
-            mic_restore=lambda: self.ui._toggle_mute() if self.ui._muted else None,
-            clear_memory=lambda: (self._session_log.clear(), pop_last_session()),
-            clear_tokens=lambda: self._dashboard.revoke_all_sessions() if self._dashboard else None,
-        )
         _ledger_ok, _ledger_status = security.verify_log()
         self.ui.write_log(
             ("SEC: " if _ledger_ok else "SECURITY ALERT: ") + _ledger_status
@@ -4380,6 +4640,7 @@ class JarvisLive:
             self._dashboard = DashboardServer()
             self._dashboard.set_connect_callback(self._on_phone_connected)
             self._dashboard.set_handoff_status_callback(self._phone_handoff_status)
+            security.get_auth_manager().set_privacy_lock_notifier(self._handle_privacy_lock_activated)
             self._dashboard_task = asyncio.create_task(self._dashboard.serve())
             # Runs for the whole lifetime, not just inside an active session
             self._dashboard_command_task = asyncio.create_task(
@@ -4808,13 +5069,35 @@ class JarvisLive:
                 return
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="JARVIS AI Personal Assistant")
+    parser.add_argument("--headless", action="store_true", help="Run in headless background daemon mode")
+    args, _ = parser.parse_known_args()
+
+    if args.headless:
+        print("[JARVIS Core] Starting in Headless Daemon Mode...")
+        ui = HeadlessJarvisUI()
+        jarvis = JarvisLive(ui)
+        try:
+            asyncio.run(jarvis.run())
+        except KeyboardInterrupt:
+            print("\\n[JARVIS Core] Headless core shutting down...")
+        except Exception as exc:
+            print(f"[JARVIS Core] Headless runtime failed: {type(exc).__name__}: {exc}")
+            traceback.print_exc()
+        return
+
+    if JarvisUI is None:
+        print("[JARVIS] Desktop UI dependencies are unavailable. Use --headless or install the UI dependencies.")
+        return
     from PyQt6.QtCore import QTimer
     from PyQt6.QtWidgets import QApplication
 
     # Windows defaults Qt Quick to D3D11. The HUD neural canvas is an
     # OpenGL widget, so select a matching backend before the startup video or
     # any Qt Quick window is created.
-    configure_qt_graphics_backend()
+    if configure_qt_graphics_backend:
+        configure_qt_graphics_backend()
     app = QApplication.instance() or QApplication(sys.argv)
     app.setStyle("Fusion")
     startup = {

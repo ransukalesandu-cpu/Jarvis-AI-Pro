@@ -1,117 +1,370 @@
 """
-JarvisAI Security — Auth Manager
+Owner access state machine for JARVIS.
 
-Manages PIN vault, credential attempts, and system auth state transitions
-(NORMAL, RESTRICTED_MODE, PRIVACY_LOCK).
+No default PIN is created. FULL_ACCESS is always session-only and is never restored
+after a process restart. Privacy Lock state and its cooldown are persisted.
 """
+from __future__ import annotations
 
+import ctypes
+import json
+import os
+import sys
 import threading
-from typing import Optional, Callable
+import time
+from pathlib import Path
+from typing import Callable, Optional
 
-STATE_NORMAL = "NORMAL"
-STATE_RESTRICTED_MODE = "RESTRICTED_MODE"
-STATE_PRIVACY_LOCK = "PRIVACY_LOCK"
+try:
+    from argon2 import PasswordHasher
+    from argon2.exceptions import VerificationError
+    _ARGON2_AVAILABLE = True
+except ImportError:
+    PasswordHasher = None
+    VerificationError = Exception
+    _ARGON2_AVAILABLE = False
+
+try:
+    from security.voice_auth import SpeakerAuthenticator, COSINE_THRESHOLD
+except Exception:
+    SpeakerAuthenticator = None
+    COSINE_THRESHOLD = 0.80
+
+RESTRICTED_MODE = "RESTRICTED_MODE"
+FULL_ACCESS_MODE = "FULL_ACCESS_MODE"
+CHALLENGE_MODE = "CHALLENGE_MODE"
+PRIVACY_LOCK = "PRIVACY_LOCK"
+
+DEFAULT_VAULT_PATH = Path(__file__).resolve().parent.parent / "config" / "pin_vault.dat"
+DEFAULT_STATE_PATH = Path(__file__).resolve().parent.parent / "config" / "auth_state.json"
+MAX_FAILED_PIN_ATTEMPTS = 3
+DEFAULT_COOLDOWN_SECONDS = 60
+
+
+def configured_cooldown_seconds(value: str | None = None) -> int:
+    """Read the 1–5 minute lock duration. Invalid values fail back to 1 minute."""
+    raw = os.environ.get("JARVIS_PRIVACY_LOCK_MINUTES", "1") if value is None else value
+    try:
+        minutes = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return DEFAULT_COOLDOWN_SECONDS
+    if not 1 <= minutes <= 5:
+        return DEFAULT_COOLDOWN_SECONDS
+    return minutes * 60
+
+
+def _dpapi_protect(data: bytes) -> bytes:
+    """Protect PIN-hash metadata with Windows DPAPI. Never fall back to plaintext."""
+    if sys.platform != "win32":
+        return data
+    class DATA_BLOB(ctypes.Structure):
+        _fields_ = [("cbData", ctypes.c_ulong), ("pbData", ctypes.POINTER(ctypes.c_byte))]
+    source_buffer = ctypes.create_string_buffer(data, len(data))
+    source = DATA_BLOB(len(data), ctypes.cast(source_buffer, ctypes.POINTER(ctypes.c_byte)))
+    dest = DATA_BLOB()
+    ok = ctypes.windll.crypt32.CryptProtectData(
+        ctypes.byref(source), "JARVIS_PIN_VAULT", None, None, None, 0, ctypes.byref(dest)
+    )
+    if not ok:
+        raise RuntimeError("Windows DPAPI could not encrypt the JARVIS PIN vault.")
+    try:
+        return ctypes.string_at(dest.pbData, dest.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(dest.pbData)
+
+
+def _dpapi_unprotect(data: bytes) -> bytes:
+    """Unprotect Windows DPAPI data; fail closed if the Windows call fails."""
+    if sys.platform != "win32":
+        return data
+    class DATA_BLOB(ctypes.Structure):
+        _fields_ = [("cbData", ctypes.c_ulong), ("pbData", ctypes.POINTER(ctypes.c_byte))]
+    source_buffer = ctypes.create_string_buffer(data, len(data))
+    source = DATA_BLOB(len(data), ctypes.cast(source_buffer, ctypes.POINTER(ctypes.c_byte)))
+    dest = DATA_BLOB()
+    ok = ctypes.windll.crypt32.CryptUnprotectData(
+        ctypes.byref(source), None, None, None, None, 0, ctypes.byref(dest)
+    )
+    if not ok:
+        raise RuntimeError("Windows DPAPI could not decrypt the JARVIS PIN vault.")
+    try:
+        return ctypes.string_at(dest.pbData, dest.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(dest.pbData)
+
+
+def lock_workstation() -> bool:
+    """Lock the current Windows workstation without attempting to unlock it later."""
+    if sys.platform != "win32":
+        return False
+    try:
+        return bool(ctypes.windll.user32.LockWorkStation())
+    except Exception:
+        return False
 
 
 class AuthManager:
-    """Manages PIN verification and authentication state."""
+    """PIN and voice-derived owner access state machine; no network API can set FULL_ACCESS."""
 
-    _instance = None
-    _lock = threading.Lock()
+    def __init__(
+        self,
+        vault_path: str | Path | None = None,
+        state_path: str | Path | None = None,
+        voice_authenticator=None,
+        cooldown_seconds: int | None = None,
+    ):
+        self.vault_path = Path(vault_path) if vault_path else DEFAULT_VAULT_PATH
+        self.state_path = Path(state_path) if state_path else DEFAULT_STATE_PATH
+        self.voice_authenticator = voice_authenticator
+        configured = configured_cooldown_seconds() if cooldown_seconds is None else int(cooldown_seconds)
+        self.cooldown_seconds = configured if 60 <= configured <= 300 else DEFAULT_COOLDOWN_SECONDS
+        self._lock = threading.RLock()
+        self._privacy_lock_notifier: Optional[Callable[[str], None]] = None
+        self.failed_pin_attempts = 0
+        self.state = RESTRICTED_MODE
+        self.lock_until = 0.0
+        self._requires_owner_reauth = False
+        self._auth_method: str | None = None
+        self._hasher = PasswordHasher() if _ARGON2_AVAILABLE else None
+        self._load_persistent_state()
 
-    def __new__(cls):
-        with cls._lock:
-            if cls._instance is None:
-                cls._instance = super().__new__(cls)
-                cls._instance._initialized = False
-            return cls._instance
-
-    def __init__(self):
-        if getattr(self, "_initialized", False):
+    def _load_persistent_state(self) -> None:
+        """Restore lockout only; a previous FULL_ACCESS session never survives restart."""
+        if not self.state_path.exists():
             return
-        self._initialized = True
-        self.failed_pin_attempts: int = 0
-        self.state: str = STATE_NORMAL
-        self._stored_pin: Optional[str] = None
-        self._lockdown_callback: Optional[Callable[[], None]] = None
-        self._state_lock = threading.RLock()
-
-    def set_pin(self, pin: str) -> None:
-        """Store the configured PIN."""
-        with self._state_lock:
-            self._stored_pin = str(pin).strip()
-
-    def set_lockdown_callback(self, callback: Callable[[], None]) -> None:
-        """Register callback to execute when PRIVACY_LOCK is triggered."""
-        with self._state_lock:
-            self._lockdown_callback = callback
-
-    def verify_pin(self, entered_pin: str) -> bool:
-        """Verify entered PIN and update failed_pin_attempts counter."""
-        with self._state_lock:
-            if self.state == STATE_PRIVACY_LOCK:
-                return False
-
-            if self._stored_pin and entered_pin == self._stored_pin:
+        try:
+            data = json.loads(self.state_path.read_text(encoding="utf-8"))
+            saved_state = str(data.get("state", RESTRICTED_MODE))
+            self.lock_until = float(data.get("lock_until", 0.0))
+            self.failed_pin_attempts = max(0, int(data.get("failed_pin_attempts", 0)))
+            saved_reauth = bool(data.get("requires_owner_reauth", False))
+            now = time.time()
+            if saved_state == PRIVACY_LOCK and now < self.lock_until:
+                self.state = PRIVACY_LOCK
+                self._requires_owner_reauth = True
+            elif saved_state == PRIVACY_LOCK or saved_reauth:
+                self.state = CHALLENGE_MODE
+                self.lock_until = 0.0
                 self.failed_pin_attempts = 0
-                return True
-
-            # Record failed attempt
-            self.failed_pin_attempts += 1
-            if self.failed_pin_attempts >= 3:
-                self._transition_to_privacy_lock_locked()
-            return False
-
-    def record_failed_attempt(self) -> int:
-        """Record an explicit failed PIN or authorization attempt."""
-        with self._state_lock:
-            if self.state == STATE_PRIVACY_LOCK:
-                return self.failed_pin_attempts
-
-            self.failed_pin_attempts += 1
-            if self.failed_pin_attempts >= 3:
-                self._transition_to_privacy_lock_locked()
-            return self.failed_pin_attempts
-
-    def record_successful_attempt(self) -> None:
-        """Reset failed attempt counter upon successful authentication."""
-        with self._state_lock:
+                self._requires_owner_reauth = True
+                self._save_persistent_state()
+            else:
+                # All non-lock sessions, particularly FULL_ACCESS, restart restricted.
+                self.state = RESTRICTED_MODE
+                self.lock_until = 0.0
+                self.failed_pin_attempts = 0
+                self._requires_owner_reauth = False
+                self._auth_method = None
+                self._save_persistent_state()
+        except Exception:
+            # Corrupt state must never restore access.
+            self.state = RESTRICTED_MODE
+            self.lock_until = 0.0
             self.failed_pin_attempts = 0
+            self._requires_owner_reauth = True
 
-    def _transition_to_privacy_lock_locked(self) -> None:
-        """Internal helper to set PRIVACY_LOCK state and invoke callback."""
-        self.state = STATE_PRIVACY_LOCK
-        cb = self._lockdown_callback
-        if cb:
-            # Trigger lockdown outside lock if needed or spawn task
+    def _save_persistent_state(self) -> None:
+        payload = {
+            "state": self.state,
+            "lock_until": self.lock_until,
+            "failed_pin_attempts": self.failed_pin_attempts,
+            "requires_owner_reauth": self._requires_owner_reauth,
+            "updated_at": time.time(),
+        }
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        temp = self.state_path.with_name(self.state_path.name + ".tmp")
+        try:
+            temp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            if os.name != "nt":
+                os.chmod(temp, 0o600)
+            os.replace(temp, self.state_path)
+        finally:
             try:
-                cb()
-            except Exception as e:
-                print(f"[AuthManager] Lockdown callback error: {e}")
-
-    def set_state(self, new_state: str) -> None:
-        """Set current authentication state."""
-        with self._state_lock:
-            self.state = new_state
+                temp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def get_state(self) -> str:
-        """Get current authentication state."""
-        with self._state_lock:
+        with self._lock:
+            if self.state == PRIVACY_LOCK and time.time() >= self.lock_until:
+                # Cooldown expiry is not authentication. Remain silent until PIN re-auth.
+                self.state = CHALLENGE_MODE
+                self.lock_until = 0.0
+                self.failed_pin_attempts = 0
+                self._requires_owner_reauth = True
+                self._auth_method = None
+                self._save_persistent_state()
             return self.state
 
-    def is_locked(self) -> bool:
-        """Check if system is currently in PRIVACY_LOCK state."""
-        with self._state_lock:
-            return self.state == STATE_PRIVACY_LOCK
+    def get_auth_method(self) -> str | None:
+        with self._lock:
+            return self._auth_method
 
-    def reset_attempts(self) -> None:
-        """Reset failed attempts counter to 0."""
-        with self._state_lock:
+    def set_state(self, new_state: str) -> None:
+        """Set a non-owner state. FULL_ACCESS must use grant_owner_access()."""
+        if new_state not in {RESTRICTED_MODE, CHALLENGE_MODE, PRIVACY_LOCK}:
+            raise ValueError("Use grant_owner_access() after successful owner verification.")
+        with self._lock:
+            if self.state == PRIVACY_LOCK and time.time() < self.lock_until:
+                return
+            self.state = new_state
+            self._auth_method = None
+            if new_state == RESTRICTED_MODE and not self._requires_owner_reauth:
+                self.failed_pin_attempts = 0
+            self._save_persistent_state()
+
+    def set_privacy_lock_notifier(self, callback: Callable[[str], None] | None) -> None:
+        with self._lock:
+            self._privacy_lock_notifier = callback
+
+    def is_pin_enrolled(self) -> bool:
+        return self._read_hashed_pin() is not None
+
+    def set_master_pin(self, pin: str) -> None:
+        """Explicit local enrollment only. The raw PIN is never written to disk."""
+        value = str(pin or "").strip()
+        if not 4 <= len(value) <= 64:
+            raise ValueError("PIN/password must be between 4 and 64 characters.")
+        if not _ARGON2_AVAILABLE or self._hasher is None:
+            raise RuntimeError("Install argon2-cffi before configuring an owner PIN.")
+        hashed = self._hasher.hash(value)
+        protected = _dpapi_protect(json.dumps({"hashed_pin": hashed}).encode("utf-8"))
+        self.vault_path.parent.mkdir(parents=True, exist_ok=True)
+        temp = self.vault_path.with_name(self.vault_path.name + ".tmp")
+        try:
+            temp.write_bytes(protected)
+            if os.name != "nt":
+                os.chmod(temp, 0o600)
+            os.replace(temp, self.vault_path)
+        finally:
+            try:
+                temp.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    def _read_hashed_pin(self) -> Optional[str]:
+        try:
+            if not self.vault_path.is_file():
+                return None
+            payload = json.loads(_dpapi_unprotect(self.vault_path.read_bytes()).decode("utf-8"))
+            value = payload.get("hashed_pin")
+            return value if isinstance(value, str) and value.startswith("$argon2") else None
+        except Exception:
+            return None
+
+    def grant_owner_access(self, method: str) -> None:
+        """Grant only after successful PIN or actual enrolled Voice ID verification."""
+        if method not in {"pin", "voice"}:
+            raise ValueError("Owner access must be verified by PIN or Voice ID.")
+        with self._lock:
+            if self.state == PRIVACY_LOCK and time.time() < self.lock_until:
+                raise PermissionError("Privacy Lock cooldown has not expired.")
+            if self._requires_owner_reauth and method != "pin":
+                raise PermissionError("Privacy Lock requires PIN re-authentication.")
+            self.state = FULL_ACCESS_MODE
+            self._auth_method = method
+            self._requires_owner_reauth = False
+            self.lock_until = 0.0
             self.failed_pin_attempts = 0
+            self._save_persistent_state()
 
+    def verify_pin(self, pin: str) -> bool:
+        """Verify a typed PIN/password. Callers must intercept it before cloud submission/logging."""
+        state = self.get_state()
+        if state == PRIVACY_LOCK or not self.is_pin_enrolled() or self._hasher is None:
+            return False
+        hashed = self._read_hashed_pin()
+        if not hashed:
+            return False
+        try:
+            valid = bool(self._hasher.verify(hashed, str(pin or "").strip()))
+        except Exception:
+            valid = False
+        if valid:
+            self.grant_owner_access("pin")
+            return True
+        with self._lock:
+            self.failed_pin_attempts += 1
+            attempts = self.failed_pin_attempts
+            self._save_persistent_state()
+        if attempts >= MAX_FAILED_PIN_ATTEMPTS:
+            self.trigger_privacy_lock()
+        return False
 
-_default_auth_manager = AuthManager()
+    def process_voice_result(self, is_master: bool, similarity: float, is_live: bool = True, is_stranger: bool = False) -> tuple[str, str]:
+        """Handle an already-computed enrolled Voice ID result; never voice-unlock after Privacy Lock."""
+        state = self.get_state()
+        if state == PRIVACY_LOCK or self.requires_owner_reauthentication():
+            return state, "Privacy Lock requires owner PIN re-authentication."
+        method = self.get_auth_method()
+        if state == FULL_ACCESS_MODE and method == "pin":
+            return FULL_ACCESS_MODE, "Owner PIN verification remains valid for this session."
+        if is_master and similarity >= COSINE_THRESHOLD and is_live:
+            self.grant_owner_access("voice")
+            return FULL_ACCESS_MODE, "Owner voice verified."
+        if is_stranger and state != FULL_ACCESS_MODE:
+            self.set_state(RESTRICTED_MODE)
+            return RESTRICTED_MODE, "Unrecognized speaker; basic access only."
+        if state != FULL_ACCESS_MODE:
+            self.set_state(CHALLENGE_MODE)
+            return CHALLENGE_MODE, "Voice not verified. Enter the owner PIN/password using the local input."
+        return state, "Owner access unchanged."
 
+    def process_voice_authentication(self, audio, sample_rate: int = 16000) -> tuple[str, str]:
+        if self.voice_authenticator is None:
+            if SpeakerAuthenticator is None:
+                self.set_state(CHALLENGE_MODE)
+                return CHALLENGE_MODE, "Voice verification unavailable; enter the owner PIN."
+            self.voice_authenticator = SpeakerAuthenticator()
+        matched, score, live = self.voice_authenticator.verify(audio, sample_rate=sample_rate)
+        return self.process_voice_result(matched, score, live, is_stranger=not matched)
 
-def get_auth_manager() -> AuthManager:
-    return _default_auth_manager
+    def is_privacy_lock_active(self) -> bool:
+        return self.get_state() == PRIVACY_LOCK
+
+    def requires_owner_reauthentication(self) -> bool:
+        self.get_state()
+        with self._lock:
+            return self._requires_owner_reauth
+
+    def is_owner_access_allowed(self) -> bool:
+        return self.get_state() == FULL_ACCESS_MODE and not self.requires_owner_reauthentication()
+
+    def is_silent(self) -> bool:
+        return self.is_privacy_lock_active() or self.requires_owner_reauthentication()
+
+    def needs_pin(self) -> bool:
+        state = self.get_state()
+        return (
+            state != PRIVACY_LOCK
+            and self.is_pin_enrolled()
+            and (state == CHALLENGE_MODE or self.requires_owner_reauthentication())
+        )
+
+    def cooldown_remaining(self) -> int:
+        self.get_state()
+        with self._lock:
+            return max(0, int(self.lock_until - time.time())) if self.state == PRIVACY_LOCK else 0
+
+    def trigger_privacy_lock(self, reason: str = "three incorrect owner PIN/password attempts") -> str:
+        """Persist a three-strike lock, lock Windows, then notify connected paired clients."""
+        message = "JARVIS Privacy Lock activated on your laptop. Owner verification failed three times. Private access is blocked."
+        with self._lock:
+            now = time.time()
+            if self.state == PRIVACY_LOCK and now < self.lock_until:
+                return message
+            self.state = PRIVACY_LOCK
+            self._auth_method = None
+            self._requires_owner_reauth = True
+            self.lock_until = now + self.cooldown_seconds
+            self.failed_pin_attempts = max(MAX_FAILED_PIN_ATTEMPTS, self.failed_pin_attempts)
+            self._save_persistent_state()
+            notifier = self._privacy_lock_notifier
+        lock_workstation()
+        print("[AuthManager] Privacy Lock activated.")
+        if notifier:
+            try:
+                notifier(message)
+            except Exception as exc:
+                print(f"[AuthManager] Privacy Lock notification could not be scheduled: {type(exc).__name__}")
+        return message

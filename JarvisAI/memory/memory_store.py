@@ -178,7 +178,7 @@ def _extract_state(data: dict[str, Any]) -> dict[str, Any]:
             if key not in {"memories", "memory_links", "memory_audit", "memory_usage", "entities", "conflicts"}}
 
 
-def save_snapshot(path: Path, data: dict[str, Any]) -> None:
+def save_snapshot(path: Path, data: dict[str, Any], *, allow_audit_repair: bool = False) -> None:
     """Replace the normalized rows atomically; serialized API remains compatible."""
     if not isinstance(data, dict):
         return
@@ -199,7 +199,22 @@ def save_snapshot(path: Path, data: dict[str, Any]) -> None:
     entities = [row for row in entities if str(row.get("id", "")) not in private_entity_ids
                 or str(row.get("id", "")) in public_entity_ids]
     from memory.memory_audit import validate_anchor_update, write_anchor
-    validate_anchor_update(audits)
+    if allow_audit_repair:
+        # Local recovery is an explicit, backup-first operation. Even in repair
+        # mode the replacement chain must be internally valid and end with the
+        # dedicated recovery marker; ordinary saves never bypass the anchor.
+        from memory.memory_audit import _anchor_paths, _verify_signed_events
+        key_path, _anchor_path, key = _anchor_paths()
+        if not key_path.exists() or not key:
+            raise RuntimeError("Cannot recover memory audit without its existing signing key.")
+        _checked, invalid_reason = _verify_signed_events(audits, key)
+        if invalid_reason:
+            raise RuntimeError(f"Refusing invalid recovered memory audit chain: {invalid_reason}.")
+        signed_rows = [row for row in audits if row.get("hmac")]
+        if not signed_rows or str(signed_rows[-1].get("action", "")) != "audit_chain_recovered":
+            raise RuntimeError("Audit-repair writes require a final audit_chain_recovered event.")
+    else:
+        validate_anchor_update(audits)
     with _lock, _session(db_path) as conn:
         conn.execute("BEGIN IMMEDIATE")
         try:

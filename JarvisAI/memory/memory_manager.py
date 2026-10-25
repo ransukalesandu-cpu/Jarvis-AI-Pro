@@ -446,7 +446,14 @@ def _append_audit(memory: dict, memory_id: str, action: str, actor: str, reason:
              "action": action, "actor": str(actor)[:40],
              "at": datetime.now().isoformat(timespec="seconds"),
              "why": str(reason)[:180]}
-    event["previous_hash"] = str(events[-1].get("hmac", "")) if events and isinstance(events[-1], dict) else ""
+    # Legacy/imported audit rows may not have an HMAC. A new signed event
+    # must extend the latest signed link, not inherit an empty hash from an
+    # unsigned row; otherwise the next integrity check reports a broken chain.
+    event["previous_hash"] = next(
+        (str(row.get("hmac", "")) for row in reversed(events)
+         if isinstance(row, dict) and row.get("hmac")),
+        "",
+    )
     try:
         event["hmac"] = _audit_signature(event)
     except OSError as exc:

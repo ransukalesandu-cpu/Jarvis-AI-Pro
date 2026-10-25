@@ -4027,6 +4027,39 @@ class JarvisLive:
 
     # ── Morning briefing ────────────────────────────────────────────────────────
 
+    async def _identify_startup_speaker(self) -> None:
+        """Listen for startup speech and asynchronously identify speaker."""
+        def _bg_check():
+            try:
+                if not voice_id.is_enrolled("owner"):
+                    security.get_auth_manager().set_state(security.RESTRICTED_MODE)
+                    return
+                # Wait up to 3.5 seconds for initial speech audio frames to be recorded
+                start_time = time.monotonic()
+                pcm = b""
+                while time.monotonic() - start_time < 3.5:
+                    with self._voice_id_audio_lock:
+                        pcm = getattr(self, "_voice_id_turn_audio", b"")
+                        if not pcm and getattr(self, "_voice_id_audio_chunks", None):
+                            pcm = b"".join(chunk for _ts, chunk in self._voice_id_audio_chunks if chunk)
+                    if len(pcm) >= int(SEND_SAMPLE_RATE * voice_id.MIN_AUDIO_SECONDS * 2):
+                        break
+                    time.sleep(0.2)
+
+                if len(pcm) >= int(SEND_SAMPLE_RATE * voice_id.MIN_AUDIO_SECONDS * 2):
+                    role, score = voice_id.identify_speaker(np.frombuffer(pcm, dtype=np.int16))
+                    if role == "owner" and score >= voice_id.SIMILARITY_THRESHOLD:
+                        security.get_auth_manager().grant_owner_access("voice")
+                        self.ui.write_log(f"SEC: Startup speaker identified as owner (confidence: {score:.2f}).")
+                        return
+                security.get_auth_manager().set_state(security.RESTRICTED_MODE)
+            except Exception as exc:
+                print(f"[Startup Auth] Speaker identification failed: {exc}")
+                security.get_auth_manager().set_state(security.RESTRICTED_MODE)
+
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, _bg_check)
+
     async def _send_startup_briefing(self, wake_trigger: bool = False) -> None:
         """
         Two-phase briefing optimized for speed:
@@ -4935,6 +4968,7 @@ class JarvisLive:
                     # normal wake briefing when standby begins asleep.
                     if not self._briefing_sent and get_brief_enabled() and self._awake:
                         self._briefing_sent = True
+                        tg.create_task(self._identify_startup_speaker())
                         tg.create_task(self._send_startup_briefing())
 
             except KeyboardInterrupt:

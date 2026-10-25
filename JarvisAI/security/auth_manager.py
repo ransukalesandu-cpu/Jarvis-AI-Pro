@@ -279,9 +279,9 @@ class AuthManager:
             return None
 
     def grant_owner_access(self, method: str) -> None:
-        """Grant only after successful PIN or actual enrolled Voice ID verification."""
-        if method not in {"pin", "voice"}:
-            raise ValueError("Owner access must be verified by PIN or Voice ID.")
+        """Grant only after successful PIN, Voice ID, or Face ID verification."""
+        if method not in {"pin", "voice", "face"}:
+            raise ValueError("Owner access must be verified by PIN, Voice ID, or Face ID.")
         with self._lock:
             if self.state == PRIVACY_LOCK and time.time() < self.lock_until:
                 raise PermissionError("Privacy Lock cooldown has not expired.")

@@ -422,8 +422,10 @@ def verify(audio, role: str = "owner") -> tuple[bool, float]:
 
 def identify_speaker(audio) -> tuple[str, float]:
     """Identify speaker role among enrolled roles ('owner', 'sister', etc.), or 'stranger'."""
-    if not is_enabled() or not backend_ready():
-        return ("owner", 1.0) if not is_enabled() else ("stranger", 0.0)
+    if not is_enrolled():
+        return "stranger", 0.0
+    if not backend_ready():
+        return "stranger", 0.0
     try:
         with _inference_lock:
             profiles = _load_profiles()

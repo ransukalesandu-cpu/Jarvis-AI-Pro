@@ -119,7 +119,7 @@ def analyze_error(
         preferred_provider="groq",
         api_keys=keys,
         timeout=timeout,
-        online_check=True,
+        online_check=False,
     )
     prompt = build_repair_prompt(error_text, _read_source(source_path))
     result = router.query(

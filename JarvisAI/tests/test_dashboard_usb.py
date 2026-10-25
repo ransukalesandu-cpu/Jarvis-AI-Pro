@@ -71,6 +71,7 @@ class TestADBBridgeServices(unittest.TestCase):
 """
         self.assertTrue(is_reverse_rule_active(rule_output, 8000))
         self.assertFalse(is_reverse_rule_active(rule_output, 8001))
+        self.assertFalse(is_reverse_rule_active("tcp:8000 tcp:8000", 800))
 
     @patch("subprocess.run")
     def test_apply_reverse_forwarding_success(self, mock_run):

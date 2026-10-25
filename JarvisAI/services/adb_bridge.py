@@ -71,7 +71,7 @@ def is_reverse_rule_active(reverse_list_output: str, port: int) -> bool:
     """
     rule_str = f"tcp:{port}"
     for line in reverse_list_output.splitlines():
-        if rule_str in line:
+        if rule_str in line.split():
             return True
     return False
 

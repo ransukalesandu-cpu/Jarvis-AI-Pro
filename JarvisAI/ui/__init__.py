@@ -4306,6 +4306,7 @@ class MainWindow(QMainWindow):
     _clipboard_sig  = pyqtSignal(str)        # clipboard text changed (thread-safe)
     _confirm_sig    = pyqtSignal(str, str)   # (title, detail) — irreversible-action gate
     _confirm_hide_sig = pyqtSignal()
+    _pin_prompt_sig = pyqtSignal(object)  # marshal owner PIN dialogs to the Qt thread
     _neural_hand_start_sig = pyqtSignal()     # marshal camera startup from confirmation worker to Qt
     _wake_dl_sig    = pyqtSignal(bool, str)  # wake-word install finished (ok, message)
     _quiz_sig       = pyqtSignal(str, object, object)  # (topic, questions, grader)
@@ -4519,6 +4520,7 @@ class MainWindow(QMainWindow):
         self._camera_sig.connect(self._show_camera_frame)
         self._confirm_sig.connect(self._show_confirm_banner)
         self._confirm_hide_sig.connect(self._hide_confirm_banner)
+        self._pin_prompt_sig.connect(self._run_pin_prompt)
         self._neural_hand_start_sig.connect(self._start_neural_hand_control_after_confirmation)
         self._cam_stream_sig.connect(self._on_cam_stream)
         self._cam_frame_sig.connect(self._on_cam_frame)
@@ -7683,6 +7685,9 @@ class MainWindow(QMainWindow):
                     self._log.append_log(f"SEC: Voice enrollment could not start: {type(exc).__name__}")
 
 
+    def _run_pin_prompt(self, callback):
+        callback()
+
     def closeEvent(self, event):
         if getattr(self, "_neural_hand_active", False):
             self._stop_neural_hand_control()
@@ -8075,22 +8080,24 @@ class JarvisUI:
         self._win._ready = False
         self._win._reconfig_sig.emit()
 
-    def prompt_pin(self) -> Optional[str]:
+    def prompt_pin(self) -> str | None:
         """Thread-safe dialog asking for owner PIN/password input."""
         if not hasattr(self, "_win") or self._win is None:
             return None
         from PyQt6.QtWidgets import QInputDialog, QLineEdit, QApplication
-        from PyQt6.QtCore import QThread, QTimer
+        from PyQt6.QtCore import QThread
         import threading
 
         app = QApplication.instance()
         if app is None:
             return None
 
-        result: list[Optional[str]] = [None]
+        result: list[str | None] = [None]
         done_event = threading.Event()
 
         def _show():
+            if done_event.is_set():
+                return
             try:
                 text, ok = QInputDialog.getText(
                     self._win,
@@ -8106,8 +8113,10 @@ class JarvisUI:
         if QThread.currentThread() == app.thread():
             _show()
         else:
-            QTimer.singleShot(0, _show)
-            done_event.wait(timeout=30.0)
+            self._win._pin_prompt_sig.emit(_show)
+            if not done_event.wait(timeout=30.0):
+                done_event.set()
+                return None
 
         return result[0]
 

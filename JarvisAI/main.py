@@ -1860,6 +1860,16 @@ class JarvisLive:
                 if manager_now.is_privacy_lock_active() or manager_now.is_silent() or manager_now.needs_pin():
                     return
                 self.ui.show_content("JARVIS — Hybrid Text Fallback", answer)
+                telemetry = getattr(self.ui, "update_hybrid_telemetry", None)
+                if callable(telemetry):
+                    selected_model = str(result.get("model") or provider)
+                    route = "Local Ollama" if provider == "ollama" else provider.upper()
+                    telemetry(
+                        route,
+                        float(result.get("latency_ms", 0.0) or 0.0),
+                        "Auto",
+                        selected_model,
+                    )
                 self.ui.write_log(
                     f"SYS: Hybrid fallback answered via {provider} "
                     f"({result.get('latency_ms', 0)} ms)."

@@ -30,12 +30,12 @@ class HybridBrainPanel(QFrame):
             }
         """)
 
-        # Data state
-        self._active_route = "Local Rule Router"  # or "Cloud AI (Gemini)"
-        self._is_local = True
-        self._latency_ms = 12.5
-        self._language_mode = "English"  # English / Sinhala / Singlish
-        self._model_name = "Rule Matcher"
+        # Do not display fabricated routing data before the backend reports a result.
+        self._active_route = "Waiting for request"
+        self._is_local = False
+        self._latency_ms = 0.0
+        self._language_mode = "Auto"
+        self._model_name = ""
 
         self._init_ui()
 
@@ -50,10 +50,10 @@ class HybridBrainPanel(QFrame):
         hdr.setStyleSheet("color: #00e5ff; background: transparent;")
         layout.addWidget(hdr)
 
-        # Active Route Indicator
-        self._lbl_route = QLabel("LOCAL RULE ROUTER (<20ms)")
+        # Active Route Indicator — waits for real backend telemetry.
+        self._lbl_route = QLabel("ROUTER: WAITING FOR REQUEST")
         self._lbl_route.setFont(QFont("Courier New", 10, QFont.Weight.Bold))
-        self._lbl_route.setStyleSheet("color: #00e676; background: transparent;")
+        self._lbl_route.setStyleSheet("color: #9aafaa; background: transparent;")
         layout.addWidget(self._lbl_route)
 
         # Details Row
@@ -61,13 +61,13 @@ class HybridBrainPanel(QFrame):
         row.setSpacing(12)
 
         # Latency
-        self._lbl_latency = QLabel("LATENCY: 12.5 ms")
+        self._lbl_latency = QLabel("LATENCY: —")
         self._lbl_latency.setFont(QFont("Courier New", 8, QFont.Weight.Normal))
         self._lbl_latency.setStyleSheet("color: #9aafaa; background: transparent;")
         row.addWidget(self._lbl_latency)
 
         # Language Mode
-        self._lbl_lang = QLabel("LANG: English")
+        self._lbl_lang = QLabel("LANG: Auto")
         self._lbl_lang.setFont(QFont("Courier New", 8, QFont.Weight.Normal))
         self._lbl_lang.setStyleSheet("color: #7c4dff; background: transparent;")
         row.addWidget(self._lbl_lang)
@@ -83,11 +83,11 @@ class HybridBrainPanel(QFrame):
         self._language_mode = language
         self._model_name = model
 
+        model_tag = f" ({model})" if model else ""
         if self._is_local:
-            self._lbl_route.setText(f"LOCAL ROUTER (<20ms)")
+            self._lbl_route.setText(f"LOCAL AI{model_tag}")
             self._lbl_route.setStyleSheet("color: #00e676; background: transparent;")
         else:
-            model_tag = f" ({model})" if model else ""
             self._lbl_route.setText(f"CLOUD AI{model_tag}")
             self._lbl_route.setStyleSheet("color: #7c4dff; background: transparent;")
 

@@ -238,6 +238,7 @@ class AuthManager:
                 return
             self.state = new_state
             self._auth_method = None
+            self._pin_verified = False
             self._voice_verified = False
             if new_state == RESTRICTED_MODE and not self._requires_owner_reauth:
                 self.failed_pin_attempts = 0

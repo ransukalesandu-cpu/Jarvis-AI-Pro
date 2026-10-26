@@ -249,11 +249,6 @@ _BRIEFING_SEARCH_EXECUTOR = ThreadPoolExecutor(
     max_workers=1, thread_name_prefix="jarvis-briefing-search"
 )
 
-
-
-# Pure PCM/event/error helpers are imported from core.live_audio.
-
-
 # ── Viseme extraction ─────────────────────────────────────────────────────────
 # The avatar's mouth used to be driven by one RMS value per ~200 ms write batch,
 # which is five updates a second averaged over a fifth of a second — it could

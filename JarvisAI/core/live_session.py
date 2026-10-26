@@ -20,7 +20,9 @@ def select_live_model(
     proactive_audio_model: str,
 ) -> str:
     """Select the first available model; otherwise retry the earliest cooldown."""
-    candidates = (primary_model, *fallback_models)
+    candidates = tuple(
+        model for model in (primary_model, *fallback_models) if str(model).strip()
+    )
     if not proactive_audio_enabled:
         candidates = tuple(
             model for model in candidates if model != proactive_audio_model

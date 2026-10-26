@@ -87,5 +87,7 @@ config/pin_vault.dat
 config/auth_state.json
 config/auth_state.json.tmp
 config/master_voice.emb*
+config/host_device_key.dat
+config/host_device_key.tmp
 *.emb
 *.emb.npy

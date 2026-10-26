@@ -1,8 +1,10 @@
 """
 Owner access state machine for JARVIS.
 
-No default PIN is created. FULL_ACCESS is always session-only and is never restored
-after a process restart. Privacy Lock state and its cooldown are persisted.
+No default PIN is created. Once the owner password is enrolled, this Windows-user
+installation is trusted on normal startup so routine login prompts are unnecessary.
+Privacy Lock and required post-lock re-authentication still override startup trust.
+Host-only cloud privileges still require a live verified Voice ID factor.
 """
 from __future__ import annotations
 
@@ -156,6 +158,24 @@ class AuthManager:
         self._voice_verified = False
         self._hasher = PasswordHasher() if _ARGON2_AVAILABLE else None
         self._load_persistent_state()
+        self._activate_setup_trust()
+
+    def _activate_setup_trust(self) -> None:
+        """Restore local owner access for an enrolled installation without a login prompt.
+
+        This trusts the current OS user's protected local vault, not a cloud session.
+        A Privacy Lock or mandatory owner re-authentication always takes precedence.
+        Host-only cloud access remains gated by the separate live Voice ID factor.
+        """
+        if not self.is_pin_enrolled():
+            return
+        with self._lock:
+            if self.state == PRIVACY_LOCK or self._requires_owner_reauth:
+                return
+            self.state = FULL_ACCESS_MODE
+            self._auth_method = "setup"
+            self._pin_verified = True
+            self._voice_verified = False
 
     def _load_persistent_state(self) -> None:
         """Restore lockout only; a previous FULL_ACCESS session never survives restart."""
@@ -273,6 +293,9 @@ class AuthManager:
                 temp.unlink(missing_ok=True)
             except OSError:
                 pass
+        # Completing first-run enrollment enables trusted local startup; the
+        # password is not requested again during ordinary launches.
+        self._activate_setup_trust()
 
     def _read_hashed_pin(self) -> Optional[str]:
         try:

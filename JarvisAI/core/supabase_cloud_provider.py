@@ -109,6 +109,7 @@ def _get_access_token(base_url: str, public_key: str, timeout: float) -> str:
                 # Fail closed on Windows rather than silently losing the stable
                 # Auth identity needed to recognize the enrolled host next launch.
                 if sys.platform == "win32":
+                    _AUTH.update({"access_token": "", "refresh_token": "", "expires_at": 0.0})
                     raise RuntimeError("Could not securely persist the Supabase Auth session") from None
         return access
 

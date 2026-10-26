@@ -97,10 +97,14 @@ async function verifyHostSignature(req: Request, rawBody: Uint8Array, userId: st
   if (!device || device.revoked_at || device.public_key_b64 !== suppliedKeyB64) return "invalid";
   return "host";
 }
-async function consumeRequest(baseUrl: string, serviceKey: string, userId: string, nonce: string, timestamp: number, limit: number): Promise<string> {
-  const response = await adminRequest(baseUrl, serviceKey, "/rest/v1/rpc/jarvis_consume_cloud_request", {
+async function consumeRequest(baseUrl: string, serviceKey: string, userId: string, nonce: string, timestamp: number, host: boolean): Promise<string> {
+  const rpc = host ? "jarvis_consume_host_nonce" : "jarvis_consume_cloud_request";
+  const args = host
+    ? { p_user_id: userId, p_nonce: nonce, p_timestamp: timestamp }
+    : { p_user_id: userId, p_nonce: nonce, p_timestamp: timestamp, p_daily_limit: 100 };
+  const response = await adminRequest(baseUrl, serviceKey, "/rest/v1/rpc/" + rpc, {
     method: "POST",
-    body: JSON.stringify({ p_user_id: userId, p_nonce: nonce, p_timestamp: timestamp, p_daily_limit: limit }),
+    body: JSON.stringify(args),
   });
   if (!response.ok) return "error";
   return await response.json();
@@ -151,11 +155,15 @@ Deno.serve(async (req: Request) => {
   const hostResult = await verifyHostSignature(req, rawBody, userId, baseUrl, serviceKey).catch(() => "invalid" as const);
   if (hostResult === "invalid") return jsonResponse({ error: "host_verification_failed" }, 403);
 
-  const nonce = req.headers.get("X-Jarvis-Host-Nonce") || crypto.randomUUID();
-  const timestamp = Number(req.headers.get("X-Jarvis-Host-Timestamp") || Math.floor(Date.now() / 1000));
-  // Registered host devices bypass the normal-user quota; every other authenticated user is rate limited.
-  const limit = hostResult === "host" ? 1000 : 100;
-  const usage = await consumeRequest(baseUrl, serviceKey, userId, nonce, timestamp, limit);
+  // Every request must carry a client-generated nonce and timestamp. Host requests are
+  // signed; normal-user requests still get replay rejection plus the atomic daily quota.
+  const nonce = req.headers.get("X-Jarvis-Host-Nonce") || "";
+  const timestampHeader = req.headers.get("X-Jarvis-Host-Timestamp") || "";
+  if (!/^\\d{10}$/.test(timestampHeader) || nonce.length < 16 || nonce.length > 128) {
+    return jsonResponse({ error: "request_nonce_required" }, 400);
+  }
+  const timestamp = Number(timestampHeader);
+  const usage = await consumeRequest(baseUrl, serviceKey, userId, nonce, timestamp, hostResult === "host");
   if (usage === "replay") return jsonResponse({ error: "replay_detected" }, 409);
   if (usage === "quota") return jsonResponse({ error: "daily_quota_exceeded" }, 429);
   if (usage !== "ok") return jsonResponse({ error: "security_check_failed" }, 503);

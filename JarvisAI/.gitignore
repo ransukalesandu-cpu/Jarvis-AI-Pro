@@ -89,5 +89,7 @@ config/auth_state.json.tmp
 config/master_voice.emb*
 config/host_device_key.dat
 config/host_device_key.tmp
+config/supabase_auth_refresh.dat
+config/supabase_auth_refresh.tmp
 *.emb
 *.emb.npy

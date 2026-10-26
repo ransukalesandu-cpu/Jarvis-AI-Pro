@@ -78,6 +78,13 @@ class HybridLLMRouter:
     def _key(self, provider: str) -> str:
         return self.api_keys.get(provider, "") or os.getenv(_KEY_ENV.get(provider, ""), "").strip()
 
+    def configured_key_status(self) -> dict[str, bool]:
+        """Report credential presence only; never return credential contents."""
+        return {
+            provider: bool(self._key(provider))
+            for provider in ("gemini", "groq", "openai", "claude")
+        }
+
     @staticmethod
     def is_online(host: str = "1.1.1.1", port: int = 443, timeout: float = 1.0) -> bool:
         """Check outbound TCP connectivity on HTTPS port 443.

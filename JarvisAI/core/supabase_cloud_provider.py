@@ -106,9 +106,10 @@ def _get_access_token(base_url: str, public_key: str, timeout: float) -> str:
             try:
                 _persist_refresh_token(refresh_token)
             except Exception:
-                # Never write an unencrypted fallback. The in-memory session can
-                # continue, but a future process may need to re-enroll the host.
-                pass
+                # Fail closed on Windows rather than silently losing the stable
+                # Auth identity needed to recognize the enrolled host next launch.
+                if sys.platform == "win32":
+                    raise RuntimeError("Could not securely persist the Supabase Auth session") from None
         return access
 
 

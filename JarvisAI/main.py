@@ -1847,6 +1847,9 @@ class JarvisLive:
                 }
                 preferred = resolve_preferred_provider(config)
                 router = HybridLLMRouter(preferred_provider=preferred, api_keys=keys)
+                key_status = router.configured_key_status()
+                configured = ",".join(name for name, present in key_status.items() if present) or "none"
+                self.ui.write_log(f"DIAG: Hybrid credentials present for: {configured}. Values are never logged.")
                 system_prompt = (
                     _load_system_prompt()
                     + "\n\nHYBRID TEXT FALLBACK RULES: You are in a text-only fallback "

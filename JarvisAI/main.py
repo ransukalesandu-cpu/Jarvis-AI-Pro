@@ -209,7 +209,8 @@ from core.wake_word            import (
     WakeWordDetector, is_ready as wake_is_ready, install_and_download as wake_install,
 )
 from core.clap_wake             import DoubleClapDetector
-from core.hybrid_llm_router import HybridLLMRouter
+from core.hybrid_llm_router import HybridLLMRouter, resolve_preferred_provider
+from core.runtime_diagnostics import hybrid_runtime_snapshot
 
 # How long the assistant stays awake with no user speech before it auto-sleeps
 # again after the configured idle interval.
@@ -1844,7 +1845,7 @@ class JarvisLive:
                         config.get("anthropic_api_key") or config.get("claude_api_key") or ""
                     ).strip(),
                 }
-                preferred = str(config.get("llm_provider") or "gemini").strip().lower()
+                preferred = resolve_preferred_provider(config)
                 router = HybridLLMRouter(preferred_provider=preferred, api_keys=keys)
                 system_prompt = (
                     _load_system_prompt()

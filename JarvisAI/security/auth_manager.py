@@ -151,6 +151,9 @@ class AuthManager:
         self.lock_until = 0.0
         self._requires_owner_reauth = False
         self._auth_method: str | None = None
+        # Separate in-memory factors gate privileged host cloud access. Never persisted.
+        self._pin_verified = False
+        self._voice_verified = False
         self._hasher = PasswordHasher() if _ARGON2_AVAILABLE else None
         self._load_persistent_state()
 
@@ -235,6 +238,7 @@ class AuthManager:
                 return
             self.state = new_state
             self._auth_method = None
+            self._voice_verified = False
             if new_state == RESTRICTED_MODE and not self._requires_owner_reauth:
                 self.failed_pin_attempts = 0
             self._save_persistent_state()
@@ -290,6 +294,11 @@ class AuthManager:
                 raise PermissionError("Privacy Lock cooldown has not expired.")
             if self._requires_owner_reauth and method != "pin":
                 raise PermissionError("Privacy Lock requires PIN re-authentication.")
+            if method == "pin":
+                self._pin_verified = True
+                self._voice_verified = False
+            elif method == "voice":
+                self._voice_verified = True
             self.state = FULL_ACCESS_MODE
             self._auth_method = method
             self._requires_owner_reauth = False
@@ -313,6 +322,8 @@ class AuthManager:
             self.grant_owner_access("pin")
             return True
         with self._lock:
+            self._pin_verified = False
+            self._voice_verified = False
             self.failed_pin_attempts += 1
             attempts = self.failed_pin_attempts
             self._save_persistent_state()
@@ -326,8 +337,8 @@ class AuthManager:
         if state == PRIVACY_LOCK or self.requires_owner_reauthentication():
             return state, "Privacy Lock requires owner PIN re-authentication."
         method = self.get_auth_method()
-        if state == FULL_ACCESS_MODE and method == "pin":
-            return FULL_ACCESS_MODE, "Owner PIN verification remains valid for this session."
+        # A PIN-authenticated session still needs a successful live Voice ID result
+        # before host-only cloud privileges are enabled.
         if is_master is True and is_live is True and math.isfinite(similarity) and similarity >= COSINE_THRESHOLD:
             self.grant_owner_access("voice", verified_live=True)
             return FULL_ACCESS_MODE, "Owner voice verified."
@@ -363,6 +374,11 @@ class AuthManager:
         with self._lock:
             return self._requires_owner_reauth
 
+    def owner_factors_verified(self) -> bool:
+        """True only after both a valid PIN and a live enrolled-speaker check this process."""
+        with self._lock:
+            return self._pin_verified and self._voice_verified
+
     def is_owner_access_allowed(self) -> bool:
         return self.get_state() == FULL_ACCESS_MODE and not self.requires_owner_reauthentication()
 
@@ -391,6 +407,8 @@ class AuthManager:
                 return message
             self.state = PRIVACY_LOCK
             self._auth_method = None
+            self._pin_verified = False
+            self._voice_verified = False
             self._requires_owner_reauth = True
             self.lock_until = now + self.cooldown_seconds
             self.failed_pin_attempts = max(MAX_FAILED_PIN_ATTEMPTS, self.failed_pin_attempts)

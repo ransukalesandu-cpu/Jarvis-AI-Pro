@@ -22,6 +22,7 @@ class HybridLLMRouterTests(unittest.TestCase):
 
     def test_invalid_provider_falls_back_to_gemini(self):
         self.assertEqual(resolve_preferred_provider({"ai_provider": "unknown"}), "gemini")
+
     def test_key_status_reports_presence_without_returning_key_values(self):
         router = HybridLLMRouter(
             api_keys={"gemini": "secret-test-value", "groq": ""},

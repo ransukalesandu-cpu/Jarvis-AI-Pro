@@ -211,15 +211,17 @@ class TestOwnerIdentitySecurity(unittest.TestCase):
             res = security.guard("weather_report", {"location": "Colombo"}, lambda: "Sunny 30C")
             self.assertEqual(res, "Sunny 30C")
 
-    # 13. Session authentication resetting after restart
-    def test_session_authentication_resets_after_restart(self):
+    # 13. Enrolled local host starts without a routine login prompt.
+    def test_enrolled_host_trust_restores_after_restart_but_lockout_wins(self):
+        self.auth.set_master_pin("local-owner-123")
         self.auth.process_voice_result(True, .95, is_live=True)
         self.assertEqual(self.auth.get_state(), FULL_ACCESS_MODE)
 
-        # Simulate app restart
+        # Simulate app restart: local owner access is restored without a prompt.
         restarted_auth = AuthManager(vault_path=self.vault_path, state_path=self.state_path)
-        self.assertEqual(restarted_auth.get_state(), RESTRICTED_MODE)
-        self.assertFalse(restarted_auth.is_owner_access_allowed())
+        self.assertEqual(restarted_auth.get_state(), FULL_ACCESS_MODE)
+        self.assertTrue(restarted_auth.is_owner_access_allowed())
+        self.assertFalse(restarted_auth.owner_factors_verified())
 
     def test_guard_can_reach_pin_step_up_before_dispatcher_denial(self):
         self.auth.set_master_pin("local-owner-123")

@@ -220,7 +220,7 @@ from core.wake_word            import (
     WakeWordDetector, is_ready as wake_is_ready, install_and_download as wake_install,
 )
 from core.clap_wake             import DoubleClapDetector
-from core.hybrid_llm_router import HybridLLMRouter, resolve_preferred_provider
+from core.provider_fallback import query_text_fallback
 from core.runtime_diagnostics import hybrid_runtime_snapshot
 
 # How long the assistant stays awake with no user speech before it auto-sleeps
@@ -1645,38 +1645,14 @@ class JarvisLive:
 
         def _work() -> None:
             try:
-                config = {}
-                try:
-                    with open(API_CONFIG_PATH, "r", encoding="utf-8") as stream:
-                        loaded = json.load(stream)
-                    if isinstance(loaded, dict):
-                        config = loaded
-                except (OSError, ValueError, TypeError):
-                    config = {}
-
-                # Provider credentials are read only from local config or the
-                # environment; never log, display, or persist their values.
-                keys = {
-                    "gemini": str(config.get("gemini_api_key") or "").strip(),
-                    "groq": str(config.get("groq_api_key") or "").strip(),
-                    "openai": str(config.get("openai_api_key") or "").strip(),
-                    "claude": str(
-                        config.get("anthropic_api_key") or config.get("claude_api_key") or ""
-                    ).strip(),
-                }
-                preferred = resolve_preferred_provider(config)
-                router = HybridLLMRouter(preferred_provider=preferred, api_keys=keys)
-                key_status = router.configured_key_status()
-                configured = ",".join(name for name, present in key_status.items() if present) or "none"
-                self.ui.write_log(f"DIAG: Hybrid credentials present for: {configured}. Values are never logged.")
-                system_prompt = (
-                    _load_system_prompt()
-                    + "\n\nHYBRID TEXT FALLBACK RULES: You are in a text-only fallback "
-                    "with no live tools or computer-control capability. Never claim you "
-                    "opened apps, changed files, searched the web, or completed an action. "
-                    "Explain limitations honestly and answer informational questions directly."
+                result, configured = query_text_fallback(
+                    text,
+                    config_path=API_CONFIG_PATH,
+                    base_system_prompt=_load_system_prompt(),
                 )
-                result = router.query(text, system_prompt=system_prompt)
+                self.ui.write_log(
+                    f"DIAG: Hybrid credentials present for: {configured}. Values are never logged."
+                )
                 answer = str(result.get("text") or "").strip()
                 provider = str(result.get("provider") or "unknown")
                 if not answer:

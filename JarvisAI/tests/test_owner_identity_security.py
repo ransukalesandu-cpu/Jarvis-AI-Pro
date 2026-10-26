@@ -165,15 +165,17 @@ class TestOwnerIdentitySecurity(unittest.TestCase):
         self.assertFalse(self.auth.verify_pin("wrong3"))
         self.assertTrue(self.auth.is_privacy_lock_active())
 
-    # 9. Successful PIN verification grants owner access in AuthManager
-    def test_successful_pin_grants_owner_access(self):
+    # 9. First-run password enrollment enables trusted local startup.
+    def test_first_run_password_enrollment_trusts_local_owner_without_login(self):
         if not hasattr(self.auth, "_hasher") or self.auth._hasher is None:
             from security import auth_manager
             if not auth_manager._ARGON2_AVAILABLE:
                 self.skipTest("argon2-cffi not installed")
 
         self.auth.set_master_pin("secret123")
-        self.assertFalse(self.auth.is_owner_access_allowed())
+        self.assertTrue(self.auth.is_owner_access_allowed())
+        self.assertEqual(self.auth.get_auth_method(), "setup")
+        self.assertFalse(self.auth.owner_factors_verified())
         verified = self.auth.verify_pin("secret123")
         self.assertTrue(verified)
         self.assertTrue(self.auth.is_owner_access_allowed())

@@ -83,7 +83,13 @@ def _get_access_token(base_url: str, public_key: str, timeout: float) -> str:
                     headers=headers, body={"refresh_token": refresh}, timeout=timeout,
                 )
             except RuntimeError:
-                auth_result = None
+                # Never silently create a new anonymous identity when a saved
+                # session cannot refresh: that would orphan the enrolled host key
+                # and could mask a transient network/server failure.
+                _AUTH.update({"access_token": "", "refresh_token": "", "expires_at": 0.0})
+                raise RuntimeError(
+                    "Supabase session refresh failed; retry connectivity or re-enroll the host session"
+                ) from None
 
         if auth_result is None:
             # Supabase anonymous sign-in; no email or password is collected/stored.

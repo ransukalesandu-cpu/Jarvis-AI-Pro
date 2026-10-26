@@ -65,9 +65,10 @@ class HybridLLMRouter:
         }
         self.timeout = max(1.0, min(float(timeout), 120.0))
         self.online_check = bool(online_check)
+        # Anonymous Supabase Auth does not require or collect an email/password.
         self._supabase_enabled = all(
             os.getenv(name, "").strip()
-            for name in ("SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_EMAIL", "SUPABASE_PASSWORD")
+            for name in ("SUPABASE_URL", "SUPABASE_ANON_KEY")
         )
         self.ollama_endpoint = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
         self.local_model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")

@@ -225,6 +225,7 @@ class TestOwnerIdentitySecurity(unittest.TestCase):
 
     def test_guard_can_reach_pin_step_up_before_dispatcher_denial(self):
         self.auth.set_master_pin("local-owner-123")
+        self.auth.set_state(RESTRICTED_MODE)
         with patch.object(security, "_auth_manager", self.auth), \
              patch.object(security, "_voice_id_is_required", return_value=False), \
              patch.object(security, "_untrusted_context", return_value=False), \

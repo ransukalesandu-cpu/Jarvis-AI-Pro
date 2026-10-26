@@ -92,7 +92,7 @@ def call_supabase_provider(*, provider: str, prompt: str, system_prompt: str,
 
     access_token = _get_access_token(base_url, public_key, timeout)
     payload: dict[str, Any] = {
-        "provider": provider,
+        "provider": "anthropic" if provider == "claude" else provider,
         "prompt": prompt,
         "system_prompt": system_prompt,
     }

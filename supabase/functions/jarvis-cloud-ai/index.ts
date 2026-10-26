@@ -161,7 +161,7 @@ Deno.serve(async (req: Request) => {
   // signed; normal-user requests still get replay rejection plus the atomic daily quota.
   const nonce = req.headers.get("X-Jarvis-Host-Nonce") || "";
   const timestampHeader = req.headers.get("X-Jarvis-Host-Timestamp") || "";
-  if (!/^\\d{10}$/.test(timestampHeader) || nonce.length < 16 || nonce.length > 128) {
+  if (!/^\d{10}$/.test(timestampHeader) || nonce.length < 16 || nonce.length > 128) {
     return jsonResponse({ error: "request_nonce_required" }, 400);
   }
   const timestamp = Number(timestampHeader);

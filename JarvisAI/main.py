@@ -47,6 +47,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from core.audio_callback_guard import enqueue_audio_frame
 from core.playback_interrupt import interrupt_playback
+from core.audio_capture import open_input_stream_with_fallback
 from core.live_audio import (
     CHANNELS, RECEIVE_SAMPLE_RATE, _OUTPUT_BLOCKSIZE,
     _MIN_LIVE_AUDIO_FRAME_BYTES, _PLAYBACK_SLICE_BYTES, _MIN_PREBUFFER_BYTES,
@@ -2896,55 +2897,6 @@ class JarvisLive:
                         pass
 
         try:
-            def _open_mic(dev):
-
-                if sd is None:
-                    raise RuntimeError(
-                        "sounddevice is unavailable (PortAudio missing)"
-                    )
-
-                nonlocal actual_sr
-
-                try:
-                    stream = sd.InputStream(
-                        samplerate=SEND_SAMPLE_RATE,
-                        channels=CHANNELS,
-                        dtype="int16",
-                        blocksize=CHUNK_SIZE,
-                        device=dev,
-                        callback=callback,
-                    )
-                    actual_sr = SEND_SAMPLE_RATE
-                    return stream
-
-                except Exception:
-                    try:
-                        dev_info = (
-                            sd.query_devices(dev, "input")
-                            if dev is not None
-                            else sd.query_devices(kind="input")
-                        )
-                        native_sr = int(
-                            dev_info.get("default_samplerate", 16000)
-                        )
-                    except Exception:
-                        native_sr = 16000
-
-                    stream = sd.InputStream(
-                        samplerate=native_sr,
-                        channels=CHANNELS,
-                        dtype="int16",
-                        device=dev,
-                        callback=callback,
-                    )
-
-                    actual_sr = native_sr
-
-                    print(
-                        f"[JARVIS] Mic opened at native samplerate "
-                        f"{native_sr}Hz (resampling to 16000Hz)"
-                    )
-                    return stream
 
 
             # Which microphone. resolve() returns None for "system default" and
@@ -2955,20 +2907,22 @@ class JarvisLive:
             _mic_dev  = audio_devices.resolve(_mic_name, "input")
             if _mic_dev is not None:
                 print(f"[JARVIS] 🎤 Input device: {_mic_name}")
-            try:
-                _mic_stream = _open_mic(_mic_dev)
-            except Exception as _e:
-                # A device the picker listed but the driver will not open right
-                # now — exclusive mode, a webcam already in use, a virtual mic
-                # whose source went away. Chosen hardware failing must never
-                # mean the assistant cannot hear at all.
-                if _mic_dev is None:
-                    raise
+            mic_open = open_input_stream_with_fallback(
+                audio_backend=sd,
+                selected_device=_mic_dev,
+                sample_rate=SEND_SAMPLE_RATE,
+                channels=CHANNELS,
+                blocksize=CHUNK_SIZE,
+                callback=callback,
+            )
+            _mic_stream = mic_open.stream
+            actual_sr = SEND_SAMPLE_RATE
+            if mic_open.used_default:
+                _e = mic_open.selected_device_error
                 print(f"[JARVIS] ⚠️  Mic '{_mic_name}' failed: {_e} — using default")
                 self.ui.write_log(
                     f"SYS: Microphone '{_mic_name}' unavailable — using system default."
                 )
-                _mic_stream = _open_mic(None)
 
             with _mic_stream:
                 print("[JARVIS] 🎤 Mic stream open")

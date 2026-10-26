@@ -1,10 +1,21 @@
 import unittest
 from unittest.mock import patch
 
-from core.hybrid_llm_router import HybridLLMRouter
+from core.hybrid_llm_router import HybridLLMRouter, resolve_preferred_provider
 
 
 class HybridLLMRouterTests(unittest.TestCase):
+    def test_explicit_llm_provider_takes_precedence(self):
+        self.assertEqual(
+            resolve_preferred_provider({"llm_provider": "groq", "ai_provider": "openai"}),
+            "groq",
+        )
+
+    def test_one_shot_anthropic_setting_maps_to_claude_for_hybrid_fallback(self):
+        self.assertEqual(resolve_preferred_provider({"ai_provider": "anthropic"}), "claude")
+
+    def test_invalid_provider_falls_back_to_gemini(self):
+        self.assertEqual(resolve_preferred_provider({"ai_provider": "unknown"}), "gemini")
     def test_empty_prompt_is_rejected_before_provider_calls(self):
         router = HybridLLMRouter(online_check=False)
         with self.assertRaisesRegex(ValueError, "non-empty prompt"):

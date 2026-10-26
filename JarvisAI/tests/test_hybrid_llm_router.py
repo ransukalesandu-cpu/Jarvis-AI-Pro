@@ -5,10 +5,16 @@ from core.hybrid_llm_router import HybridLLMRouter, resolve_preferred_provider
 
 
 class HybridLLMRouterTests(unittest.TestCase):
-    def test_explicit_llm_provider_takes_precedence(self):
+    def test_explicit_hybrid_provider_takes_precedence(self):
         self.assertEqual(
-            resolve_preferred_provider({"llm_provider": "groq", "ai_provider": "openai"}),
+            resolve_preferred_provider({"hybrid_provider": "groq", "ai_provider": "openai"}),
             "groq",
+        )
+
+    def test_local_llm_backend_setting_is_not_misread_as_hybrid_provider(self):
+        self.assertEqual(
+            resolve_preferred_provider({"llm_provider": "ollama", "ai_provider": "openai"}),
+            "openai",
         )
 
     def test_one_shot_anthropic_setting_maps_to_claude_for_hybrid_fallback(self):

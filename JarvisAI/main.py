@@ -221,6 +221,7 @@ from core.wake_word            import (
 )
 from core.clap_wake             import DoubleClapDetector
 from core.provider_fallback import query_text_fallback
+from core.live_session import select_live_api_version, select_live_model
 from core.runtime_diagnostics import hybrid_runtime_snapshot
 
 # How long the assistant stays awake with no user speech before it auto-sleeps
@@ -4604,22 +4605,15 @@ class JarvisLive:
     # ── main loop ───────────────────────────────────────────────────────────
 
     def _select_live_model(self) -> str:
-        """Prefer the primary Live model, skipping models still rate-limited."""
-        candidates = (LIVE_MODEL, *LIVE_FALLBACK_MODELS)
-        # Gemini 3.8 Live always uses proactive audio. Respect the user's
-        # opt-out setting by not selecting it as a fallback in that case.
-        if not get_proactive_audio_enabled():
-            candidates = tuple(
-                model for model in candidates
-                if model != "models/gemini-3.8-live"
-            )
-        now = time.monotonic()
-        for model in candidates:
-            if self._live_model_cooldowns.get(model, 0.0) <= now:
-                return model
-        # If every model is cooling, retry the one whose cooldown ends first;
-        # the reconnect path below spaces these retries out to avoid a hot loop.
-        return min(candidates, key=lambda model: self._live_model_cooldowns.get(model, 0.0))
+        """Delegate model/cooldown policy to the testable session module."""
+        return select_live_model(
+            primary_model=LIVE_MODEL,
+            fallback_models=LIVE_FALLBACK_MODELS,
+            cooldowns=self._live_model_cooldowns,
+            now=time.monotonic(),
+            proactive_audio_enabled=get_proactive_audio_enabled(),
+            proactive_audio_model="models/gemini-3.8-live",
+        )
 
     async def run(self):
         self._loop = asyncio.get_running_loop()
@@ -4701,10 +4695,10 @@ class JarvisLive:
                 client = genai.Client(
                     api_key=_get_api_key(),
                     http_options={
-                        "api_version": (
-                            "v1alpha"
-                            if self._enhanced_live and self._active_live_model == LIVE_MODEL
-                            else "v1beta"
+                        "api_version": select_live_api_version(
+                            enhanced_live=self._enhanced_live,
+                            active_model=self._active_live_model,
+                            primary_model=LIVE_MODEL,
                         )
                     }
                 )

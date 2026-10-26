@@ -30,11 +30,34 @@ alter table public.jarvis_cloud_daily_usage enable row level security;
 revoke all on public.jarvis_cloud_daily_usage from anon, authenticated;
 grant all on public.jarvis_cloud_daily_usage to service_role;
 
+-- Replay protection for host requests without a daily quota.
+create or replace function public.jarvis_consume_host_nonce(
+  p_user_id uuid, p_nonce text, p_timestamp bigint
+) returns text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if p_user_id is null or p_nonce is null or length(p_nonce) < 16 or length(p_nonce) > 128
+     or p_timestamp is null
+     or abs(extract(epoch from clock_timestamp())::bigint - p_timestamp) > 300 then
+    return 'invalid';
+  end if;
+  delete from public.jarvis_cloud_nonces where expires_at < now();
+  insert into public.jarvis_cloud_nonces(user_id, nonce, expires_at)
+  values (p_user_id, p_nonce, now() + interval '10 minutes')
+  on conflict do nothing;
+  if not found then return 'replay'; end if;
+  return 'ok';
+end;
+$$;
+revoke all on function public.jarvis_consume_host_nonce(uuid, text, bigint) from public, anon, authenticated;
+grant execute on function public.jarvis_consume_host_nonce(uuid, text, bigint) to service_role;
+
+-- Atomic server-enforced daily quota for ordinary anonymous users.
 create or replace function public.jarvis_consume_cloud_request(
-  p_user_id uuid,
-  p_nonce text,
-  p_timestamp bigint,
-  p_daily_limit integer default 100
+  p_user_id uuid, p_nonce text, p_timestamp bigint, p_daily_limit integer default 100
 ) returns text
 language plpgsql
 security definer
@@ -44,23 +67,17 @@ declare
   v_date date := (timezone('utc', now()))::date;
   v_count integer;
 begin
-  if p_user_id is null
-     or p_nonce is null
-     or length(p_nonce) < 16
-     or length(p_nonce) > 128
+  if p_user_id is null or p_nonce is null or length(p_nonce) < 16 or length(p_nonce) > 128
      or p_timestamp is null
      or abs(extract(epoch from clock_timestamp())::bigint - p_timestamp) > 300
      or p_daily_limit < 1 or p_daily_limit > 1000 then
     return 'invalid';
   end if;
-
   delete from public.jarvis_cloud_nonces where expires_at < now();
   insert into public.jarvis_cloud_nonces(user_id, nonce, expires_at)
   values (p_user_id, p_nonce, now() + interval '10 minutes')
   on conflict do nothing;
-  if not found then
-    return 'replay';
-  end if;
+  if not found then return 'replay'; end if;
 
   insert into public.jarvis_cloud_daily_usage(user_id, usage_date, request_count)
   values (p_user_id, v_date, 1)
@@ -68,13 +85,9 @@ begin
     set request_count = public.jarvis_cloud_daily_usage.request_count + 1
     where public.jarvis_cloud_daily_usage.request_count < p_daily_limit
   returning request_count into v_count;
-
-  if v_count is null then
-    return 'quota';
-  end if;
+  if v_count is null then return 'quota'; end if;
   return 'ok';
 end;
 $$;
-
 revoke all on function public.jarvis_consume_cloud_request(uuid, text, bigint, integer) from public, anon, authenticated;
 grant execute on function public.jarvis_consume_cloud_request(uuid, text, bigint, integer) to service_role;

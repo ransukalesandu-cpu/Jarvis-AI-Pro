@@ -16,6 +16,21 @@ from typing import Any
 
 logger = logging.getLogger("Jarvis.LLMRouter")
 
+
+def resolve_preferred_provider(config: dict[str, Any]) -> str:
+    """Resolve the hybrid route without conflating the two settings contracts.
+
+    An explicit llm_provider is authoritative. When it is absent, use the
+    one-shot UI's ai_provider as a backwards-compatible default; map the UI's
+    "anthropic" label to this router's canonical "claude" provider.
+    """
+    explicit = str(config.get("llm_provider") or "").strip().lower()
+    selected = explicit or str(config.get("ai_provider") or "gemini").strip().lower()
+    if selected == "anthropic":
+        selected = "claude"
+    return selected if selected in _PROVIDER_ORDER else "gemini"
+
+
 _PROVIDER_ORDER = ("gemini", "groq", "openai", "claude", "ollama")
 _KEY_ENV = {
     "gemini": "GEMINI_API_KEY",
@@ -130,7 +145,10 @@ class HybridLLMRouter:
                             else ("local" if provider == "ollama" else "cloud"),
                     "latency_ms": round((time.monotonic() - started) * 1000, 2),
                 })
-                logger.info("Hybrid text response completed via %s", provider)
+                logger.info(
+                    "Hybrid text response completed via %s mode=%s latency_ms=%.2f",
+                    provider, result["mode"], result["latency_ms"],
+                )
                 return result
             except Exception as exc:
                 # Exception text can contain request details; log only the type.

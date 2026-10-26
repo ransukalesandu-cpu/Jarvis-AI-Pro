@@ -52,6 +52,8 @@ class SupabaseCloudProviderTests(unittest.TestCase):
         self.assertEqual(json.loads(request.data)["provider"], "anthropic")
         self.assertEqual(request.get_header("Authorization"), "Bearer signed-user-jwt")
         self.assertEqual(request.get_header("Apikey"), "public-test-key")
+        self.assertTrue(request.get_header("X-jarvis-host-nonce"))
+        self.assertRegex(request.get_header("X-jarvis-host-timestamp"), r"^\\d{10}$")
 
     def test_missing_public_configuration_fails_closed(self):
         with patch.dict(os.environ, {}, clear=True):

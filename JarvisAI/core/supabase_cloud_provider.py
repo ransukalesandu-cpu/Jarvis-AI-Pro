@@ -9,11 +9,41 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import sys
 import threading
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
+
+_SESSION_FILE = Path(__file__).resolve().parent.parent / "config" / "supabase_auth_refresh.dat"
+
+
+def _load_persisted_refresh_token() -> str:
+    """Load the anonymous Auth refresh token from the current Windows user's DPAPI store."""
+    if sys.platform != "win32":
+        return ""
+    try:
+        from security.auth_manager import _dpapi_unprotect
+        return _dpapi_unprotect(_SESSION_FILE.read_bytes()).decode("utf-8").strip()
+    except Exception:
+        return ""
+
+
+def _persist_refresh_token(token: str) -> None:
+    """Persist refresh tokens only as DPAPI-encrypted bytes on Windows."""
+    if sys.platform != "win32" or not token:
+        return
+    from security.auth_manager import _dpapi_protect
+    _SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temp = _SESSION_FILE.with_suffix(".tmp")
+    try:
+        temp.write_bytes(_dpapi_protect(token.encode("utf-8")))
+        os.replace(temp, _SESSION_FILE)
+    finally:
+        temp.unlink(missing_ok=True)
+
 
 _AUTH_LOCK = threading.RLock()
 _AUTH: dict[str, Any] = {"access_token": "", "refresh_token": "", "expires_at": 0.0}
@@ -44,7 +74,7 @@ def _get_access_token(base_url: str, public_key: str, timeout: float) -> str:
             return str(_AUTH["access_token"])
 
         headers = {"Content-Type": "application/json", "apikey": public_key}
-        refresh = str(_AUTH.get("refresh_token") or "").strip()
+        refresh = str(_AUTH.get("refresh_token") or "").strip() or _load_persisted_refresh_token()
         auth_result: dict[str, Any] | None = None
         if refresh:
             try:
@@ -72,6 +102,13 @@ def _get_access_token(base_url: str, public_key: str, timeout: float) -> str:
             "refresh_token": refresh_token,
             "expires_at": time.monotonic() + expires_in,
         })
+        if refresh_token:
+            try:
+                _persist_refresh_token(refresh_token)
+            except Exception:
+                # Never write an unencrypted fallback. The in-memory session can
+                # continue, but a future process may need to re-enroll the host.
+                pass
         return access
 
 

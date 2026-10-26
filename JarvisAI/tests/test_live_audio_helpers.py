@@ -30,14 +30,16 @@ class LiveAudioHelperTests(unittest.TestCase):
         self.assertEqual(_PLAYBACK_SLICE_BYTES, 2_400)
 
     def test_playback_pcm_emits_only_full_aligned_slices_during_streaming(self):
-        pending = bytearray(b"\\x01\\x00" * 1_201)
+        sample = bytes((1, 0))
+        pending = bytearray(sample * 1_201)
         result = _take_playback_pcm(pending)
-        self.assertEqual(result, b"\\x01\\x00" * 1_200)
-        self.assertEqual(pending, bytearray(b"\\x01\\x00"))
+        self.assertEqual(result, sample * 1_200)
+        self.assertEqual(pending, bytearray(sample))
 
     def test_playback_pcm_flushes_valid_final_tail(self):
-        pending = bytearray(b"\\x02\\x00" * 600)
-        self.assertEqual(_take_playback_pcm(pending, final=True), b"\\x02\\x00" * 600)
+        sample = bytes((2, 0))
+        pending = bytearray(sample * 600)
+        self.assertEqual(_take_playback_pcm(pending, final=True), sample * 600)
         self.assertEqual(pending, bytearray())
 
     def test_playback_pcm_does_not_emit_tiny_final_tail(self):
@@ -73,7 +75,8 @@ class LiveAudioHelperTests(unittest.TestCase):
         self.assertEqual(_live_audio_chunks(response), [b"first", b"second"])
 
     def test_live_audio_chunks_decodes_base64_part_data(self):
-        encoded = base64.b64encode(b"\\x10\\x00voice").decode("ascii")
+        payload = bytes((16, 0)) + b"voice"
+        encoded = base64.b64encode(payload).decode("ascii")
         response = SimpleNamespace(
             server_content=SimpleNamespace(
                 model_turn=SimpleNamespace(
@@ -82,7 +85,7 @@ class LiveAudioHelperTests(unittest.TestCase):
             ),
             data=None,
         )
-        self.assertEqual(_live_audio_chunks(response), [b"\\x10\\x00voice"])
+        self.assertEqual(_live_audio_chunks(response), [payload])
 
     def test_live_audio_chunks_falls_back_to_convenience_data(self):
         self.assertEqual(_live_audio_chunks(SimpleNamespace(data=b"fallback")), [b"fallback"])
@@ -95,9 +98,9 @@ class LiveAudioHelperTests(unittest.TestCase):
             except TimeoutError as cause:
                 raise ConnectionError("keepalive ping timeout") from cause
         except ConnectionError as error:
-            text = _error_text(error).upper()
-        self.assertIn("KEEPALIVE PING TIMEOUT", text)
-        self.assertIn("TIMED OUT WHILE CLOSING CONNECTION", text)
+            flattened = _error_text(error).upper()
+        self.assertIn("KEEPALIVE PING TIMEOUT", flattened)
+        self.assertIn("TIMED OUT WHILE CLOSING CONNECTION", flattened)
 
     def test_quota_classifier_recognizes_status_and_message(self):
         class QuotaError(RuntimeError):

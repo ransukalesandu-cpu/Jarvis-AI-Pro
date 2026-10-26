@@ -6,10 +6,18 @@ import re
 from pathlib import Path
 from typing import Any
 
-from core.hybrid_llm_router import HybridLLMRouter
+from core.hybrid_llm_router import HybridLLMRouter, resolve_preferred_provider
 
 API_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "api_keys.json"
 _ALLOWED_INTENTS = {"CHAT", "BROWSER"}
+
+
+def _configured_preferred_provider() -> str:
+    try:
+        data = json.loads(API_CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        data = {}
+    return resolve_preferred_provider(data if isinstance(data, dict) else {})
 
 
 def _configured_keys() -> dict[str, str]:
@@ -50,7 +58,7 @@ class SmartIntentRouter:
         if not text:
             raise ValueError("A non-empty user request is required")
         router = self._router_factory(
-            preferred_provider="gemini",
+            preferred_provider=_configured_preferred_provider(),
             api_keys=_configured_keys(),
             online_check=False,
             timeout=15.0,

@@ -55,7 +55,9 @@ async function verifyHostSignature(req: Request, rawBody: Uint8Array, userId: st
   const nonce = req.headers.get("X-Jarvis-Host-Nonce");
   const signatureHeader = req.headers.get("X-Jarvis-Host-Signature");
   const enrollment = req.headers.get("X-Jarvis-Host-Enrollment");
-  const hasAnyHostHeader = Boolean(keyHeader || timestamp || nonce || signatureHeader || enrollment);
+  // Timestamp and nonce are shared by normal users for replay protection; only
+  // key/signature/enrollment headers opt a request into host verification.
+  const hasAnyHostHeader = Boolean(keyHeader || signatureHeader || enrollment);
   if (!hasAnyHostHeader) return "normal";
   if (!keyHeader || !timestamp || !nonce || !signatureHeader ||
       !/^\d{10}$/.test(timestamp) || nonce.length < 16 || nonce.length > 128) return "invalid";

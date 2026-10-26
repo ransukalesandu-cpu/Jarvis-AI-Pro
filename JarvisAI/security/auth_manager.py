@@ -178,7 +178,7 @@ class AuthManager:
             self._voice_verified = False
 
     def _load_persistent_state(self) -> None:
-        """Restore lockout only; a previous FULL_ACCESS session never survives restart."""
+        """Restore lockout state; enrolled local setup trust is applied after this load."""
         if not self.state_path.exists():
             return
         try:
@@ -198,7 +198,7 @@ class AuthManager:
                 self._requires_owner_reauth = True
                 self._save_persistent_state()
             else:
-                # All non-lock sessions, particularly FULL_ACCESS, restart restricted.
+                # Clear stale session fields; _activate_setup_trust applies local trust next.
                 self.state = RESTRICTED_MODE
                 self.lock_until = 0.0
                 self.failed_pin_attempts = 0

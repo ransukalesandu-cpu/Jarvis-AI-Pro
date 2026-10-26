@@ -16,6 +16,21 @@ from typing import Any
 
 logger = logging.getLogger("Jarvis.LLMRouter")
 
+
+def resolve_preferred_provider(config: dict[str, Any]) -> str:
+    """Resolve the hybrid router preference without reusing llm_client settings.
+
+    `llm_provider` belongs to core.llm_client and selects Ollama or an
+    OpenAI-compatible local server. The hybrid route has its own
+    `hybrid_provider` setting; absent that, the UI's `ai_provider` is used.
+    """
+    selected = str(
+        config.get("hybrid_provider") or config.get("ai_provider") or "gemini"
+    ).strip().lower()
+    if selected == "anthropic":
+        selected = "claude"
+    return selected if selected in _PROVIDER_ORDER else "gemini"
+
 _PROVIDER_ORDER = ("gemini", "groq", "openai", "claude", "ollama")
 _KEY_ENV = {
     "gemini": "GEMINI_API_KEY",
@@ -50,6 +65,10 @@ class HybridLLMRouter:
         }
         self.timeout = max(1.0, min(float(timeout), 120.0))
         self.online_check = bool(online_check)
+        self._supabase_enabled = all(
+            os.getenv(name, "").strip()
+            for name in ("SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_EMAIL", "SUPABASE_PASSWORD")
+        )
         self.ollama_endpoint = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
         self.local_model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
         self.providers = {
@@ -62,6 +81,15 @@ class HybridLLMRouter:
 
     def _key(self, provider: str) -> str:
         return self.api_keys.get(provider, "") or os.getenv(_KEY_ENV.get(provider, ""), "").strip()
+
+    def configured_key_status(self) -> dict[str, bool]:
+        """Report credential presence only; never return credential contents."""
+        status = {
+            provider: bool(self._key(provider))
+            for provider in ("gemini", "groq", "openai", "claude")
+        }
+        status["supabase_cloud"] = self._supabase_enabled
+        return status
 
     @staticmethod
     def is_online(host: str = "1.1.1.1", port: int = 443, timeout: float = 1.0) -> bool:
@@ -118,7 +146,7 @@ class HybridLLMRouter:
 
         failures: list[str] = []
         for provider in order:
-            if provider != "ollama" and not self._key(provider):
+            if provider != "ollama" and not self._supabase_enabled and not self._key(provider):
                 continue
             try:
                 result = self._validate_result(
@@ -130,7 +158,10 @@ class HybridLLMRouter:
                             else ("local" if provider == "ollama" else "cloud"),
                     "latency_ms": round((time.monotonic() - started) * 1000, 2),
                 })
-                logger.info("Hybrid text response completed via %s", provider)
+                logger.info(
+                    "Hybrid text response completed via %s mode=%s latency_ms=%.2f",
+                    provider, result["mode"], result["latency_ms"],
+                )
                 return result
             except Exception as exc:
                 # Exception text can contain request details; log only the type.
@@ -147,6 +178,12 @@ class HybridLLMRouter:
         )
 
     def _call_gemini(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+        if self._supabase_enabled:
+            from core.supabase_cloud_provider import call_supabase_provider
+            return call_supabase_provider(
+                provider="gemini", prompt=prompt, system_prompt=system_prompt,
+                timeout=self.timeout, model=kwargs.get("model"),
+            )
         from google import genai
         client = genai.Client(
             api_key=self._key("gemini"),
@@ -161,6 +198,12 @@ class HybridLLMRouter:
         return {"text": response.text or "", "model": model}
 
     def _call_groq(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+        if self._supabase_enabled:
+            from core.supabase_cloud_provider import call_supabase_provider
+            return call_supabase_provider(
+                provider="groq", prompt=prompt, system_prompt=system_prompt,
+                timeout=self.timeout, model=kwargs.get("model"),
+            )
         """Call Groq's OpenAI-compatible chat-completions API without an extra SDK."""
         model = str(kwargs.get("groq_model") or kwargs.get("model") or
                     os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"))
@@ -189,6 +232,12 @@ class HybridLLMRouter:
                 "model": str((data.get("model") or model))}
 
     def _call_openai(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+        if self._supabase_enabled:
+            from core.supabase_cloud_provider import call_supabase_provider
+            return call_supabase_provider(
+                provider="openai", prompt=prompt, system_prompt=system_prompt,
+                timeout=self.timeout, model=kwargs.get("model"),
+            )
         from openai import OpenAI
         model = str(kwargs.get("model") or "gpt-4o-mini")
         client = OpenAI(api_key=self._key("openai"), timeout=self.timeout, max_retries=0)
@@ -203,6 +252,12 @@ class HybridLLMRouter:
         return {"text": response.choices[0].message.content or "", "model": model}
 
     def _call_claude(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+        if self._supabase_enabled:
+            from core.supabase_cloud_provider import call_supabase_provider
+            return call_supabase_provider(
+                provider="claude", prompt=prompt, system_prompt=system_prompt,
+                timeout=self.timeout, model=kwargs.get("model"),
+            )
         import anthropic
         model = str(kwargs.get("model") or "claude-3-5-sonnet-latest")
         client = anthropic.Anthropic(

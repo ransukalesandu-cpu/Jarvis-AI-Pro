@@ -5,7 +5,7 @@ from typing import Any
 
 from core.browser_automation import BrowserAutomation
 from core.hybrid_llm_router import HybridLLMRouter
-from core.smart_intent_router import SmartIntentRouter, _configured_keys
+from core.smart_intent_router import SmartIntentRouter, _configured_keys, _configured_preferred_provider
 
 
 class SmartHybridAssistant:
@@ -35,7 +35,7 @@ class SmartHybridAssistant:
         route = self.intent_router.route(request)
         if route["intent"] != "BROWSER":
             router = self.chat_router_factory(
-                preferred_provider="gemini",
+                preferred_provider=_configured_preferred_provider(),
                 api_keys=_configured_keys(),
                 online_check=False,
             )

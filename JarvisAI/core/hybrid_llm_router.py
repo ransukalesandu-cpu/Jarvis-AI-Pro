@@ -18,18 +18,18 @@ logger = logging.getLogger("Jarvis.LLMRouter")
 
 
 def resolve_preferred_provider(config: dict[str, Any]) -> str:
-    """Resolve the hybrid route without conflating the two settings contracts.
+    """Resolve the hybrid router preference without reusing llm_client settings.
 
-    An explicit llm_provider is authoritative. When it is absent, use the
-    one-shot UI's ai_provider as a backwards-compatible default; map the UI's
-    "anthropic" label to this router's canonical "claude" provider.
+    `llm_provider` belongs to core.llm_client and selects Ollama or an
+    OpenAI-compatible local server. The hybrid route has its own
+    `hybrid_provider` setting; absent that, the UI's `ai_provider` is used.
     """
-    explicit = str(config.get("llm_provider") or "").strip().lower()
-    selected = explicit or str(config.get("ai_provider") or "gemini").strip().lower()
+    selected = str(
+        config.get("hybrid_provider") or config.get("ai_provider") or "gemini"
+    ).strip().lower()
     if selected == "anthropic":
         selected = "claude"
     return selected if selected in _PROVIDER_ORDER else "gemini"
-
 
 _PROVIDER_ORDER = ("gemini", "groq", "openai", "claude", "ollama")
 _KEY_ENV = {

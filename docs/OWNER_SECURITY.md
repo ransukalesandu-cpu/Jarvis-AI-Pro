@@ -2,7 +2,7 @@
 
 ## First-time setup
 
-The desktop UI offers local owner PIN enrollment after API setup, and skips enrollment once a PIN exists. The command-line setup remains available:
+The desktop UI offers local owner Master Password enrollment after API setup, and skips enrollment once a password exists. The password is hashed with Argon2 and protected by the local vault (Windows DPAPI on Windows). The current Windows user is trusted for ordinary local startup after enrollment, so JARVIS does not show a routine login prompt. The command-line setup remains available:
 
 1. Open PowerShell in the repository folder.
 2. Run:
@@ -25,9 +25,10 @@ The profile is written via JARVIS's existing encrypted Voice ID store. If model/
 - An enrolled owner match grants voice access only when a separately validated anti-spoof detector confirms live speech. A role label or speaker-similarity score alone never grants access. Missing, failing, or unavailable anti-spoof verification falls back to the local PIN/password.
 - Spoken confirmations also require verified live owner speech. A PIN session does not bypass the liveness check for spoken approval; manual HUD confirmation remains available.
 - An uncertain/unrecognized speaker remains restricted. Basic public queries are allowed; private files, memory, system control, and unknown tools require owner access.
-- When privileged access is requested, JARVIS asks the owner to type the PIN/password into the local command box or paired dashboard. It is intercepted locally and is not sent to Gemini or added to conversation logs.
-- A successful PIN/password grants access for the current process even if Voice ID remains uncertain.
-- Full access is never restored from persistent state after a JARVIS restart.
+- After first-time enrollment, normal launches restore local owner access for the same OS user without asking for the password again. This trusts the protected local vault; it is not a cloud identity or a defense against someone who already controls the same Windows account.
+- Host-only cloud capabilities still require the live Voice ID factor in the current process; setup trust alone does not satisfy both host factors.
+- Privacy Lock and mandatory post-lock PIN re-authentication override startup trust. A successful owner PIN/password can recover from that lock after the cooldown.
+- Dangerous operations still use their separate confirmation gate and audit trail.
 
 ## Privacy Lock
 

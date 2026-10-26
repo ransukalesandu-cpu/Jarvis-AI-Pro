@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import patch
 
@@ -32,6 +33,40 @@ class HybridLLMRouterTests(unittest.TestCase):
         self.assertEqual(status["gemini"], True)
         self.assertEqual(status["groq"], False)
         self.assertNotIn("secret-test-value", repr(status))
+
+    def test_supabase_cloud_is_used_without_local_provider_keys(self):
+        env = {
+            "SUPABASE_URL": "https://example.supabase.co",
+            "SUPABASE_ANON_KEY": "public-test-key",
+            "SUPABASE_EMAIL": "owner@example.com",
+            "SUPABASE_PASSWORD": "test-password",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            router = HybridLLMRouter(online_check=False)
+            router.is_online = lambda: True
+            with patch(
+                "core.supabase_cloud_provider.call_supabase_provider",
+                return_value={"text": "cloud answer", "model": "test-model"},
+            ) as call_cloud:
+                result = router.query("hello")
+        self.assertEqual(result["text"], "cloud answer")
+        self.assertEqual(result["provider"], "gemini")
+        self.assertEqual(result["mode"], "cloud")
+        call_cloud.assert_called_once()
+        self.assertEqual(call_cloud.call_args.kwargs["provider"], "gemini")
+
+    def test_cloud_configuration_status_does_not_claim_local_keys_exist(self):
+        env = {
+            "SUPABASE_URL": "https://example.supabase.co",
+            "SUPABASE_ANON_KEY": "public-test-key",
+            "SUPABASE_EMAIL": "owner@example.com",
+            "SUPABASE_PASSWORD": "test-password",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            router = HybridLLMRouter(online_check=False)
+            status = router.configured_key_status()
+        self.assertTrue(status["supabase_cloud"])
+        self.assertFalse(status["gemini"])
 
     def test_empty_prompt_is_rejected_before_provider_calls(self):
         router = HybridLLMRouter(online_check=False)

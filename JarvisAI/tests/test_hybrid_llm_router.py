@@ -41,7 +41,7 @@ class HybridLLMRouterTests(unittest.TestCase):
             "SUPABASE_EMAIL": "owner@example.com",
             "SUPABASE_PASSWORD": "test-password",
         }
-        with patch.dict(os.environ, env, clear=False):
+        with patch.dict(os.environ, env, clear=True):
             router = HybridLLMRouter(online_check=False)
             router.is_online = lambda: True
             with patch(

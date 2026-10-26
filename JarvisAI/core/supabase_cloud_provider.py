@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import threading
 import time
 import urllib.error
@@ -110,6 +111,9 @@ def call_supabase_provider(
         "Content-Type": "application/json",
         "apikey": public_key,
         "Authorization": "Bearer " + access_token,
+        # Normal users also send a unique nonce so the server can reject exact replays.
+        "X-Jarvis-Host-Timestamp": str(int(time.time())),
+        "X-Jarvis-Host-Nonce": secrets.token_urlsafe(24),
     }
     if _local_owner_session_verified():
         try:

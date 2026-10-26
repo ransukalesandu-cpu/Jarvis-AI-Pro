@@ -1,9 +1,14 @@
 import json
 import os
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
-from core.supabase_cloud_provider import call_supabase_provider, _get_access_token, _AUTH
+from core.supabase_cloud_provider import (
+    call_supabase_provider, _get_access_token, _AUTH,
+    _load_persisted_refresh_token, _persist_refresh_token,
+)
 
 
 class SupabaseCloudProviderTests(unittest.TestCase):
@@ -54,6 +59,19 @@ class SupabaseCloudProviderTests(unittest.TestCase):
         self.assertEqual(request.get_header("Apikey"), "public-test-key")
         self.assertTrue(request.get_header("X-jarvis-host-nonce"))
         self.assertRegex(request.get_header("X-jarvis-host-timestamp"), r"^\d{10}$")
+
+    def test_windows_refresh_token_is_encrypted_and_reloaded(self):
+        with TemporaryDirectory() as folder:
+            session_file = Path(folder) / "session.dat"
+            protect = lambda value: b"dpapi:" + value
+            unprotect = lambda value: value.removeprefix(b"dpapi:")
+            with patch("core.supabase_cloud_provider.sys.platform", "win32"):
+                with patch("core.supabase_cloud_provider._SESSION_FILE", session_file):
+                    with patch("security.auth_manager._dpapi_protect", side_effect=protect):
+                        with patch("security.auth_manager._dpapi_unprotect", side_effect=unprotect):
+                            _persist_refresh_token("refresh-secret")
+                            self.assertNotEqual(session_file.read_bytes(), b"refresh-secret")
+                            self.assertEqual(_load_persisted_refresh_token(), "refresh-secret")
 
     def test_missing_public_configuration_fails_closed(self):
         with patch.dict(os.environ, {}, clear=True):

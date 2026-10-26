@@ -48,6 +48,10 @@ from concurrent.futures import ThreadPoolExecutor
 from core.audio_callback_guard import enqueue_audio_frame
 from core.playback_interrupt import interrupt_playback
 from core.audio_capture import open_input_stream_with_fallback
+from core.audio_playback import (
+    describe_output_route, open_output_stream, open_output_stream_with_fallback,
+    open_verified_output_fallback, stream_device_index,
+)
 from core.live_audio import (
     CHANNELS, RECEIVE_SAMPLE_RATE, _OUTPUT_BLOCKSIZE,
     _MIN_LIVE_AUDIO_FRAME_BYTES, _PLAYBACK_SLICE_BYTES, _MIN_PREBUFFER_BYTES,
@@ -3443,85 +3447,18 @@ class JarvisLive:
         if _spk_dev is not None:
             print(f"[JARVIS] 🔊 Output device: {_spk_name}")
 
-        def _open_spk(dev):
-            if sd is None:
-                raise RuntimeError("sounddevice is unavailable (PortAudio missing)")
-            st = sd.RawOutputStream(
-                samplerate=RECEIVE_SAMPLE_RATE,
-                channels=CHANNELS,
-                dtype="int16",
-                blocksize=_OUTPUT_BLOCKSIZE,
-                device=dev,
-            )
-            st.start()
-            return st
-
-        def _describe_output_route(dev) -> str:
-            try:
-                if sd is None:
-                    return repr(dev)
-                info = sd.query_devices(dev, "output")
-                hostapis = sd.query_hostapis()
-                host_index = int(info.get("hostapi", -1))
-                api_name = (
-                    hostapis[host_index].get("name", "unknown host API")
-                    if 0 <= host_index < len(hostapis)
-                    else "unknown host API"
-                )
-                return f"{info.get('name', 'unknown device')} via {api_name}"
-            except Exception:
-                return repr(dev)
-
-        def _stream_device_index(active_stream, requested_device):
-            try:
-                value = getattr(active_stream, "device", None)
-                if isinstance(value, (tuple, list)):
-                    value = value[-1] if value else None
-                if value is not None:
-                    return int(value)
-            except (TypeError, ValueError, RuntimeError):
-                pass
-            return requested_device
-
-        async def _open_verified_fallback(excluded_device):
-            """Open a speaker endpoint proven to consume output in real time."""
-            try:
-                candidates = await asyncio.to_thread(audio_devices.list_devices, "output")
-            except Exception as exc:
-                print(f"[AudioTrace 4/OUTPUT] Could not enumerate fallback speakers: {exc}")
-                return None
-            for candidate_name in candidates:
-                try:
-                    candidate_device = await asyncio.to_thread(
-                        audio_devices.resolve, candidate_name, "output"
-                    )
-                    if candidate_device is None or candidate_device == excluded_device:
-                        continue
-                    works = await asyncio.to_thread(
-                        audio_devices.probe_transport, candidate_device, "output"
-                    )
-                    if not works:
-                        continue
-                    candidate_stream = await asyncio.to_thread(_open_spk, candidate_device)
-                    return candidate_name, candidate_device, candidate_stream
-                except Exception as exc:
-                    print(
-                        f"[AudioTrace 4/OUTPUT] Fallback speaker "
-                        f"{candidate_name!r} unavailable: {exc}"
-                    )
-            return None
-
-        try:
-            stream = _open_spk(_spk_dev)
-        except Exception as _e:
-            # A chosen output that the host API accepts by name but refuses to
-            # open (exclusive mode, wrong sample rate, device asleep) must not
-            # cost the user their voice. Fall back to the default and say so.
-            if _spk_dev is None:
-                raise
+        output_open = open_output_stream_with_fallback(
+            audio_backend=sd,
+            selected_device=_spk_dev,
+            sample_rate=RECEIVE_SAMPLE_RATE,
+            channels=CHANNELS,
+            blocksize=_OUTPUT_BLOCKSIZE,
+        )
+        stream = output_open.stream
+        if output_open.used_default:
+            _e = output_open.selected_device_error
             print(f"[JARVIS] ⚠️  Output device '{_spk_name}' failed: {_e} — using default")
             self.ui.write_log(f"SYS: Speaker '{_spk_name}' unavailable — using system default.")
-            stream = _open_spk(None)
             _spk_name = ""
             _spk_dev = None
 
@@ -3531,7 +3468,7 @@ class JarvisLive:
             f"resolved_device={_spk_dev!r}, sample_rate={RECEIVE_SAMPLE_RATE} Hz."
         )
         print(
-            f"[AudioTrace 4/OUTPUT] Active route: {_describe_output_route(_spk_dev)}; "
+            f"[AudioTrace 4/OUTPUT] Active route: {describe_output_route(sd, _spk_dev)}; "
             f"stream_active={bool(getattr(stream, 'active', False))}."
         )
 
@@ -3846,8 +3783,15 @@ class JarvisLive:
                                     "The current endpoint may be accepting audio without "
                                     "playing it in real time; attempting a tested speaker fallback."
                                 )
-                                current_device = _stream_device_index(stream, _spk_dev)
-                                fallback = await _open_verified_fallback(current_device)
+                                current_device = stream_device_index(stream, _spk_dev)
+                                fallback = await open_verified_output_fallback(
+                            audio_backend=sd,
+                            device_service=audio_devices,
+                            sample_rate=RECEIVE_SAMPLE_RATE,
+                            channels=CHANNELS,
+                            blocksize=_OUTPUT_BLOCKSIZE,
+                            excluded_device=current_device,
+                        )
                                 if fallback is None:
                                     print(
                                         "[AudioTrace 4/OUTPUT] No alternate tested speaker "
@@ -3875,7 +3819,7 @@ class JarvisLive:
                                     print(
                                         f"[AudioTrace 4/OUTPUT] Switched to tested speaker "
                                         f"{_spk_name!r} (device {_spk_dev}); "
-                                        f"route={_describe_output_route(_spk_dev)}. "
+                                        f"route={describe_output_route(sd, _spk_dev)}. "
                                         "Replaying the last PCM batch."
                                     )
                                     replay_started = time.perf_counter()
@@ -3933,7 +3877,7 @@ class JarvisLive:
                             write_recovery_attempted = True
                             fallback_stream = None
                             try:
-                                fallback_stream = await asyncio.to_thread(_open_spk, None)
+                                fallback_stream = await asyncio.to_thread(open_output_stream, sd, None, RECEIVE_SAMPLE_RATE, CHANNELS, _OUTPUT_BLOCKSIZE)
                                 old_stream = stream
                                 stream = fallback_stream
                                 self._output_stream = stream

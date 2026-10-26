@@ -35,6 +35,18 @@ class SupabaseCloudProviderTests(unittest.TestCase):
         self.assertNotIn("SUPABASE_EMAIL", env)
         self.assertNotIn("SUPABASE_PASSWORD", env)
 
+    def test_failed_refresh_does_not_create_a_new_anonymous_identity(self):
+        with patch.dict(_AUTH, {
+            "access_token": "", "refresh_token": "stale-refresh-token", "expires_at": 0.0
+        }):
+            with patch("core.supabase_cloud_provider._load_persisted_refresh_token", return_value=""):
+                with patch("core.supabase_cloud_provider._request_json", side_effect=RuntimeError("network")) as request:
+                    with self.assertRaisesRegex(RuntimeError, "session refresh failed"):
+                        _get_access_token("https://example.supabase.co", "public-test-key", 3)
+        self.assertEqual(request.call_count, 1)
+        self.assertIn("/auth/v1/token?grant_type=refresh_token", request.call_args.args[0])
+        self.assertEqual(_AUTH["refresh_token"], "")
+
     def test_claude_name_maps_to_anthropic_function_provider(self):
         env = {
             "SUPABASE_URL": "https://example.supabase.co",

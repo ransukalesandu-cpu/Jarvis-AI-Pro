@@ -343,6 +343,11 @@ class AuthManager:
         if is_master is True and is_live is True and math.isfinite(similarity) and similarity >= COSINE_THRESHOLD:
             self.grant_owner_access("voice", verified_live=True)
             return FULL_ACCESS_MODE, "Owner voice verified."
+        # A failed voice check must not revoke an already PIN-authenticated
+        # local session. Host-only cloud privileges remain disabled because the
+        # live Voice ID factor is still false.
+        if state == FULL_ACCESS_MODE and method == "pin":
+            return FULL_ACCESS_MODE, "PIN session remains active; host cloud access still requires live Voice ID."
         if is_stranger:
             self.set_state(RESTRICTED_MODE)
             return RESTRICTED_MODE, "Unrecognized speaker; basic access only."

@@ -34,6 +34,7 @@ export function isSensitiveFactContent(value: string): boolean {
     /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/,
     /(?:\+?\d[\s().-]*){8,15}/,
     /\b(?:password|passcode|one[- ]time code|api[-_ ]?key|access token|refresh token|secret key|credit card|bank account|passport number|national id|social security|home address|street address)\b/i,
+    /\b\d{1,6}\s+[\w.-]+\s+(?:street|st|road|rd|avenue|ave|lane|ln|drive|dr)\b/i,
     /https?:\/\//i,
   ];
   return patterns.some((pattern) => pattern.test(text));

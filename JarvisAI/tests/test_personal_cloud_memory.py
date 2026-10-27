@@ -60,6 +60,10 @@ class PersonalCloudMemoryTests(unittest.TestCase):
             "My name is Lesandu and my sister is Anna.",
             {"fact_key": "name", "value": "Anna", "evidence_quote": "My name is Lesandu and my sister is Anna."},
         ))
+        self.assertEqual(validate_personal_fact(
+            "My name is Lesandu and my sister is Anna.",
+            {"fact_key": "name", "value": "Lesandu", "evidence_quote": "My name is Lesandu and my sister is Anna."},
+        )["value"], "Lesandu")
         self.assertIsNone(validate_personal_fact(
             "My name is Lesandu.",
             {"fact_key": "name", "value": "Peter", "evidence_quote": "My name is Lesandu."},

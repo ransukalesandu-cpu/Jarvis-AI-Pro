@@ -101,13 +101,25 @@ class VocalBehaviorTests(unittest.TestCase):
 
     def test_tone_setting_is_normalized_and_reaches_delivery_guidance(self):
         settings = normalize_settings({"tone": "cinematic"})
-        self.assertEqual(settings["tone"], "natural")
-        # "cinematic" is a tone-command alias accepted by the voice-style action;
-        # the persisted low-level setting is the normalized value "dramatic".
+        # Cinematic is a supported alias for dramatic delivery.
+        self.assertEqual(settings["tone"], "dramatic")
         settings = normalize_settings({"tone": "dramatic"})
         self.assertEqual(settings["tone"], "dramatic")
         guidance = delivery_guidance(settings)
         self.assertIn("cinematic expressive emphasis", guidance)
+
+    def test_dynamic_emotions_are_enabled_by_default_and_can_be_disabled(self):
+        self.assertTrue(normalize_settings({})["dynamic_emotions"])
+        enabled = delivery_guidance({"dynamic_emotions": True})
+        disabled = delivery_guidance({"dynamic_emotions": False})
+        self.assertIn("DYNAMIC EMOTIONAL PROSODY", enabled)
+        self.assertIn("pitch contour", enabled)
+        self.assertNotIn("DYNAMIC EMOTIONAL PROSODY", disabled)
+
+    def test_natural_tone_guidance_encourages_conversational_rhythm(self):
+        guidance = delivery_guidance({"tone": "natural"})
+        self.assertIn("natural, balanced conversational voice", guidance)
+        self.assertIn("varied sentence rhythm", guidance)
 
     def test_soft_tone_guidance_is_distinct_from_voice_preset(self):
         settings = normalize_settings({"tone": "soft"})

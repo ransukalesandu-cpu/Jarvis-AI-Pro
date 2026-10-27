@@ -199,6 +199,24 @@ class ConfirmTests(unittest.TestCase):
         show.assert_called_once()
         confirm.resolve(False)
 
+    def test_owner_autopilot_cancels_stale_prompt_without_running_old_action(self):
+        from core import confirm
+        show = mock.Mock()
+        hide = mock.Mock()
+        old_action = mock.Mock(return_value="old action must not run")
+        confirm.bind(show, hide, owner_autopilot_allowed=lambda: False)
+        pending = confirm.request("sec-send_message", "Old request", "", old_action)
+        self.assertIn("[CONFIRMATION_PENDING]", pending)
+        confirm.bind(show, hide, owner_autopilot_allowed=lambda: True)
+        result = confirm.request(
+            "sec-open_app", "Fresh host request", "", lambda: "new action ran",
+        )
+        self.assertEqual(result, "[OWNER_AUTOPILOT_COMPLETED] new action ran")
+        old_action.assert_not_called()
+        self.assertEqual(show.call_count, 1)
+        hide.assert_called_once()
+        self.addCleanup(confirm.bind, lambda _title, _detail: None, lambda: None)
+
     def test_only_dev_agent_and_memory_transfer_need_a_click(self):
         from core import confirm
         for key in ("sec-dev_agent", "sec-memory_export", "sec-memory_import"):

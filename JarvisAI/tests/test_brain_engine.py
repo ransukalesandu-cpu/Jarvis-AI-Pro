@@ -10,7 +10,7 @@ from core.brain_engine import (
     format_memory_context,
     normalize_conversation_history,
 )
-from core.brain_protocol import build_brain_protocol, profile_request
+from core.brain_protocol import build_brain_protocol, profile_request, render_text_fallback_prompt
 
 
 class BrainEngineTests(unittest.TestCase):
@@ -38,6 +38,16 @@ class BrainEngineTests(unittest.TestCase):
         self.assertEqual(rows, [
             {"role": "user", "content": "Please help with my Python project"},
             {"role": "assistant", "content": "We found the audio module"},
+        ])
+
+    def test_custom_assistant_name_is_supported_in_history(self):
+        rows = normalize_conversation_history(
+            ["User: Earlier question", "Maya: Earlier answer"],
+            assistant_names=["Maya"],
+        )
+        self.assertEqual(rows, [
+            {"role": "user", "content": "Earlier question"},
+            {"role": "assistant", "content": "Earlier answer"},
         ])
 
     def test_history_is_bounded(self):
@@ -75,6 +85,19 @@ class BrainEngineTests(unittest.TestCase):
         self.assertEqual(result["memory_hits"], 0)
         self.assertNotIn("private memory payload", repr(result))
 
+    def test_fallback_prompt_renders_runtime_placeholders(self):
+        prompt = render_text_fallback_prompt(
+            "You are {assistant_name} on {platform}. {capabilities} {limits} {braces}.",
+            assistant_name="Maya",
+        )
+        self.assertIn("Maya", prompt)
+        self.assertIn("cannot perform browser or computer actions", prompt)
+        self.assertIn("braces", prompt)
+        self.assertNotIn("{assistant_name}", prompt)
+        self.assertNotIn("{platform}", prompt)
+        self.assertNotIn("{capabilities}", prompt)
+        self.assertNotIn("{limits}", prompt)
+
     def test_response_context_reaches_provider_with_brain_protocol(self):
         query = Mock(return_value=({
             "text": "A verified answer", "provider": "gemini", "model": "test", "mode": "cloud"
@@ -87,14 +110,18 @@ class BrainEngineTests(unittest.TestCase):
         engine = BrainEngine(query_fn=query, memory_retriever=retriever)
         result = engine.respond(
             "Continue the project plan",
-            base_system_prompt="Base prompt",
-            conversation_history=["User: Earlier request", "JARVIS: Earlier answer"],
+            base_system_prompt="You are {assistant_name} on {platform}.",
+            conversation_history=["User: Earlier request", "Maya: Earlier answer"],
+            assistant_names=["Maya"],
+            assistant_name="Maya",
         )
         call = query.call_args
         self.assertIn("[CURRENT USER REQUEST]", call.args[0])
         self.assertIn("Continue the project plan", call.args[0])
         self.assertIn("Previous project context", call.args[0])
         self.assertIn("[JARVIS BRAIN PROTOCOL v1]", call.kwargs["base_system_prompt"])
+        self.assertIn("You are Maya on", call.kwargs["base_system_prompt"])
+        self.assertNotIn("{assistant_name}", call.kwargs["base_system_prompt"])
         self.assertEqual(result["memory_hits"], 1)
         self.assertEqual(result["history_items"], 2)
         self.assertEqual(result["configured_providers"], "gemini,ollama")

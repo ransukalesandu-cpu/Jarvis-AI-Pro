@@ -24,6 +24,12 @@ import numpy as np
 from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, Qt
 from PyQt6.QtWidgets import QApplication
 
+# Import WebEngine before QApplication creation (required by some Qt 6 builds).
+try:
+    from PyQt6.QtWebEngineWidgets import QWebEngineView  # noqa: F401
+except Exception:
+    pass
+
 # Ensure QApplication exists before testing Qt widgets
 app = QApplication.instance() or QApplication(sys.argv)
 

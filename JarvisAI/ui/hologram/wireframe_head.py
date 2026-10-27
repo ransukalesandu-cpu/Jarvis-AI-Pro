@@ -50,7 +50,9 @@ class NeuralWireframeHead(_BASE_CANVAS):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(320, 320)
-        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         self._state = "IDLE"
         self._audio_energy = 0.0
@@ -385,7 +387,7 @@ class NeuralWireframeHead(_BASE_CANVAS):
             return
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        painter.fillRect(self.rect(), self.COLOR_BG)
+        # No opaque backing fill: the room/task cards remain visible through the emissive mesh.
 
         width, height = float(self.width()), float(self.height())
         cx, cy = width * 0.5, height * 0.455
@@ -407,7 +409,7 @@ class NeuralWireframeHead(_BASE_CANVAS):
             pulse = 1.0 + 0.012 * math.sin(elapsed * 1.4)
             primary, secondary = self.COLOR_CYAN, self.COLOR_CYAN_DIM
 
-        scale = min(width, height) * 0.415 * pulse
+        scale = min(width, height) * 0.48 * pulse
         self._draw_hud_frame(painter, width, height, cx, cy, scale, primary, elapsed)
 
         # Orbital data particles are kept subtle; thinking/speaking increases their activity.

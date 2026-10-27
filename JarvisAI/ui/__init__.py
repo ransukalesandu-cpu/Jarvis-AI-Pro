@@ -6549,6 +6549,8 @@ class MainWindow(QMainWindow):
         )
         ov.closed.connect(lambda: setattr(self, '_remote_overlay', None))
         ov.show()
+        ov.raise_()
+        self._voice_control_overlay = ov
         self._remote_overlay = ov
         self._log.append_log(f"SYS: Remote key generated — manual: {manual or url}")
 
@@ -7203,6 +7205,8 @@ class MainWindow(QMainWindow):
         ov.on_preview = self._preview_ui_color
         ov.saved.connect(self._apply_name_update)
         ov.show()
+        ov.raise_()
+        self._voice_control_overlay = ov
         self._customize_overlay = ov
 
     def _open_voice_personality(self):
@@ -7689,6 +7693,7 @@ class MainWindow(QMainWindow):
         )
         ov.show()
         ov.raise_()
+        self._voice_control_overlay = ov
         self._plugin_manager_overlay = ov   # keep a reference so it isn't GC'd
 
     def _open_plugin_settings(self):
@@ -7704,6 +7709,7 @@ class MainWindow(QMainWindow):
         )
         ov.show()
         ov.raise_()
+        self._voice_control_overlay = ov
         self._plugin_settings_overlay = ov   # keep a reference so it isn't GC'd
 
     # ── Clipboard intelligence ───────────────────────────────────────────────────

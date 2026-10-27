@@ -186,6 +186,11 @@ class BihansaHologramWidget(QWidget):
         if not p.isActive():
             return
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # Clear previous frame to alpha; the animated face must stay transparent.
+        p.save()
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+        p.fillRect(self.rect(), QColor(0, 0, 0, 0))
+        p.restore()
         w, h = float(self.width()), float(self.height())
         elapsed = time.monotonic() - self._start_time
         t = 0.0 if self._reduced_motion else elapsed * self._animation_speed

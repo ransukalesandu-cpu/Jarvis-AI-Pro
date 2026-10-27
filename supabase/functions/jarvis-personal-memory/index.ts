@@ -143,6 +143,11 @@ Deno.serve(async (req: Request) => {
   }
 
   if (operation === "list") {
+    // The local setting alone is not enough: server-side consent must still be active.
+    let enabled = false;
+    try { enabled = await memoryConsent(baseUrl, serviceKey, userId); }
+    catch { return jsonResponse({ error: "consent_lookup_failed" }, 503); }
+    if (!enabled) return jsonResponse({ error: "personal_memory_consent_required" }, 403);
     const response = await adminRequest(
       baseUrl, serviceKey,
       "/rest/v1/jarvis_personal_memories?user_id=eq." + encodeURIComponent(userId) +

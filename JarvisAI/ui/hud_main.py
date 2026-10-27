@@ -161,6 +161,7 @@ class FloatingTaskCard(QFrame):
                 self.web_view.setPage(
                     _TaskCardPage(existing_page.profile(), self.web_view, self._popup_factory)
                 )
+                existing_page.deleteLater()
             except Exception:
                 pass
             try:
@@ -861,6 +862,10 @@ class HologramHUDUI:
             return False
         self._win.sig_task_tab_requested.emit(str(title or "JARVIS TASK"), value, "")
         return True
+
+    def show_webpage(self, url: str, title: str = "ARTICLE / WEB PAGE") -> bool:
+        """Compatibility hook for browser_control's existing in-HUD view mode."""
+        return self.open_task_tab(title, url)
 
     def close_task_tabs(self):
         """Close all mini task cards while leaving the full-screen hologram active."""

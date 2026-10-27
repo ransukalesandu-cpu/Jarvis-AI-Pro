@@ -49,9 +49,9 @@ _lock = threading.Lock()
 _MANUAL_CLICK_ONLY_KEYS = {
     "sec-dev_agent", "sec-memory_export", "sec-memory_import",
 }
-# Keep these three operations click-only even if an unrelated environment
-# setting changes. Other confirmation-gated actions can use the exact spoken
-# approval phrase with verified live owner speech.
+# In the normal confirmation path these operations require a manual click.
+# The stricter dual-factor Owner Autopilot path may run a direct host command
+# without an extra click after it independently revalidates this live turn.
 
 # Set once at startup by main.py. Signature: (title, detail) -> None for show,
 # and () -> None for hide. Both are marshalled onto the Qt thread by the UI.
@@ -87,20 +87,6 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
     """
     global _pending, _autopilot_running
 
-    # Preserve any unresolved prompt; never stack or silently replace it.
-    with _lock:
-        if _autopilot_running:
-            return "Another verified-host action is currently running. Wait for it to finish."
-        if _pending is not None and time.monotonic() - _pending.at <= TIMEOUT_SECONDS:
-            existing_title = _pending.title
-            _log(f"SYS: Refused to replace pending confirmation — {existing_title}")
-            return (
-                f"A different confirmation is already waiting: {existing_title}. "
-                "Resolve or cancel it before requesting another action."
-            )
-        if _pending is not None:
-            _pending = None
-
     trusted_owner = False
     if _owner_autopilot_cb is not None:
         try:
@@ -109,20 +95,14 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
             trusted_owner = False
 
     if trusted_owner:
-        # Claim the single in-flight slot before running the operation. The
-        # callback executes on the action worker, not on the Qt UI thread.
+        # A stale confirmation must not keep a popup on screen after the host
+        # is verified. Cancel that older action; never execute/approve it.
+        cancel_pending("superseded by a fresh verified-host command; action was not executed")
         with _lock:
             if _autopilot_running:
                 return "Another verified-host action is currently running. Wait for it to finish."
-            if _pending is not None and time.monotonic() - _pending.at <= TIMEOUT_SECONDS:
-                return (
-                    f"A different confirmation is already waiting: {_pending.title}. "
-                    "Resolve or cancel it before requesting another action."
-                )
-            if _pending is not None:
-                _pending = None
             _autopilot_running = True
-        _log(f"SYS: Owner Autopilot — confirmed-host request running without a confirmation banner: {title}")
+        _log(f"SYS: Owner Autopilot — verified host request running without a confirmation banner: {title}")
         try:
             result = run() or "Done."
             _log(f"SYS: Owner Autopilot completed — {title}. {result}")
@@ -177,6 +157,15 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
         f"[CONFIRMATION_PENDING] I have put a confirmation on screen for: {title}. "
         f"{guidance} Do not claim it is done."
     )
+
+
+def cancel_pending(reason: str = "cancelled") -> None:
+    """Cancel a pending action without executing it and remove its HUD banner."""
+    global _pending
+    with _lock:
+        pending, _pending = _pending, None
+    if pending is not None:
+        _finish(pending, False, source=reason)
 
 def resolve(accepted: bool, source: str = "HUD") -> None:
     """Called by the UI when the user presses CONFIRM or CANCEL.

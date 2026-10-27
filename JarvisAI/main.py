@@ -1577,7 +1577,12 @@ class JarvisLive:
 
         def _work() -> None:
             try:
-                memory_access = get_memory_provider_access_enabled()
+                try:
+                    memory_access = bool(get_memory_provider_access_enabled())
+                except Exception:
+                    # If the preference cannot be read, fail closed for memory
+                    # sharing while keeping the ordinary text fallback available.
+                    memory_access = False
                 brain = BrainEngine(
                     config_path=API_CONFIG_PATH,
                     memory_enabled=memory_access,

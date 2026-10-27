@@ -385,7 +385,11 @@ class NeuralWireframeHead(_BASE_CANVAS):
             return
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        # No opaque backing fill: the room/task cards remain visible through the emissive mesh.
+        # Clear previous frame to true alpha so moving mesh lines leave no trails.
+        painter.save()
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 0))
+        painter.restore()
 
         width, height = float(self.width()), float(self.height())
         cx, cy = width * 0.5, height * 0.455

@@ -66,6 +66,21 @@ _SIBLING_EVIDENCE = re.compile(
     r"මට\s*[^.!?]{0,50}(?:සහෝදර|අක්කා|අයියා|මල්ලි|නංගි))",
     re.IGNORECASE,
 )
+_SENSITIVE_CATEGORY = re.compile(
+    r"\b(?:medical|diagnos\w*|illness|disease|medication|prescription|mental health|depression|"
+    r"anxiety|disability|disorder|religion|religious|muslim|christian|hindu|buddhist|jewish|atheist|"
+    r"political party|political affiliation|vote for|voting preference|sexual orientation|sexuality|"
+    r"gender identity|race|ethnicity|salary|income|bank balance|credit score|debt|loan balance|"
+    r"criminal record|immigration status|date of birth|birthday|my age is|i am \d{1,3} years old)\b",
+    re.IGNORECASE,
+)
+
+_SIBLING_IDENTIFYING = re.compile(
+    r"\b(?:named|called|name is|name's|birthday|age is|phone|email|address|school)\b|"
+    r"(?:නම|උපන්දිනය|දුරකථන|ලිපිනය)",
+    re.IGNORECASE,
+)
+
 _SENSITIVE_TEXT = re.compile(
     r"(?:[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|"
     r"(?:\+?\d[\s().-]*){8,15}|https?://|"
@@ -131,7 +146,11 @@ def validate_personal_fact(source_text: str, candidate: Any) -> dict[str, str] |
         return None
     if key == "siblings" and not _SIBLING_EVIDENCE.search(quote):
         return None
-    if _SENSITIVE_TEXT.search(value) or _SENSITIVE_TEXT.search(quote):
+    # Keep family facts to sibling presence/relationship, not names or identifying details.
+    if key == "siblings" and _SIBLING_IDENTIFYING.search(quote):
+        return None
+    if (_SENSITIVE_TEXT.search(value) or _SENSITIVE_TEXT.search(quote)
+            or _SENSITIVE_CATEGORY.search(value) or _SENSITIVE_CATEGORY.search(quote)):
         return None
     return {"fact_key": key, "value": value, "evidence_quote": quote}
 
@@ -164,7 +183,7 @@ def extract_personal_facts(
         "and for siblings use only the explicit first-person sibling statement. "
         "Do not infer unstated facts, store a full conversation, or include health/mental-health, "
         "financial, legal-ID, address/contact, credential, sexual, religious, or political "
-        "details. Do not store ages, contact details, or sensitive details about other people. "
+        "details. Do not store ages, contact details, credentials, diagnoses, religion, politics, sexual traits, financial details, or sensitive details about other people. For siblings, record only the fact/count/relationship, never names, ages, schools, or contact details. "
         "Return an empty facts list when no clearly stated allowed fact exists.\n"
         "SOURCE TEXT JSON:\n" + json.dumps({"user_message": text[:6000]}, ensure_ascii=False)
     )

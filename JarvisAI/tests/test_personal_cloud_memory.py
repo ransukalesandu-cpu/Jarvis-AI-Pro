@@ -12,10 +12,25 @@ from core.personal_cloud_memory import (
     should_extract_personal_facts,
     validate_personal_fact,
     _request_personal_memory,
+    speaker_may_save_personal_facts,
 )
 
 
 class PersonalCloudMemoryTests(unittest.TestCase):
+    def test_voice_id_capture_requires_current_owner(self):
+        self.assertTrue(speaker_may_save_personal_facts(
+            voice_id_enabled=False, voice_id_ready=False, speaker_role="stranger"
+        ))
+        self.assertTrue(speaker_may_save_personal_facts(
+            voice_id_enabled=True, voice_id_ready=True, speaker_role="owner"
+        ))
+        self.assertFalse(speaker_may_save_personal_facts(
+            voice_id_enabled=True, voice_id_ready=True, speaker_role="stranger"
+        ))
+        self.assertFalse(speaker_may_save_personal_facts(
+            voice_id_enabled=True, voice_id_ready=False, speaker_role="owner"
+        ))
+
     def test_extraction_is_triggered_only_by_personal_disclosure_cues(self):
         self.assertTrue(should_extract_personal_facts("My name is Lesandu"))
         self.assertTrue(should_extract_personal_facts("Mage nama Lesandu"))

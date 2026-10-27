@@ -174,7 +174,9 @@ class AuthManager:
                 return
             self.state = FULL_ACCESS_MODE
             self._auth_method = "setup"
-            self._pin_verified = True
+            # Setup trust restores local access; it does not verify the PIN
+            # in this process and must not satisfy the host-cloud PIN factor.
+            self._pin_verified = False
             self._voice_verified = False
 
     def _load_persistent_state(self) -> None:

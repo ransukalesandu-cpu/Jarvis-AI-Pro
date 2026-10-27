@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 from audio.visualizer_bridge import get_visualizer_bridge, VisualizerBridge
 from ui.hologram.wireframe_head import NeuralWireframeHead
 from ui.hologram.bihansa_hologram import BihansaHologramWidget
+from ui.hologram.neural_heart_reactor import NeuralHeartReactor
 from ui.hologram.bihansa_settings import BihansaModeSettings, BihansaSettingsDialog
 from ui.panels.hybrid_brain_panel import HybridBrainPanel
 from ui.panels.security_panel import SecurityPanel
@@ -176,14 +177,25 @@ class HUDMainWindow(QMainWindow):
         # Center hologram stack is preserved; only surrounding navigation changes.
         center_col = QVBoxLayout()
         center_col.setSpacing(6)
-        self._visualizer_stack = QStackedWidget(self)
+        # Stage wrapper gives the heart/circuit graphics a transparent overlay layer.
+        # The original hologram widget and its paint implementation are untouched.
+        self._hologram_stage = QWidget(self)
+        stage_layout = QVBoxLayout(self._hologram_stage)
+        stage_layout.setContentsMargins(0, 0, 0, 0)
+        stage_layout.setSpacing(0)
+
+        self._visualizer_stack = QStackedWidget(self._hologram_stage)
         self.wireframe_visualizer = NeuralWireframeHead(self)
         self.bihansa_visualizer = BihansaHologramWidget(self)
         self._visualizer_stack.addWidget(self.wireframe_visualizer)
         self._visualizer_stack.addWidget(self.bihansa_visualizer)
         self._visualizer_stack.setCurrentWidget(self.wireframe_visualizer)
-        center_col.addWidget(self._visualizer_stack, stretch=1)
-        center_col.addWidget(self._mini_orb, alignment=Qt.AlignmentFlag.AlignHCenter)
+        stage_layout.addWidget(self._visualizer_stack, stretch=1)
+        stage_layout.addWidget(self._mini_orb, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+        self._heart_reactor = NeuralHeartReactor(self._hologram_stage)
+        self._heart_reactor.raise_()
+        center_col.addWidget(self._hologram_stage, stretch=1)
 
         self._lbl_hud_status = QLabel("● SYSTEM STANDBY")
         self._lbl_hud_status.setFont(QFont("Courier New", 11, QFont.Weight.Bold))
@@ -417,6 +429,7 @@ class HUDMainWindow(QMainWindow):
         self.wireframe_visualizer.set_state(visual_state)
         self.bihansa_visualizer.set_state(visual_state)
         self._mini_orb.set_state(visual_state)
+        self._heart_reactor.set_state(visual_state)
         if self._privacy_locked:
             return
 

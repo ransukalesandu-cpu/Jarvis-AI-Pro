@@ -2601,7 +2601,8 @@ class VoicePersonalityOverlay(QWidget):
         self._vocal_checks = {}
         check_row = QHBoxLayout()
         for key, text in (("enabled", "ENGINE"), ("breathing", "BREATH"),
-                          ("sighs", "SIGHS"), ("laughter", "REACTIONS")):
+                          ("sighs", "SIGHS"), ("laughter", "REACTIONS"),
+                          ("dynamic_emotions", "DYN FEEL")):
             check = QCheckBox(text)
             check.setChecked(vocal[key])
             check.setStyleSheet(f"QCheckBox{{color:{C.TEXT_MED};font:7pt 'Courier New';spacing:4px;}} QCheckBox::indicator{{width:12px;height:12px;}}")

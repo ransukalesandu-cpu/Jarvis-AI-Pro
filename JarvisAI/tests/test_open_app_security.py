@@ -28,9 +28,9 @@ class WindowsAppLaunchSecurityTests(unittest.TestCase):
 
     def test_command_wrapper_uses_registered_handler(self):
         wrapper = r"C:\\Program Files\\Editor\\editor.cmd"
-        with patch("actions.open_app.shutil.which", return_value=wrapper), \\
-             patch("actions.open_app.os.startfile", create=True) as startfile, \\
-             patch("actions.open_app.subprocess.Popen") as popen, \\
+        with patch("actions.open_app.shutil.which", return_value=wrapper), \
+             patch("actions.open_app.os.startfile", create=True) as startfile, \
+             patch("actions.open_app.subprocess.Popen") as popen, \
              patch("actions.open_app.time.sleep"):
             self.assertTrue(_launch_windows("editor"))
 

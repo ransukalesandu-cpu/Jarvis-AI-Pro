@@ -220,8 +220,14 @@ class TestOwnerIdentitySecurity(unittest.TestCase):
         self.assertEqual(self.auth.get_state(), FULL_ACCESS_MODE)
 
         # Simulate app restart: local owner access is restored without a prompt.
+        # Setup trust must not count as PIN verification for host-cloud access.
         restarted_auth = AuthManager(vault_path=self.vault_path, state_path=self.state_path)
         self.assertEqual(restarted_auth.get_state(), FULL_ACCESS_MODE)
+        self.assertTrue(restarted_auth.is_owner_access_allowed())
+        self.assertFalse(restarted_auth.owner_factors_verified())
+
+        # Even a fresh live voice match cannot replace this process's PIN factor.
+        restarted_auth.process_voice_result(True, .95, is_live=True)
         self.assertTrue(restarted_auth.is_owner_access_allowed())
         self.assertFalse(restarted_auth.owner_factors_verified())
 

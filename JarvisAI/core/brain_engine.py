@@ -234,6 +234,7 @@ class BrainEngine:
         conversation_history: Iterable[Any] | None = None,
         project: str = "",
         memory_enabled: bool | None = None,
+        assistant_names: Iterable[str] | None = None,
     ) -> dict[str, Any]:
         """Answer a request using bounded history and optional provider-safe memory.
 
@@ -251,6 +252,7 @@ class BrainEngine:
         history = normalize_conversation_history(
             conversation_history,
             current_request=request,
+            assistant_names=assistant_names,
         )
         memory_rows: list[dict[str, Any]] = []
         use_memory = self.memory_enabled if memory_enabled is None else bool(memory_enabled)

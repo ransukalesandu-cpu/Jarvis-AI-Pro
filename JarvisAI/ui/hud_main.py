@@ -187,7 +187,7 @@ class FloatingTaskCard(QFrame):
         self._collapsed = not self._collapsed
         self._body.setVisible(not self._collapsed)
         self._collapse_button.setText("□" if self._collapsed else "—")
-        self.setFixedHeight(44 if self._collapsed else self._expanded_height())
+        self.resize(self.width(), 44 if self._collapsed else self._expanded_height())
 
     def _expanded_height(self) -> int:
         parent = self.parentWidget()
@@ -602,6 +602,7 @@ class HUDMainWindow(QMainWindow):
         cleaned = " ".join(str(text or "").split())
         self._lbl_avatar_text.setText(cleaned)
         self._lbl_avatar_text.setVisible(bool(cleaned))
+        self._layout_hologram_workspace()
         if cleaned:
             QTimer.singleShot(5000, lambda expected=cleaned: (
                 self._lbl_avatar_text.hide()
@@ -739,7 +740,10 @@ class HologramHUDUI:
         self.bridge = bridge or get_visualizer_bridge()
         self._win = HUDMainWindow(bridge=self.bridge)
         self.root = _RootShim(self._app)
-        self._win.show()
+        if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+            self._win.show()
+        else:
+            self._win.showFullScreen()
 
         self._muted = False
         self._ready = True

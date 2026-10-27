@@ -26,8 +26,10 @@ The profile is written via JARVIS's existing encrypted Voice ID store. If model/
 - Spoken confirmations also require verified live owner speech. A PIN session does not bypass the liveness check for spoken approval; manual HUD confirmation remains available.
 - An uncertain/unrecognized speaker remains restricted. Basic public queries are allowed; private files, memory, system control, and unknown tools require owner access.
 - When privileged access is requested, JARVIS asks the owner to type the PIN/password into the local command box or paired dashboard. It is intercepted locally and is not sent to Gemini or added to conversation logs.
-- A successful PIN/password grants access for the current process even if Voice ID remains uncertain.
+- A successful PIN/password grants access for the current process even if Voice ID remains uncertain, but it does not by itself enable Owner Autopilot.
 - Full access is never restored from persistent state after a JARVIS restart.
+- Owner Autopilot suppresses JARVIS's own action-confirmation banners only after both PIN and live enrolled Voice ID/anti-spoof factors are verified in the current process, and only when the current command's live speech is verified as the owner. Untrusted external-content provenance checks, action rate limits and audit logging remain active. If any check fails, the ordinary confirmation/authorization path remains in force.
+- Owner Autopilot does not hide or bypass native Windows/macOS security prompts, UAC, browser permission dialogs, or permissions required by third-party applications.
 
 ## Privacy Lock
 

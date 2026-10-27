@@ -112,7 +112,8 @@ echo.
 echo [4/4] Starting Jarvis AI Pro...
 echo Keep this window open while Jarvis is running.
 echo.
-".venv\Scripts\python.exe" main.py
+REM Explicitly request the hologram HUD so the launcher uses the upgraded interface.
+".venv\Scripts\python.exe" main.py --hologram-hud
 set "JARVIS_EXIT=%ERRORLEVEL%"
 
 echo.

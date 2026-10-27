@@ -21,6 +21,7 @@ DEFAULT_SETTINGS = {
     "sighs": False,
     "laughter": False,
     "profile": "professional",
+    "tone": "natural",
     "expressiveness": 30,
     "pause_naturalness": 45,
     "breath_volume": 16,
@@ -50,6 +51,17 @@ def normalize_settings(value: dict | None) -> dict:
         result[key] = bool(raw.get(key, result[key]))
     profile = str(raw.get("profile", result["profile"])).strip().lower()
     result["profile"] = profile if profile in VOCAL_PROFILES else "professional"
+    tone = str(raw.get("tone", result["tone"])).strip().lower()
+    tone_aliases = {
+        "normal": "natural", "default": "natural", "gentle": "soft",
+        "calm": "soft", "bold": "confident", "powerful": "confident",
+        "lively": "energetic", "excited": "energetic", "cinematic": "dramatic",
+        "robot": "robotic",
+    }
+    tone = tone_aliases.get(tone, tone)
+    result["tone"] = tone if tone in {
+        "natural", "soft", "confident", "energetic", "dramatic", "robotic"
+    } else "natural"
     for key in ("expressiveness", "pause_naturalness", "breath_volume", "event_frequency"):
         try:
             result[key] = max(0, min(100, int(raw.get(key, result[key]))))
@@ -143,12 +155,21 @@ def delivery_guidance(settings: dict | None) -> str:
         pauses = "Use occasional thoughtful pauses between major ideas, not between every sentence."
     else:
         pauses = "Vary clause and idea pacing naturally; keep pauses brief and useful."
+    tone_guidance = {
+        "natural": "Use a natural, balanced conversational voice.",
+        "soft": "Use a softer, gentler delivery with relaxed pacing and clear words; do not whisper.",
+        "confident": "Use a steady, confident, assured delivery without sounding aggressive.",
+        "energetic": "Use lively, upbeat energy and clear emphasis without shouting or rushing.",
+        "dramatic": "Use cinematic expressive emphasis and purposeful pauses, without overacting.",
+        "robotic": "Use a clean, precise, even synthetic-assistant delivery while keeping words easy to understand.",
+    }[cfg["tone"]]
     optional = []
     if cfg["sighs"]:
         optional.append("Only use a subtle sigh or exhalation when the context clearly supports it.")
     if cfg["laughter"]:
         optional.append("Use a restrained amused reaction only when genuinely appropriate; do not add routine laughter.")
     return " ".join([
+        tone_guidance,
         f"Deliver speech in a {profile_text} manner.",
         pauses,
         "Keep words intelligible, vary emphasis gently, and avoid repetitive filler.",

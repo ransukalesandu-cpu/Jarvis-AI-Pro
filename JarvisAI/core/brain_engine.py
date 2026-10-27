@@ -193,8 +193,6 @@ class BrainEngine:
         self.memory_enabled = bool(memory_enabled)
 
     def _retrieve_memory(self, query: str, project: str) -> list[dict[str, Any]]:
-        if not self.memory_enabled:
-            return []
         try:
             retriever = self.memory_retriever
             if retriever is None:

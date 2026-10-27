@@ -12,7 +12,10 @@ import re
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from core.brain_protocol import RequestProfile, build_brain_protocol, profile_guidance, profile_request
+from core.brain_protocol import (
+    RequestProfile, build_brain_protocol, profile_guidance, profile_request,
+    render_text_fallback_prompt,
+)
 from core.provider_fallback import query_text_fallback
 
 logger = logging.getLogger("Jarvis.BrainEngine")
@@ -235,6 +238,7 @@ class BrainEngine:
         project: str = "",
         memory_enabled: bool | None = None,
         assistant_names: Iterable[str] | None = None,
+        assistant_name: str = "JARVIS",
     ) -> dict[str, Any]:
         """Answer a request using bounded history and optional provider-safe memory.
 
@@ -266,7 +270,13 @@ class BrainEngine:
             memory_context=memory_context,
         )
         system_prompt = "\n\n".join(
-            value.strip() for value in (str(base_system_prompt or "").strip(), build_brain_protocol())
+            value.strip() for value in (
+                render_text_fallback_prompt(
+                    base_system_prompt,
+                    assistant_name=assistant_name,
+                ),
+                build_brain_protocol(),
+            )
             if value.strip()
         )
         kwargs: dict[str, Any] = {

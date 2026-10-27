@@ -81,6 +81,15 @@ def normalize_evidence(value: str) -> str:
     return " ".join(str(value or "").split()).casefold()
 
 
+def speaker_may_save_personal_facts(
+    *, voice_id_enabled: bool, voice_id_ready: bool, speaker_role: str,
+) -> bool:
+    """When Voice ID is configured, only the currently identified owner may be captured."""
+    if not voice_id_enabled:
+        return True  # explicit local owner opt-in remains the gate when Voice ID is off
+    return bool(voice_id_ready and str(speaker_role or "").strip().casefold() == "owner")
+
+
 def should_extract_personal_facts(text: str) -> bool:
     """Cheap cue check; ordinary turns do not trigger a second provider call."""
     value = str(text or "").strip()

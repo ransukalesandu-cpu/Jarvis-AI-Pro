@@ -47,7 +47,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from core.audio_callback_guard import enqueue_audio_frame
 from core.playback_interrupt import interrupt_playback
-from core.voice_ui_control import parse_voice_ui_command
+from core.voice_ui_control import has_wake_name_prefix, parse_voice_ui_command
 import re
 import threading
 import time
@@ -3477,10 +3477,7 @@ class JarvisLive:
                                             self._inflight_user_tool_started = False
                                             holo_open_request_pending = False
                                             self.ui.write_log(f"You [UI command]: {candidate_text}")
-                                            wake_named_request = bool(re.match(
-                                                r"^(?:hey\\s+)?(?:jarvis|maya)\\b",
-                                                " ".join(candidate_text.casefold().split()),
-                                            ))
+                                            wake_named_request = has_wake_name_prefix(candidate_text)
                                             if not self._awake and not wake_named_request:
                                                 self.ui.write_log(
                                                     "SYS: Voice UI command ignored while sleeping — say 'Hey Jarvis' or use WAKE NOW first."

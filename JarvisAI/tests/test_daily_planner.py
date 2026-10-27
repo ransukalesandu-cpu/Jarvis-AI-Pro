@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from actions import daily_planner as planner
+import actions.reminder as reminder_module
 
 
 class DailyPlannerTests(unittest.TestCase):
@@ -138,6 +139,32 @@ class DailyPlannerTests(unittest.TestCase):
         self.assertIn("Use YYYY-MM-DD", result)
         self.assertFalse(self.store.exists())
         self.assertEqual(self.alarm_calls, [])
+
+
+    def test_same_minute_reminders_get_distinct_os_task_names(self):
+        from datetime import datetime
+
+        target = datetime(2099, 1, 1, 8, 0)
+        first = reminder_module._reminder_task_name(target, "Study physics")
+        second = reminder_module._reminder_task_name(target, "Take a break")
+        self.assertNotEqual(first, second)
+        self.assertTrue(first.startswith("JARVISReminder_20990101_080000_"))
+        self.assertTrue(second.startswith("JARVISReminder_20990101_080000_"))
+
+    def test_reminder_cancel_action_uses_original_date_time_and_message(self):
+        with patch.object(reminder_module, "_cancel_scheduled_reminder", return_value=True) as cancel:
+            result = reminder_module.reminder({
+                "action": "cancel",
+                "date": "2099-01-01",
+                "time": "08:00",
+                "message": "Study physics",
+            })
+        self.assertEqual(result, "Reminder cancelled.")
+        cancel.assert_called_once()
+        target, message = cancel.call_args.args
+        self.assertEqual(target.strftime("%Y-%m-%d %H:%M"), "2099-01-01 08:00")
+        self.assertEqual(message, "Study physics")
+
 
 
 if __name__ == "__main__":

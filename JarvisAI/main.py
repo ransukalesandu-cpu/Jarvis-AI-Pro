@@ -5425,7 +5425,12 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="JARVIS AI Personal Assistant")
     parser.add_argument("--headless", action="store_true", help="Run in headless background daemon mode")
-    parser.add_argument("--hologram-hud", action="store_true", help="Launch Neural Wireframe Hologram HUD")
+    parser.add_argument(
+        "--classic-ui", action="store_true",
+        help="Use the legacy classic UI instead of the default Neural Hologram HUD",
+    )
+    # Neural Hologram HUD is now the default desktop interface. The classic UI
+    # remains available explicitly for troubleshooting and first-run setup.
     args, _ = parser.parse_known_args()
 
     if args.headless:
@@ -5474,11 +5479,10 @@ def main():
         if splash is not None:
             splash.close()
 
-        if args.hologram_hud and HologramHUDUI is not None:
-            # The hologram adapter intentionally has no API-key or owner-PIN
-            # enrollment dialogs. On a fresh install, route through the full
-            # desktop UI so its existing first-run API and PIN setup can run.
-            # Once both are configured, subsequent launches can use the HUD.
+        if not args.classic_ui and HologramHUDUI is not None:
+            # The Neural Hologram HUD is the default once API/PIN setup exists.
+            # Keep the legacy UI only for explicit --classic-ui or first-run
+            # enrollment, because the hologram adapter has no enrollment dialogs.
             try:
                 from memory.config_manager import is_configured as _api_is_configured
                 from core.security import get_auth_manager as _get_auth_manager
@@ -5497,8 +5501,8 @@ def main():
                 ui = HologramHUDUI()
             else:
                 print(
-                    "[JARVIS] API/PIN setup is incomplete; opening the setup-capable UI. "
-                    "After setup, restart to use --hologram-hud."
+                    "[JARVIS] API/PIN setup is incomplete; opening the setup-capable classic UI. "
+                    "Finish setup and restart JARVIS to open the Neural Hologram HUD by default."
                 )
                 ui = JarvisUI("face.png")
         else:

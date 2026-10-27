@@ -167,5 +167,18 @@ class DailyPlannerTests(unittest.TestCase):
 
 
 
+    def test_invalid_time_is_rejected_without_truncating_or_scheduling(self):
+        result = planner.daily_planner({
+            "operation": "add",
+            "title": "Study",
+            "date": "2099-01-01",
+            "time": "08:00+05:30",
+        })
+        self.assertIn("Use HH:MM", result)
+        self.assertFalse(self.store.exists())
+        self.assertEqual(self.alarm_calls, [])
+
+
+
 if __name__ == "__main__":
     unittest.main()

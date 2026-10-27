@@ -489,6 +489,31 @@ def authorize_voice_confirmation() -> bool:
     return _voice_id_authorized()
 
 
+def owner_autopilot_authorized() -> bool:
+    """Allow confirmation-free execution only for a PIN + live-voice verified host turn.
+
+    This is deliberately stricter than FULL_ACCESS_MODE alone. Both factors must
+    have been verified in this process, the current turn must pass the enrolled
+    live-speaker/anti-spoof check, and external content must not be the source
+    of the requested state change. Every execution still goes through rate
+    limits and the tamper-evident audit ledger.
+    """
+    try:
+        if _untrusted_context():
+            return False
+        auth = _auth_manager
+        if auth.is_silent() or not auth.is_owner_access_allowed():
+            return False
+        factors_verified = getattr(auth, "owner_factors_verified", None)
+        if not callable(factors_verified) or not factors_verified():
+            return False
+        if auth.get_auth_method() != "voice":
+            return False
+        return _voice_id_authorized()
+    except Exception:
+        return False
+
+
 def mark_untrusted_seen() -> None:
     """Call by injection_guard.wrap_untrusted() whenever external content
     entered the model's context this turn."""
@@ -994,7 +1019,15 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
         _log(f"RATE-LIMITED '{name}'")
         return limited
 
-    # 3) DANGEROUS always goes through the human confirmation gate.
+    # 3) Verified-host Owner Autopilot can skip only the extra confirmation
+    # banner for this direct, live-verified host turn. Provenance has already
+    # been checked above; rates, protected paths and audit remain mandatory.
+    if tier == TIER_DANGEROUS and owner_autopilot_authorized():
+        audit("call", name, tier, "owner_autopilot")
+        _log(f"OWNER AUTOPILOT: executing verified host request '{name}' without a confirmation banner.")
+        return _run_and_audit(name, tier, run)
+
+    # 4) Otherwise, DANGEROUS actions remain behind the human confirmation gate.
     if tier == TIER_DANGEROUS:
         audit("call", name, tier, "pending_confirmation")
         return confirm_gate.request(

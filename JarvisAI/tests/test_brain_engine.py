@@ -126,6 +126,28 @@ class BrainEngineTests(unittest.TestCase):
         self.assertEqual(result["history_items"], 2)
         self.assertEqual(result["configured_providers"], "gemini,ollama")
 
+    def test_opted_in_cloud_profile_is_added_to_text_fallback_context_only_when_enabled(self):
+        query = Mock(return_value=({
+            "text": "Call you Lesandu.", "provider": "gemini", "model": "test"
+        }, "gemini"))
+        engine = BrainEngine(query_fn=query, memory_enabled=False)
+
+        with patch("memory.config_manager.get_personal_cloud_memory_enabled", return_value=True), \
+             patch(
+                 "core.personal_cloud_memory.get_personal_memory_context",
+                 return_value="[USER PERSONAL PROFILE — REFERENCE DATA]\\nUser-stated name: Lesandu",
+             ) as personal_context:
+            engine.respond("What should you call me?")
+        self.assertIn("User-stated name: Lesandu", query.call_args.args[0])
+        personal_context.assert_called_once()
+
+        query.reset_mock()
+        with patch("memory.config_manager.get_personal_cloud_memory_enabled", return_value=False), \
+             patch("core.personal_cloud_memory.get_personal_memory_context") as disabled_context:
+            engine.respond("What should you call me?")
+        self.assertNotIn("User-stated name: Lesandu", query.call_args.args[0])
+        disabled_context.assert_not_called()
+
     def test_empty_and_oversized_requests_are_rejected(self):
         engine = BrainEngine(query_fn=Mock())
         with self.assertRaises(ValueError):

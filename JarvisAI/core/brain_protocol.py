@@ -94,6 +94,33 @@ def profile_guidance(profile: RequestProfile) -> str:
     return "Answer the question directly, adding detail only when it improves usefulness."
 
 
+def render_text_fallback_prompt(base_system_prompt: str, *, assistant_name: str = "JARVIS") -> str:
+    """Fill the prompt template for a text-only path that has no live tools."""
+    import platform
+
+    name = " ".join(str(assistant_name or "JARVIS").split())[:80] or "JARVIS"
+    host_platform = " ".join(f"{platform.system()} {platform.release()}".split())[:120]
+    replacements = {
+        "{assistant_name}": name,
+        "{platform}": host_platform,
+        "{capabilities}": (
+            "Answer informational requests through the configured text provider. "
+            "Use recent conversation context and optional provider-safe memory only "
+            "when supplied in the request context. This fallback has no live action tools."
+        ),
+        "{limits}": (
+            "This text-only fallback cannot perform browser or computer actions, "
+            "cannot verify external live facts without a search result, and must not "
+            "claim that it changed files, settings, or other system state."
+        ),
+        "{braces}": "braces",
+    }
+    rendered = str(base_system_prompt or "").strip()
+    for token, value in replacements.items():
+        rendered = rendered.replace(token, value)
+    return rendered
+
+
 def build_brain_protocol() -> str:
     """Return concise operating rules for the primary realtime Live model."""
     return (

@@ -246,6 +246,7 @@ _TIERS: dict[str, str] = {
     "remember_intention": TIER_SENSITIVE,
     "proactive_feedback": TIER_SENSITIVE,
     "reminder":         TIER_SENSITIVE,
+    "daily_planner":    TIER_SENSITIVE,
     "open_app":         TIER_DANGEROUS,
     "spotify_control":  TIER_SENSITIVE,
     "send_message":     TIER_DANGEROUS,

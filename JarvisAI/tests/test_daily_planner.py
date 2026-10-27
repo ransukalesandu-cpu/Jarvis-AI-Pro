@@ -1,0 +1,221 @@
+"""Unit tests for the local day planner and its reminder integration."""
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+import unittest
+from datetime import date, datetime
+from pathlib import Path
+from unittest.mock import patch
+
+from actions import daily_planner as planner
+import actions.reminder as reminder_module
+
+
+class DailyPlannerTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.store = Path(self.temp_dir.name) / "daily_planner.json"
+        self.env_patcher = patch.dict(os.environ, {"JARVIS_PLANNER_FILE": str(self.store)})
+        self.env_patcher.start()
+        self.addCleanup(self.env_patcher.stop)
+        self.alarm_calls = []
+
+        def fake_reminder(parameters):
+            self.alarm_calls.append(dict(parameters))
+            if parameters.get("action") == "cancel":
+                return "Reminder cancelled."
+            return "Reminder set for January 01 at 08:00 AM."
+
+        self.reminder_patcher = patch.object(planner, "_reminder", side_effect=fake_reminder)
+        self.reminder_patcher.start()
+        self.addCleanup(self.reminder_patcher.stop)
+
+    def _saved(self):
+        return json.loads(self.store.read_text(encoding="utf-8"))
+
+    def test_remember_undated_task_survives_and_can_be_recalled(self):
+        result = planner.daily_planner({
+            "operation": "remember",
+            "title": "Submit the assignment",
+            "notes": "Check the final page before sending",
+        })
+        self.assertIn("Remembered for later", result)
+        saved = self._saved()["items"]
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(saved[0]["title"], "Submit the assignment")
+        self.assertEqual(saved[0]["alarm_status"], "none")
+        self.assertEqual(self.alarm_calls, [])
+
+        recalled = planner.daily_planner({"operation": "checkin"})
+        self.assertIn("Submit the assignment", recalled)
+        self.assertIn("Remembered without a date", recalled)
+
+    def test_plan_registers_an_os_alarm_for_each_timed_item(self):
+        result = planner.daily_planner({
+            "operation": "plan",
+            "date": "2099-01-01",
+            "items": [
+                {"title": "Study physics", "time": "08:00", "duration_minutes": 90},
+                {"title": "Take a break", "time": "08:00", "duration_minutes": 10},
+                {"title": "Review ICT", "time": "11:00"},
+            ],
+        })
+        self.assertIn("Saved 3 plan item(s)", result)
+        saved = self._saved()["items"]
+        self.assertEqual(len(saved), 3)
+        self.assertEqual(sum(row["alarm_status"] == "scheduled" for row in saved), 3)
+        scheduled = [call for call in self.alarm_calls if call["action"] == "reminder"]
+        self.assertEqual(len(scheduled), 3)
+        self.assertEqual({call["message"] for call in scheduled}, {"Study physics", "Take a break", "Review ICT"})
+
+    def test_date_without_time_is_remembered_without_claiming_an_alarm(self):
+        result = planner.daily_planner({
+            "operation": "add",
+            "title": "Submit application",
+            "date": "2099-01-04",
+        })
+        self.assertIn("Remembered for later", result)
+        saved = self._saved()["items"][0]
+        self.assertEqual(saved["date"], "2099-01-04")
+        self.assertFalse(saved["alarm_enabled"])
+        self.assertEqual(saved["alarm_status"], "none")
+        self.assertEqual(self.alarm_calls, [])
+
+    def test_forget_cancels_future_alarm_before_deleting_item(self):
+        planner.daily_planner({
+            "operation": "add",
+            "title": "Call the tutor",
+            "date": "2099-01-05",
+            "time": "09:15",
+        })
+        item = self._saved()["items"][0]
+        result = planner.daily_planner({"operation": "forget", "item_id": item["id"][:6]})
+        self.assertIn("Forgotten and removed", result)
+        self.assertEqual(self._saved()["items"], [])
+        self.assertEqual(self.alarm_calls[-1]["action"], "cancel")
+        self.assertEqual(self.alarm_calls[-1]["message"], "Call the tutor")
+
+    def test_forget_keeps_item_if_os_alarm_cannot_be_cancelled(self):
+        planner.daily_planner({
+            "operation": "add",
+            "title": "Attend meeting",
+            "date": "2099-01-06",
+            "time": "10:00",
+        })
+        item = self._saved()["items"][0]
+        with patch.object(planner, "_reminder", return_value="I couldn't find a matching pending OS reminder."):
+            result = planner.daily_planner({"operation": "forget", "item_id": item["id"][:6]})
+        self.assertIn("kept the item saved", result)
+        self.assertEqual(len(self._saved()["items"]), 1)
+
+    def test_complete_marks_item_and_cancels_future_alarm(self):
+        planner.daily_planner({
+            "operation": "add",
+            "title": "Finish revision",
+            "date": "2099-01-07",
+            "time": "13:00",
+        })
+        item = self._saved()["items"][0]
+        result = planner.daily_planner({"operation": "complete", "item_id": item["id"][:6]})
+        self.assertIn("Marked completed", result)
+        saved = self._saved()["items"][0]
+        self.assertEqual(saved["status"], "completed")
+        self.assertEqual(self.alarm_calls[-1]["action"], "cancel")
+
+    def test_corrupt_store_is_not_overwritten(self):
+        self.store.write_text("{broken json", encoding="utf-8")
+        result = planner.daily_planner({"operation": "remember", "title": "Must not overwrite"})
+        self.assertIn("left untouched", result)
+        self.assertEqual(self.store.read_text(encoding="utf-8"), "{broken json")
+
+    def test_plan_rejects_invalid_date_without_creating_items(self):
+        result = planner.daily_planner({
+            "operation": "plan",
+            "date": "not-a-date",
+            "items": [{"title": "Study", "time": "08:00"}],
+        })
+        self.assertIn("Use YYYY-MM-DD", result)
+        self.assertFalse(self.store.exists())
+        self.assertEqual(self.alarm_calls, [])
+
+
+    def test_same_minute_reminders_get_distinct_os_task_names(self):
+        from datetime import datetime
+
+        target = datetime(2099, 1, 1, 8, 0)
+        first = reminder_module._reminder_task_name(target, "Study physics")
+        second = reminder_module._reminder_task_name(target, "Take a break")
+        self.assertNotEqual(first, second)
+        self.assertTrue(first.startswith("JARVISReminder_20990101_080000_"))
+        self.assertTrue(second.startswith("JARVISReminder_20990101_080000_"))
+
+    def test_reminder_cancel_action_uses_original_date_time_and_message(self):
+        with patch.object(reminder_module, "_cancel_scheduled_reminder", return_value=True) as cancel:
+            result = reminder_module.reminder({
+                "action": "cancel",
+                "date": "2099-01-01",
+                "time": "08:00",
+                "message": "Study physics",
+            })
+        self.assertEqual(result, "Reminder cancelled.")
+        cancel.assert_called_once()
+        target, message = cancel.call_args.args
+        self.assertEqual(target.strftime("%Y-%m-%d %H:%M"), "2099-01-01 08:00")
+        self.assertEqual(message, "Study physics")
+
+
+
+    def test_invalid_time_is_rejected_without_truncating_or_scheduling(self):
+        result = planner.daily_planner({
+            "operation": "add",
+            "title": "Study",
+            "date": "2099-01-01",
+            "time": "08:00+05:30",
+        })
+        self.assertIn("Use HH:MM", result)
+        self.assertFalse(self.store.exists())
+        self.assertEqual(self.alarm_calls, [])
+
+
+
+    def test_checkin_flags_an_overdue_time_from_today(self):
+        class FrozenDate(date):
+            @classmethod
+            def today(cls):
+                return cls(2099, 1, 1)
+
+        class FrozenDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2099, 1, 1, 12, 0)
+
+        planner._save_state({
+            "items": [
+                {
+                    "id": "late123456", "title": "Morning revision", "kind": "task",
+                    "date": "2099-01-01", "time": "11:00", "status": "pending",
+                    "alarm_enabled": True, "alarm_status": "scheduled", "created_at": "",
+                },
+                {
+                    "id": "later123456", "title": "Afternoon revision", "kind": "task",
+                    "date": "2099-01-01", "time": "13:00", "status": "pending",
+                    "alarm_enabled": True, "alarm_status": "scheduled", "created_at": "",
+                },
+            ]
+        })
+        with patch.object(planner, "date", FrozenDate), patch.object(planner, "datetime", FrozenDateTime):
+            result = planner.daily_planner({"operation": "checkin"})
+        overdue_section = result.split("Overdue / may have been missed:\n", 1)[1].split("\n\nToday's plan:", 1)[0]
+        today_section = result.split("Today's plan:\n", 1)[1].split("\n\nRemembered without a date:", 1)[0]
+        self.assertIn("Morning revision", overdue_section)
+        self.assertNotIn("Afternoon revision", overdue_section)
+        self.assertIn("Afternoon revision", today_section)
+        self.assertNotIn("Morning revision", today_section)
+
+
+
+if __name__ == "__main__":
+    unittest.main()

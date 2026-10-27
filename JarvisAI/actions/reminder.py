@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import platform
 import shutil
@@ -284,6 +285,99 @@ def _schedule_linux(target_dt: datetime, task_name: str,
     print("[Reminder] ❌ Neither systemd-run nor at found on this Linux system.")
     return ""
 
+
+
+def _reminder_task_name(target_dt: datetime, message: str) -> str:
+    """Stable unique OS task name; different messages at the same minute do not overwrite."""
+    clean = _sanitise(message)
+    suffix = hashlib.sha256(clean.casefold().encode("utf-8")).hexdigest()[:8]
+    return f"JARVISReminder_{target_dt.strftime('%Y%m%d_%H%M%S')}_{suffix}"
+
+
+def _cancel_scheduled_task(task_name: str) -> bool:
+    """Cancel a registered one-shot reminder on the current OS."""
+    script_path = _scripts_dir() / f"{task_name}.py"
+    os_name = _get_os()
+    try:
+        if os_name == "windows":
+            result = subprocess.run(
+                ["schtasks", "/Delete", "/TN", task_name, "/F"],
+                capture_output=True, text=True, **_CNW,
+            )
+            if result.returncode != 0:
+                return False
+            script_path.unlink(missing_ok=True)
+            return True
+
+        if os_name == "mac":
+            label = f"com.jarvis.reminder.{task_name}"
+            plist_path = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
+            if not plist_path.exists():
+                return False
+            unload = subprocess.run(
+                ["launchctl", "unload", str(plist_path)],
+                capture_output=True, text=True,
+            )
+            if unload.returncode != 0:
+                # Newer macOS versions may require bootout rather than unload.
+                bootout = subprocess.run(
+                    ["launchctl", "bootout", f"gui/{os.getuid()}", str(plist_path)],
+                    capture_output=True, text=True,
+                )
+                if bootout.returncode != 0:
+                    return False
+            plist_path.unlink(missing_ok=True)
+            script_path.unlink(missing_ok=True)
+            return True
+
+        found = False
+        if shutil.which("systemctl"):
+            for unit in (f"{task_name}.timer", f"{task_name}.service"):
+                result = subprocess.run(
+                    ["systemctl", "--user", "stop", unit],
+                    capture_output=True, text=True,
+                )
+                found = found or result.returncode == 0
+        if not found and all(shutil.which(command) for command in ("atq", "at", "atrm")):
+            queue = subprocess.run(["atq"], capture_output=True, text=True)
+            for line in (queue.stdout or "").splitlines():
+                parts = line.split()
+                if not parts:
+                    continue
+                job_id = parts[0]
+                listing = subprocess.run(
+                    ["at", "-c", job_id], capture_output=True, text=True,
+                )
+                if str(script_path) not in (listing.stdout or ""):
+                    continue
+                removed = subprocess.run(
+                    ["atrm", job_id], capture_output=True, text=True,
+                )
+                if removed.returncode == 0:
+                    found = True
+                    break
+        if found:
+            script_path.unlink(missing_ok=True)
+        return found
+    except (OSError, ValueError):
+        return False
+
+
+def _cancel_scheduled_reminder(target_dt: datetime, message: str) -> bool:
+    # The second name supports reminders created by older JARVIS versions.
+    names = [
+        _reminder_task_name(target_dt, message),
+        f"JARVISReminder_{target_dt.strftime('%Y%m%d_%H%M%S')}",
+    ]
+    seen: set[str] = set()
+    for name in names:
+        if name in seen:
+            continue
+        seen.add(name)
+        if _cancel_scheduled_task(name):
+            return True
+    return False
+
 def reminder(
     parameters: dict,
     response=None,
@@ -292,6 +386,20 @@ def reminder(
 ) -> str:
 
     action = str(parameters.get("action", "reminder")).strip().lower()
+    if action in {"cancel", "delete", "remove"}:
+        date_str = str(parameters.get("date", "") or "").strip()
+        time_str = str(parameters.get("time", "") or "").strip()
+        message = str(parameters.get("message", "") or "").strip()
+        if not date_str or not time_str:
+            return "I need the original date and time to cancel a reminder."
+        try:
+            target_dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+        except ValueError:
+            return "I couldn't parse that date or time. Please use YYYY-MM-DD and HH:MM."
+        if _cancel_scheduled_reminder(target_dt, message):
+            return "Reminder cancelled."
+        return "I couldn't find a matching pending OS reminder. It may already have fired or the OS scheduler may be unavailable."
+
     if action in {"timer", "countdown", "pomodoro"}:
         try:
             minutes = int(parameters.get("duration_minutes") or (25 if action == "pomodoro" else 1))
@@ -320,7 +428,7 @@ def reminder(
 
     os_name    = _get_os()
     safe_msg   = _sanitise(message)
-    task_name  = f"JARVISReminder_{target_dt.strftime('%Y%m%d_%H%M%S')}"
+    task_name  = _reminder_task_name(target_dt, safe_msg)
 
     try:
         script_path = _write_notify_script(task_name, safe_msg, os_name)
@@ -357,11 +465,11 @@ def reminder(
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "reminder",
-    "description": "Sets a dated reminder or starts a visible HUD countdown/Pomodoro timer. Use action='timer' with duration_minutes for a countdown or action='pomodoro' for a 25-minute focus timer. For a scheduled reminder use action='reminder' with date, time, message.",
+    "description": "Sets or cancels a dated OS reminder, or starts a visible HUD countdown/Pomodoro timer. For action='reminder', pass date, time, message. To cancel pass action='cancel' with the original date, time, and message. Use action='timer' with duration_minutes for a countdown or action='pomodoro' for a 25-minute focus timer.",
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "action": {"type": "STRING", "description": "reminder (default) | timer | countdown | pomodoro"},
+            "action": {"type": "STRING", "description": "reminder (default) | cancel | timer | countdown | pomodoro"},
             "duration_minutes": {"type": "INTEGER", "description": "Countdown length in minutes; for timer/countdown actions"},
             "date": {
                 "type": "STRING",
@@ -373,7 +481,7 @@ TOOL = {
             },
             "message": {
                 "type": "STRING",
-                "description": "Reminder message text"
+                "description": "Reminder message text; for cancellation, use the original reminder message to select the matching alarm"
             }
         },
         "required": []

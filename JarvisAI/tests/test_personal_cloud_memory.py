@@ -36,6 +36,8 @@ class PersonalCloudMemoryTests(unittest.TestCase):
         self.assertTrue(should_extract_personal_facts("Mage nama Lesandu"))
         self.assertTrue(should_extract_personal_facts("මගේ නම ලසඳු"))
         self.assertTrue(should_extract_personal_facts("I have a younger sister"))
+        self.assertTrue(should_extract_personal_facts("I have an older brother"))
+        self.assertTrue(should_extract_personal_facts("I have one younger sister"))
         self.assertFalse(should_extract_personal_facts("Explain how a database index works"))
 
     def test_fact_requires_exact_source_quote_and_allowed_key(self):
@@ -46,6 +48,18 @@ class PersonalCloudMemoryTests(unittest.TestCase):
         self.assertEqual(fact, {
             "fact_key": "name", "value": "Lesandu", "evidence_quote": "My name is Lesandu."
         })
+        self.assertEqual(validate_personal_fact(
+            "Mage nama Lesandu.",
+            {"fact_key": "name", "value": "Lesandu", "evidence_quote": "Mage nama Lesandu."},
+        )["value"], "Lesandu")
+        self.assertEqual(validate_personal_fact(
+            "මගේ නම ලසඳු",
+            {"fact_key": "name", "value": "ලසඳු", "evidence_quote": "මගේ නම ලසඳු"},
+        )["value"], "ලසඳු")
+        self.assertIsNone(validate_personal_fact(
+            "My name is Lesandu and my sister is Anna.",
+            {"fact_key": "name", "value": "Anna", "evidence_quote": "My name is Lesandu and my sister is Anna."},
+        ))
         self.assertIsNone(validate_personal_fact(
             "My name is Lesandu.",
             {"fact_key": "name", "value": "Peter", "evidence_quote": "My name is Lesandu."},
@@ -69,6 +83,10 @@ class PersonalCloudMemoryTests(unittest.TestCase):
         self.assertIsNone(validate_personal_fact(
             "I have a younger sister. Her name is Anna.",
             {"fact_key": "siblings", "value": "I have a younger sister named Anna", "evidence_quote": "I have a younger sister. Her name is Anna."},
+        ))
+        self.assertIsNone(validate_personal_fact(
+            "My sister's name is Anna.",
+            {"fact_key": "family_context", "value": "Anna", "evidence_quote": "My sister's name is Anna."},
         ))
         self.assertIsNone(validate_personal_fact(
             "I am Muslim and prefer halal food.",

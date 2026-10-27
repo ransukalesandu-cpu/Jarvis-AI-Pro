@@ -523,8 +523,11 @@ class HUDMainWindow(QMainWindow):
         width, height = max(1, self._workspace.width()), max(1, self._workspace.height())
         card_width = max(300, min(440, int(width * 0.30)))
         card_height = max(190, min(330, int(height * 0.30)))
-        x_left = max(12, int(width * 0.095))
-        x_right = max(x_left, width - card_width - int(width * 0.095))
+        # Pull the side cards slightly under the transparent face silhouette,
+        # so the hologram lines visually sit in front of their content.
+        edge_margin = max(18, int(width * 0.125))
+        x_left = edge_margin
+        x_right = max(x_left, width - card_width - edge_margin)
         y_top = max(78, int(height * 0.145))
         y_bottom = max(y_top + 18, height - card_height - int(height * 0.09))
         positions = [

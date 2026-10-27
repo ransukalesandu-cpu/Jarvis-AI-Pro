@@ -45,16 +45,28 @@ for _stream in ("stdout", "stderr"):
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
+from core.ui_coordinator import HeadlessJarvisUI
 from core.audio_callback_guard import enqueue_audio_frame
 from core.playback_interrupt import interrupt_playback
 from core.voice_ui_control import has_wake_name_prefix, parse_voice_ui_command
+from core.audio_capture import open_input_stream_with_fallback
+from core.audio_playback import (
+    describe_output_route, open_output_stream, open_output_stream_with_fallback,
+    open_verified_output_fallback, run_audio_playback, stream_device_index,
+)
+from core.live_audio import (
+    CHANNELS, RECEIVE_SAMPLE_RATE, _OUTPUT_BLOCKSIZE,
+    _MIN_LIVE_AUDIO_FRAME_BYTES, _PLAYBACK_SLICE_BYTES, _MIN_PREBUFFER_BYTES,
+    _take_playback_pcm, _output_write_is_unpaced, _pcm_level, _live_audio_chunks,
+    _error_text, _is_quota_error, _is_transient_live_disconnect,
+    _is_live_operation_aborted,
+)
 import re
 import threading
 import time
 import json
 import sys
 import traceback
-import base64
 import os
 import secrets
 from collections import deque
@@ -94,78 +106,6 @@ except ImportError:
     HologramHUDUI = None
     configure_qt_graphics_backend = None
 
-
-class HeadlessJarvisUI:
-    """Headless UI adapter for JARVIS Lite Core running silently in background mode."""
-
-    def __init__(self):
-        self.muted = False
-        self.current_file = None
-        self.state = "INITIALIZING"
-
-    def write_log(self, text: str) -> None:
-        print(f"[CoreLog] {text}")
-
-    def set_state(self, state: str) -> None:
-        self.state = state
-        print(f"[CoreState] {state}")
-
-    def set_audio_level(self, level: float) -> None:
-        pass
-
-    def react_avatar_text(self, text: str) -> None:
-        pass
-
-    def push_visemes(self, frames, hop, at) -> None:
-        pass
-
-    def show_content(self, title: str, text: str) -> None:
-        print(f"[CoreContent] {title}\n{text}")
-
-    def show_confirm(self, action_id: str, prompt: str, callback) -> None:
-        print(f"[CoreConfirm] Confirmation gated in headless mode for {action_id}: {prompt}")
-        # In headless mode without interactive approval, deny dangerous actions by default
-        if callback:
-            callback(False)
-
-    def prompt_pin(self) -> str | None:
-        return None
-
-    def hide_confirm(self) -> None:
-        pass
-
-    def start_camera_stream(self) -> None:
-        pass
-
-    def stop_camera_stream(self) -> None:
-        pass
-
-    def set_voice_id_enabled(self, enabled: bool) -> None:
-        pass
-
-    def notify_phone_connected(self) -> None:
-        print("[CoreStatus] Phone connected")
-
-    def hud_video_is_active(self) -> bool:
-        return False
-
-    def get_plugins(self) -> list:
-        return []
-
-    def get_plugin_settings(self) -> dict:
-        return {}
-
-    def request_say(self, text: str) -> None:
-        print(f"[CoreSay] {text}")
-
-    def wait_for_api_key(self, stop_event=None) -> bool:
-        return True
-
-    def prompt_reconfig() -> None:
-        pass
-
-    def request_close() -> None:
-        pass
 
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
@@ -210,7 +150,8 @@ from core.wake_word            import (
     WakeWordDetector, is_ready as wake_is_ready, install_and_download as wake_install,
 )
 from core.clap_wake             import DoubleClapDetector
-from core.hybrid_llm_router import HybridLLMRouter, resolve_preferred_provider
+from core.provider_fallback import query_text_fallback
+from core.live_session import select_live_api_version, select_live_model
 from core.runtime_diagnostics import hybrid_runtime_snapshot
 
 # How long the assistant stays awake with no user speech before it auto-sleeps
@@ -234,9 +175,7 @@ LIVE_FALLBACK_MODELS = (
     "models/gemini-3.8-live",
 )
 LIVE_MODEL_COOLDOWN_SECONDS = 300
-CHANNELS            = 1
 SEND_SAMPLE_RATE    = 16000
-RECEIVE_SAMPLE_RATE = 24000
 CHUNK_SIZE          = 1024
 # Keep real-time audio writes separate from potentially slow automation/search work.
 _AUDIO_OUTPUT_EXECUTOR = ThreadPoolExecutor(
@@ -245,196 +184,6 @@ _AUDIO_OUTPUT_EXECUTOR = ThreadPoolExecutor(
 _BRIEFING_SEARCH_EXECUTOR = ThreadPoolExecutor(
     max_workers=1, thread_name_prefix="jarvis-briefing-search"
 )
-_OUTPUT_BLOCKSIZE = 2048
-# At 24 kHz mono int16, 10 ms of valid PCM is 480 bytes. Smaller audio events
-# can be transport fragments; buffer them until a complete frame is available.
-_MIN_LIVE_AUDIO_FRAME_BYTES = (RECEIVE_SAMPLE_RATE // 100) * 2
-# Output chunks are kept at 50 ms to avoid tiny writes that can sound choppy.
-_PLAYBACK_SLICE_BYTES = 2400
-# 24 kHz, mono, int16: hold 300 ms of PCM before writing to speakers.
-_MIN_PREBUFFER_BYTES = int(RECEIVE_SAMPLE_RATE * CHANNELS * 2 * 0.30)
-
-
-def _take_playback_pcm(buffer: bytearray, *, final: bool = False) -> bytes:
-    """Take aligned PCM without producing tiny writes during streaming.
-
-    During streaming only full 50 ms slices are returned. At turn completion,
-    return a valid final tail of at least 10 ms so short replies are not lost.
-    """
-    processable_bytes = len(buffer) & ~1  # signed 16-bit samples
-    if final:
-        take_bytes = (
-            processable_bytes
-            if processable_bytes >= _MIN_LIVE_AUDIO_FRAME_BYTES
-            else 0
-        )
-    else:
-        take_bytes = (
-            processable_bytes // _PLAYBACK_SLICE_BYTES
-        ) * _PLAYBACK_SLICE_BYTES
-    if take_bytes <= 0:
-        return b""
-    pcm = bytes(buffer[:take_bytes])
-    del buffer[:take_bytes]
-    return pcm
-
-
-def _output_write_is_unpaced(audio_seconds: float, wall_seconds: float) -> bool:
-    """True when output writes cannot plausibly be keeping pace with playback.
-
-    A healthy blocking output stream may buffer ahead briefly, so do not judge
-    it from the first write. The caller checks this only after at least one full
-    second of PCM has been submitted.
-    """
-    try:
-        audio_seconds = float(audio_seconds)
-        wall_seconds = float(wall_seconds)
-    except (TypeError, ValueError):
-        return False
-    return (
-        audio_seconds >= 1.0
-        and wall_seconds >= 0.0
-        and wall_seconds < audio_seconds * 0.20
-    )
-
-
-# RMS below which 16-bit PCM is treated as room silence; above _LEVEL_FULL it
-# reads as a full-height waveform. Tuned so ordinary speech lands mid-range and
-# the bars still move for a quiet talker — language- and device-independent.
-_LEVEL_FLOOR = 60.0
-_LEVEL_FULL  = 2600.0
-
-
-def _pcm_level(samples) -> float:
-    """Map a block of int16 PCM samples to a 0.0–1.0 loudness level for the HUD
-    waveform. Returns 0.0 on empty/invalid input so it can never raise."""
-    try:
-        x = np.asarray(samples, dtype=np.float32)
-        if x.size == 0:
-            return 0.0
-        rms = float(np.sqrt(np.mean(x * x)))
-    except Exception:
-        return 0.0
-    if rms <= _LEVEL_FLOOR:
-        return 0.0
-    return min(1.0, (rms - _LEVEL_FLOOR) / (_LEVEL_FULL - _LEVEL_FLOOR))
-
-
-def _live_audio_chunks(response) -> list[bytes]:
-    """Extract every audio part from a Live event, with SDK data fallback.
-
-    Newer Live models may include multiple content parts in one server event;
-    `response.data` alone can expose only a convenience view of that event.
-    """
-    chunks: list[bytes] = []
-    server_content = getattr(response, "server_content", None)
-    model_turn = getattr(server_content, "model_turn", None)
-    for part in getattr(model_turn, "parts", None) or ():
-        blob = getattr(part, "inline_data", None)
-        if blob is None:
-            continue
-        mime = str(getattr(blob, "mime_type", "") or "").lower()
-        if mime and not mime.startswith("audio/"):
-            continue
-        data = getattr(blob, "data", None)
-        if isinstance(data, str):
-            try:
-                data = base64.b64decode(data)
-            except Exception:
-                continue
-        if isinstance(data, (bytes, bytearray)) and data:
-            chunks.append(bytes(data))
-
-    convenience_data = getattr(response, "data", None)
-    if isinstance(convenience_data, str):
-        try:
-            convenience_data = base64.b64decode(convenience_data)
-        except Exception:
-            convenience_data = None
-    if not chunks and isinstance(convenience_data, (bytes, bytearray)) and convenience_data:
-        chunks.append(bytes(convenience_data))
-    return chunks
-
-
-def _error_text(error) -> str:
-    """Flatten TaskGroup members and chained exceptions for error classification."""
-    parts = []
-    pending = [error]
-    seen = set()
-
-    while pending:
-        current = pending.pop()
-        if current is None or id(current) in seen:
-            continue
-        seen.add(id(current))
-
-        try:
-            message = str(current)
-        except Exception:
-            message = type(current).__name__
-        parts.append(f"{type(current).__name__}: {message}")
-
-        # asyncio.TaskGroup stores child failures in .exceptions.
-        children = getattr(current, "exceptions", ())
-        if isinstance(children, (tuple, list)):
-            pending.extend(children)
-
-        # The useful WebSocket close code/reason can live in a cause/context,
-        # several levels below the APIError raised by the Gemini SDK.
-        pending.append(getattr(current, "__cause__", None))
-        pending.append(getattr(current, "__context__", None))
-
-    return " | ".join(part for part in parts if part)
-
-
-def _is_quota_error(error) -> bool:
-    text = _error_text(error).upper()
-    code = getattr(error, "code", None) or getattr(error, "status_code", None)
-    return (
-        code == 429
-        or "429" in text
-        or "RESOURCE_EXHAUSTED" in text
-        or "QUOTA" in text
-        or "RATE LIMIT" in text
-    )
-
-
-def _is_transient_live_disconnect(error) -> bool:
-    """Recognize transient Gemini Live/WebSocket failures, including close 1006
-    and keepalive timeouts wrapped by the SDK or an asyncio.TaskGroup."""
-    code = getattr(error, "code", None) or getattr(error, "status_code", None)
-    if code in (1006, 1011, 500, 502, 503, 504):
-        return True
-
-    children = getattr(error, "exceptions", ()) or ()
-    if any(_is_transient_live_disconnect(child) for child in children):
-        return True
-
-    text = _error_text(error).upper()
-    return any(marker in text for marker in (
-        "1006",
-        "1011",
-        "ABNORMAL CLOSURE",
-        "KEEPALIVE PING TIMEOUT",
-        "TIMED OUT WHILE CLOSING CONNECTION",
-        "NO CLOSE FRAME RECEIVED",
-        "INTERNAL ERROR ENCOUNTERED",
-    ))
-
-
-def _is_live_operation_aborted(error) -> bool:
-    """Recognize Gemini Live's 1008 'operation was aborted' close response.
-
-    Some Live sessions are aborted by the service without a useful JSON body.
-    Treat this specific close as a model/session failure so the reconnect loop
-    can cool down that model and try another configured Live model.
-    """
-    text = _error_text(error).upper()
-    return (
-        ("1008" in text or "POLICY VIOLATION" in text)
-        and ("OPERATION WAS ABORTED" in text or "OPERATION ABORTED" in text)
-    )
-
 
 # ── Viseme extraction ─────────────────────────────────────────────────────────
 # The avatar's mouth used to be driven by one RMS value per ~200 ms write batch,
@@ -1827,38 +1576,14 @@ class JarvisLive:
 
         def _work() -> None:
             try:
-                config = {}
-                try:
-                    with open(API_CONFIG_PATH, "r", encoding="utf-8") as stream:
-                        loaded = json.load(stream)
-                    if isinstance(loaded, dict):
-                        config = loaded
-                except (OSError, ValueError, TypeError):
-                    config = {}
-
-                # Provider credentials are read only from local config or the
-                # environment; never log, display, or persist their values.
-                keys = {
-                    "gemini": str(config.get("gemini_api_key") or "").strip(),
-                    "groq": str(config.get("groq_api_key") or "").strip(),
-                    "openai": str(config.get("openai_api_key") or "").strip(),
-                    "claude": str(
-                        config.get("anthropic_api_key") or config.get("claude_api_key") or ""
-                    ).strip(),
-                }
-                preferred = resolve_preferred_provider(config)
-                router = HybridLLMRouter(preferred_provider=preferred, api_keys=keys)
-                key_status = router.configured_key_status()
-                configured = ",".join(name for name, present in key_status.items() if present) or "none"
-                self.ui.write_log(f"DIAG: Hybrid credentials present for: {configured}. Values are never logged.")
-                system_prompt = (
-                    _load_system_prompt()
-                    + "\n\nHYBRID TEXT FALLBACK RULES: You are in a text-only fallback "
-                    "with no live tools or computer-control capability. Never claim you "
-                    "opened apps, changed files, searched the web, or completed an action. "
-                    "Explain limitations honestly and answer informational questions directly."
+                result, configured = query_text_fallback(
+                    text,
+                    config_path=API_CONFIG_PATH,
+                    base_system_prompt=_load_system_prompt(),
                 )
-                result = router.query(text, system_prompt=system_prompt)
+                self.ui.write_log(
+                    f"DIAG: Hybrid credentials present for: {configured}. Values are never logged."
+                )
                 answer = str(result.get("text") or "").strip()
                 provider = str(result.get("provider") or "unknown")
                 if not answer:
@@ -3083,55 +2808,6 @@ class JarvisLive:
                         pass
 
         try:
-            def _open_mic(dev):
-
-                if sd is None:
-                    raise RuntimeError(
-                        "sounddevice is unavailable (PortAudio missing)"
-                    )
-
-                nonlocal actual_sr
-
-                try:
-                    stream = sd.InputStream(
-                        samplerate=SEND_SAMPLE_RATE,
-                        channels=CHANNELS,
-                        dtype="int16",
-                        blocksize=CHUNK_SIZE,
-                        device=dev,
-                        callback=callback,
-                    )
-                    actual_sr = SEND_SAMPLE_RATE
-                    return stream
-
-                except Exception:
-                    try:
-                        dev_info = (
-                            sd.query_devices(dev, "input")
-                            if dev is not None
-                            else sd.query_devices(kind="input")
-                        )
-                        native_sr = int(
-                            dev_info.get("default_samplerate", 16000)
-                        )
-                    except Exception:
-                        native_sr = 16000
-
-                    stream = sd.InputStream(
-                        samplerate=native_sr,
-                        channels=CHANNELS,
-                        dtype="int16",
-                        device=dev,
-                        callback=callback,
-                    )
-
-                    actual_sr = native_sr
-
-                    print(
-                        f"[JARVIS] Mic opened at native samplerate "
-                        f"{native_sr}Hz (resampling to 16000Hz)"
-                    )
-                    return stream
 
 
             # Which microphone. resolve() returns None for "system default" and
@@ -3142,20 +2818,22 @@ class JarvisLive:
             _mic_dev  = audio_devices.resolve(_mic_name, "input")
             if _mic_dev is not None:
                 print(f"[JARVIS] 🎤 Input device: {_mic_name}")
-            try:
-                _mic_stream = _open_mic(_mic_dev)
-            except Exception as _e:
-                # A device the picker listed but the driver will not open right
-                # now — exclusive mode, a webcam already in use, a virtual mic
-                # whose source went away. Chosen hardware failing must never
-                # mean the assistant cannot hear at all.
-                if _mic_dev is None:
-                    raise
+            mic_open = open_input_stream_with_fallback(
+                audio_backend=sd,
+                selected_device=_mic_dev,
+                sample_rate=SEND_SAMPLE_RATE,
+                channels=CHANNELS,
+                blocksize=CHUNK_SIZE,
+                callback=callback,
+            )
+            _mic_stream = mic_open.stream
+            actual_sr = SEND_SAMPLE_RATE
+            if mic_open.used_default:
+                _e = mic_open.selected_device_error
                 print(f"[JARVIS] ⚠️  Mic '{_mic_name}' failed: {_e} — using default")
                 self.ui.write_log(
                     f"SYS: Microphone '{_mic_name}' unavailable — using system default."
                 )
-                _mic_stream = _open_mic(None)
 
             with _mic_stream:
                 print("[JARVIS] 🎤 Mic stream open")
@@ -3437,8 +3115,8 @@ class JarvisLive:
                                     self._queue_auth_state_broadcast()
                                 security.mark_user_turn_started()
                                 if voice_ui_action_consumed:
-                                    # Ignore the remaining transcription chunks
-                                    # from a UI command already handled locally.
+                                    # Ignore any remaining transcript chunks from a UI
+                                    # command already routed locally in this turn.
                                     pass
                                 elif not voice_confirmation_consumed:
                                     decision = await asyncio.to_thread(
@@ -3468,9 +3146,8 @@ class JarvisLive:
                                             self.ui, "queue_voice_ui_command", None
                                         )
                                         if ui_command and callable(queue_ui_command):
-                                            # Consume this utterance immediately at the
-                                            # transcription boundary, before any model
-                                            # tool-call can execute a duplicate action.
+                                            # Consume the utterance before a model tool call
+                                            # can duplicate the same UI action.
                                             voice_ui_action_consumed = True
                                             in_buf.clear()
                                             self._inflight_user_text = ""
@@ -3485,10 +3162,6 @@ class JarvisLive:
                                             else:
                                                 owner_authorized = security.is_owner_access_allowed()
                                                 if owner_authorized and security.voice_id_required():
-                                                    # If Voice ID is enabled, a PIN session alone
-                                                    # must not let a different nearby speaker operate
-                                                    # settings through voice. Re-check this exact live
-                                                    # utterance before sending it to the UI thread.
                                                     owner_authorized = security.authorize_voice_confirmation()
                                                 if owner_authorized:
                                                     if not queue_ui_command(ui_command):
@@ -3596,8 +3269,8 @@ class JarvisLive:
 
                             full_in = " ".join(in_buf).strip()
                             if full_in:
-                                # A fresh non-UI user turn supersedes any
-                                # previous locally handled Holo-open request.
+                                # A fresh user turn supersedes any previous
+                                # locally handled Holo-open request.
                                 holo_open_request_pending = self._route_holo_news_voice(full_in)
                                 self._last_out_logged = ""   # new exchange
                                 self.ui.write_log(f"You: {full_in}")
@@ -3710,588 +3383,21 @@ class JarvisLive:
             raise
 
     async def _play_audio(self):
-        print("[JARVIS] 🔊 Play started")
-        print("[AudioTrace 4/OUTPUT] Playback worker running; waiting for Live PCM chunks.")
-
-        first_output_chunk_logged = False
-        first_output_write_started = False
-        first_output_write_completed = False
-        first_phone_audio_logged = False
-        output_audio_seconds = 0.0
-        output_write_wall_seconds = 0.0
-        output_write_count = 0
-        output_timing_diagnostic_done = False
-        last_output_write_end = None
-        last_queue_starvation_log = 0.0
-        write_recovery_attempted = False
-
-        _spk_name = get_output_device()
-        _spk_dev  = audio_devices.resolve(_spk_name, "output")
-        if _spk_dev is not None:
-            print(f"[JARVIS] 🔊 Output device: {_spk_name}")
-
-        def _open_spk(dev):
-            if sd is None:
-                raise RuntimeError("sounddevice is unavailable (PortAudio missing)")
-            st = sd.RawOutputStream(
-                samplerate=RECEIVE_SAMPLE_RATE,
-                channels=CHANNELS,
-                dtype="int16",
-                blocksize=_OUTPUT_BLOCKSIZE,
-                device=dev,
-            )
-            st.start()
-            return st
-
-        def _describe_output_route(dev) -> str:
-            try:
-                if sd is None:
-                    return repr(dev)
-                info = sd.query_devices(dev, "output")
-                hostapis = sd.query_hostapis()
-                host_index = int(info.get("hostapi", -1))
-                api_name = (
-                    hostapis[host_index].get("name", "unknown host API")
-                    if 0 <= host_index < len(hostapis)
-                    else "unknown host API"
-                )
-                return f"{info.get('name', 'unknown device')} via {api_name}"
-            except Exception:
-                return repr(dev)
-
-        def _stream_device_index(active_stream, requested_device):
-            try:
-                value = getattr(active_stream, "device", None)
-                if isinstance(value, (tuple, list)):
-                    value = value[-1] if value else None
-                if value is not None:
-                    return int(value)
-            except (TypeError, ValueError, RuntimeError):
-                pass
-            return requested_device
-
-        async def _open_verified_fallback(excluded_device):
-            """Open a speaker endpoint proven to consume output in real time."""
-            try:
-                candidates = await asyncio.to_thread(audio_devices.list_devices, "output")
-            except Exception as exc:
-                print(f"[AudioTrace 4/OUTPUT] Could not enumerate fallback speakers: {exc}")
-                return None
-            for candidate_name in candidates:
-                try:
-                    candidate_device = await asyncio.to_thread(
-                        audio_devices.resolve, candidate_name, "output"
-                    )
-                    if candidate_device is None or candidate_device == excluded_device:
-                        continue
-                    works = await asyncio.to_thread(
-                        audio_devices.probe_transport, candidate_device, "output"
-                    )
-                    if not works:
-                        continue
-                    candidate_stream = await asyncio.to_thread(_open_spk, candidate_device)
-                    return candidate_name, candidate_device, candidate_stream
-                except Exception as exc:
-                    print(
-                        f"[AudioTrace 4/OUTPUT] Fallback speaker "
-                        f"{candidate_name!r} unavailable: {exc}"
-                    )
-            return None
-
-        try:
-            stream = _open_spk(_spk_dev)
-        except Exception as _e:
-            # A chosen output that the host API accepts by name but refuses to
-            # open (exclusive mode, wrong sample rate, device asleep) must not
-            # cost the user their voice. Fall back to the default and say so.
-            if _spk_dev is None:
-                raise
-            print(f"[JARVIS] ⚠️  Output device '{_spk_name}' failed: {_e} — using default")
-            self.ui.write_log(f"SYS: Speaker '{_spk_name}' unavailable — using system default.")
-            stream = _open_spk(None)
-            _spk_name = ""
-            _spk_dev = None
-
-        self._output_stream = stream
-        print(
-            f"[AudioTrace 4/OUTPUT] Output stream ready: requested_device={_spk_name or 'system default'!r}, "
-            f"resolved_device={_spk_dev!r}, sample_rate={RECEIVE_SAMPLE_RATE} Hz."
+        """Run the isolated playback worker against this live-session host."""
+        await run_audio_playback(
+            self,
+            audio_backend=sd,
+            device_service=audio_devices,
+            get_output_device_fn=get_output_device,
+            pcm_visemes_fn=_pcm_visemes,
+            output_executor=_AUDIO_OUTPUT_EXECUTOR,
+            tail_margin=_TAIL_MARGIN,
+            first_sound_delay=_FIRST_SOUND,
+            cursor_slack=_CURSOR_SLACK,
+            viseme_hop=_VIS_HOP,
         )
-        print(
-            f"[AudioTrace 4/OUTPUT] Active route: {_describe_output_route(_spk_dev)}; "
-            f"stream_active={bool(getattr(stream, 'active', False))}."
-        )
-
-        # Ask the device how far behind the speakers actually are, rather than
-        # assuming. This is what the echo tail is sized from, so a machine with a
-        # large audio buffer gets a correspondingly longer guard — and one with a
-        # tiny buffer is not penalised with a delay it does not need.
-        try:
-            lat = float(getattr(stream, "latency", 0.0) or 0.0)
-            if 0.0 < lat < 1.0:
-                self._out_latency = lat
-            print(f"[JARVIS] 🔊 Output latency {self._out_latency*1000:.0f} ms "
-                  f"→ echo tail {(self._out_latency + _TAIL_MARGIN)*1000:.0f} ms")
-        except Exception:
-            pass
-
-        pending_pcm = bytearray()
-        playback_started = False
-        prebuffer_logged = False
-        try:
-            while True:
-                # An interruption must discard both queued and locally buffered
-                # PCM, otherwise the old response could resume after barge-in.
-                if self._playback_interrupt_requested.is_set():
-                    pending_pcm.clear()
-                    playback_started = False
-                    self._playback_interrupt_requested.clear()
-                    try:
-                        if not stream.active:
-                            stream.start()
-                    except Exception as exc:
-                        print(f"[JARVIS] Could not resume output after interrupt: {exc}")
-                    continue
-
-                if self._shutdown_requested:
-                    break
-
-                interrupted_while_buffering = False
-
-                # Maintain a ~300 ms jitter buffer before the first write and
-                # whenever the local buffer falls below target. This gives Live
-                # audio a chance to arrive before the speaker queue runs dry.
-                while len(pending_pcm) < _MIN_PREBUFFER_BYTES and not playback_started:
-                    if self._shutdown_requested:
-                        break
-                    if self._playback_interrupt_requested.is_set():
-                        pending_pcm.clear()
-                        playback_started = False
-                        self._playback_interrupt_requested.clear()
-                        try:
-                            if not stream.active:
-                                stream.start()
-                        except Exception as exc:
-                            print(f"[JARVIS] Could not resume output after interrupt: {exc}")
-                        interrupted_while_buffering = True
-                        break
-
-                    try:
-                        next_chunk = await asyncio.wait_for(
-                            self.audio_in_queue.get(), timeout=0.1
-                        )
-                    except asyncio.TimeoutError:
-                        if self._shutdown_requested:
-                            break
-                        now_mono = time.monotonic()
-                        turn_complete = bool(
-                            self._turn_done_event
-                            and self._turn_done_event.is_set()
-                        )
-                        queue_empty = self.audio_in_queue.empty()
-
-                        if (
-                            playback_started
-                            and self._assistant_turn_pending
-                            and not turn_complete
-                            and last_output_write_end is not None
-                            and now_mono - last_output_write_end >= 0.10
-                            and now_mono - last_queue_starvation_log >= 1.0
-                        ):
-                            print(
-                                "[AudioTrace 4/BUFFER] PCM prebuffer fell below "
-                                f"300 ms while the assistant turn was pending; "
-                                f"buffered={len(pending_pcm)} bytes, waiting for Live audio."
-                            )
-                            last_queue_starvation_log = now_mono
-
-                        # Short replies must not be held forever waiting for
-                        # 300 ms that will never arrive. Flush remaining audio
-                        # once Live confirms the turn is complete.
-                        if turn_complete and queue_empty:
-                            if pending_pcm:
-                                if not playback_started:
-                                    print(
-                                        "[AudioTrace 4/BUFFER] Short response: flushing "
-                                        f"{len(pending_pcm)} buffered PCM bytes below the "
-                                        "300 ms prebuffer target."
-                                    )
-                                    playback_started = True
-                                break
-
-                            self.set_speaking(False)
-                            self._turn_done_event.clear()
-                            playback_started = False
-                            prebuffer_logged = False
-                            continue
-                        continue
-
-                    if self._playback_interrupt_requested.is_set():
-                        pending_pcm.clear()
-                        playback_started = False
-                        self._playback_interrupt_requested.clear()
-                        try:
-                            if not stream.active:
-                                stream.start()
-                        except Exception as exc:
-                            print(f"[JARVIS] Could not resume output after interrupt: {exc}")
-                        interrupted_while_buffering = True
-                        break
-
-                    pending_pcm.extend(next_chunk)
-
-                if interrupted_while_buffering:
-                    continue
-
-                if not playback_started:
-                    if len(pending_pcm) >= _MIN_PREBUFFER_BYTES:
-                        playback_started = True
-                        if not prebuffer_logged:
-                            print(
-                                "[AudioTrace 4/BUFFER] PCM prebuffer ready: "
-                                f"{len(pending_pcm)} bytes "
-                                f"(target={_MIN_PREBUFFER_BYTES} bytes, about 300 ms)."
-                            )
-                            prebuffer_logged = True
-                    else:
-                        continue
-
-                if not pending_pcm:
-                    # Only prebuffer the beginning of a response. Once playback
-                    # has started, wait for the next PCM chunk instead of spinning
-                    # or rebuilding the 300 ms prebuffer after every batch.
-                    try:
-                        next_chunk = await asyncio.wait_for(
-                            self.audio_in_queue.get(), timeout=0.1
-                        )
-                    except asyncio.TimeoutError:
-                        turn_complete = bool(
-                            self._turn_done_event
-                            and self._turn_done_event.is_set()
-                        )
-                        if turn_complete and self.audio_in_queue.empty():
-                            self.set_speaking(False)
-                            self._turn_done_event.clear()
-                            playback_started = False
-                            prebuffer_logged = False
-                        elif (
-                            self._assistant_turn_pending
-                            and not turn_complete
-                            and self.audio_in_queue.empty()
-                        ):
-                            # Live audio can arrive in bursts. If the speaker queue
-                            # has actually run dry mid-turn, re-arm the jitter buffer
-                            # so the next burst is not played after a single 50 ms
-                            # slice. This cannot hide long server/network stalls, but
-                            # it smooths short underruns instead of repeatedly
-                            # starting playback with no reserve.
-                            playback_started = False
-                            prebuffer_logged = False
-                            now_mono = time.monotonic()
-                            if now_mono - last_queue_starvation_log >= 1.0:
-                                print(
-                                    "[AudioTrace 4/BUFFER] Output underrun; "
-                                    "rebuffering before playback resumes."
-                                )
-                                last_queue_starvation_log = now_mono
-                        continue
-
-                    if self._playback_interrupt_requested.is_set():
-                        self._playback_interrupt_requested.clear()
-                        self.set_speaking(False)
-                        pending_pcm.clear()
-                        playback_started = False
-                        try:
-                            if not stream.active:
-                                stream.start()
-                        except Exception as exc:
-                            print(f"[JARVIS] Could not resume output after interrupt: {exc}")
-                        continue
-                    pending_pcm.extend(next_chunk)
-                    if not pending_pcm:
-                        continue
-
-                batch = bytearray(pending_pcm[:4800])
-                del pending_pcm[:len(batch)]
-
-                if not first_output_chunk_logged:
-                    print(
-                        "[AudioTrace 4/OUTPUT] First buffered PCM batch ready for playback "
-                        f"({len(batch)} bytes; prebuffer target={_MIN_PREBUFFER_BYTES} bytes)."
-                    )
-                    first_output_chunk_logged = True
-
-                self.set_speaking(True)
-
-                # Drive the HUD waveform and the avatar's mouth from JARVIS's
-                # own voice. The batch is up to 100 ms long, so we hand over a
-                # *schedule* of 20 ms viseme frames instead of a single averaged
-                # level and let the HUD play it out in step with the audio.
-                try:
-                    pcm = np.frombuffer(bytes(batch), dtype=np.int16)
-                    hop = _VIS_HOP / RECEIVE_SAMPLE_RATE
-                    frames = _pcm_visemes(pcm, sr=RECEIVE_SAMPLE_RATE)
-                    # When does this batch become audible? The stream was
-                    # started at launch and its callback has been pulling
-                    # silence ever since, so the first bytes of a reply reach
-                    # the speaker about one callback period later — NOT one
-                    # buffer later. `stream.latency` reports the buffer's
-                    # capacity, which is how much can be queued ahead, and on
-                    # Windows that is commonly 300-500 ms. Anchoring on it put
-                    # the entire schedule a buffer late; that is the half second
-                    # of lag, and it grew with whatever the device reported.
-                    #
-                    # After the anchor nothing needs measuring: the device
-                    # consumes at exactly realtime, so each batch sounds one
-                    # batch-duration after the one before it. The cursor is
-                    # re-anchored only when it leaves the range physically
-                    # possible — behind `now` means the device drained and this
-                    # batch starts a fresh stretch of speech, while further
-                    # ahead than the buffer can hold means it has drifted.
-                    now = time.time()
-                    horizon = self._out_latency + _CURSOR_SLACK
-                    if not (now <= self._play_cursor <= now + horizon):
-                        self._play_cursor = now + _FIRST_SOUND
-                    at = self._play_cursor
-                    # Advance by the batch's own duration whether or not it
-                    # yielded frames, so a block too short to analyse cannot
-                    # shift everything after it out of step with the audio.
-                    self._play_cursor += pcm.size / RECEIVE_SAMPLE_RATE
-                    if frames:
-                        frames = self._visemes.frames(frames, hop)
-                        self.ui.push_visemes(frames, hop, at)
-                        # Barge-in needs to know what we are playing, not just
-                        # how loud: the guard subtracts this from the microphone.
-                        self._out_level = max(f[0] for f in frames)
-                        self._echo.note_output(pcm, RECEIVE_SAMPLE_RATE,
-                                               self._out_level)
-                    else:
-                        lvl = _pcm_level(pcm)
-                        self.ui.set_audio_level(lvl)
-                        self._out_level = lvl
-                        self._echo.note_output(pcm, RECEIVE_SAMPLE_RATE, lvl)
-                except Exception:
-                    pass
-
-                # While the paired phone is streaming its microphone, route
-                # JARVIS's reply audio to that same phone session. Never fall
-                # back to PC speakers during an active phone handoff: a lost
-                # phone connection should fail quiet until its mic stops.
-                if self._phone_active:
-                    if not first_phone_audio_logged:
-                        print("[AudioTrace 4/OUTPUT] Phone handoff is active; routing reply audio to the phone, not PC speakers.")
-                        first_phone_audio_logged = True
-                    delivered = False
-                    if self._dashboard is not None and not self.ui.muted:
-                        try:
-                            delivered = await self._dashboard.send_phone_audio(bytes(batch))
-                        except Exception:
-                            delivered = False
-                    if not delivered:
-                        continue
-                else:
-                    try:
-                        if not first_output_write_started:
-                            print(
-                                f"[AudioTrace 4/OUTPUT] Calling sounddevice.write for first batch "
-                                f"({len(batch)} bytes)."
-                            )
-                            first_output_write_started = True
-                        write_started = time.perf_counter()
-                        await asyncio.get_running_loop().run_in_executor(
-                            _AUDIO_OUTPUT_EXECUTOR, stream.write, bytes(batch)
-                        )
-                        write_elapsed = max(0.0, time.perf_counter() - write_started)
-                        batch_audio_seconds = len(batch) / (
-                            RECEIVE_SAMPLE_RATE * CHANNELS * 2
-                        )
-                        output_audio_seconds += batch_audio_seconds
-                        output_write_wall_seconds += write_elapsed
-                        output_write_count += 1
-                        last_output_write_end = time.monotonic()
-
-                        if output_write_count <= 4:
-                            print(
-                                f"[AudioTrace 4/OUTPUT] Write timing #{output_write_count}: "
-                                f"{len(batch)} bytes (~{batch_audio_seconds * 1000:.0f} ms PCM) "
-                                f"accepted in {write_elapsed * 1000:.0f} ms; "
-                                f"queue_chunks={self.audio_in_queue.qsize()}."
-                            )
-
-                        if (
-                            not output_timing_diagnostic_done
-                            and output_audio_seconds >= 1.0
-                        ):
-                            output_timing_diagnostic_done = True
-                            if _output_write_is_unpaced(
-                                output_audio_seconds, output_write_wall_seconds
-                            ):
-                                print(
-                                    "[AudioTrace 4/OUTPUT] WARNING: submitted "
-                                    f"{output_audio_seconds * 1000:.0f} ms of PCM in only "
-                                    f"{output_write_wall_seconds * 1000:.0f} ms of write time. "
-                                    "The current endpoint may be accepting audio without "
-                                    "playing it in real time; attempting a tested speaker fallback."
-                                )
-                                current_device = _stream_device_index(stream, _spk_dev)
-                                fallback = await _open_verified_fallback(current_device)
-                                if fallback is None:
-                                    print(
-                                        "[AudioTrace 4/OUTPUT] No alternate tested speaker "
-                                        "endpoint was available. Check Windows output device "
-                                        "and volume settings."
-                                    )
-                                else:
-                                    fallback_name, fallback_device, fallback_stream = fallback
-                                    old_stream = stream
-                                    stream = fallback_stream
-                                    self._output_stream = stream
-                                    _spk_name = fallback_name
-                                    _spk_dev = fallback_device
-                                    try:
-                                        old_stream.stop()
-                                    except Exception:
-                                        pass
-                                    try:
-                                        old_stream.close()
-                                    except Exception:
-                                        pass
-                                    output_audio_seconds = 0.0
-                                    output_write_wall_seconds = 0.0
-                                    output_write_count = 0
-                                    print(
-                                        f"[AudioTrace 4/OUTPUT] Switched to tested speaker "
-                                        f"{_spk_name!r} (device {_spk_dev}); "
-                                        f"route={_describe_output_route(_spk_dev)}. "
-                                        "Replaying the last PCM batch."
-                                    )
-                                    replay_started = time.perf_counter()
-                                    await asyncio.get_running_loop().run_in_executor(
-                            _AUDIO_OUTPUT_EXECUTOR, stream.write, bytes(batch)
-                        )
-                                    replay_elapsed = max(
-                                        0.0, time.perf_counter() - replay_started
-                                    )
-                                    output_audio_seconds = batch_audio_seconds
-                                    output_write_wall_seconds = replay_elapsed
-                                    output_write_count = 1
-                                    last_output_write_end = time.monotonic()
-                                    print(
-                                        f"[AudioTrace 4/OUTPUT] Fallback replay accepted "
-                                        f"in {replay_elapsed * 1000:.0f} ms."
-                                    )
-                            else:
-                                print(
-                                    "[AudioTrace 4/OUTPUT] Output pacing check: "
-                                    f"{output_audio_seconds * 1000:.0f} ms of PCM took "
-                                    f"{output_write_wall_seconds * 1000:.0f} ms of write time; "
-                                    "no silent/unpaced endpoint signature detected."
-                                )
-
-                        if not first_output_write_completed:
-                            print(
-                                "[AudioTrace 4/OUTPUT] First sounddevice.write returned; "
-                                "PortAudio accepted the PCM batch (this does not guarantee audible sound)."
-                            )
-                            first_output_write_completed = True
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as exc:
-                        if self._playback_interrupt_requested.is_set():
-                            self._playback_interrupt_requested.clear()
-                            self.set_speaking(False)
-                            try:
-                                if not stream.active:
-                                    stream.start()
-                            except Exception as restart_exc:
-                                print(f"[JARVIS] Could not resume output after interrupt: {restart_exc}")
-                                raise
-                            continue
-                        if self._shutdown_requested:
-                            break
-                        print(f"[AudioTrace 4/OUTPUT] Speaker write failed: {type(exc).__name__}: {exc}")
-                        traceback.print_exc()
-
-                        # A device may open successfully but fail on its first real
-                        # write (for example after Windows changes the default route).
-                        # Try the system-default endpoint once, then fail clearly if
-                        # that route also cannot accept audio.
-                        if not write_recovery_attempted and _spk_dev is not None:
-                            write_recovery_attempted = True
-                            fallback_stream = None
-                            try:
-                                fallback_stream = await asyncio.to_thread(_open_spk, None)
-                                old_stream = stream
-                                stream = fallback_stream
-                                self._output_stream = stream
-                                _spk_name = ""
-                                _spk_dev = None
-                                try:
-                                    old_stream.stop()
-                                except Exception:
-                                    pass
-                                try:
-                                    old_stream.close()
-                                except Exception:
-                                    pass
-                                print(
-                                    "[AudioTrace 4/OUTPUT] Recovered from speaker write "
-                                    "failure by switching to the system-default output; "
-                                    "retrying the current PCM batch once."
-                                )
-                                retry_started = time.perf_counter()
-                                await asyncio.get_running_loop().run_in_executor(
-                                    _AUDIO_OUTPUT_EXECUTOR, stream.write, bytes(batch)
-                                )
-                                retry_elapsed = max(0.0, time.perf_counter() - retry_started)
-                                retry_audio_seconds = len(batch) / (
-                                    RECEIVE_SAMPLE_RATE * CHANNELS * 2
-                                )
-                                output_audio_seconds += retry_audio_seconds
-                                output_write_wall_seconds += retry_elapsed
-                                output_write_count += 1
-                                last_output_write_end = time.monotonic()
-                                continue
-                            except asyncio.CancelledError:
-                                raise
-                            except Exception as recovery_exc:
-                                print(
-                                    "[AudioTrace 4/OUTPUT] System-default speaker recovery "
-                                    f"failed: {type(recovery_exc).__name__}: {recovery_exc}"
-                                )
-                                if fallback_stream is not None:
-                                    try:
-                                        fallback_stream.stop()
-                                    except Exception:
-                                        pass
-                                    try:
-                                        fallback_stream.close()
-                                    except Exception:
-                                        pass
-                                self._output_stream = None
-                        raise
-        except Exception as e:
-            print(f"[JARVIS] ❌ Play: {e}")
-            raise
-        finally:
-            self.set_speaking(False)
-            output_stream = self._output_stream
-            self._output_stream = None
-            try:
-                from security.lockdown import teardown_audio_stream
-                teardown_audio_stream(output_stream or stream)
-            except Exception:
-                try:
-                    stream.stop()
-                except Exception:
-                    pass
-                try:
-                    stream.close()
-                except Exception:
-                    pass
 
     # ── Morning briefing ────────────────────────────────────────────────────────
-
     async def _send_startup_briefing(self, wake_trigger: bool = False) -> None:
         """
         Two-phase briefing optimized for speed:
@@ -4971,22 +4077,15 @@ class JarvisLive:
     # ── main loop ───────────────────────────────────────────────────────────
 
     def _select_live_model(self) -> str:
-        """Prefer the primary Live model, skipping models still rate-limited."""
-        candidates = (LIVE_MODEL, *LIVE_FALLBACK_MODELS)
-        # Gemini 3.8 Live always uses proactive audio. Respect the user's
-        # opt-out setting by not selecting it as a fallback in that case.
-        if not get_proactive_audio_enabled():
-            candidates = tuple(
-                model for model in candidates
-                if model != "models/gemini-3.8-live"
-            )
-        now = time.monotonic()
-        for model in candidates:
-            if self._live_model_cooldowns.get(model, 0.0) <= now:
-                return model
-        # If every model is cooling, retry the one whose cooldown ends first;
-        # the reconnect path below spaces these retries out to avoid a hot loop.
-        return min(candidates, key=lambda model: self._live_model_cooldowns.get(model, 0.0))
+        """Delegate model/cooldown policy to the testable session module."""
+        return select_live_model(
+            primary_model=LIVE_MODEL,
+            fallback_models=LIVE_FALLBACK_MODELS,
+            cooldowns=self._live_model_cooldowns,
+            now=time.monotonic(),
+            proactive_audio_enabled=get_proactive_audio_enabled(),
+            proactive_audio_model="models/gemini-3.8-live",
+        )
 
     async def run(self):
         self._loop = asyncio.get_running_loop()
@@ -5068,10 +4167,10 @@ class JarvisLive:
                 client = genai.Client(
                     api_key=_get_api_key(),
                     http_options={
-                        "api_version": (
-                            "v1alpha"
-                            if self._enhanced_live and self._active_live_model == LIVE_MODEL
-                            else "v1beta"
+                        "api_version": select_live_api_version(
+                            enhanced_live=self._enhanced_live,
+                            active_model=self._active_live_model,
+                            primary_model=LIVE_MODEL,
                         )
                     }
                 )

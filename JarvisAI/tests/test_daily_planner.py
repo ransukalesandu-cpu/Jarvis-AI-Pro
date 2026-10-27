@@ -208,8 +208,8 @@ class DailyPlannerTests(unittest.TestCase):
         })
         with patch.object(planner, "date", FrozenDate), patch.object(planner, "datetime", FrozenDateTime):
             result = planner.daily_planner({"operation": "checkin"})
-        overdue_section = result.split("Overdue / may have been missed:\\n", 1)[1].split("\\n\\nToday's plan:", 1)[0]
-        today_section = result.split("Today's plan:\\n", 1)[1].split("\\n\\nRemembered without a date:", 1)[0]
+        overdue_section = result.split("Overdue / may have been missed:\n", 1)[1].split("\n\nToday's plan:", 1)[0]
+        today_section = result.split("Today's plan:\n", 1)[1].split("\n\nRemembered without a date:", 1)[0]
         self.assertIn("Morning revision", overdue_section)
         self.assertNotIn("Afternoon revision", overdue_section)
         self.assertIn("Afternoon revision", today_section)

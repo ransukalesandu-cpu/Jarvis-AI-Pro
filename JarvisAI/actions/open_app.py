@@ -1,3 +1,4 @@
+import os
 import time
 import subprocess
 import platform
@@ -81,9 +82,11 @@ def _launch_windows(app_name: str) -> bool:
 
     if shutil.which(app_name) or shutil.which(app_name.split(".")[0]):
         try:
+            # app_name was resolved by shutil.which; launch it as argv, not
+            # through a shell that could interpret metacharacters.
             subprocess.Popen(
-                app_name,
-                shell=True,
+                [app_name],
+                shell=False,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
@@ -94,11 +97,13 @@ def _launch_windows(app_name: str) -> bool:
 
     if ":" in app_name:
         try:
-            subprocess.Popen(f"start {app_name}", shell=True)
+            # Windows ShellExecute opens registered URI handlers without
+            # passing user-controlled text through cmd.exe / shell parsing.
+            os.startfile(app_name)
             time.sleep(1.0)
             return True
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[open_app] URI launch failed: {e}")
 
     try:
         import pyautogui

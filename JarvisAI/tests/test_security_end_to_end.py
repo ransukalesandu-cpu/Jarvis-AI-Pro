@@ -116,6 +116,18 @@ class DangerousActionGateTests(unittest.TestCase):
                 self.assertEqual(request.call_args.kwargs["key"], f"sec-{name}")
                 self.assertTrue(callable(request.call_args.kwargs["run"]))
 
+    def test_dual_factor_live_host_turn_skips_second_confirmation(self):
+        self.owner.get_auth_method = mock.Mock(return_value="voice")
+        self.owner.owner_factors_verified = mock.Mock(return_value=True)
+        with mock.patch.object(self.security, "_untrusted_context", return_value=False), \
+             mock.patch.object(self.security, "_voice_id_authorized", return_value=True), \
+             mock.patch.object(self.security.confirm_gate, "request") as request:
+            result = self.security.guard(
+                "shutdown_jarvis", {}, lambda: "ran without a second confirmation"
+            )
+        self.assertEqual(result, "ran without a second confirmation")
+        request.assert_not_called()
+
     def test_untrusted_external_content_cannot_trigger_dangerous_actions(self):
         for name, params in DANGEROUS_CALLS:
             with self.subTest(action=name):

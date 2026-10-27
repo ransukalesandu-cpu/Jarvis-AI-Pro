@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from core.brain_engine import (
     BrainEngine,

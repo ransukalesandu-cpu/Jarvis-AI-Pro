@@ -188,6 +188,8 @@ class TestUIHologram(unittest.TestCase):
         self.assertFalse(hud._lock_banner.isHidden())
         self.assertEqual(hud.wireframe_visualizer.get_state(), "PRIVACY_LOCK")
         self.assertEqual(hud.bihansa_visualizer.get_state(), "PRIVACY_LOCK")
+        self.assertEqual(hud._mini_orb._state, "PRIVACY_LOCK")
+        self.assertEqual(hud._heart_reactor._state, "PRIVACY_LOCK")
 
         # Audio state updates must not override an auth-only lock.
         self.bridge.update_state("SPEAKING")

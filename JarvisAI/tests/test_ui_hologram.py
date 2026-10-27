@@ -242,6 +242,12 @@ class TestUIHologram(unittest.TestCase):
         self.assertTrue(hud._compact_mode)
         self.assertIsNotNone(hud._compact_overlay)
         self.assertTrue(hud._compact_overlay.isVisible())
+        self.assertTrue(hud._compact_overlay.testAttribute(
+            Qt.WidgetAttribute.WA_TranslucentBackground
+        ))
+        self.assertTrue(
+            hud._compact_overlay.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+        )
         self.addCleanup(hud._compact_overlay.close)
 
         self.bridge.update_state("SPEAKING")

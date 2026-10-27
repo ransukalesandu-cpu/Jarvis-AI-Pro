@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 JARVIS_DIR = ROOT_DIR / "JarvisAI"
@@ -10,6 +11,7 @@ for path in (str(ROOT_DIR), str(JARVIS_DIR)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
+from actions import open_app as open_app_module
 from actions.open_app import _open_hologram_web_task
 
 
@@ -18,6 +20,13 @@ class FakeHUD:
         self.accepted = accepted
         self.opened = []
         self.logs = []
+        self.compact_events = []
+
+    def enter_compact_overlay(self):
+        self.compact_events.append("enter")
+
+    def exit_compact_overlay(self):
+        self.compact_events.append("exit")
 
     def open_task_tab(self, title, url):
         self.opened.append((title, url))
@@ -57,6 +66,25 @@ class TestHologramTaskRouting(unittest.TestCase):
     def test_refused_task_card_does_not_claim_success(self):
         hud = FakeHUD(accepted=False)
         self.assertIsNone(_open_hologram_web_task("YouTube", hud))
+
+
+    def test_native_app_requests_compact_hologram_before_launch(self):
+        hud = FakeHUD()
+        with patch.object(open_app_module, "_SYSTEM", "Windows"), \
+             patch.object(open_app_module, "_open_hologram_web_task", return_value=None), \
+             patch.dict(open_app_module._OS_LAUNCHERS, {"Windows": lambda _name: True}):
+            result = open_app_module.open_app({"app_name": "Visual Studio Code"}, player=hud)
+        self.assertEqual(result, "Opened Visual Studio Code.")
+        self.assertEqual(hud.compact_events, ["enter"])
+
+    def test_failed_native_app_launch_restores_full_hud(self):
+        hud = FakeHUD()
+        with patch.object(open_app_module, "_SYSTEM", "Windows"), \
+             patch.object(open_app_module, "_open_hologram_web_task", return_value=None), \
+             patch.dict(open_app_module._OS_LAUNCHERS, {"Windows": lambda _name: False}):
+            result = open_app_module.open_app({"app_name": "UnlistedDesktopProgram"}, player=hud)
+        self.assertIn("Could not confirm", result)
+        self.assertEqual(hud.compact_events, ["enter", "exit"])
 
 
 if __name__ == "__main__":

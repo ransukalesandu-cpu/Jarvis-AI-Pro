@@ -319,10 +319,13 @@ Every tool or action is classified into one of three risk tiers.
 Browser, desktop, file, and computer tools are classified per requested action:
 searches and inspection avoid a confirmation click, while file changes and
 computer input that can submit or change data remain approval-gated. Email,
-Instagram, and phone plugin actions still require confirmation for every
-request.
+Instagram, and phone plugin actions normally require confirmation. After
+both the local owner PIN and a current live Voice-ID/anti-spoof check verify the
+host, Owner Autopilot can skip JARVIS's own confirmation banner for the direct
+user command while retaining provenance checks, rate limits and audit logs.
+Native OS and third-party permission prompts remain unaffected.
 
-For a trusted single-user PC, an optional **Personal Mode** reduces repetitive confirmation banners for selected local desktop actions and safe folder/rename operations while retaining audit logs, rate limits, protected-path checks, provenance checks, and confirmations for overwrite-capable file operations, external communications, generated-code tasks, and other high-impact operations. Enable it locally through the `JARVIS_PERSONAL_MODE=1` process environment variable; it cannot be toggled by a voice or remote-tablet command. See [Personal Mode setup](JarvisAI/docs/PERSONAL_MODE.md).
+For a trusted single-user PC, **Owner Autopilot** can skip JARVIS's confirmation banners after the local owner PIN and current live Voice-ID/anti-spoof checks both pass for a direct host command. It keeps provenance checks, rate limits, protected-path checks and audit logs active; native OS and third-party permission prompts remain. The separate optional **Personal Mode** (`JARVIS_PERSONAL_MODE=1`) continues to relax only its documented local-action allowlist. See [Personal Mode and Owner Autopilot](JarvisAI/docs/PERSONAL_MODE.md).
 
 Unknown tools are **never automatically treated as SAFE**.
 
@@ -1209,7 +1212,7 @@ All discovered capabilities are passed through the security layer before executi
 
 JARVIS operates on an **Autonomous Biometric Authority & Privacy Defense Model**:
 
-* **Verified Owner:** Session owner access after local PIN verification or an enrolled voice match with verified live speech and anti-spoof validation. Dangerous actions still require confirmation.
+* **Verified Owner:** Session owner access after local PIN verification or an enrolled voice match with verified live speech and anti-spoof validation. Owner Autopilot skips JARVIS's extra confirmation banner only when both PIN and current live host voice checks pass for the direct command.
 * **Stranger Mode:** Sandboxed to Tier-1 basic tasks (weather, time, web search, system telemetry reads).
 * **Challenge Mode:** Secure PIN fallback if voice is degraded, noisy, or unverified.
 * **3-Strike Privacy Lock:** Automatically locks the Windows desktop (`LockWorkStation`), mutes audio graph, wipes sensitive memory, and broadcasts emergency alerts for a strictly clamped 1–5 minute duration (`max(60, min(duration, 300))`).

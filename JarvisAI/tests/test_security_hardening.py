@@ -172,6 +172,33 @@ class PhoneTests(unittest.TestCase):
 
 
 class ConfirmTests(unittest.TestCase):
+    def test_owner_autopilot_runs_confirmation_without_showing_banner(self):
+        from core import confirm
+        show = mock.Mock()
+        hide = mock.Mock()
+        log = mock.Mock()
+        confirm.bind(show, hide, log, owner_autopilot_allowed=lambda: True)
+        self.addCleanup(confirm.bind, lambda _title, _detail: None, lambda: None)
+        executed = []
+        result = confirm.request(
+            "sec-send_message", "Send a message", "Recipient: test",
+            lambda: executed.append("ran") or "message sent",
+        )
+        self.assertEqual(result, "[OWNER_AUTOPILOT_COMPLETED] message sent")
+        self.assertEqual(executed, ["ran"])
+        show.assert_not_called()
+        self.assertEqual(confirm.pending_title(), "")
+
+    def test_owner_autopilot_callback_false_keeps_confirmation_gate(self):
+        from core import confirm
+        show = mock.Mock()
+        confirm.bind(show, lambda: None, owner_autopilot_allowed=lambda: False)
+        self.addCleanup(confirm.bind, lambda _title, _detail: None, lambda: None)
+        result = confirm.request("sec-send_message", "Send a message", "", lambda: "sent")
+        self.assertIn("[CONFIRMATION_PENDING]", result)
+        show.assert_called_once()
+        confirm.resolve(False)
+
     def test_only_dev_agent_and_memory_transfer_need_a_click(self):
         from core import confirm
         for key in ("sec-dev_agent", "sec-memory_export", "sec-memory_import"):
@@ -261,6 +288,33 @@ class ConfirmTests(unittest.TestCase):
         clipped = security._clip("a" * 400, 300)
         self.assertIn("more characters not shown", clipped)
         self.assertEqual(security._clip("short", 300), "short")
+
+
+class OwnerAutopilotAuthorizationTests(unittest.TestCase):
+    def test_requires_both_host_factors_current_live_voice_and_trusted_context(self):
+        from core import security
+
+        auth = mock.Mock()
+        auth.is_silent.return_value = False
+        auth.is_owner_access_allowed.return_value = True
+        auth.owner_factors_verified.return_value = True
+        auth.get_auth_method.return_value = "voice"
+        with mock.patch.object(security, "_auth_manager", auth), \
+             mock.patch.object(security, "_untrusted_context", return_value=False), \
+             mock.patch.object(security, "_voice_id_authorized", return_value=True):
+            self.assertTrue(security.owner_autopilot_authorized())
+            auth.owner_factors_verified.return_value = False
+            self.assertFalse(security.owner_autopilot_authorized())
+            auth.owner_factors_verified.return_value = True
+            auth.get_auth_method.return_value = "pin"
+            self.assertFalse(security.owner_autopilot_authorized())
+            auth.get_auth_method.return_value = "voice"
+            with mock.patch.object(security, "_voice_id_authorized", return_value=False):
+                self.assertFalse(security.owner_autopilot_authorized())
+        with mock.patch.object(security, "_auth_manager", auth), \
+             mock.patch.object(security, "_untrusted_context", return_value=True), \
+             mock.patch.object(security, "_voice_id_authorized", return_value=True):
+            self.assertFalse(security.owner_autopilot_authorized())
 
 
 class RateLimitTests(unittest.TestCase):

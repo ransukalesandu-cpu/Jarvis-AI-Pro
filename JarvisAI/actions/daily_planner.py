@@ -287,7 +287,7 @@ def daily_planner(parameters: dict, player=None, session_memory=None) -> str:
                     lines.extend(_format_item(row) for row in sorted(added, key=_sort_key))
                     return "\n".join(lines)
 
-                item, error = _new_item(parameters, fallback_date=_clean(parameters.get("date"), 10), default_kind="task")
+                item, error = _new_item(parameters, fallback_date=str(parameters.get("date") or "").strip(), default_kind="task")
                 if error:
                     return error
                 if item is None:

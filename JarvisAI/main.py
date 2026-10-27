@@ -2309,7 +2309,9 @@ class JarvisLive:
         parts = [time_ctx, identity_ctx]
         if mem_str:
             parts.append(mem_str)
-        parts.append(redact_sensitive_content(voice_personality_prompt(memory if memory_access else {})))
+        # Response personality is a dedicated local preference, not conversational-memory
+        # context. Keep manual mode selection active even when memory-provider access is off.
+        parts.append(redact_sensitive_content(voice_personality_prompt()))
         parts.append(sys_prompt)
         if self._live_switch_context:
             parts.append(

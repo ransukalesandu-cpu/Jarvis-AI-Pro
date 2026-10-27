@@ -320,8 +320,11 @@ Every tool or action is classified into one of three risk tiers.
 Browser, desktop, file, and computer tools are classified per requested action:
 searches and inspection avoid a confirmation click, while file changes and
 computer input that can submit or change data remain approval-gated. Email,
-Instagram, and phone plugin actions still require confirmation for every
-request.
+Instagram, and phone plugin actions normally require confirmation. After
+both the local owner PIN and a current live Voice-ID/anti-spoof check verify the
+host, Owner Autopilot can skip JARVIS's own confirmation banner for the direct
+user command while retaining provenance checks, rate limits and audit logs.
+Native OS and third-party permission prompts remain unaffected.
 
 Unknown tools are **never automatically treated as SAFE**.
 

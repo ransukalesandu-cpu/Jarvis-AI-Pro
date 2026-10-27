@@ -30,6 +30,7 @@ app = QApplication.instance() or QApplication(sys.argv)
 from audio.visualizer_bridge import VisualizerBridge, get_visualizer_bridge
 from ui.hologram.wireframe_head import NeuralWireframeHead
 from ui.hologram.bihansa_hologram import BihansaHologramWidget
+from ui.hologram.neural_heart_reactor import NeuralHeartReactor
 from ui.panels.hybrid_brain_panel import HybridBrainPanel
 from ui.panels.security_panel import SecurityPanel
 from ui.panels.memory_panel import MemoryPanel
@@ -206,11 +207,13 @@ class TestUIHologram(unittest.TestCase):
         self.assertIsInstance(hud.bihansa_visualizer, BihansaHologramWidget)
         self.assertEqual(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
 
-        # A small extra status orb is added to the header, not substituted for
-        # either original central hologram widget.
+        # The status orb remains below the hologram; the heart is a separate
+        # transparent overlay and does not replace either original visualizer.
         self.assertIsInstance(hud._mini_orb, FloatingHolographicOrb)
-        self.assertEqual(hud._mini_orb.size().width(), 28)
-        self.assertEqual(hud._mini_orb.size().height(), 28)
+        self.assertEqual(hud._mini_orb.size().width(), 48)
+        self.assertEqual(hud._mini_orb.size().height(), 48)
+        self.assertIsInstance(hud._heart_reactor, NeuralHeartReactor)
+        self.assertIs(hud._heart_reactor.parentWidget(), hud._hologram_stage)
         self.assertIsInstance(hud._surface_brain, BentoPanelSurface)
         self.assertIsInstance(hud._surface_security, BentoPanelSurface)
         self.assertIsInstance(hud._surface_memory, BentoPanelSurface)
@@ -234,6 +237,7 @@ class TestUIHologram(unittest.TestCase):
         self.bridge.update_state("LISTENING")
         self.bridge.push_audio_energy(0.75)
         self.assertEqual(hud._mini_orb._state, "LISTENING")
+        self.assertEqual(hud._heart_reactor._state, "LISTENING")
         self.assertEqual(hud.wireframe_visualizer.get_state(), "LISTENING")
         self.assertEqual(hud.bihansa_visualizer.get_state(), "LISTENING")
 

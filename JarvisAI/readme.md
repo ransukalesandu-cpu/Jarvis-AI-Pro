@@ -1532,8 +1532,11 @@ model. One-shot OpenAI/Claude/Gemini selection is separate from the Live voice.
 
 The same **RESPONSE PERSONALITY** panel contains **VOCAL BEHAVIOR ENGINE**
 controls: Professional Jarvis, Natural Companion, Expressive, and Minimal
-profiles; engine, breathing, sigh, and reaction toggles; and sliders for
-expressiveness, pause naturalness, breath volume, and event frequency. **PREVIEW
+profiles; engine, breathing, sigh, reaction, and **DYN FEEL** controls; and sliders for
+expressiveness, pause naturalness, breath volume, and event frequency. Dynamic Feel
+guides the Live speech model to vary warmth, empathy, curiosity, excitement, calmness,
+emphasis, rhythm, and pauses according to each reply's context. This is prosody guidance,
+not a guarantee of exact human emotion or pitch. **PREVIEW
 BREATH** plays one local sample through the normal JARVIS output queue; **RESET**
 restores the defaults. Settings are stored with the existing local voice profile.
 Gemini Live still generates all words and speech audio. The current

@@ -165,8 +165,11 @@ def _set_setting(setting: str, raw_value) -> str:
                         "Stores short, directly stated personal facts (such as your name, sibling "
                         "information, education, interests, preferences, and goals) in your own "
                         "Supabase-authenticated profile. Raw conversations, contact details, credentials, "
-                        "and sensitive categories are excluded. Relevant saved facts may be sent to the "
-                        "configured AI provider for personalized replies. You can turn this off or delete "
+                        "and sensitive categories are excluded. When a personal-disclosure cue is detected, "
+                        "that single utterance may be sent to the configured AI provider for narrow extraction; "
+                        "raw conversation history is not uploaded to the memory endpoint. Relevant saved facts "
+                        "may also be sent to the configured AI provider for personalized replies. You can turn "
+                        "this off or delete "
                         "the saved profile. Continue only if you consent."
                     ),
                     run=_enable_personal_cloud_memory,

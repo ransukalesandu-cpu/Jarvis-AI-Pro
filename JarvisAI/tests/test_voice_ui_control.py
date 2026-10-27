@@ -79,7 +79,10 @@ class VoiceUICommandParserTests(unittest.TestCase):
                 self.assertIsNone(parse_voice_ui_command(text))
 
     def test_high_impact_labels_are_flagged(self):
-        for text in ("Delete item", "PUBLISH NOW", "Memory Export", "Dev Agent"):
+        for text in (
+            "Delete item", "PUBLISH NOW", "Memory Export", "Dev Agent",
+            "Restart JARVIS", "Reset Memory", "Clear Conversation",
+        ):
             with self.subTest(text=text):
                 self.assertTrue(is_high_impact_ui_label(text))
         self.assertFalse(is_high_impact_ui_label("Response Personality"))

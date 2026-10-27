@@ -200,7 +200,7 @@ class BrainEngine:
         query_fn: Callable[..., Any] | None = None,
         router_factory: Callable[..., Any] | None = None,
         memory_retriever: Callable[..., Any] | None = None,
-        memory_enabled: bool = True,
+        memory_enabled: bool = False,
     ) -> None:
         self.config_path = Path(config_path) if config_path else (
             Path(__file__).resolve().parents[1] / "config" / "api_keys.json"

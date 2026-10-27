@@ -69,6 +69,12 @@ def normalize_label(value: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def has_wake_name_prefix(text: str) -> bool:
+    """Return whether an utterance begins with the JARVIS/Maya wake name."""
+    phrase = " ".join(str(text or "").casefold().split())
+    return bool(re.match(r"^(?:hey\s+)?(?:jarvis|maya)\b", phrase))
+
+
 def is_high_impact_ui_label(value: str) -> bool:
     """Return True when a UI label describes a high-impact/destructive action."""
     label = normalize_label(value)

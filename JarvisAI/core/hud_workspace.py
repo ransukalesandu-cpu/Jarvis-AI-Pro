@@ -424,6 +424,8 @@ class HudWorkspace(QWidget):
         self._news_briefing_active = False
         self._news_image_slots = threading.BoundedSemaphore(4)
         self._news_image_queue: list[tuple[int, str]] = []
+        self._tab_transition_animation: QPropertyAnimation | None = None
+        self._tab_transition_widget: QWidget | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 7, 8, 8)
@@ -652,7 +654,46 @@ class HudWorkspace(QWidget):
             return
         self._holo_status.setText(f"GESTURE {labels[event]} · {card[:48]}".strip(" ·"))
 
+    def _animate_workspace_tab(self, index: int) -> None:
+        """Fade ordinary workspace pages in; leave the live hologram/WebEngine untouched."""
+        if not 0 <= index < self.tabs.count():
+            return
+        page = self.tabs.widget(index)
+        # WebEngine/canvas pages can black-flash under graphics effects. The Holo
+        # hands page is intentionally excluded so its visual appearance and timing
+        # remain exactly as before this UI enhancement.
+        if page is self._holo_container:
+            return
+        if QWebEngineView is not None and page.findChild(QWebEngineView) is not None:
+            return
+        old_animation = self._tab_transition_animation
+        if old_animation is not None:
+            old_animation.stop()
+        old_page = self._tab_transition_widget
+        if old_page is not None and old_page is not page:
+            old_page.setGraphicsEffect(None)
+        effect = QGraphicsOpacityEffect(page)
+        effect.setOpacity(0.0)
+        page.setGraphicsEffect(effect)
+        animation = QPropertyAnimation(effect, b"opacity", self)
+        animation.setDuration(210)
+        animation.setStartValue(0.0)
+        animation.setEndValue(1.0)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        def finish_transition():
+            if self._tab_transition_animation is animation:
+                page.setGraphicsEffect(None)
+                self._tab_transition_animation = None
+                self._tab_transition_widget = None
+
+        animation.finished.connect(finish_transition)
+        self._tab_transition_animation = animation
+        self._tab_transition_widget = page
+        animation.start()
+
     def _on_holo_tab_changed(self, _index: int) -> None:
+        self._animate_workspace_tab(_index)
         if self._holo_view is None:
             return
         if self.tabs.currentWidget() is self._holo_container:

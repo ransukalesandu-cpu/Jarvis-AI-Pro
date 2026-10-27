@@ -24,9 +24,9 @@ class SecurityPanel(QFrame):
         self.setMinimumWidth(240)
         self.setStyleSheet("""
             QFrame#SecurityPanel {
-                background: rgba(13, 20, 30, 0.75);
-                border: 1px solid rgba(0, 229, 255, 0.35);
-                border-radius: 8px;
+                background: rgba(13, 20, 30, 0.82);
+                border: 1px solid rgba(104, 217, 255, 0.24);
+                border-radius: 16px;
             }
         """)
 
@@ -92,9 +92,9 @@ class SecurityPanel(QFrame):
             self._flash_timer.stop()
             self.setStyleSheet("""
                 QFrame#SecurityPanel {
-                    background: rgba(13, 20, 30, 0.75);
+                    background: rgba(13, 20, 30, 0.82);
                     border: 1px solid rgba(0, 230, 118, 0.45);
-                    border-radius: 8px;
+                    border-radius: 16px;
                 }
             """)
             self._lbl_status.setText("FULL ACCESS (Verified Owner)")
@@ -104,9 +104,9 @@ class SecurityPanel(QFrame):
             self._flash_timer.stop()
             self.setStyleSheet("""
                 QFrame#SecurityPanel {
-                    background: rgba(13, 20, 30, 0.75);
+                    background: rgba(13, 20, 30, 0.82);
                     border: 1px solid rgba(255, 171, 0, 0.4);
-                    border-radius: 8px;
+                    border-radius: 16px;
                 }
             """)
             self._lbl_status.setText("RESTRICTED (Guest Mode)")
@@ -116,9 +116,9 @@ class SecurityPanel(QFrame):
             self._flash_timer.stop()
             self.setStyleSheet("""
                 QFrame#SecurityPanel {
-                    background: rgba(13, 20, 30, 0.75);
+                    background: rgba(13, 20, 30, 0.82);
                     border: 1px solid rgba(0, 229, 255, 0.4);
-                    border-radius: 8px;
+                    border-radius: 16px;
                 }
             """)
             self._lbl_status.setText("CHALLENGE (Awaiting PIN)")
@@ -137,14 +137,14 @@ class SecurityPanel(QFrame):
                 QFrame#SecurityPanel {
                     background: rgba(50, 0, 10, 0.85);
                     border: 2px solid #ff1744;
-                    border-radius: 8px;
+                    border-radius: 16px;
                 }
             """)
         else:
             self.setStyleSheet("""
                 QFrame#SecurityPanel {
-                    background: rgba(13, 20, 30, 0.75);
+                    background: rgba(13, 20, 30, 0.82);
                     border: 1px solid rgba(255, 23, 68, 0.5);
-                    border-radius: 8px;
+                    border-radius: 16px;
                 }
             """)

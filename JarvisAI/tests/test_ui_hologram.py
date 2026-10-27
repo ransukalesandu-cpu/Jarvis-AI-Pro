@@ -37,6 +37,7 @@ from ui.panels.scheduler_panel import SchedulerPanel
 from ui.panels.system_telemetry_ring import SystemTelemetryRing
 from ui.hud_main import HUDMainWindow, HologramHUDUI
 from ui.panels.modern_dashboard import FloatingHolographicOrb, SkeletonLoader
+from ui.panels.hud_surface import BentoPanelSurface
 
 
 class TestUIHologram(unittest.TestCase):
@@ -198,29 +199,50 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(hud.bihansa_visualizer.get_state(), "SPEAKING")
         self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
 
-    def test_modern_bento_dashboard_orb_and_page_transitions(self):
-        """The dashboard is the default surface; the large visualizer is opt-in."""
+    def test_bento_side_panels_keep_original_hologram_unchanged(self):
+        """Modern side surfaces must not replace or reconfigure the original hologram."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
-        self.assertEqual(hud._workspace_stack.currentWidget(), hud._dashboard)
-        self.assertIsInstance(hud._dashboard.orb, FloatingHolographicOrb)
-        self.assertIsInstance(hud._dashboard._skeleton, SkeletonLoader)
+        self.assertIsInstance(hud.wireframe_visualizer, NeuralWireframeHead)
+        self.assertIsInstance(hud.bihansa_visualizer, BihansaHologramWidget)
+        self.assertEqual(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
 
-        hud._dashboard.set_state("LISTENING")
-        self.assertIn("LISTENING", hud._dashboard.status_chip.text())
-        hud._dashboard.set_audio_energy(0.75)
-        self.assertEqual(hud._dashboard.orb._energy, 0.75)
+        # A small extra status orb is added to the header, not substituted for
+        # either original central hologram widget.
+        self.assertIsInstance(hud._mini_orb, FloatingHolographicOrb)
+        self.assertEqual(hud._mini_orb.size().width(), 36)
+        self.assertEqual(hud._mini_orb.size().height(), 36)
+        self.assertIsInstance(hud._surface_brain, BentoPanelSurface)
+        self.assertIsInstance(hud._surface_security, BentoPanelSurface)
+        self.assertIsInstance(hud._surface_memory, BentoPanelSurface)
+        self.assertIsInstance(hud._surface_scheduler, BentoPanelSurface)
+        self.assertIsInstance(hud._surface_ring, BentoPanelSurface)
 
-        hud._show_avatar_page()
-        self.assertEqual(hud._workspace_stack.currentWidget(), hud._avatar_page)
-        hud._show_dashboard_page()
-        self.assertEqual(hud._workspace_stack.currentWidget(), hud._dashboard)
+        surfaces = (
+            ("brain", hud._panel_brain),
+            ("security", hud._panel_security),
+            ("memory", hud._panel_memory),
+            ("scheduler", hud._panel_scheduler),
+            ("ring", hud._panel_ring),
+        )
+        for name, panel in surfaces:
+            surface = getattr(hud, f"_surface_{name}")
+            self.assertIs(surface.panel, panel)
+            surface.show_panel()
+            self.assertIs(surface._stack.currentWidget(), panel)
 
-        hud._dashboard.set_bihansa_mode(True)
-        self.assertTrue(hud._dashboard.orb._bihansa)
-        hud._dashboard.finish_loading()
-        self.assertTrue(hud._dashboard._loaded)
-        self.assertTrue(hud._dashboard._skeleton.isHidden())
-        self.assertFalse(hud._dashboard._ready_group.isHidden())
+        # State/audio flow reaches the added orb and the original visualizers.
+        self.bridge.update_state("LISTENING")
+        self.bridge.push_audio_energy(0.75)
+        self.assertEqual(hud._mini_orb._state, "LISTENING")
+        self.assertEqual(hud.wireframe_visualizer.get_state(), "LISTENING")
+        self.assertEqual(hud.bihansa_visualizer.get_state(), "LISTENING")
+
+        # Existing mode switching remains intact.
+        hud._bihansa_toggle.setChecked(True)
+        self.assertEqual(hud._visualizer_stack.currentWidget(), hud.bihansa_visualizer)
+        self.assertTrue(hud._mini_orb._bihansa)
+        hud._bihansa_toggle.setChecked(False)
+        self.assertEqual(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
 
     def test_hologram_hud_ui_adapter(self):
         """Test HologramHUDUI adapter class wrapping HUDMainWindow."""

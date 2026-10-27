@@ -2095,7 +2095,7 @@ class ProviderTile(QPushButton):
 
 
 class SetupOverlay(QWidget):
-    """Compact first-run credentials panel for the JARVIS hybrid AI router."""
+    """First-run panel for the Gemini Live credential only."""
     done = pyqtSignal(object)
 
     def __init__(self, parent=None):
@@ -2109,15 +2109,10 @@ class SetupOverlay(QWidget):
             }}
         """)
         config = _read_full_config()
-        try:
-            from core.provider_settings import get_provider_settings
-            provider_settings = get_provider_settings()
-        except Exception:
-            provider_settings = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 18, 22, 18)
-        layout.setSpacing(6)
+        layout.setSpacing(7)
 
         def _lbl(txt, size=8, bold=False, color=C.TEXT_DIM):
             w = QLabel(txt)
@@ -2130,23 +2125,26 @@ class SetupOverlay(QWidget):
         title = _lbl("J.A.R.V.I.S  /  CORE SETUP", 13, True, C.PRI)
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
-        subtitle = _lbl("Configure AI providers. Keys stay on this PC.", 8, False, C.TEXT_MED)
+        subtitle = _lbl(
+            "Enter the Gemini API key required for Live voice.",
+            8, False, C.TEXT_MED,
+        )
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(subtitle)
         layout.addSpacing(5)
 
         self._key_fields = {}
         fields = [
-            ("gemini_api_key", "GEMINI LIVE API KEY  ·  REQUIRED", config.get("gemini_api_key", ""), "AIza…"),
-            ("groq_api_key", "GROQ API KEY  ·  FAST FALLBACK", config.get("groq_api_key", ""), "gsk_… (optional)"),
-            ("openai_api_key", "OPENAI API KEY  ·  OPTIONAL", config.get("openai_api_key", ""), "sk-…"),
-            ("anthropic_api_key", "ANTHROPIC / CLAUDE KEY  ·  OPTIONAL", config.get("anthropic_api_key", ""), "sk-ant-…"),
+            ("gemini_api_key", "GEMINI LIVE API KEY  ·  REQUIRED",
+             config.get("gemini_api_key", ""), "AIza…"),
         ]
         for key_name, caption, saved_value, placeholder in fields:
             layout.addWidget(_lbl(caption, 8, True, C.TEXT_DIM))
             field = QLineEdit()
             field.setEchoMode(QLineEdit.EchoMode.Password)
-            field.setPlaceholderText("Saved locally · leave blank to keep" if saved_value else placeholder)
+            field.setPlaceholderText(
+                "Saved locally · leave blank to keep" if saved_value else placeholder
+            )
             field.setFixedHeight(30)
             field.setFont(QFont("Courier New", 9))
             field.setStyleSheet(f"""
@@ -2159,7 +2157,10 @@ class SetupOverlay(QWidget):
             layout.addWidget(field)
             self._key_fields[key_name] = field
 
-        note = _lbl("Gemini powers live voice. Groq is tried next for text fallback.", 8, False, C.ACC2)
+        note = _lbl(
+            "Other cloud-provider keys remain managed by your Supabase hybrid setup.",
+            8, False, C.ACC2,
+        )
         note.setWordWrap(True)
         layout.addSpacing(2)
         layout.addWidget(note)
@@ -2185,14 +2186,13 @@ class SetupOverlay(QWidget):
         key = self._key_fields["gemini_api_key"].text().strip()
         if not key:
             field = self._key_fields["gemini_api_key"]
-            field.setStyleSheet(field.styleSheet() + f" QLineEdit {{ border: 1px solid {C.RED}; }}")
+            field.setStyleSheet(
+                field.styleSheet() + f" QLineEdit {{ border: 1px solid {C.RED}; }}"
+            )
             return
-        self.done.emit({
-            "gemini_api_key": key,
-            "groq_api_key": self._key_fields["groq_api_key"].text().strip(),
-            "openai_api_key": self._key_fields["openai_api_key"].text().strip(),
-            "anthropic_api_key": self._key_fields["anthropic_api_key"].text().strip(),
-        })
+        # Keep this payload restricted to the one credential requested here.
+        # _on_setup_done preserves any previously configured optional provider keys.
+        self.done.emit({"gemini_api_key": key})
 
 
 class HueWheel(QWidget):
@@ -7539,7 +7539,7 @@ class MainWindow(QMainWindow):
             self._leave_immersive_view()
         ov = SetupOverlay(self.centralWidget())
         cw = self.centralWidget()
-        ow, oh = 440, 490
+        ow, oh = 440, 300
         ov.setGeometry(
             (cw.width()  - ow) // 2,
             (cw.height() - oh) // 2,

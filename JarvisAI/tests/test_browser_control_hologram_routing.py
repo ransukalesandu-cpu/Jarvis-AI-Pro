@@ -19,6 +19,13 @@ class FakeHUD:
         self.accepted = accepted
         self.pages = []
         self.logs = []
+        self.compact_events = []
+
+    def enter_compact_overlay(self):
+        self.compact_events.append("enter")
+
+    def exit_compact_overlay(self):
+        self.compact_events.append("exit")
 
     def show_webpage(self, url, title="WEB TASK"):
         self.pages.append((url, title))
@@ -65,6 +72,19 @@ class TestBrowserControlHologramRouting(unittest.TestCase):
         self.assertEqual(result, "Opened in Chrome")
         self.assertEqual(hud.pages, [])
         native.assert_called_once_with("https://example.com", "chrome")
+
+        self.assertEqual(hud.compact_events, ["enter"])
+
+    def test_failed_external_browser_launch_exits_compact_mode(self):
+        hud = FakeHUD()
+        with patch.object(browser_control._registry, "has", return_value=False), \
+             patch.object(browser_control, "_open_native", return_value="Could not open browser"):
+            result = browser_control.browser_control(
+                {"action": "go_to", "url": "https://example.com", "browser": "chrome"},
+                player=hud,
+            )
+        self.assertEqual(result, "Could not open browser")
+        self.assertEqual(hud.compact_events, ["enter", "exit"])
 
 
 if __name__ == "__main__":

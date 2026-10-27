@@ -41,15 +41,22 @@ class SmartHybridBrowserTests(unittest.TestCase):
         browser.search_web.assert_called_once_with("Python")
         self.assertEqual(result["intent"], "BROWSER")
 
-    def test_chat_route_uses_existing_hybrid_router(self):
+    def test_chat_route_uses_brain_engine_with_existing_hybrid_router(self):
         intent = Mock()
         intent.route.return_value = {"intent": "CHAT", "reason": "question"}
         router = Mock()
-        router.query.return_value = {"text": "hello", "provider": "gemini"}
+        router.configured_key_status.return_value = {"gemini": True, "ollama": False}
+        router.query.return_value = {"text": "hello", "provider": "gemini", "model": "test"}
         assistant = SmartHybridAssistant(intent_router=intent, chat_router_factory=Mock(return_value=router))
-        result = assistant.dispatch("hello")
-        router.query.assert_called_once_with("hello")
+        with patch("memory.config_manager.get_memory_provider_access_enabled", return_value=False):
+            result = assistant.dispatch("hello")
+        router.query.assert_called_once()
+        prompt = router.query.call_args.args[0]
+        self.assertIn("[CURRENT USER REQUEST]", prompt)
+        self.assertIn("hello", prompt)
+        self.assertIn("[JARVIS BRAIN PROTOCOL v1]", router.query.call_args.kwargs["system_prompt"])
         self.assertEqual(result["intent"], "CHAT")
+        self.assertEqual(result["result"]["text"], "hello")
 
     def test_click_link_navigates_only_a_validated_href_without_click_handlers(self):
         browser = BrowserAutomation()

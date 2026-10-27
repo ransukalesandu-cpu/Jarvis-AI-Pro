@@ -236,6 +236,14 @@ Install the SDK dependencies with the rest of the project:
 ```powershell
 python -m pip install -r requirements.txt
 ```
+## 🧠 Brain Engine and Context
+
+JARVIS now uses a shared Brain Engine for text fallback and Smart Hybrid chat. It builds a bounded request profile, adds recent labelled user/assistant turns, and—only when the memory-sharing preference is enabled—retrieves up to five provider-safe memory records with provenance labels. Sensitive patterns are redacted again before context is sent to the configured provider. The engine does not promote model-generated replies directly into confirmed semantic facts; the app's existing end-of-session summary workflow remains in force.
+
+The primary real-time voice, vision, and tool path remains Gemini Live. Its system instruction receives the same concise reasoning/verification protocol, and complex work can use the existing `deep_reasoning` plugin when available. Tool calls continue through the existing action/security gates. Text fallback is informational only and must not claim to have performed computer/browser actions. The Brain Engine improves orchestration and context selection; it does not train a new model or guarantee ChatGPT-equivalent performance.
+
+Architecture, context budgets, privacy boundaries, and tests: [Brain Engine architecture](../docs/BRAIN_ENGINE_ARCHITECTURE.md).
+
 ## 🧠 Task-Aware Model Routing
 
 JARVIS routes ordinary voice conversation through Gemini Live. For one-shot

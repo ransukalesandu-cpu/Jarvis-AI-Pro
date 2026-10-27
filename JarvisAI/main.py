@@ -150,7 +150,8 @@ from core.wake_word            import (
     WakeWordDetector, is_ready as wake_is_ready, install_and_download as wake_install,
 )
 from core.clap_wake             import DoubleClapDetector
-from core.provider_fallback import query_text_fallback
+from core.brain_engine import BrainEngine
+from core.brain_protocol import build_brain_protocol
 from core.live_session import select_live_api_version, select_live_model
 from core.runtime_diagnostics import hybrid_runtime_snapshot
 
@@ -1557,11 +1558,11 @@ class JarvisLive:
                     print(f"[Privacy Lock] Session revocation failed: {type(exc).__name__}")
 
     def _start_hybrid_text_fallback(self, text: str) -> None:
-        """Answer typed prompts through the hybrid text router while Live is down.
+        """Answer typed prompts through the Brain Engine while Live is down.
 
-        This is deliberately text-only: it never executes computer actions,
-        cannot bypass the existing auth/Privacy Lock/wake gates, and does not
-        replace the real-time Gemini Live audio/tool session.
+        Brain Engine enriches the text-only request with bounded recent turns
+        and optional provider-safe memory. It cannot execute computer actions,
+        bypass authorization, or replace the primary Live audio/tool session.
         """
         if not text:
             return
@@ -1572,20 +1573,34 @@ class JarvisLive:
         self._interrupted = False
         security.mark_user_turn_started(voice_verified=True)
         self.ui.set_state("THINKING")
-        self.ui.write_log("SYS: Gemini Live is disconnected; trying Hybrid Brain text fallback.")
+        self.ui.write_log("SYS: Gemini Live is disconnected; starting Brain Engine text fallback.")
 
         def _work() -> None:
             try:
-                result, configured = query_text_fallback(
-                    text,
+                try:
+                    memory_access = bool(get_memory_provider_access_enabled())
+                except Exception:
+                    # If the preference cannot be read, fail closed for memory
+                    # sharing while keeping the ordinary text fallback available.
+                    memory_access = False
+                brain = BrainEngine(
                     config_path=API_CONFIG_PATH,
-                    base_system_prompt=_load_system_prompt(),
+                    memory_enabled=memory_access,
                 )
+                result = brain.respond(
+                    text,
+                    base_system_prompt=_load_system_prompt(),
+                    conversation_history=list(self._session_log),
+                    memory_enabled=memory_access,
+                    assistant_names=[self._asst_name],
+                    assistant_name=self._asst_name,
+                )
+                provider = str(result.get("provider") or "unknown")
+                configured = str(result.get("configured_providers") or "none")
                 self.ui.write_log(
-                    f"DIAG: Hybrid credentials present for: {configured}. Values are never logged."
+                    f"DIAG: Brain provider configuration: {configured}. Values are never logged."
                 )
                 answer = str(result.get("text") or "").strip()
-                provider = str(result.get("provider") or "unknown")
                 if not answer:
                     raise RuntimeError("Provider returned an empty answer.")
 
@@ -1593,7 +1608,15 @@ class JarvisLive:
                 manager_now = security.get_auth_manager()
                 if manager_now.is_privacy_lock_active() or manager_now.is_silent() or manager_now.needs_pin():
                     return
-                self.ui.show_content("JARVIS — Hybrid Text Fallback", answer)
+                self.ui.show_content("JARVIS — Brain Engine Text Fallback", answer)
+
+                # Keep successful fallback turns available for follow-up context.
+                user_entry = f"User: {text.strip()}"
+                assistant_entry = f"{self._asst_name}: {answer}"
+                if not self._session_log or self._session_log[-1] != user_entry:
+                    self._session_log.append(user_entry)
+                self._session_log.append(assistant_entry)
+
                 telemetry = getattr(self.ui, "update_hybrid_telemetry", None)
                 if callable(telemetry):
                     selected_model = str(result.get("model") or provider)
@@ -1604,14 +1627,18 @@ class JarvisLive:
                         "Auto",
                         selected_model,
                     )
+                profile = result.get("task_profile") or {}
+                kind = str(profile.get("kind") or "general")
                 self.ui.write_log(
-                    f"SYS: Hybrid fallback answered via {provider} "
-                    f"({result.get('latency_ms', 0)} ms)."
+                    f"SYS: Brain Engine answered via {provider} ({kind}, "
+                    f"{result.get('latency_ms', 0)} ms, "
+                    f"{result.get('memory_hits', 0)} memory hits, "
+                    f"{result.get('history_items', 0)} history items)."
                 )
             except Exception as exc:
                 try:
                     self.ui.write_log(
-                        "ERR: Hybrid text fallback unavailable: "
+                        "ERR: Brain Engine text fallback unavailable: "
                         f"{type(exc).__name__}. Check provider keys or local Ollama."
                     )
                 except Exception:
@@ -1625,7 +1652,7 @@ class JarvisLive:
                 except Exception:
                     pass
 
-        threading.Thread(target=_work, name="jarvis-hybrid-text-fallback", daemon=True).start()
+        threading.Thread(target=_work, name="jarvis-brain-engine-fallback", daemon=True).start()
 
     def _on_text_command(self, text: str):
         # Owner PIN/password input is intercepted locally and is never sent to
@@ -2037,6 +2064,7 @@ class JarvisLive:
             parts.append(mem_str)
         parts.append(redact_sensitive_content(voice_personality_prompt(memory if memory_access else {})))
         parts.append(sys_prompt)
+        parts.append(build_brain_protocol())
         if self._live_switch_context:
             parts.append(
                 "[RECENT CONVERSATION RESTORED AFTER AUTOMATIC MODEL SWITCH]\n"

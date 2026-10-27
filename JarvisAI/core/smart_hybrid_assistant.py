@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.brain_engine import BrainEngine
 from core.browser_automation import BrowserAutomation
 from core.hybrid_llm_router import HybridLLMRouter
-from core.smart_intent_router import SmartIntentRouter, _configured_keys, _configured_preferred_provider
+from core.smart_intent_router import SmartIntentRouter
 
 
 class SmartHybridAssistant:
@@ -21,12 +22,15 @@ class SmartHybridAssistant:
         *,
         intent_router: Any | None = None,
         chat_router_factory: Any = HybridLLMRouter,
+        brain_engine_factory: Any = BrainEngine,
         browser_factory: Any = BrowserAutomation,
     ):
         self.intent_router = intent_router or SmartIntentRouter()
         self.chat_router_factory = chat_router_factory
+        self.brain_engine_factory = brain_engine_factory
         self.browser_factory = browser_factory
         self._browser = None
+        self._chat_history: list[dict[str, str]] = []
 
     def dispatch(self, user_text: str) -> dict[str, Any]:
         request = str(user_text or "").strip()
@@ -34,12 +38,27 @@ class SmartHybridAssistant:
             raise ValueError("A non-empty user request is required")
         route = self.intent_router.route(request)
         if route["intent"] != "BROWSER":
-            router = self.chat_router_factory(
-                preferred_provider=_configured_preferred_provider(),
-                api_keys=_configured_keys(),
-                online_check=False,
+            try:
+                from memory.config_manager import get_memory_provider_access_enabled
+                memory_enabled = bool(get_memory_provider_access_enabled())
+            except Exception:
+                memory_enabled = False
+            brain = self.brain_engine_factory(
+                router_factory=self.chat_router_factory,
+                memory_enabled=memory_enabled,
             )
-            result = router.query(request)
+            result = brain.respond(
+                request,
+                conversation_history=self._chat_history,
+                memory_enabled=memory_enabled,
+            )
+            answer = str(result.get("text") or "").strip()
+            if answer:
+                self._chat_history.extend([
+                    {"role": "user", "content": request},
+                    {"role": "assistant", "content": answer},
+                ])
+                self._chat_history = self._chat_history[-12:]
             return {"intent": "CHAT", "result": result}
 
         lowered = request.lower()

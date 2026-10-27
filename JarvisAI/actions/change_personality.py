@@ -27,7 +27,6 @@ def change_personality(parameters: dict, **context) -> str:
         "operator": "system",
         "custom": "custom",
         "normal mode": "conversational",
-        "normal": "conversational",
         "standard": "conversational",
         "friendly": "affectionate",
         "angry mode": "angry",

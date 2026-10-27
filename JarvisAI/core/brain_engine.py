@@ -272,7 +272,7 @@ class BrainEngine:
                 from core.personal_cloud_memory import get_personal_memory_context
                 personal_context = get_personal_memory_context()
                 if personal_context:
-                    memory_context = "\\n\\n".join(
+                    memory_context = "\n\n".join(
                         value for value in (memory_context, personal_context) if value
                     )
         except Exception as exc:

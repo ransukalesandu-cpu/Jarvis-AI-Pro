@@ -4,16 +4,16 @@ import {
   normalizeEvidence,
   validatePersonalFact,
 } from "./domain.ts";
-import { assertEquals, assertFalse, assertTrue } from "jsr:@std/assert";
+import { assertEquals } from "jsr:@std/assert";
 
 Deno.test("only allowlisted, directly grounded profile keys are accepted", () => {
-  assertTrue(isAllowedFactKey("name"));
-  assertTrue(isAllowedFactKey("siblings"));
-  assertFalse(isAllowedFactKey("password"));
-  assertFalse(isAllowedFactKey("medical_history"));
+  assertEquals(isAllowedFactKey("name"), true);
+  assertEquals(isAllowedFactKey("siblings"), true);
+  assertEquals(isAllowedFactKey("password"), false);
+  assertEquals(isAllowedFactKey("medical_history"), false);
 });
 
-Deno.test("profile fact value must appear in user's evidence quote", () => {
+Deno.test("user-name candidates must match the name immediately after a self-name cue", () => {
   assertEquals(validatePersonalFact({
     fact_key: "name",
     value: "Lesandu",
@@ -39,6 +39,9 @@ Deno.test("profile fact value must appear in user's evidence quote", () => {
     value: "ලසඳු",
     evidence_quote: "මගේ නම ලසඳු",
   }).ok, true);
+});
+
+Deno.test("sibling presence is accepted but sibling-identifying detail is rejected", () => {
   assertEquals(validatePersonalFact({
     fact_key: "siblings",
     value: "I have two siblings",
@@ -51,12 +54,12 @@ Deno.test("profile fact value must appear in user's evidence quote", () => {
   }).ok, false);
 });
 
-Deno.test("rejects contact details and credentials instead of storing them", () => {
-  assertTrue(isSensitiveFactContent("Email me at person@example.com"));
-  assertTrue(isSensitiveFactContent("My password is hunter123"));
-  assertTrue(isSensitiveFactContent("I am Muslim and prefer halal food"));
-  assertTrue(isSensitiveFactContent("My medical diagnosis is sensitive"));
-  assertFalse(isSensitiveFactContent("I have two siblings"));
+Deno.test("rejects contact details, credentials and sensitive categories", () => {
+  assertEquals(isSensitiveFactContent("Email me at person@example.com"), true);
+  assertEquals(isSensitiveFactContent("My password is hunter123"), true);
+  assertEquals(isSensitiveFactContent("I am Muslim and prefer halal food"), true);
+  assertEquals(isSensitiveFactContent("My medical diagnosis is sensitive"), true);
+  assertEquals(isSensitiveFactContent("I have two siblings"), false);
   assertEquals(validatePersonalFact({
     fact_key: "family_context",
     value: "person@example.com",

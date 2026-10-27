@@ -23,7 +23,9 @@ class BihansaHologramWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(320, 320)
-        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        # Keep the animated Bihansa hologram transparent over the existing HUD.
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self._reduced_motion = False
         self._glow_intensity = 1.0
         self._animation_speed = 1.0
@@ -184,10 +186,13 @@ class BihansaHologramWidget(QWidget):
         if not p.isActive():
             return
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # Clear the previous frame without covering the parent HUD with a solid fill.
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+        p.fillRect(self.rect(), Qt.GlobalColor.transparent)
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
         w, h = float(self.width()), float(self.height())
         elapsed = time.monotonic() - self._start_time
         t = 0.0 if self._reduced_motion else elapsed * self._animation_speed
-        p.fillRect(self.rect(), QColor("#09040f"))
         cx, cy, size = w * .5, h * .455, min(w, h)
         pink = QColor("#ff4fc8")
         hot = QColor("#ffb1ee")

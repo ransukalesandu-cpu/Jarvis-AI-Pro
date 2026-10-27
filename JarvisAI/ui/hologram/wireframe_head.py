@@ -47,7 +47,9 @@ class NeuralWireframeHead(_BASE_CANVAS):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(320, 320)
-        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        # Keep the hologram floating over the HUD instead of painting an opaque rectangle.
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
         # State tracking
         self._state = "IDLE"  # IDLE, LISTENING, THINKING, SPEAKING, PRIVACY_LOCK
@@ -177,7 +179,10 @@ class NeuralWireframeHead(_BASE_CANVAS):
             return
 
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.fillRect(self.rect(), self.COLOR_BG)
+        # Clear only this widget's previous frame to transparent; preserve the parent HUD.
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+        p.fillRect(self.rect(), Qt.GlobalColor.transparent)
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
 
         W, H = self.width(), self.height()
         cx, cy = W / 2.0, (H / 2.0) + self._drift_y

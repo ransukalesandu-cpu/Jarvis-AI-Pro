@@ -7,7 +7,7 @@ create table if not exists public.jarvis_personal_memory_settings (
   updated_at timestamptz not null default now()
 );
 alter table public.jarvis_personal_memory_settings enable row level security;
-revoke all on public.jarvis_personal_memory_settings from anon, authenticated;
+revoke all on public.jarvis_personal_memory_settings from public, anon, authenticated;
 grant all on public.jarvis_personal_memory_settings to service_role;
 
 create table if not exists public.jarvis_personal_memories (
@@ -27,5 +27,5 @@ create table if not exists public.jarvis_personal_memories (
 create index if not exists jarvis_personal_memories_user_updated_idx
   on public.jarvis_personal_memories (user_id, updated_at desc);
 alter table public.jarvis_personal_memories enable row level security;
-revoke all on public.jarvis_personal_memories from anon, authenticated;
+revoke all on public.jarvis_personal_memories from public, anon, authenticated;
 grant all on public.jarvis_personal_memories to service_role;

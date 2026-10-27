@@ -104,9 +104,13 @@ _SENSITIVE_CATEGORY = re.compile(
 )
 
 _SIBLING_IDENTIFYING = re.compile(
-    r"\b(?:named|called|name is|name's|birthday|age is|phone|email|address|school|"
-    r"occupation|profession|doctor|teacher|student|works? at)\b|"
-    r"(?:නම|උපන්දිනය|දුරකථන|ලිපිනය)",
+    r"\b(?:my\s+)?(?:sister|brother|siblings?)(?:['’]s)?\s+"
+    r"(?:name|age|birthday|phone|email|address|school|occupation|profession)\b|"
+    r"\b(?:my\s+)?(?:sister|brother|siblings?)\s+"
+    r"(?:named|called|is\s+[A-Z][\w'-]+|works?\s+at|studies\s+at|attends)\b|"
+    r"\b(?:her|his|their)\s+(?:name|age|birthday|phone|email|address|school|occupation|profession)\b|"
+    r"(?:මගේ\s*(?:අක්කා|අයියා|මල්ලි|නංගි|සහෝදර)(?:ගේ)?\s*"
+    r"(?:නම|උපන්දිනය|වයස|දුරකථන|ලිපිනය|පාසල))",
     re.IGNORECASE,
 )
 
@@ -179,7 +183,8 @@ def validate_personal_fact(source_text: str, candidate: Any) -> dict[str, str] |
         return None
     # Never save another family member's identifying details, even if the
     # extractor mislabels that detail as family_context or preferences.
-    if _SIBLING_EVIDENCE.search(quote) and _SIBLING_IDENTIFYING.search(quote):
+    if (key != "name" and _SIBLING_EVIDENCE.search(quote)
+            and _SIBLING_IDENTIFYING.search(quote)):
         return None
     if (_SENSITIVE_TEXT.search(value) or _SENSITIVE_TEXT.search(quote)
             or _SENSITIVE_CATEGORY.search(value) or _SENSITIVE_CATEGORY.search(quote)):

@@ -33,9 +33,13 @@ from PyQt6.QtGui import (
     QPen, QPixmap, QRadialGradient, QShortcut,
 )
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel, QLineEdit,
-    QMainWindow, QMessageBox, QPushButton, QScrollArea, QSizePolicy, QSplitter,
-    QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar, QSlider,
+    QAbstractButton, QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect,
+    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QScrollArea,
+    QSizePolicy, QSplitter, QStackedWidget, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
+    QProgressBar, QSlider,
+)
+from core.voice_ui_control import (
+    VoiceUICommand, is_high_impact_ui_label, normalize_label,
 )
 try:
     from PyQt6.QtOpenGLWidgets import QOpenGLWidget
@@ -4306,6 +4310,7 @@ class MainWindow(QMainWindow):
     _clipboard_sig  = pyqtSignal(str)        # clipboard text changed (thread-safe)
     _confirm_sig    = pyqtSignal(str, str)   # (title, detail) — irreversible-action gate
     _confirm_hide_sig = pyqtSignal()
+    _voice_ui_command_sig = pyqtSignal(object)  # parsed voice command → Qt thread
     _pin_prompt_sig = pyqtSignal(object)  # marshal owner PIN dialogs to the Qt thread
     _neural_hand_start_sig = pyqtSignal()     # marshal camera startup from confirmation worker to Qt
     _wake_dl_sig    = pyqtSignal(bool, str)  # wake-word install finished (ok, message)
@@ -4520,6 +4525,7 @@ class MainWindow(QMainWindow):
         self._camera_sig.connect(self._show_camera_frame)
         self._confirm_sig.connect(self._show_confirm_banner)
         self._confirm_hide_sig.connect(self._hide_confirm_banner)
+        self._voice_ui_command_sig.connect(self._dispatch_voice_ui_command)
         self._pin_prompt_sig.connect(self._run_pin_prompt)
         self._neural_hand_start_sig.connect(self._start_neural_hand_control_after_confirmation)
         self._cam_stream_sig.connect(self._on_cam_stream)
@@ -7360,6 +7366,230 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self._log.append_log(f"ERR: Confirmation failed — {e}")
 
+    def queue_voice_ui_command(self, command: VoiceUICommand) -> bool:
+        """Queue a parsed voice command for execution on Qt's GUI thread."""
+        if not isinstance(command, VoiceUICommand):
+            return False
+        try:
+            self._voice_ui_command_sig.emit(command)
+            return True
+        except (RuntimeError, TypeError):
+            return False
+
+    @staticmethod
+    def _voice_control_labels(widget: QWidget) -> list[str]:
+        """Collect labels from a visible control and its nearby container context."""
+        values: list[str] = []
+        for attr in ("text", "objectName", "accessibleName", "toolTip", "statusTip", "windowTitle"):
+            try:
+                getter = getattr(widget, attr, None)
+                value = getter() if callable(getter) else ""
+                if value:
+                    values.append(str(value))
+            except (RuntimeError, TypeError):
+                pass
+        parent = widget.parentWidget()
+        depth = 0
+        while parent is not None and depth < 3:
+            for attr in ("accessibleName", "windowTitle", "objectName", "toolTip"):
+                try:
+                    getter = getattr(parent, attr, None)
+                    value = getter() if callable(getter) else ""
+                    if value:
+                        values.append(str(value))
+                except (RuntimeError, TypeError):
+                    pass
+            parent = parent.parentWidget()
+            depth += 1
+        return values
+
+    @staticmethod
+    def _voice_control_score(target: str, labels: list[str]) -> int:
+        """Score only exact/whole-token matches to avoid accidental clicks."""
+        target_norm = normalize_label(target)
+        if not target_norm:
+            return 0
+        variants = [target_norm]
+        aliases = {
+            "settings": ("settings", "controls", "gear"),
+            "microphone": ("microphone", "mic"),
+            "mic": ("mic", "microphone"),
+            "fullscreen": ("fullscreen", "full screen"),
+            "console": ("console", "command console"),
+            "remote": ("remote", "remote control"),
+            "field": ("field", "neural field"),
+            "hand control": ("hand control", "hand"),
+            "interrupt": ("interrupt", "stop speaking"),
+        }
+        variants.extend(aliases.get(target_norm, ()))
+        normalized_labels = [normalize_label(label) for label in labels if label]
+        best = 0
+        for variant in set(variants):
+            target_words = set(variant.split())
+            if not target_words:
+                continue
+            for label in normalized_labels:
+                if not label:
+                    continue
+                label_words = set(label.split())
+                if label == variant:
+                    score = 100
+                elif variant in label:
+                    score = 90
+                elif target_words.issubset(label_words):
+                    score = 80 + min(10, len(target_words))
+                elif variant == "close" and label_words.intersection({"dismiss", "cancel"}):
+                    score = 55
+                else:
+                    score = 0
+                best = max(best, score)
+        return best
+
+    def _dispatch_voice_ui_command(self, command: VoiceUICommand) -> None:
+        """Perform a narrowly matched command on visible JARVIS controls only."""
+        if not isinstance(command, VoiceUICommand):
+            return
+
+        # Fail closed: generic UI commands must not bypass the owner session.
+        try:
+            from core import security
+            if not security.is_owner_access_allowed():
+                self._log.append_log(
+                    "SEC: Voice UI control blocked — verify the owner session first."
+                )
+                return
+        except Exception:
+            self._log.append_log("SEC: Voice UI control blocked — authentication state unavailable.")
+            return
+
+        # The dedicated confirmation gate owns these controls. Do not let a
+        # generic "click confirm" command bypass Voice ID/manual-click rules.
+        try:
+            from core.confirm import pending_title
+            pending = pending_title()
+        except Exception:
+            pending = ""
+        if pending:
+            self._log.append_log(
+                f"SEC: A protected confirmation is pending ({pending}). "
+                "Use CONFIRM ACTION / CANCEL ACTION where voice approval is allowed; "
+                "manual-click-only requests must be resolved on the HUD."
+            )
+            return
+
+        if command.action in {"focus_next", "focus_previous"}:
+            moved = self.focusNextPrevChild(command.action == "focus_next")
+            self._log.append_log(
+                "SYS: Focus moved." if moved else "SYS: No next/previous focusable control."
+            )
+            return
+
+        if command.action in {"next_tab", "previous_tab"}:
+            tabs = [
+                tab for tab in self.findChildren(QTabWidget)
+                if tab.isVisible() and tab.isEnabled() and tab.count() > 0
+            ]
+            if not tabs:
+                self._log.append_log("SYS: No visible tab control is available.")
+                return
+            delta = -1 if command.action == "previous_tab" else 1
+            focused = QApplication.focusWidget()
+            tab = next(
+                (item for item in tabs if focused is not None and
+                 (item is focused or item.isAncestorOf(focused))),
+                tabs[-1],
+            )
+            new_index = tab.currentIndex() + delta
+            if 0 <= new_index < tab.count():
+                tab.setCurrentIndex(new_index)
+                self._log.append_log(f"SYS: Selected tab {tab.tabText(new_index)}.")
+            else:
+                self._log.append_log("SYS: Already at the first/last tab.")
+            return
+
+        if command.action == "scroll":
+            areas = [
+                area for area in self.findChildren(QScrollArea)
+                if area.isVisible() and area.isEnabled()
+            ]
+            if not areas:
+                self._log.append_log("SYS: No visible scrollable panel was found.")
+                return
+            focused = QApplication.focusWidget()
+            area = next(
+                (item for item in areas if focused is not None and item.isAncestorOf(focused)),
+                areas[-1],
+            )
+            bar = area.verticalScrollBar()
+            step = max(1, bar.singleStep()) * 3
+            if command.target == "top":
+                value = bar.minimum()
+            elif command.target == "bottom":
+                value = bar.maximum()
+            elif command.target == "up":
+                value = max(bar.minimum(), bar.value() - step)
+            else:
+                value = min(bar.maximum(), bar.value() + step)
+            bar.setValue(value)
+            self._log.append_log(f"SYS: Scrolled {command.target}.")
+            return
+
+        target = "close" if command.action == "close_active" else command.target
+        if not target:
+            self._log.append_log("SYS: Voice UI command needs a button/control name.")
+            return
+        if is_high_impact_ui_label(target):
+            self._log.append_log(
+                "SEC: This is a protected action. Use its dedicated confirmation flow; "
+                "generic voice-click is disabled for it."
+            )
+            return
+
+        matches: list[tuple[int, QAbstractButton, list[str]]] = []
+        for button in self.findChildren(QAbstractButton):
+            try:
+                if not button.isVisible() or not button.isEnabled():
+                    continue
+                labels = self._voice_control_labels(button)
+                score = self._voice_control_score(target, labels)
+                if score:
+                    matches.append((score, button, labels))
+            except RuntimeError:
+                continue
+
+        if not matches:
+            self._log.append_log(
+                f"SYS: No visible button matched '{target}'. Say 'click' and the exact label."
+            )
+            return
+
+        highest = max(item[0] for item in matches)
+        best = [item for item in matches if item[0] == highest]
+        if len(best) != 1:
+            labels = sorted({
+                normalize_label(item[1].text()) or item[1].objectName() or "unnamed control"
+                for item in best
+            })
+            self._log.append_log(
+                f"SYS: '{target}' is ambiguous. Say a more specific label: "
+                + ", ".join(labels[:5])
+            )
+            return
+
+        _, button, labels = best[0]
+        if any(is_high_impact_ui_label(label) for label in labels):
+            self._log.append_log(
+                "SEC: Voice click blocked for a protected control. Use the app's "
+                "dedicated confirmation flow or click it manually."
+            )
+            return
+        try:
+            label = button.text().strip() or button.toolTip().strip() or target
+            button.click()
+            self._log.append_log(f"SYS: Voice command activated '{label}'.")
+        except RuntimeError:
+            self._log.append_log("ERR: That control closed before it could be activated.")
+
     def _open_plugin_manager(self):
         plugins = self.get_plugins() if self.get_plugins else []
         cw = self.centralWidget()
@@ -7806,6 +8036,10 @@ class JarvisUI:
     @on_voice_preview.setter
     def on_voice_preview(self, cb):
         self._win.on_voice_preview = cb
+
+    def queue_voice_ui_command(self, command: VoiceUICommand) -> bool:
+        """Thread-safe: queue a validated UI command for the Qt thread."""
+        return self._win.queue_voice_ui_command(command)
 
     def show_confirm(self, title: str, detail: str) -> None:
         """Thread-safe: raise the irreversible-action gate. Called from action

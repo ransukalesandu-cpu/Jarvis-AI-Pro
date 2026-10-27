@@ -106,13 +106,13 @@ class VoiceInterruptionTests(unittest.TestCase):
 
     def test_fast_barge_in_accepts_quieter_voice_overlapping_playback(self):
         guard = EchoGuard()
-        # Model microphone audio with a distinct speech component that leaves a
-        # 0.16 residual after the known speaker output is subtracted.
+        # Model microphone audio with a quieter distinct speech component that
+        # leaves a 0.10 residual after the known speaker output is subtracted.
         guard._hist = [
             (0.30, np.array([1.0, 0, 0, 0, 0, 0, 0, 0], dtype=np.float32), 0.5)
         ]
         guard.set_tts_speaking(True, when=0.0)
-        mic_bands = np.array([0.84, 0.16, 0, 0, 0, 0, 0, 0], dtype=np.float32)
+        mic_bands = np.array([0.90, 0.10, 0, 0, 0, 0, 0, 0], dtype=np.float32)
         with patch("core.echo.band_energies", return_value=mic_bands):
             detections = [
                 guard.is_user_speech(

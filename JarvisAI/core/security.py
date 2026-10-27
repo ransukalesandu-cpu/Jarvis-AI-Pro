@@ -1023,6 +1023,10 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
     # banner for this direct, live-verified host turn. Provenance has already
     # been checked above; rates, protected paths and audit remain mandatory.
     if tier == TIER_DANGEROUS and owner_autopilot_authorized():
+        # Clear an older pending banner without approving/executing its action.
+        confirm_gate.cancel_pending(
+            "superseded by a fresh verified-host command; previous action was not executed"
+        )
         audit("call", name, tier, "owner_autopilot")
         _log(f"OWNER AUTOPILOT: executing verified host request '{name}' without a confirmation banner.")
         return _run_and_audit(name, tier, run)

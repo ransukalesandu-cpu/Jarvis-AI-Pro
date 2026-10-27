@@ -19,8 +19,6 @@ class VoiceUICommandParserTests(unittest.TestCase):
             ("Hey Jarvis, show controls", "controls"),
             ("go to response personality", "response personality"),
             ("tap microphone", "microphone"),
-            ("turn on microphone", "microphone"),
-            ("mute the microphone", "microphone"),
             ("settings eka open karanna", "settings"),
             ("settings button eka click karanna", "settings"),
             ("open karanna settings", "settings"),
@@ -30,6 +28,23 @@ class VoiceUICommandParserTests(unittest.TestCase):
                 self.assertIsNotNone(command)
                 self.assertEqual(command.action, "click")
                 self.assertEqual(command.target, target)
+
+    def test_state_commands_preserve_the_requested_state(self):
+        cases = {
+            "turn on microphone": ("microphone", "on"),
+            "turn off microphone": ("microphone", "off"),
+            "switch on the microphone": ("microphone", "on"),
+            "mute the microphone": ("microphone", "off"),
+            "unmute microphone": ("microphone", "on"),
+            "enable microphone": ("microphone", "on"),
+            "disable microphone": ("microphone", "off"),
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                command = parse_voice_ui_command(text)
+                self.assertIsNotNone(command)
+                self.assertEqual(command.action, "set_state")
+                self.assertEqual((command.target, command.desired_state), expected)
 
     def test_scroll_focus_and_tab_commands(self):
         cases = {

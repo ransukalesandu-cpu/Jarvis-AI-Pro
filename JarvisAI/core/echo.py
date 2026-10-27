@@ -299,7 +299,7 @@ class EchoGuard:
                 # Lower the fast-path ceiling so a distinct but quieter voice can
                 # break through speaker echo; VAD and consecutive-block checks
                 # in _listen_audio still protect against transient noise.
-                thr = max(0.04, min(thr, 0.075)) * adaptive_factor
+                thr = max(0.025, min(thr, 0.055)) * adaptive_factor
             elif self._tts_speaking:
                 thr = thr * adaptive_factor
 

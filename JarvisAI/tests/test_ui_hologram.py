@@ -21,7 +21,7 @@ import tempfile
 from unittest.mock import patch
 import numpy as np
 
-from PyQt6.QtCore import QSettings, QCoreApplication, QEvent
+from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, Qt
 from PyQt6.QtWidgets import QApplication
 
 # Ensure QApplication exists before testing Qt widgets
@@ -218,7 +218,7 @@ class TestUIHologram(unittest.TestCase):
         app.processEvents()
         self.assertEqual(hud._visualizer_stack.geometry(), hud._workspace.rect())
         self.assertTrue(hud.wireframe_visualizer.testAttribute(
-            __import__("PyQt6.QtCore", fromlist=["Qt"]).Qt.WidgetAttribute.WA_TranslucentBackground
+            Qt.WidgetAttribute.WA_TranslucentBackground
         ))
         self.assertTrue(hud.bihansa_visualizer.testAttribute(
             __import__("PyQt6.QtCore", fromlist=["Qt"]).Qt.WidgetAttribute.WA_TranslucentBackground

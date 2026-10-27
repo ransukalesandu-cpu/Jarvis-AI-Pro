@@ -83,12 +83,12 @@ def _get_access_token(base_url: str, public_key: str, timeout: float) -> str:
                     headers=headers, body={"refresh_token": refresh}, timeout=timeout,
                 )
             except RuntimeError:
-                # Never silently create a new anonymous identity when a saved
-                # session cannot refresh: that would orphan the enrolled host key
-                # and could mask a transient network/server failure.
-                _AUTH.update({"access_token": "", "refresh_token": "", "expires_at": 0.0})
+                # Clear the unusable access token, but retain the refresh token.
+                # A later provider retry must retry this identity, not silently
+                # sign up a replacement and orphan the enrolled host registration.
+                _AUTH.update({"access_token": "", "refresh_token": refresh, "expires_at": 0.0})
                 raise RuntimeError(
-                    "Supabase session refresh failed; retry connectivity or re-enroll the host session"
+                    "Supabase session refresh failed; retry connectivity or explicitly re-enroll the host session"
                 ) from None
 
         if auth_result is None:

@@ -4351,6 +4351,7 @@ class MainWindow(QMainWindow):
         self.on_voice_personality_change = None  # callable: () -> None — apply saved response style
         self.on_voice_preview = None   # callable: (vocal settings) -> bool
         self._confirm_overlay  = None   # live ConfirmBanner, if one is on screen
+        self._voice_control_overlay = None  # active modal-like overlay for voice-target scoping
         self.get_plugins       = None   # callable: () -> list[dict], set by JarvisLive
         self.get_plugin_settings = None # callable: () -> list[dict] settings schemas, set by JarvisLive
         self.on_wake_toggle    = None   # callable: (enable: bool) -> str, set by JarvisLive
@@ -7291,6 +7292,7 @@ class MainWindow(QMainWindow):
 
     def _centre_overlay(self, ov) -> None:
         """Place a floating overlay in the middle of the HUD and show it."""
+        self._voice_control_overlay = ov
         cw = self.centralWidget()
         ov.adjustSize()
         ov.setGeometry(
@@ -7416,6 +7418,11 @@ class MainWindow(QMainWindow):
             "mic": ("mic", "microphone"),
             "ai provider settings": ("ai provider settings", "ai provider keys", "provider keys", "ai provider"),
             "response personality settings": ("response personality settings", "response personality", "personality"),
+            "customize assistant": ("customize assistant", "customise assistant"),
+            "remote control": ("remote control", "remote"),
+            "fullscreen": ("fullscreen", "full screen"),
+            "auto start": ("auto start", "autostart"),
+            "wake word": ("wake word", "wake-word"),
             "fullscreen": ("fullscreen", "full screen"),
             "console": ("console", "command console"),
             "remote": ("remote", "remote control"),
@@ -7479,8 +7486,22 @@ class MainWindow(QMainWindow):
             )
             return
 
+        # Some Qt child overlays do not set Qt's modal flag. Restrict voice
+        # selection to the most recently raised centred overlay while it is
+        # visible, so covered background controls cannot receive the command.
+        control_root: QWidget = self
+        active_overlay = getattr(self, "_voice_control_overlay", None)
+        if active_overlay is not None:
+            try:
+                if active_overlay.isVisible():
+                    control_root = active_overlay
+                else:
+                    self._voice_control_overlay = None
+            except RuntimeError:
+                self._voice_control_overlay = None
+
         if command.action in {"focus_next", "focus_previous"}:
-            moved = self.focusNextPrevChild(command.action == "focus_next")
+            moved = control_root.focusNextPrevChild(command.action == "focus_next")
             self._log.append_log(
                 "SYS: Focus moved." if moved else "SYS: No next/previous focusable control."
             )
@@ -7488,7 +7509,7 @@ class MainWindow(QMainWindow):
 
         if command.action in {"next_tab", "previous_tab"}:
             tabs = [
-                tab for tab in self.findChildren(QTabWidget)
+                tab for tab in control_root.findChildren(QTabWidget)
                 if tab.isVisible() and tab.isEnabled() and tab.count() > 0
             ]
             if not tabs:
@@ -7511,7 +7532,7 @@ class MainWindow(QMainWindow):
 
         if command.action == "scroll":
             areas = [
-                area for area in self.findChildren(QScrollArea)
+                area for area in control_root.findChildren(QScrollArea)
                 if area.isVisible() and area.isEnabled()
             ]
             if not areas:
@@ -7547,17 +7568,43 @@ class MainWindow(QMainWindow):
             )
             return
 
-        matches: list[tuple[int, QAbstractButton, list[str]]] = []
-        for button in self.findChildren(QAbstractButton):
-            try:
-                if not button.isVisible() or not button.isEnabled():
+        def _find_matches(root: QWidget) -> list[tuple[int, QAbstractButton, list[str]]]:
+            found: list[tuple[int, QAbstractButton, list[str]]] = []
+            for candidate in root.findChildren(QAbstractButton):
+                try:
+                    if not candidate.isVisible() or not candidate.isEnabled():
+                        continue
+                    labels = self._voice_control_labels(candidate)
+                    score = self._voice_control_score(target, labels)
+                    if score:
+                        found.append((score, candidate, labels))
+                except RuntimeError:
                     continue
-                labels = self._voice_control_labels(button)
-                score = self._voice_control_score(target, labels)
-                if score:
-                    matches.append((score, button, labels))
-            except RuntimeError:
-                continue
+            return found
+
+        matches = _find_matches(control_root)
+
+        # Many quick actions live inside the settings drawer, which starts
+        # hidden. A direct request for one of those actions may open the drawer
+        # first, then match the newly visible target. Never open it behind an
+        # active overlay or for an arbitrary label.
+        drawer_targets = {
+            "ai provider settings", "ai provider keys", "provider keys",
+            "response personality", "response personality settings",
+            "personality", "customize assistant", "customise assistant",
+            "remote control", "fullscreen", "full screen", "auto start",
+            "autostart", "wake word", "plugin settings", "plugins",
+        }
+        if (
+            not matches
+            and control_root is self
+            and target in drawer_targets
+            and hasattr(self, "_quick_drawer")
+            and not self._quick_drawer.isVisible()
+        ):
+            self._drawer_btn.setChecked(True)
+            self._toggle_drawer(True)
+            matches = _find_matches(self)
 
         if not matches:
             self._log.append_log(

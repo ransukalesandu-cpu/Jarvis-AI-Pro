@@ -4657,6 +4657,17 @@ class JarvisLive:
                 await self._finish_shutdown()
                 return
 
+def _select_desktop_ui_mode(*, hud_available: bool, api_configured: bool, pin_enrolled: bool) -> str:
+    """Use the new HUD only when its module and required first-run setup are ready.
+
+    The legacy UI remains the safe setup path on a fresh install; it must never
+    be bypassed just because --hologram-hud was supplied.
+    """
+    if hud_available and api_configured and pin_enrolled:
+        return "hologram"
+    return "setup"
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="JARVIS AI Personal Assistant")
@@ -4710,34 +4721,49 @@ def main():
         if splash is not None:
             splash.close()
 
-        if HologramHUDUI is not None:
-            # The hologram adapter intentionally has no API-key or owner-PIN
-            # enrollment dialogs. On a fresh install, route through the full
-            # desktop UI so its existing first-run API and PIN setup can run.
-            # Once both are configured, subsequent launches can use the HUD.
-            try:
-                from memory.config_manager import is_configured as _api_is_configured
-                from core.security import get_auth_manager as _get_auth_manager
-                _setup_complete = (
-                    _api_is_configured()
-                    and _get_auth_manager().is_pin_enrolled()
-                )
-            except Exception as _setup_check_error:
-                print(
-                    "[JARVIS] First-run setup check failed; opening setup UI: "
-                    f"{type(_setup_check_error).__name__}"
-                )
-                _setup_complete = False
+        _api_configured = False
+        _pin_enrolled = False
+        _setup_check_error = None
+        try:
+            from memory.config_manager import is_configured as _api_is_configured
+            from core.security import get_auth_manager as _get_auth_manager
+            _api_configured = bool(_api_is_configured())
+            _pin_enrolled = bool(_get_auth_manager().is_pin_enrolled())
+        except Exception as exc:
+            _setup_check_error = exc
+            print(
+                "[JARVIS] First-run setup check failed; opening setup UI: "
+                f"{type(exc).__name__}: {exc}"
+            )
 
-            if _setup_complete:
-                ui = HologramHUDUI()
-            else:
-                print(
-                    "[JARVIS] API/PIN setup is incomplete; opening the setup-capable UI. "
-                    "After setup, restart to use --hologram-hud."
-                )
-                ui = JarvisUI("face.png")
+        _ui_mode = _select_desktop_ui_mode(
+            hud_available=HologramHUDUI is not None,
+            api_configured=_api_configured,
+            pin_enrolled=_pin_enrolled,
+        )
+        if _ui_mode == "hologram":
+            print("[JARVIS] Launching the upgraded Neural Wireframe Hologram HUD.")
+            ui = HologramHUDUI()
         else:
+            _missing_setup = []
+            if not _api_configured:
+                _missing_setup.append("Gemini API key")
+            if not _pin_enrolled:
+                _missing_setup.append("owner PIN")
+            if HologramHUDUI is None:
+                _missing_setup.append("Hologram HUD module (import unavailable)")
+            if _setup_check_error is not None and not _missing_setup:
+                _missing_setup.append("setup status could not be verified")
+            _reason = ", ".join(_missing_setup) or "setup verification"
+            print(
+                "[JARVIS] Opening first-run setup UI because the following "
+                f"requirement(s) are missing: {_reason}."
+            )
+            print(
+                "[JARVIS] Finish setup, close JARVIS, and launch it again. "
+                "The next launch will use the upgraded Hologram HUD once the "
+                "Gemini API key and owner PIN are both configured."
+            )
             ui = JarvisUI("face.png")
         startup["ui"] = ui
 

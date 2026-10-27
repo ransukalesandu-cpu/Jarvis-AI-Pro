@@ -13,9 +13,12 @@
   controls: searches, reads, listings, and inspection do not require a click;
   writes, deletes, code execution, and input that can submit or change data do.
   Email, messaging, Instagram, phone calls, generated-code execution, and
-  shutdown retain confirmation for every operation. Unknown actions inside
-  broad-control tools fail closed to confirmation; unknown plugins default to
-  the sensitive tier.
+  shutdown normally use confirmation. A fresh direct host command may skip
+  JARVIS's own banner only after the local PIN plus current live owner
+  Voice-ID/anti-spoof checks pass; provenance checks, rate limits and audit
+  logging remain enforced. Native OS permission prompts are unaffected.
+  Unknown actions inside broad-control tools fail closed to confirmation when
+  Owner Autopilot is not authorized; unknown plugins default to the sensitive tier.
 - Sensitive and dangerous actions are blocked if they are triggered from
   untrusted external content without a fresh user turn. Rate limits remain in
   place.

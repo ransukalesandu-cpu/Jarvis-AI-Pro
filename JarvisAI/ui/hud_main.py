@@ -300,7 +300,7 @@ class HUDMainWindow(QMainWindow):
             self._surface_ring,
         )
         self._dashboard = ModernDashboard(dashboard_panels, parent=self._workspace_stack)
-        self._dashboard.setObjectName("ModernDashboardPage")
+        # Preserve ModernDashboard objectName: its stylesheet selectors rely on it.
         self._workspace_stack.addWidget(self._dashboard)
         self._workspace_stack.setCurrentWidget(self._home_page)
 

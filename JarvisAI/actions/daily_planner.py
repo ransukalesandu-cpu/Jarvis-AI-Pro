@@ -110,12 +110,16 @@ def _set_alarm(item: dict[str, Any]) -> tuple[bool, str]:
     if when <= datetime.now():
         item["alarm_status"] = "failed"
         return False, "The item was saved, but its alarm time is in the past."
-    result = _reminder({
-        "action": "reminder",
-        "date": item["date"],
-        "time": item["time"],
-        "message": item["title"],
-    })
+    try:
+        result = _reminder({
+            "action": "reminder",
+            "date": item["date"],
+            "time": item["time"],
+            "message": item["title"],
+        })
+    except Exception as exc:
+        item["alarm_status"] = "failed"
+        return False, f"Alarm scheduling failed ({type(exc).__name__})."
     if isinstance(result, str) and result.startswith("Reminder set for "):
         item["alarm_status"] = "scheduled"
         return True, ""
@@ -127,12 +131,15 @@ def _cancel_alarm(item: dict[str, Any]) -> bool:
     when = _scheduled_datetime(item)
     if not when or when <= datetime.now() or item.get("alarm_status") != "scheduled":
         return True
-    result = _reminder({
-        "action": "cancel",
-        "date": item["date"],
-        "time": item["time"],
-        "message": item["title"],
-    })
+    try:
+        result = _reminder({
+            "action": "cancel",
+            "date": item["date"],
+            "time": item["time"],
+            "message": item["title"],
+        })
+    except Exception:
+        return False
     ok = isinstance(result, str) and result.startswith("Reminder cancelled")
     if ok:
         item["alarm_status"] = "cancelled"

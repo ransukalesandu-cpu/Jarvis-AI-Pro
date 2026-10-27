@@ -33,7 +33,7 @@ Jarvis AI may interact with local applications, files, devices, cameras, microph
 - Grant only the permissions required for the intended functionality.
 - Review commands and file operations before granting elevated privileges.
 - Do not execute untrusted commands or AI-generated scripts without appropriate validation.
-- Require user confirmation for sensitive or destructive operations.
+- Sensitive or destructive operations normally require confirmation. JARVIS Owner Autopilot may skip its own confirmation banner only for a direct current-turn command when both the local owner PIN and live enrolled Voice ID/anti-spoof are verified; provenance checks, rate limits, protected-path rules and audit logging remain active. Native OS/security permission prompts are not suppressed.
 - Do not expose remote-control interfaces directly to the public internet without appropriate authentication and security controls.
 
 ## Third-Party Services

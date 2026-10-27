@@ -3346,12 +3346,26 @@ class JarvisLive:
                                     from memory.config_manager import get_personal_cloud_memory_enabled
                                     from core.personal_cloud_memory import (
                                         capture_user_personal_facts, should_extract_personal_facts,
+                                        speaker_may_save_personal_facts,
                                     )
                                     if (get_personal_cloud_memory_enabled()
                                             and should_extract_personal_facts(full_in)):
-                                        asyncio.create_task(
-                                            asyncio.to_thread(capture_user_personal_facts, full_in)
+                                        voice_id_active = voice_id.is_enabled()
+                                        speaker_role = (
+                                            self._get_speaker_role_for_current_turn()
+                                            if voice_id_active else "owner"
                                         )
+                                        capture_allowed = speaker_may_save_personal_facts(
+                                            voice_id_enabled=voice_id_active,
+                                            voice_id_ready=bool(getattr(self, "_voice_id_enabled", False)),
+                                            speaker_role=speaker_role,
+                                        )
+                                        if capture_allowed:
+                                            asyncio.create_task(
+                                                asyncio.to_thread(capture_user_personal_facts, full_in)
+                                            )
+                                        else:
+                                            print("[PersonalMemory] Skipped capture because the current speaker was not verified as the owner.")
                                 except Exception as exc:
                                     print(
                                         "[PersonalMemory] Capture scheduling unavailable "

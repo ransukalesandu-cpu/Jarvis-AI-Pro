@@ -251,6 +251,7 @@ class HUDMainWindow(QMainWindow):
     def _wire_signals(self):
         """Wire VisualizerBridge signals to UI components."""
         self._bridge.sig_audio_energy.connect(self.wireframe_visualizer.set_audio_energy)
+        self._bridge.sig_audio_energy.connect(self._dashboard.set_audio_energy)
         self._bridge.sig_state_changed.connect(self._on_state_changed)
         self._bridge.sig_auth_state_changed.connect(self._on_auth_state_changed)
         self._bridge.sig_audio_energy.connect(self.bihansa_visualizer.set_audio_energy)
@@ -260,6 +261,47 @@ class HUDMainWindow(QMainWindow):
         self._bihansa_effects.toggled.connect(lambda value: self._settings.setValue("bihansa/effects", value) if hasattr(self, "_settings") else None)
         self._bihansa_voice_reactive.toggled.connect(lambda value: self._settings.setValue("bihansa/voice_reactive", value) if hasattr(self, "_settings") else None)
 
+    def _switch_workspace(self, page: QWidget) -> None:
+        """Switch dashboard/avatar pages with a short opacity transition."""
+        if not hasattr(self, "_workspace_stack"):
+            return
+        current = getattr(self, "_page_transition", None)
+        if current is not None:
+            try:
+                current.stop()
+            except RuntimeError:
+                pass
+        previous_page = getattr(self, "_page_transition_widget", None)
+        if previous_page is not None and previous_page is not page:
+            previous_page.setGraphicsEffect(None)
+
+        self._workspace_stack.setCurrentWidget(page)
+        effect = QGraphicsOpacityEffect(page)
+        page.setGraphicsEffect(effect)
+        effect.setOpacity(0.0)
+        animation = QPropertyAnimation(effect, b"opacity", self)
+        animation.setDuration(260)
+        animation.setStartValue(0.0)
+        animation.setEndValue(1.0)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        def finish_transition():
+            if self._page_transition is animation:
+                page.setGraphicsEffect(None)
+                self._page_transition = None
+                self._page_transition_widget = None
+
+        animation.finished.connect(finish_transition)
+        self._page_transition = animation
+        self._page_transition_widget = page
+        animation.start()
+
+    def _show_dashboard_page(self) -> None:
+        self._switch_workspace(self._dashboard)
+
+    def _show_avatar_page(self) -> None:
+        self._switch_workspace(self._avatar_page)
+
     @pyqtSlot(bool)
     def _set_bihansa_enabled(self, enabled: bool):
         """Switch only the central visualizer; normal JARVIS remains available."""
@@ -267,6 +309,7 @@ class HUDMainWindow(QMainWindow):
         self._visualizer_stack.setCurrentWidget(
             self.bihansa_visualizer if enabled else self.wireframe_visualizer
         )
+        self._dashboard.set_bihansa_mode(enabled)
         self._bihansa_toggle.setText("BIHANSA MODE: ON" if enabled else "BIHANSA MODE: OFF")
         # Keep BIHANSA-only controls out of the standard JARVIS view.
         self._bihansa_effects.setVisible(enabled)
@@ -357,6 +400,7 @@ class HUDMainWindow(QMainWindow):
         visual_state = "PRIVACY_LOCK" if self._privacy_locked else st
         self.wireframe_visualizer.set_state(visual_state)
         self.bihansa_visualizer.set_state(visual_state)
+        self._dashboard.set_state(visual_state)
         if self._privacy_locked:
             return
 
@@ -393,6 +437,7 @@ class HUDMainWindow(QMainWindow):
         self._privacy_locked = True
         self.wireframe_visualizer.set_state("PRIVACY_LOCK")
         self.bihansa_visualizer.set_state("PRIVACY_LOCK")
+        self._dashboard.set_state("PRIVACY_LOCK")
         self._lbl_hud_status.setText("⊘ PRIVACY LOCK ENGAGED")
         self._lbl_hud_status.setStyleSheet("color: #ff1744;")
         self._lock_banner.show()

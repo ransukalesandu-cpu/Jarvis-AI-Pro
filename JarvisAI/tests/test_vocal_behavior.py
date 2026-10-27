@@ -99,5 +99,22 @@ class VocalBehaviorTests(unittest.TestCase):
         self.assertIn("vocal", memory["voice_personality"])
 
 
+    def test_tone_setting_is_normalized_and_reaches_delivery_guidance(self):
+        settings = normalize_settings({"tone": "cinematic"})
+        self.assertEqual(settings["tone"], "natural")
+        # "cinematic" is a tone-command alias accepted by the voice-style action;
+        # the persisted low-level setting is the normalized value "dramatic".
+        settings = normalize_settings({"tone": "dramatic"})
+        self.assertEqual(settings["tone"], "dramatic")
+        guidance = delivery_guidance(settings)
+        self.assertIn("cinematic expressive emphasis", guidance)
+
+    def test_soft_tone_guidance_is_distinct_from_voice_preset(self):
+        settings = normalize_settings({"tone": "soft"})
+        guidance = delivery_guidance(settings)
+        self.assertIn("softer, gentler delivery", guidance)
+        self.assertIn("without intentional vocal mannerisms", delivery_guidance({"enabled": False}))
+
+
 if __name__ == "__main__":
     unittest.main()

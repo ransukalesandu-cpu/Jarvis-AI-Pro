@@ -2646,3 +2646,19 @@ Every contribution helps move Jarvis closer to becoming a fully capable personal
 ### Built by Sathija Balachandra
 
 **Jarvis AI — Hear. See. Speak. Think. Act.**
+
+
+## Voice-driven UI controls
+
+With an authenticated owner session, JARVIS can activate a **currently visible, uniquely matched** HUD button or checkbox from an explicit spoken command. Examples:
+
+- `click settings`
+- `open AI provider settings`
+- `click microphone` or `mute microphone`
+- `scroll down`, `scroll top`
+- `next tab`, `focus next`
+- `close dialog`
+
+Use the control's visible label when possible. If a label matches more than one visible control, JARVIS asks for a more specific phrase rather than choosing a target. Normal conversation is not interpreted as a click command.
+
+**Security boundaries:** generic voice-click commands require the active owner-authenticated session and are limited to visible JARVIS UI controls; they do not click arbitrary desktop applications or run shell commands. Destructive, publishing, messaging, payment, memory-import/export, and other high-impact operations must use their dedicated protected workflow. While a confirmation is pending, say `CONFIRM ACTION` or `CANCEL ACTION` for actions that allow spoken approval. Operations marked manual-click-only still require the HUD button. The existing Voice ID and owner checks remain in force.

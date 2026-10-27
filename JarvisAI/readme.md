@@ -227,7 +227,7 @@ those publishers.
 
 ## 🔀 Selectable AI API Providers
 
-Choose Gemini, OpenAI GPT, or Anthropic Claude in the first-launch initialization screen, or later from **⚙ → AI PROVIDER / KEYS**. Gemini is still required for live voice, tool routing, and Google-grounded search. Enter the selected provider's optional key during setup or in the provider panel; JARVIS saves it in the locally ignored `config/api_keys.json`. The fields are masked and existing keys stay in place when left blank. You can edit the fast and reasoning model IDs in the provider panel.
+The first-launch initialization screen asks only for the Gemini Live API key. Choose Gemini, OpenAI GPT, or Anthropic Claude later from **⚙ → AI PROVIDER / KEYS**. Gemini is still required for live voice, tool routing, and Google-grounded search. The provider panel supports optional local one-shot keys and model IDs; the hybrid text router uses keys configured in Supabase when its cloud configuration is present.
 
 The desktop Live voice conversation, Gemini function/tool routing, and Google-grounded search remain on Gemini. For the selected OpenAI or Anthropic provider, JARVIS supports text and image prompts; audio, video, and Google-specific search grounding require Gemini. If a selected provider fails or has no key, JARVIS reports the error instead of silently switching providers and possibly spending money on another API. OpenAI and Anthropic usage is billed separately under their account terms. Use the provider's current [OpenAI API documentation](https://platform.openai.com/docs/quickstart/make-your-first-api-request) or [Anthropic Python SDK documentation](https://platform.claude.com/docs/en/api/sdks/python) for account and billing setup.
 
@@ -2224,8 +2224,7 @@ when installed.
 `setup.py` installs the Python requirements and Playwright Chromium/Firefox for
 the current OS. To install only Python packages manually, use
 `python -m pip install -r requirements.txt` in the active virtual environment.
-On first launch, enter your Gemini API key and choose the one-shot AI provider; Gemini is required for live voice. Provider keys are stored locally in
-`config/api_keys.json`.
+On first launch, the setup window asks only for the Gemini API key required for Live voice. Choose the one-shot AI provider later from **⚙ → AI PROVIDER / KEYS**. The hybrid text router uses the provider keys already configured in Supabase when its cloud configuration is present.
 
 Voice ID supports Windows, macOS, and Linux when its optional model packages
 and the OS credential vault are available. Windows uses DPAPI; macOS uses

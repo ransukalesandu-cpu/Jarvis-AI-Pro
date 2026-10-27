@@ -27,11 +27,12 @@ from PyQt6.QtWidgets import (
 
 try:
     from PyQt6.QtWebEngineWidgets import QWebEngineView
-    from PyQt6.QtWebEngineCore import QWebEngineSettings
+    from PyQt6.QtWebEngineCore import QWebEngineSettings, QWebEnginePage
     _WEB_ENGINE_AVAILABLE = True
 except Exception:
     QWebEngineView = None
     QWebEngineSettings = None
+    QWebEnginePage = None
     _WEB_ENGINE_AVAILABLE = False
 
 from urllib.parse import urlparse
@@ -58,18 +59,38 @@ except Exception:
 
 
 
+if _WEB_ENGINE_AVAILABLE:
+    class _TaskCardPage(QWebEnginePage):
+        """Keep target=_blank / window.open navigation inside another HUD task card."""
+
+        def __init__(self, profile, parent=None, popup_factory=None):
+            super().__init__(profile, parent)
+            self._popup_factory = popup_factory
+
+        def createWindow(self, window_type):
+            if callable(self._popup_factory):
+                try:
+                    return self._popup_factory()
+                except Exception as exc:
+                    print(f"[HUD] Could not create embedded popup task card: {exc}")
+            return None
+else:
+    _TaskCardPage = None
+
+
 class FloatingTaskCard(QFrame):
     """Draggable glass task card with an embedded JavaScript-capable browser."""
 
     sig_closed = pyqtSignal(int)
 
     def __init__(self, task_id: int, title: str, url: str = "",
-                 html_content: str = "", parent=None):
+                 html_content: str = "", parent=None, popup_factory=None):
         super().__init__(parent)
         self.task_id = int(task_id)
         self.title = str(title or "JARVIS TASK")[:72]
         self._drag_offset = None
         self._collapsed = False
+        self._popup_factory = popup_factory
         self.setObjectName("FloatingTaskCard")
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -135,6 +156,13 @@ class FloatingTaskCard(QFrame):
         if _WEB_ENGINE_AVAILABLE:
             self.web_view = QWebEngineView(self._body)
             self.web_view.setStyleSheet("background: #06111b; border: none;")
+            try:
+                existing_page = self.web_view.page()
+                self.web_view.setPage(
+                    _TaskCardPage(existing_page.profile(), self.web_view, self._popup_factory)
+                )
+            except Exception:
+                pass
             try:
                 self.web_view.settings().setAttribute(
                     QWebEngineSettings.WebAttribute.JavascriptEnabled, True
@@ -463,7 +491,10 @@ class HUDMainWindow(QMainWindow):
 
         task_id = self._next_task_id
         self._next_task_id += 1
-        card = FloatingTaskCard(task_id, title, url, html_content, self._workspace)
+        card = FloatingTaskCard(
+            task_id, title, url, html_content, self._workspace,
+            popup_factory=self._create_popup_page,
+        )
         card.sig_closed.connect(self._remove_task_card)
         card_width = max(300, min(440, int(self._workspace.width() * 0.30)))
         card_height = max(190, min(330, int(self._workspace.height() * 0.30)))
@@ -508,6 +539,16 @@ class HUDMainWindow(QMainWindow):
             x = max(0, min(width - card_width, x + offset))
             y = max(58, min(height - card.height(), y + offset))
             card.move(x, y)
+
+    def _create_popup_page(self):
+        """Create a sibling task card for a page's JavaScript/open-link popup."""
+        if not _WEB_ENGINE_AVAILABLE:
+            return None
+        self._open_task_tab_on_ui("WEB TASK", "", FloatingTaskCard._empty_html())
+        if not self._task_order:
+            return None
+        card = self._task_cards.get(self._task_order[-1])
+        return card.web_view.page() if card and card.web_view is not None else None
 
     @pyqtSlot(int)
     def _remove_task_card(self, task_id: int):

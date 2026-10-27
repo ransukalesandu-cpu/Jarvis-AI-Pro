@@ -841,7 +841,7 @@ This prevents Jarvis's own responses from becoming part of the caller's stored m
 ---
 
 
-For the local day planner, alarm scheduling, and forgotten-task check-in, see [Daily Planner documentation](docs/DAILY_PLANNER.md).
+For the local day planner, alarm scheduling, and forgotten-task check-in, see [Daily Planner documentation](../docs/DAILY_PLANNER.md).
 
 ## 🔔 Owner Notification
 

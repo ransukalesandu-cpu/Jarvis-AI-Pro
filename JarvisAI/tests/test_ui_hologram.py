@@ -210,6 +210,20 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(hud.bihansa_visualizer.get_state(), "SPEAKING")
         self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
 
+    def test_fullscreen_hologram_canvas_and_transparency(self):
+        """The hologram fills the workspace and stays transparent over task cards."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.resize(1280, 800)
+        hud.show()
+        app.processEvents()
+        self.assertEqual(hud._visualizer_stack.geometry(), hud._workspace.rect())
+        self.assertTrue(hud.wireframe_visualizer.testAttribute(
+            __import__("PyQt6.QtCore", fromlist=["Qt"]).Qt.WidgetAttribute.WA_TranslucentBackground
+        ))
+        self.assertTrue(hud.bihansa_visualizer.testAttribute(
+            __import__("PyQt6.QtCore", fromlist=["Qt"]).Qt.WidgetAttribute.WA_TranslucentBackground
+        ))
+
     def test_hologram_hud_ui_adapter(self):
         """Test HologramHUDUI adapter class wrapping HUDMainWindow."""
         ui = HologramHUDUI(bridge=self.bridge)

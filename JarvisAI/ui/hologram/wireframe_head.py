@@ -19,14 +19,9 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSlot, pyqtSignal, QRectF, QPointF
 from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPainterPath
 from PyQt6.QtWidgets import QWidget
 
-if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
-    _BASE_CANVAS = QWidget
-else:
-    try:
-        from PyQt6.QtOpenGLWidgets import QOpenGLWidget
-        _BASE_CANVAS = QOpenGLWidget
-    except Exception:
-        _BASE_CANVAS = QWidget
+# The head is painted with QPainter, so a translucent QWidget canvas is more
+# appropriate than QOpenGLWidget and allows task cards to remain visible behind it.
+_BASE_CANVAS = QWidget
 
 
 class NeuralWireframeHead(_BASE_CANVAS):

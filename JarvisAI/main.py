@@ -3477,22 +3477,31 @@ class JarvisLive:
                                             self._inflight_user_tool_started = False
                                             holo_open_request_pending = False
                                             self.ui.write_log(f"You [UI command]: {candidate_text}")
-                                            owner_authorized = security.is_owner_access_allowed()
-                                            if owner_authorized and security.voice_id_required():
-                                                # If Voice ID is enabled, a PIN session alone
-                                                # must not let a different nearby speaker operate
-                                                # settings through voice. Re-check this exact live
-                                                # utterance before sending it to the UI thread.
-                                                owner_authorized = security.authorize_voice_confirmation()
-                                            if owner_authorized:
-                                                if not queue_ui_command(ui_command):
-                                                    self.ui.write_log(
-                                                        "ERR: Voice UI command could not be queued."
-                                                    )
-                                            else:
+                                            wake_named_request = bool(re.match(
+                                                r"^(?:hey\\s+)?(?:jarvis|maya)\\b",
+                                                " ".join(candidate_text.casefold().split()),
+                                            ))
+                                            if not self._awake and not wake_named_request:
                                                 self.ui.write_log(
-                                                    "SEC: Voice UI command blocked — verify owner access and, when enabled, live owner Voice ID."
+                                                    "SYS: Voice UI command ignored while sleeping — say 'Hey Jarvis' or use WAKE NOW first."
                                                 )
+                                            else:
+                                                owner_authorized = security.is_owner_access_allowed()
+                                                if owner_authorized and security.voice_id_required():
+                                                    # If Voice ID is enabled, a PIN session alone
+                                                    # must not let a different nearby speaker operate
+                                                    # settings through voice. Re-check this exact live
+                                                    # utterance before sending it to the UI thread.
+                                                    owner_authorized = security.authorize_voice_confirmation()
+                                                if owner_authorized:
+                                                    if not queue_ui_command(ui_command):
+                                                        self.ui.write_log(
+                                                            "ERR: Voice UI command could not be queued."
+                                                        )
+                                                else:
+                                                    self.ui.write_log(
+                                                        "SEC: Voice UI command blocked — verify owner access and, when enabled, live owner Voice ID."
+                                                    )
                                         else:
                                             in_buf.append(txt)
                                             self._inflight_user_text = " ".join(in_buf).strip()

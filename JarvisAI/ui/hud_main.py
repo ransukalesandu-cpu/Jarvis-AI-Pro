@@ -244,6 +244,163 @@ class FloatingTaskCard(QFrame):
         return super().eventFilter(watched, event)
 
 
+
+class CompactHologramOverlay(QWidget):
+    """Frameless, transparent always-on-top neural face for use beside other apps."""
+
+    sig_restore_requested = pyqtSignal()
+
+    def __init__(self, bridge: VisualizerBridge, bihansa_enabled: bool = False):
+        flags = (
+            Qt.WindowType.Tool
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.WindowDoesNotAcceptFocus
+        )
+        super().__init__(None, flags)
+        self._bridge = bridge
+        self._drag_offset = None
+        self.setWindowTitle("JARVIS Compact Hologram")
+        self.setFixedSize(300, 370)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setStyleSheet("background: transparent;")
+
+        self._stack = QStackedWidget(self)
+        self._stack.setStyleSheet("background: transparent; border: none;")
+        self._stack.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._stack.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+        self.wireframe_visualizer = NeuralWireframeHead(self._stack)
+        self.bihansa_visualizer = BihansaHologramWidget(self._stack)
+        self._stack.addWidget(self.wireframe_visualizer)
+        self._stack.addWidget(self.bihansa_visualizer)
+        self._stack.setCurrentWidget(
+            self.bihansa_visualizer if bihansa_enabled else self.wireframe_visualizer
+        )
+
+        self._restore_button = QPushButton("↗", self)
+        self._restore_button.setToolTip("Return to the full-screen JARVIS hologram (double-click the face also works)")
+        self._restore_button.setFixedSize(28, 28)
+        self._restore_button.setStyleSheet("""
+            QPushButton {
+                color: #b9faff; background: rgba(3, 18, 30, 195);
+                border: 1px solid rgba(80, 235, 255, 170);
+                border-radius: 14px; font: bold 13pt "Courier New";
+            }
+            QPushButton:hover { color: white; background: rgba(0, 130, 165, 225); }
+        """)
+        self._restore_button.clicked.connect(self.sig_restore_requested.emit)
+
+        self._bridge.sig_audio_energy.connect(self.wireframe_visualizer.set_audio_energy)
+        self._bridge.sig_audio_energy.connect(self.bihansa_visualizer.set_audio_energy)
+        self._bridge.sig_state_changed.connect(self._on_audio_state)
+        self._bridge.sig_auth_state_changed.connect(self._on_auth_state)
+        self._layout_overlay()
+        self.place_at_side()
+
+        # Let the user reposition the compact hologram by dragging its upper edge.
+        self.installEventFilter(self)
+        self._restore_button.raise_()
+
+    def _layout_overlay(self):
+        self._stack.setGeometry(0, 0, self.width(), self.height())
+        self._restore_button.move(self.width() - 38, 8)
+        self._restore_button.raise_()
+
+    @pyqtSlot(bool)
+    def _set_compact_overlay_mode(self, enabled: bool):
+        """Minimize the full HUD and leave only the transparent side hologram visible."""
+        enabled = bool(enabled)
+        if enabled:
+            if self._privacy_locked:
+                return
+            if self._compact_overlay is None:
+                self._compact_overlay = CompactHologramOverlay(
+                    self._bridge, self._bihansa_toggle.isChecked()
+                )
+                self._compact_overlay.sig_restore_requested.connect(
+                    self._restore_fullscreen_hud
+                )
+            self._compact_overlay.set_assistant_mode(self._bihansa_toggle.isChecked())
+            self._compact_overlay.place_at_side()
+            self._compact_overlay.show()
+            self._compact_overlay.raise_()
+            self._compact_mode = True
+            self.showMinimized()
+            return
+
+        self._compact_mode = False
+        if self._compact_overlay is not None:
+            self._compact_overlay.hide()
+        if os.environ.get("QT_QPA_PLATFORM") != "offscreen":
+            self.showNormal()
+            self.showFullScreen()
+            self.raise_()
+            self.activateWindow()
+        else:
+            self.showNormal()
+        self._layout_hologram_workspace()
+
+    def _restore_fullscreen_hud(self):
+        self._set_compact_overlay_mode(False)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._layout_overlay()
+
+    def place_at_side(self):
+        screen = QApplication.primaryScreen()
+        available = screen.availableGeometry() if screen else None
+        if available is None:
+            self.move(900, 220)
+            return
+        margin = 18
+        x = max(0, available.x() + available.width() - self.width() - margin)
+        y = max(0, available.y() + (available.height() - self.height()) // 2)
+        self.move(x, y)
+
+    def set_assistant_mode(self, bihansa_enabled: bool):
+        self._stack.setCurrentWidget(
+            self.bihansa_visualizer if bihansa_enabled else self.wireframe_visualizer
+        )
+
+    def _on_audio_state(self, state: str):
+        visual_state = "PRIVACY_LOCK" if getattr(self._bridge, "auth_state", "") in (
+            "PRIVACY_LOCK", "LOCKDOWN"
+        ) else str(state or "IDLE").upper()
+        self.wireframe_visualizer.set_state(visual_state)
+        self.bihansa_visualizer.set_state(visual_state)
+
+    def _on_auth_state(self, auth_state: str):
+        locked = str(auth_state or "").upper() in ("PRIVACY_LOCK", "LOCKDOWN")
+        state = "PRIVACY_LOCK" if locked else str(self._bridge.current_state or "IDLE").upper()
+        self.wireframe_visualizer.set_state(state)
+        self.bihansa_visualizer.set_state(state)
+
+    def mouseDoubleClickEvent(self, event):
+        self.sig_restore_requested.emit()
+        event.accept()
+
+    def eventFilter(self, watched, event):
+        # Drag from transparent face areas, without stealing clicks from the
+        # small restore control.
+        if watched is self:
+            if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+                pos = event.position().toPoint()
+                if pos.y() < 38 and pos.x() < self.width() - 46:
+                    self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+                    return True
+            elif event.type() == QEvent.Type.MouseMove and self._drag_offset is not None:
+                if event.buttons() & Qt.MouseButton.LeftButton:
+                    self.move(event.globalPosition().toPoint() - self._drag_offset)
+                    return True
+            elif event.type() == QEvent.Type.MouseButtonRelease:
+                self._drag_offset = None
+        return super().eventFilter(watched, event)
+
+
 class HUDMainWindow(QMainWindow):
     """
     Futuristic Neural Wireframe Hologram HUD Main Window.
@@ -255,6 +412,7 @@ class HUDMainWindow(QMainWindow):
     sig_avatar_text = pyqtSignal(str)
     sig_hybrid_telemetry = pyqtSignal(str, float, str, str)
     sig_task_tab_requested = pyqtSignal(str, str, str)
+    sig_compact_mode_requested = pyqtSignal(bool)
 
     def __init__(self, bridge: Optional[VisualizerBridge] = None, parent=None):
         super().__init__(parent)
@@ -264,6 +422,8 @@ class HUDMainWindow(QMainWindow):
         self._task_cards = {}
         self._task_order = []
         self._next_task_id = 1
+        self._compact_overlay = None
+        self._compact_mode = False
 
         # Dark cyberpunk theme style
         self.setStyleSheet("""
@@ -573,6 +733,7 @@ class HUDMainWindow(QMainWindow):
         self._bridge.sig_audio_energy.connect(self.wireframe_visualizer.set_audio_energy)
         self._bridge.sig_state_changed.connect(self._on_state_changed)
         self._bridge.sig_auth_state_changed.connect(self._on_auth_state_changed)
+        self.sig_compact_mode_requested.connect(self._set_compact_overlay_mode)
         self._bridge.sig_audio_energy.connect(self.bihansa_visualizer.set_audio_energy)
         self.sig_viseme_schedule.connect(self._schedule_visemes)
         self.sig_avatar_text.connect(self._show_avatar_text)
@@ -593,6 +754,8 @@ class HUDMainWindow(QMainWindow):
         self._visualizer_stack.setCurrentWidget(
             self.bihansa_visualizer if enabled else self.wireframe_visualizer
         )
+        if self._compact_overlay is not None:
+            self._compact_overlay.set_assistant_mode(enabled)
         self._bihansa_toggle.setText("BIHANSA: ON" if enabled else "BIHANSA: OFF")
         # Keep BIHANSA-only controls out of the standard JARVIS view.
         self._bihansa_effects.setVisible(enabled)
@@ -854,6 +1017,24 @@ class HologramHUDUI:
             )
         except (TypeError, ValueError, RuntimeError):
             pass
+
+    def enter_compact_overlay(self):
+        """Request compact mode safely from the tool/action worker thread."""
+        try:
+            self._win.sig_compact_mode_requested.emit(True)
+        except RuntimeError:
+            pass
+
+    def exit_compact_overlay(self):
+        """Request restoration of the full-screen HUD."""
+        try:
+            self._win.sig_compact_mode_requested.emit(False)
+        except RuntimeError:
+            pass
+
+    @property
+    def compact_overlay_active(self) -> bool:
+        return bool(self._win._compact_mode)
 
     def open_task_tab(self, title: str, url: str = "") -> bool:
         """Open a URL inside a draggable mini task card; no external browser is launched."""

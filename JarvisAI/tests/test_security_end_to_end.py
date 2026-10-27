@@ -202,6 +202,7 @@ class LiveOwnerAuthorizationTests(unittest.TestCase):
     def test_guard_falls_back_to_pin_even_with_owner_role_and_similarity_callback(self):
         from core import security, voice_id
         self.auth.set_master_pin('synthetic-local-pin')
+        self.auth.set_state("RESTRICTED_MODE")  # exercise explicit step-up from guest mode
         with mock.patch.object(security, '_auth_manager', self.auth), \
              mock.patch.object(security, '_voice_id_is_required', return_value=True), \
              mock.patch.object(security, '_voice_id_role_cb', return_value='owner'), \

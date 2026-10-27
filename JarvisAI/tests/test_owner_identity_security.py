@@ -165,15 +165,17 @@ class TestOwnerIdentitySecurity(unittest.TestCase):
         self.assertFalse(self.auth.verify_pin("wrong3"))
         self.assertTrue(self.auth.is_privacy_lock_active())
 
-    # 9. Successful PIN verification grants owner access in AuthManager
-    def test_successful_pin_grants_owner_access(self):
+    # 9. First-run password enrollment enables trusted local startup.
+    def test_first_run_password_enrollment_trusts_local_owner_without_login(self):
         if not hasattr(self.auth, "_hasher") or self.auth._hasher is None:
             from security import auth_manager
             if not auth_manager._ARGON2_AVAILABLE:
                 self.skipTest("argon2-cffi not installed")
 
         self.auth.set_master_pin("secret123")
-        self.assertFalse(self.auth.is_owner_access_allowed())
+        self.assertTrue(self.auth.is_owner_access_allowed())
+        self.assertEqual(self.auth.get_auth_method(), "setup")
+        self.assertFalse(self.auth.owner_factors_verified())
         verified = self.auth.verify_pin("secret123")
         self.assertTrue(verified)
         self.assertTrue(self.auth.is_owner_access_allowed())
@@ -211,18 +213,27 @@ class TestOwnerIdentitySecurity(unittest.TestCase):
             res = security.guard("weather_report", {"location": "Colombo"}, lambda: "Sunny 30C")
             self.assertEqual(res, "Sunny 30C")
 
-    # 13. Session authentication resetting after restart
-    def test_session_authentication_resets_after_restart(self):
+    # 13. Enrolled local host starts without a routine login prompt.
+    def test_enrolled_host_trust_restores_after_restart_but_lockout_wins(self):
+        self.auth.set_master_pin("local-owner-123")
         self.auth.process_voice_result(True, .95, is_live=True)
         self.assertEqual(self.auth.get_state(), FULL_ACCESS_MODE)
 
-        # Simulate app restart
+        # Simulate app restart: local owner access is restored without a prompt.
+        # Setup trust must not count as PIN verification for host-cloud access.
         restarted_auth = AuthManager(vault_path=self.vault_path, state_path=self.state_path)
-        self.assertEqual(restarted_auth.get_state(), RESTRICTED_MODE)
-        self.assertFalse(restarted_auth.is_owner_access_allowed())
+        self.assertEqual(restarted_auth.get_state(), FULL_ACCESS_MODE)
+        self.assertTrue(restarted_auth.is_owner_access_allowed())
+        self.assertFalse(restarted_auth.owner_factors_verified())
+
+        # Even a fresh live voice match cannot replace this process's PIN factor.
+        restarted_auth.process_voice_result(True, .95, is_live=True)
+        self.assertTrue(restarted_auth.is_owner_access_allowed())
+        self.assertFalse(restarted_auth.owner_factors_verified())
 
     def test_guard_can_reach_pin_step_up_before_dispatcher_denial(self):
         self.auth.set_master_pin("local-owner-123")
+        self.auth.set_state(RESTRICTED_MODE)
         with patch.object(security, "_auth_manager", self.auth), \
              patch.object(security, "_voice_id_is_required", return_value=False), \
              patch.object(security, "_untrusted_context", return_value=False), \

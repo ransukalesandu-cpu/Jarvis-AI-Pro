@@ -39,14 +39,15 @@ class AuthManagerTests(unittest.TestCase):
         self.assertFalse(self.manager.verify_pin("1234"))
         self.assertEqual(self.manager.get_state(), RESTRICTED_MODE)
 
-    def test_pin_success_grants_session_only_owner_access(self):
+    def test_enrolled_host_starts_without_routine_login_but_cloud_needs_voice(self):
         self.manager.set_master_pin("owner-pass-123")
         self.assertTrue(self.manager.verify_pin("owner-pass-123"))
         self.assertEqual(self.manager.get_state(), FULL_ACCESS_MODE)
         self.assertEqual(self.manager.get_auth_method(), "pin")
         restarted = AuthManager(vault_path=self.vault, state_path=self.state, cooldown_seconds=60)
-        self.assertEqual(restarted.get_state(), RESTRICTED_MODE)
-        self.assertFalse(restarted.is_owner_access_allowed())
+        self.assertEqual(restarted.get_state(), FULL_ACCESS_MODE)
+        self.assertTrue(restarted.is_owner_access_allowed())
+        self.assertFalse(restarted.owner_factors_verified())
 
     @patch("security.auth_manager.lock_workstation", return_value=True)
     def test_three_failed_pin_attempts_trigger_persisted_privacy_lock_and_notification(self, lock_workstation):

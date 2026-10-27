@@ -204,6 +204,18 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(hud.bihansa_visualizer.get_state(), "SPEAKING")
         self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
 
+    def test_hologram_visualizers_use_transparent_backgrounds(self):
+        """Both original hologram renderers must preserve transparent pixels."""
+        for widget_type in (NeuralWireframeHead, BihansaHologramWidget):
+            widget = self._track_widget(widget_type())
+            self.assertTrue(
+                widget.testAttribute(QEvent.Type.None) if False else
+                widget.testAttribute(__import__("PyQt6.QtCore", fromlist=["Qt"]).Qt.WidgetAttribute.WA_TranslucentBackground)
+            )
+            self.assertFalse(
+                widget.testAttribute(__import__("PyQt6.QtCore", fromlist=["Qt"]).Qt.WidgetAttribute.WA_OpaquePaintEvent)
+            )
+
     def test_bento_side_panels_keep_original_hologram_unchanged(self):
         """Modern side surfaces must not replace or reconfigure the original hologram."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))

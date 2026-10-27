@@ -230,6 +230,29 @@ class TestUIHologram(unittest.TestCase):
             __import__("PyQt6.QtCore", fromlist=["Qt"]).Qt.WidgetAttribute.WA_TranslucentBackground
         ))
 
+    def test_compact_overlay_mode_and_restore(self):
+        """Native app tasks can minimize the full HUD to a transparent side face."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.resize(1280, 800)
+        hud.show()
+        app.processEvents()
+
+        hud._set_compact_overlay_mode(True)
+        app.processEvents()
+        self.assertTrue(hud._compact_mode)
+        self.assertIsNotNone(hud._compact_overlay)
+        self.assertTrue(hud._compact_overlay.isVisible())
+        self.addCleanup(hud._compact_overlay.close)
+
+        self.bridge.update_state("SPEAKING")
+        app.processEvents()
+        self.assertEqual(hud._compact_overlay.wireframe_visualizer.get_state(), "SPEAKING")
+
+        hud._compact_overlay.sig_restore_requested.emit()
+        app.processEvents()
+        self.assertFalse(hud._compact_mode)
+        self.assertFalse(hud._compact_overlay.isVisible())
+
     def test_hologram_hud_ui_adapter(self):
         """Test HologramHUDUI adapter class wrapping HUDMainWindow."""
         ui = HologramHUDUI(bridge=self.bridge)

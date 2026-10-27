@@ -260,6 +260,7 @@ class CompactHologramOverlay(QWidget):
         super().__init__(None, flags)
         self._bridge = bridge
         self._drag_offset = None
+        self._privacy_locked = False
         self.setWindowTitle("JARVIS Compact Hologram")
         self.setFixedSize(300, 370)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -367,14 +368,13 @@ class CompactHologramOverlay(QWidget):
         )
 
     def _on_audio_state(self, state: str):
-        visual_state = "PRIVACY_LOCK" if getattr(self._bridge, "auth_state", "") in (
-            "PRIVACY_LOCK", "LOCKDOWN"
-        ) else str(state or "IDLE").upper()
+        visual_state = "PRIVACY_LOCK" if self._privacy_locked else str(state or "IDLE").upper()
         self.wireframe_visualizer.set_state(visual_state)
         self.bihansa_visualizer.set_state(visual_state)
 
     def _on_auth_state(self, auth_state: str):
         locked = str(auth_state or "").upper() in ("PRIVACY_LOCK", "LOCKDOWN")
+        self._privacy_locked = locked
         state = "PRIVACY_LOCK" if locked else str(self._bridge.current_state or "IDLE").upper()
         self.wireframe_visualizer.set_state(state)
         self.bihansa_visualizer.set_state(state)

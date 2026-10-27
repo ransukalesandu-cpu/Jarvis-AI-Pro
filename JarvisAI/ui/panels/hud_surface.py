@@ -7,9 +7,9 @@ a short fade-in only around the non-hologram telemetry surfaces.
 from __future__ import annotations
 
 from PyQt6.QtCore import QEvent, QEasingCurve, QPropertyAnimation, QTimer, Qt
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QCursor
 from PyQt6.QtWidgets import (
-    QCursor, QFrame, QGraphicsDropShadowEffect, QStackedWidget,
+    QFrame, QGraphicsDropShadowEffect, QStackedWidget,
     QSizePolicy, QVBoxLayout, QWidget,
 )
 

@@ -5239,6 +5239,7 @@ class MainWindow(QMainWindow):
         self._immersive_overlay.setGeometry(cw.rect())
         self._immersive_overlay.show()
         self._immersive_overlay.raise_()
+        self._voice_control_overlay = self._immersive_overlay
         self._immersive_open = True
         self._immersive_overlay.hud.update()
 
@@ -5374,6 +5375,8 @@ class MainWindow(QMainWindow):
         if self._neural_hand_active:
             self._stop_neural_hand_control()
         self._immersive_overlay.hide()
+        if getattr(self, "_voice_control_overlay", None) is self._immersive_overlay:
+            self._voice_control_overlay = None
         self._immersive_overlay.hud._tmr.stop()
         self.hud._tmr.setInterval(16)
         self.hud._tmr.start()

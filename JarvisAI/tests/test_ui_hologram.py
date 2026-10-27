@@ -195,6 +195,8 @@ class TestUIHologram(unittest.TestCase):
         self.bridge.update_state("SPEAKING")
         self.assertEqual(hud.bihansa_visualizer.get_state(), "PRIVACY_LOCK")
         self.assertEqual(hud.wireframe_visualizer.get_state(), "PRIVACY_LOCK")
+        self.assertEqual(hud._mini_orb._state, "PRIVACY_LOCK")
+        self.assertEqual(hud._heart_reactor._state, "PRIVACY_LOCK")
 
         # Clear PRIVACY_LOCK
         self.bridge.update_auth_state("FULL_ACCESS")

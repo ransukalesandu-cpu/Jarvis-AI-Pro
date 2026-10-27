@@ -71,7 +71,8 @@ _SENSITIVE_TEXT = re.compile(
     r"(?:\+?\d[\s().-]*){8,15}|https?://|"
     r"\b(?:password|passcode|one[- ]time code|api[-_ ]?key|access token|"
     r"refresh token|secret key|credit card|bank account|passport number|"
-    r"national id|social security|home address|street address)\b)",
+    r"national id|social security|home address|street address)\b|"
+    r"\b\d{1,6}\s+[\w.-]+\s+(?:street|st|road|rd|avenue|ave|lane|ln|drive|dr)\b",
     re.IGNORECASE,
 )
 

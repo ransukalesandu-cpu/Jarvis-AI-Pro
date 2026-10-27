@@ -21,29 +21,56 @@ _SESSION_FILE = Path(__file__).resolve().parent.parent / "config" / "supabase_au
 _SESSION_BLOCKED_FILE = _SESSION_FILE.with_suffix(".blocked")
 
 
+_KEYRING_SERVICE = "JarvisAI.SupabaseAuth"
+_KEYRING_ACCOUNT = "anonymous-refresh-token"
+
+
+def _native_keyring():
+    """Use only OS credential stores; never accept plaintext/file/fail backends."""
+    import keyring
+
+    if sys.platform == "darwin":
+        from keyring.backends.macOS import Keyring as NativeKeyring
+    elif sys.platform.startswith("linux"):
+        from keyring.backends.SecretService import Keyring as NativeKeyring
+    else:
+        raise RuntimeError("No supported native credential store is available")
+    if not isinstance(keyring.get_keyring(), NativeKeyring):
+        raise RuntimeError("Supabase session persistence requires the native OS credential store")
+    return keyring
+
+
 def _load_persisted_refresh_token() -> str:
-    """Load the anonymous Auth refresh token from the current Windows user's DPAPI store."""
-    if sys.platform != "win32":
-        return ""
+    """Load the anonymous Auth refresh token from DPAPI or the native OS keyring."""
     try:
-        from security.auth_manager import _dpapi_unprotect
-        return _dpapi_unprotect(_SESSION_FILE.read_bytes()).decode("utf-8").strip()
+        if sys.platform == "win32":
+            from security.auth_manager import _dpapi_unprotect
+            return _dpapi_unprotect(_SESSION_FILE.read_bytes()).decode("utf-8").strip()
+        keyring = _native_keyring()
+        return str(keyring.get_password(_KEYRING_SERVICE, _KEYRING_ACCOUNT) or "").strip()
     except Exception:
         return ""
 
 
 def _persist_refresh_token(token: str) -> None:
-    """Persist refresh tokens only as DPAPI-encrypted bytes on Windows."""
-    if sys.platform != "win32" or not token:
+    """Persist only encrypted DPAPI bytes or a native macOS/Linux credential."""
+    if not token:
         return
-    from security.auth_manager import _dpapi_protect
-    _SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
-    temp = _SESSION_FILE.with_suffix(".tmp")
-    try:
-        temp.write_bytes(_dpapi_protect(token.encode("utf-8")))
-        os.replace(temp, _SESSION_FILE)
-    finally:
-        temp.unlink(missing_ok=True)
+    if sys.platform == "win32":
+        from security.auth_manager import _dpapi_protect
+        _SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+        temp = _SESSION_FILE.with_suffix(".tmp")
+        try:
+            temp.write_bytes(_dpapi_protect(token.encode("utf-8")))
+            os.replace(temp, _SESSION_FILE)
+        finally:
+            temp.unlink(missing_ok=True)
+        return
+
+    keyring = _native_keyring()
+    keyring.set_password(_KEYRING_SERVICE, _KEYRING_ACCOUNT, token)
+    if keyring.get_password(_KEYRING_SERVICE, _KEYRING_ACCOUNT) != token:
+        raise RuntimeError("The OS credential store did not persist the Supabase session")
 
 
 _AUTH_LOCK = threading.RLock()
@@ -211,6 +238,16 @@ def _get_access_token(base_url: str, public_key: str, timeout: float) -> str:
                         pass
                     raise RuntimeError("Could not securely persist the Supabase Auth session; automatic re-enrollment is blocked") from None
         return access
+
+
+def has_persistent_auth_session() -> bool:
+    """Return whether the active Supabase refresh token is securely persisted."""
+    try:
+        current = str(_AUTH.get("refresh_token") or "").strip()
+        persisted = _load_persisted_refresh_token()
+        return bool(current and persisted and secrets.compare_digest(current, persisted))
+    except Exception:
+        return False
 
 
 def _local_owner_session_verified() -> bool:

@@ -2975,7 +2975,11 @@ class JarvisLive:
                                             frame, SEND_SAMPLE_RATE
                                         )
                                     )
-                                vad_confirms_speech = sum(vad_recent) >= 2
+                                # VAD is only a speech pre-filter here; EchoGuard and the
+                                # consecutive callback check handle echo/noise rejection.
+                                # One voiced 20 ms frame is enough to begin checking so
+                                # quiet speech and some accents do not get swallowed.
+                                vad_confirms_speech = sum(vad_recent) >= 1
 
                             is_user_voice = (
                                 self._echo.is_user_speech(

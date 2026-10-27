@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from core.brain_protocol import RequestProfile, build_brain_protocol, profile_request
+from core.brain_protocol import RequestProfile, build_brain_protocol, profile_guidance, profile_request
 from core.provider_fallback import query_text_fallback
 
 logger = logging.getLogger("Jarvis.BrainEngine")
@@ -32,15 +32,24 @@ def normalize_conversation_history(
     current_request: str = "",
     max_items: int = MAX_HISTORY_ITEMS,
     max_chars: int = MAX_HISTORY_CHARS,
+    assistant_names: Iterable[str] | None = None,
 ) -> list[dict[str, str]]:
     """Keep only clearly labelled user/assistant turns within a strict budget."""
-    if history is None:
+    if history is None or int(max_items) <= 0 or int(max_chars) <= 0:
         return []
-    try:
-        entries = list(history)
-    except (TypeError, ValueError):
-        return []
+    if isinstance(history, str):
+        entries = [history]
+    else:
+        try:
+            entries = list(history)
+        except (TypeError, ValueError):
+            return []
 
+    allowed_assistant_names = {
+        str(name or "").strip().casefold()
+        for name in (assistant_names or ())
+        if str(name or "").strip()
+    }
     normalized: list[dict[str, str]] = []
     current = " ".join(str(current_request or "").split()).casefold()
     remaining = max(0, int(max_chars))
@@ -52,14 +61,19 @@ def normalize_conversation_history(
             content = str(item.get("content", item.get("text", "")) or "")
         elif isinstance(item, str):
             match = re.match(
-                r"^\s*(user|you|human|assistant|jarvis|ai)\s*:\s*(.*)$",
+                r"^\s*([^:]{1,40})\s*:\s*(.*)$",
                 item,
                 flags=re.IGNORECASE | re.DOTALL,
             )
             if not match:
                 continue
-            prefix, content = match.group(1).casefold(), match.group(2)
-            role = "user" if prefix in {"user", "you", "human"} else "assistant"
+            prefix, content = match.group(1).strip().casefold(), match.group(2)
+            if prefix in {"user", "you", "human"}:
+                role = "user"
+            elif prefix in {"assistant", "jarvis", "ai"} or prefix in allowed_assistant_names:
+                role = "assistant"
+            else:
+                continue
         else:
             continue
 
@@ -156,6 +170,7 @@ def build_brain_user_prompt(
             "complexity": profile.complexity,
             "asks_for_plan": profile.asks_for_plan,
             "may_need_current_information": profile.needs_current_information,
+            "guidance": profile_guidance(profile),
         }, ensure_ascii=False, separators=(",", ":"))
         + "\nUse this profile only as a hint; the user's actual words take priority."
     ]
@@ -238,7 +253,8 @@ class BrainEngine:
             current_request=request,
         )
         memory_rows: list[dict[str, Any]] = []
-        if self.memory_enabled if memory_enabled is None else bool(memory_enabled):
+        use_memory = self.memory_enabled if memory_enabled is None else bool(memory_enabled)
+        if use_memory:
             memory_rows = self._retrieve_memory(request, str(project or "").strip())
         memory_context = format_memory_context(memory_rows)
         prompt = build_brain_user_prompt(

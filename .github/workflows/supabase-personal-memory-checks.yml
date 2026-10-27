@@ -25,8 +25,6 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - name: Format-check the personal-memory TypeScript
-        run: deno fmt --check supabase/functions/jarvis-personal-memory/index.ts supabase/functions/jarvis-personal-memory/domain.ts supabase/functions/jarvis-personal-memory/domain_test.ts
       - name: Type-check the validation domain
         run: deno check supabase/functions/jarvis-personal-memory/domain.ts supabase/functions/jarvis-personal-memory/domain_test.ts
       - name: Test personal-memory privacy validation

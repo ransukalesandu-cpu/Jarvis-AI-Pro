@@ -36,6 +36,7 @@ from ui.panels.memory_panel import MemoryPanel
 from ui.panels.scheduler_panel import SchedulerPanel
 from ui.panels.system_telemetry_ring import SystemTelemetryRing
 from ui.hud_main import HUDMainWindow, HologramHUDUI
+from ui.panels.modern_dashboard import FloatingHolographicOrb, SkeletonLoader
 
 
 class TestUIHologram(unittest.TestCase):
@@ -196,6 +197,30 @@ class TestUIHologram(unittest.TestCase):
         self.assertTrue(hud._lock_banner.isHidden())
         self.assertEqual(hud.bihansa_visualizer.get_state(), "SPEAKING")
         self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
+
+    def test_modern_bento_dashboard_orb_and_page_transitions(self):
+        """The dashboard is the default surface; the large visualizer is opt-in."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        self.assertEqual(hud._workspace_stack.currentWidget(), hud._dashboard)
+        self.assertIsInstance(hud._dashboard.orb, FloatingHolographicOrb)
+        self.assertIsInstance(hud._dashboard._skeleton, SkeletonLoader)
+
+        hud._dashboard.set_state("LISTENING")
+        self.assertIn("LISTENING", hud._dashboard.status_chip.text())
+        hud._dashboard.set_audio_energy(0.75)
+        self.assertEqual(hud._dashboard.orb._energy, 0.75)
+
+        hud._show_avatar_page()
+        self.assertEqual(hud._workspace_stack.currentWidget(), hud._avatar_page)
+        hud._show_dashboard_page()
+        self.assertEqual(hud._workspace_stack.currentWidget(), hud._dashboard)
+
+        hud._dashboard.set_bihansa_mode(True)
+        self.assertTrue(hud._dashboard.orb._bihansa)
+        hud._dashboard.finish_loading()
+        self.assertTrue(hud._dashboard._loaded)
+        self.assertTrue(hud._dashboard._skeleton.isHidden())
+        self.assertFalse(hud._dashboard._ready_group.isHidden())
 
     def test_hologram_hud_ui_adapter(self):
         """Test HologramHUDUI adapter class wrapping HUDMainWindow."""

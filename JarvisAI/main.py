@@ -4850,6 +4850,13 @@ class JarvisLive:
                     # has no desktop WAKE button — so it wakes JARVIS if asleep.
                     if not self._awake:
                         self.wake(reason="remote command")
+                    # A dashboard text command has no live microphone proof.
+                    # Clear any previous voice turn so a stale owner sample
+                    # cannot authorize confirmation-free execution for this text.
+                    with self._voice_id_audio_lock:
+                        self._voice_id_turn_audio = b""
+                        self._voice_id_audio_chunks.clear()
+                        self._voice_id_audio_turn_active = False
                     security.mark_user_turn_started()
                     await self.session.send_client_content(
                         turns={"role": "user", "parts": [{"text": text}]},

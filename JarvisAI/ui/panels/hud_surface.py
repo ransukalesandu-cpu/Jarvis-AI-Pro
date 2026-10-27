@@ -69,12 +69,26 @@ class BentoPanelSurface(QFrame):
         self._reveal_timer = QTimer(self)
         self._reveal_timer.setSingleShot(True)
         self._reveal_timer.timeout.connect(self.show_panel)
-        self._reveal_timer.start(620)
+        self._reveal_started = False
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().showEvent(event)
+        if self._stack.currentWidget() is self._skeleton and not self._reveal_started:
+            self._reveal_started = True
+            self._reveal_timer.start(620)
+
+    def hideEvent(self, event) -> None:  # noqa: N802 - Qt API
+        if self._stack.currentWidget() is self._skeleton:
+            self._reveal_timer.stop()
+            self._reveal_started = False
+        super().hideEvent(event)
 
     def show_panel(self) -> None:
         """Replace skeleton bars with the live panel using a brief opacity fade."""
         if self._stack.currentWidget() is self.panel:
             return
+        self._reveal_started = True
+        self._reveal_timer.stop()
         self._skeleton.stop()
         # Fade the stack, not the panel itself: the security layer may apply a
         # blur effect to sensitive telemetry while privacy lock is engaged.

@@ -1514,7 +1514,7 @@ wizard collects the provider choice and setup needed to connect JARVIS.
 ### Response personality and voice
 
 Click **RESPONSE PERSONALITY** in the settings drawer to choose a saved style:
-**Auto Adaptive**, **Conversational / Normal**, **Affectionate**, **Strict / Motivational**,
+**Auto Adaptive**, **Conversational / Normal**, **Affectionate**, **Strict**, **Motivational**,
 **Angry**, **Crazy / Chaotic**, **Playful**, **Funny / Comedian**, **Sarcastic**,
 **Storyteller**, **Calm**, **Hype**, **Teacher**, **Mentor**, **Detective**, **Poetic**,
 **Anime Energy**, **Professional**, **Concise**, **Technical**, **Emergency**, **Research**,

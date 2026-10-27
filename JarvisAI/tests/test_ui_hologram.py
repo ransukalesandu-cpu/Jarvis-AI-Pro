@@ -23,6 +23,7 @@ import numpy as np
 
 from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, Qt
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtTest import QTest
 
 # Ensure QApplication exists before testing Qt widgets
 app = QApplication.instance() or QApplication(sys.argv)
@@ -37,7 +38,7 @@ from ui.panels.memory_panel import MemoryPanel
 from ui.panels.scheduler_panel import SchedulerPanel
 from ui.panels.system_telemetry_ring import SystemTelemetryRing
 from ui.hud_main import HUDMainWindow, HologramHUDUI
-from ui.panels.modern_dashboard import FloatingHolographicOrb, SkeletonLoader
+from ui.panels.modern_dashboard import FloatingHolographicOrb, SkeletonLoader, ModernDashboard
 from ui.panels.hud_surface import BentoPanelSurface
 
 
@@ -263,19 +264,73 @@ class TestUIHologram(unittest.TestCase):
         hud._bihansa_toggle.setChecked(False)
         self.assertEqual(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
 
-    def test_left_icon_click_opens_and_prioritizes_selected_panel(self):
-        """Icon clicks must work without relying on hover-only event handling."""
+    def test_hologram_home_is_clean_and_dashboard_is_a_separate_page(self):
+        """The main page stays hologram-first; bento telemetry is opened separately."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
         hud.show()
         app.processEvents()
 
-        hud._left_icon_buttons[0].click()
-        self.assertTrue(hud._left_menu.isVisible())
-        self.assertIs(hud._left_menu_layout.itemAt(1).widget(), hud._surface_brain)
+        self.assertIs(hud._workspace_stack.currentWidget(), hud._home_page)
+        self.assertTrue(hud._left_rail.isHidden())
+        self.assertIsInstance(hud._home_page.findChild(NeuralWireframeHead), NeuralWireframeHead)
+        self.assertIsInstance(hud._dashboard, ModernDashboard)
+        self.assertEqual(len(hud._dashboard._cards), 5)
+        self.assertIsInstance(hud._dashboard._skeleton, SkeletonLoader)
 
-        hud._left_icon_buttons[1].click()
-        self.assertTrue(hud._left_menu.isVisible())
-        self.assertIs(hud._left_menu_layout.itemAt(1).widget(), hud._surface_security)
+        hud._toggle_dashboard_page()
+        app.processEvents()
+        self.assertIs(hud._workspace_stack.currentWidget(), hud._dashboard)
+        self.assertFalse(hud._left_rail.isHidden())
+        self.assertEqual(hud._dashboard_button.text(), "⌂")
+
+        # Dashboard fades are completed only on the dashboard widget; the
+        # OpenGL hologram page remains outside the graphics-opacity effect.
+        self.assertIs(hud._dashboard.graphicsEffect(), hud._dashboard_opacity_effect)
+        hud._show_hologram_page()
+        hud._workspace_animation.stop()
+        hud._finish_workspace_transition()
+        app.processEvents()
+        self.assertIs(hud._workspace_stack.currentWidget(), hud._home_page)
+        self.assertTrue(hud._left_rail.isHidden())
+        self.assertEqual(hud._dashboard_button.text(), "▦")
+
+    def test_dashboard_skeletons_start_when_dashboard_opens(self):
+        """Hidden home time must not consume the dashboard loading animation."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.show()
+        app.processEvents()
+
+        self.assertFalse(hud._dashboard._loaded)
+        self.assertFalse(hud._dashboard._loading_timer.isActive())
+        surfaces = (
+            hud._surface_brain, hud._surface_security, hud._surface_memory,
+            hud._surface_scheduler, hud._surface_ring,
+        )
+        for surface in surfaces:
+            self.assertIs(surface._stack.currentWidget(), surface._skeleton)
+            self.assertFalse(surface._reveal_timer.isActive())
+
+        hud._show_dashboard_page()
+        QTest.qWait(1050)
+        app.processEvents()
+        self.assertTrue(hud._dashboard._loaded)
+        for surface in surfaces:
+            self.assertIs(surface._stack.currentWidget(), surface.panel)
+
+    def test_left_icon_click_opens_and_prioritizes_selected_panel(self):
+        """Panel shortcuts open the separate dashboard and focus the selected live card."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.show()
+        app.processEvents()
+
+        hud._open_dashboard_panel(0)
+        self.assertIs(hud._workspace_stack.currentWidget(), hud._dashboard)
+        self.assertFalse(hud._left_rail.isHidden())
+        self.assertIs(hud._dashboard._cards[0].findChild(BentoPanelSurface), hud._surface_brain)
+
+        hud._open_dashboard_panel(1)
+        self.assertIs(hud._workspace_stack.currentWidget(), hud._dashboard)
+        self.assertIs(hud._dashboard._cards[1].findChild(BentoPanelSurface), hud._surface_security)
 
     def test_right_dropdown_repositions_after_resize(self):
         """The floating settings menu must remain anchored inside the window."""

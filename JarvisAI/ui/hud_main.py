@@ -17,11 +17,11 @@ if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFOR
 import threading
 from typing import Optional, Callable
 
-from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal, QTimer, QSettings, QEvent
+from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal, QTimer, QSettings, QEvent, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QFont, QColor
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QToolButton, QFrame, QGraphicsBlurEffect, QCheckBox, QStackedWidget
+    QPushButton, QToolButton, QFrame, QGraphicsBlurEffect, QGraphicsOpacityEffect, QCheckBox, QStackedWidget
 )
 
 from audio.visualizer_bridge import get_visualizer_bridge, VisualizerBridge
@@ -34,7 +34,7 @@ from ui.panels.security_panel import SecurityPanel
 from ui.panels.memory_panel import MemoryPanel
 from ui.panels.scheduler_panel import SchedulerPanel
 from ui.panels.system_telemetry_ring import SystemTelemetryRing
-from ui.panels.modern_dashboard import FloatingHolographicOrb
+from ui.panels.modern_dashboard import FloatingHolographicOrb, ModernDashboard
 from ui.panels.hud_surface import BentoPanelSurface
 
 try:
@@ -105,6 +105,16 @@ class HUDMainWindow(QMainWindow):
         # Minimal top row: remove decorative title/clock; keep one compact menu control.
         top_row = QHBoxLayout()
         top_row.addStretch()
+        self._dashboard_button = QToolButton(self)
+        self._dashboard_button.setText("▦")
+        self._dashboard_button.setToolTip("Open Bento dashboard")
+        self._dashboard_button.setFixedSize(38, 38)
+        self._dashboard_button.setStyleSheet(
+            "QToolButton { color: #00e5ff; background: rgba(10,18,28,190); "
+            "border: 1px solid #17485a; border-radius: 19px; font-size: 20px; }"
+            "QToolButton:hover { background: #102a38; border-color: #00e5ff; }"
+        )
+        top_row.addWidget(self._dashboard_button)
         self._right_menu_button = QToolButton(self)
         self._right_menu_button.setText("⋮")
         self._right_menu_button.setToolTip("JARVIS menu and settings")
@@ -157,23 +167,7 @@ class HUDMainWindow(QMainWindow):
             self._left_icon_buttons.append(button)
         left_rail_layout.addStretch()
 
-        self._left_menu = QFrame(self)
-        self._left_menu.setObjectName("leftMegaMenu")
-        self._left_menu.setFixedWidth(270)
-        self._left_menu.setStyleSheet(
-            "QFrame#leftMegaMenu { background: rgba(9,17,27,245); border: 1px solid #17485a; border-radius: 14px; }"
-        )
-        left_menu_layout = QVBoxLayout(self._left_menu)
-        self._left_menu_layout = left_menu_layout
-        left_menu_layout.setContentsMargins(8, 8, 8, 8)
-        left_menu_layout.setSpacing(8)
-        left_menu_title = QLabel("NEURAL SYSTEMS")
-        left_menu_title.setStyleSheet("color: #00e5ff; font-weight: bold; letter-spacing: 1px; padding: 4px;")
-        left_menu_layout.addWidget(left_menu_title)
-        left_menu_layout.addWidget(self._surface_brain)
-        left_menu_layout.addWidget(self._surface_security)
-        left_menu_layout.addStretch()
-        self._left_menu.hide()
+
 
         # Center hologram stack is preserved; only surrounding navigation changes.
         center_col = QVBoxLayout()
@@ -264,33 +258,78 @@ class HUDMainWindow(QMainWindow):
         self._bihansa_voice_reactive.setStyleSheet("QCheckBox { color: #ff9be8; spacing: 6px; padding: 4px; }")
         right_menu_layout.addWidget(self._bihansa_effects)
         right_menu_layout.addWidget(self._bihansa_voice_reactive)
-        right_menu_layout.addWidget(self._surface_memory)
-        right_menu_layout.addWidget(self._surface_scheduler)
-        right_menu_layout.addWidget(self._surface_ring)
+        # Keep the popup lightweight; open real telemetry widgets on the dashboard.
+        for label, panel_index in (
+            ("OPEN BRAIN PANEL", 0),
+            ("OPEN SECURITY PANEL", 1),
+            ("OPEN MEMORY PANEL", 2),
+            ("OPEN SCHEDULER", 3),
+            ("OPEN SYSTEM TELEMETRY", 4),
+        ):
+            panel_button = QPushButton(label, self._right_menu)
+            panel_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            panel_button.setStyleSheet(
+                "QPushButton { color: #c8d9e5; background: rgba(12,24,35,220); "
+                "border: 1px solid #244857; border-radius: 8px; padding: 7px 10px; text-align: left; }"
+                "QPushButton:hover { color: #ffffff; border-color: #00e5ff; background: #102a38; }"
+            )
+            panel_button.clicked.connect(
+                lambda checked=False, selected=panel_index: self._open_dashboard_panel(selected)
+            )
+            right_menu_layout.addWidget(panel_button)
         self._right_menu.hide()
 
         self._bihansa_effects.toggled.connect(self.bihansa_visualizer.set_effects_enabled)
         self._bihansa_voice_reactive.toggled.connect(self.bihansa_visualizer.set_voice_reactive)
 
-        body_layout.addWidget(left_rail, 0)
-        body_layout.addWidget(self._left_menu, 0)
-        body_layout.addLayout(center_col, 1)
-        main_layout.addLayout(body_layout, stretch=1)
+        # The home page stays clean and centered. Telemetry lives on a distinct page.
+        self._home_page = QWidget()
+        self._home_page.setObjectName("HologramHomePage")
+        self._home_page.setStyleSheet("QWidget#HologramHomePage { background: transparent; }")
+        self._home_page.setLayout(center_col)
 
-        # Hover expansion is delayed very slightly so the pointer can travel from rail to menu.
-        self._menu_hide_timer = QTimer(self)
-        self._menu_hide_timer.setSingleShot(True)
-        self._menu_hide_timer.setInterval(220)
-        self._menu_hide_timer.timeout.connect(self._hide_left_mega_menu)
-        left_rail.installEventFilter(self)
-        self._left_menu.installEventFilter(self)
+        self._workspace_stack = QStackedWidget(central_widget)
+        self._workspace_stack.setObjectName("JarvisWorkspaceStack")
+        self._workspace_stack.addWidget(self._home_page)
+
+        dashboard_panels = (
+            self._surface_brain,
+            self._surface_security,
+            self._surface_memory,
+            self._surface_scheduler,
+            self._surface_ring,
+        )
+        self._dashboard = ModernDashboard(dashboard_panels, parent=self._workspace_stack)
+        # Preserve ModernDashboard objectName: its stylesheet selectors rely on it.
+        self._workspace_stack.addWidget(self._dashboard)
+        self._workspace_stack.setCurrentWidget(self._home_page)
+
+        # Only the dashboard is faded; the live OpenGL hologram is never placed
+        # under a graphics opacity effect, avoiding black flashes on GPU canvases.
+        self._dashboard_opacity_effect = QGraphicsOpacityEffect(self._dashboard)
+        self._dashboard_opacity_effect.setOpacity(1.0)
+        self._dashboard.setGraphicsEffect(self._dashboard_opacity_effect)
+        self._workspace_animation = QPropertyAnimation(
+            self._dashboard_opacity_effect, b"opacity", self
+        )
+        self._workspace_animation.setDuration(220)
+        self._workspace_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._workspace_animation.finished.connect(self._finish_workspace_transition)
+        self._transition_target = None
+        self._dashboard.avatar_requested.connect(self._show_hologram_page)
+        self._dashboard.refresh_requested.connect(self._refresh_dashboard)
+
+        body_layout.addWidget(left_rail, 0)
+        body_layout.addWidget(self._workspace_stack, 1)
+        main_layout.addLayout(body_layout, stretch=1)
+        self._left_rail.hide()
+
         for index, button in enumerate(self._left_icon_buttons):
-            button.installEventFilter(self)
             button.clicked.connect(
-                lambda checked=False, selected=index: self._activate_left_menu(selected)
+                lambda checked=False, selected=index: self._open_dashboard_panel(selected)
             )
+        self._dashboard_button.clicked.connect(self._toggle_dashboard_page)
         self._right_menu_button.clicked.connect(self._toggle_right_dropdown)
-        self._right_menu.installEventFilter(self)
 
 
     def resizeEvent(self, event):
@@ -299,36 +338,78 @@ class HUDMainWindow(QMainWindow):
         if hasattr(self, "_right_menu") and self._right_menu.isVisible():
             self._position_right_menu()
 
-    def eventFilter(self, watched, event):
-        """Open the left mega menu on hover; keep it open while pointer enters the panel."""
-        if hasattr(self, "_left_menu") and (watched is self._left_menu or (hasattr(self, "_left_rail") and watched.parent() is self._left_rail)):
-            if event.type() == QEvent.Type.Enter:
-                self._menu_hide_timer.stop()
-                self._left_menu.show()
-            elif event.type() == QEvent.Type.Leave:
-                self._menu_hide_timer.start()
-        if hasattr(self, "_left_rail") and watched is self._left_rail:
-            if event.type() == QEvent.Type.Enter:
-                self._menu_hide_timer.stop()
-                self._left_menu.show()
-            elif event.type() == QEvent.Type.Leave:
-                self._menu_hide_timer.start()
-        return super().eventFilter(watched, event)
+    def _toggle_dashboard_page(self):
+        """Switch between a clean hologram home and the separate Bento dashboard."""
+        if self._workspace_stack.currentWidget() is self._home_page:
+            self._show_dashboard_page()
+        else:
+            self._show_hologram_page()
 
-    def _activate_left_menu(self, selected_index: int):
-        """Open the mega menu and bring the clicked Brain/Security panel forward."""
-        surfaces = (self._surface_brain, self._surface_security)
-        if selected_index < 0 or selected_index >= len(surfaces):
+    def _show_dashboard_page(self):
+        """Reveal the telemetry dashboard without applying effects to the OpenGL hologram."""
+        self._workspace_animation.stop()
+        self._transition_target = "dashboard"
+        self._right_menu.hide()
+        self._left_rail.show()
+        self._dashboard_opacity_effect.setOpacity(0.0)
+        self._workspace_stack.setCurrentWidget(self._dashboard)
+        self._dashboard_button.setText("⌂")
+        self._dashboard_button.setToolTip("Return to hologram home")
+        self._workspace_animation.setStartValue(0.0)
+        self._workspace_animation.setEndValue(1.0)
+        self._workspace_animation.start()
+
+    def _show_hologram_page(self):
+        """Return to the hologram-only home using a safe dashboard fade-out."""
+        self._workspace_animation.stop()
+        if self._workspace_stack.currentWidget() is self._home_page:
+            self._finish_workspace_transition()
             return
-        selected = surfaces[selected_index]
-        self._left_menu_layout.removeWidget(selected)
-        self._left_menu_layout.insertWidget(1, selected)
-        self._left_menu.show()
-        self._left_menu.raise_()
-        selected.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._transition_target = "home"
+        self._right_menu.hide()
+        self._workspace_animation.setStartValue(self._dashboard_opacity_effect.opacity())
+        self._workspace_animation.setEndValue(0.0)
+        self._workspace_animation.start()
 
-    def _hide_left_mega_menu(self):
-        self._left_menu.hide()
+    def _finish_workspace_transition(self):
+        """Finalize navigation state after a dashboard-only fade animation."""
+        target = self._transition_target
+        if target == "home":
+            self._workspace_stack.setCurrentWidget(self._home_page)
+            self._left_rail.hide()
+            self._dashboard_opacity_effect.setOpacity(1.0)
+            self._dashboard_button.setText("▦")
+            self._dashboard_button.setToolTip("Open Bento dashboard")
+        elif target == "dashboard":
+            self._dashboard_button.setText("⌂")
+            self._dashboard_button.setToolTip("Return to hologram home")
+        self._transition_target = None
+
+    def _open_dashboard_panel(self, panel_index: int):
+        """Open the separate dashboard and scroll to one existing live telemetry panel."""
+        if panel_index < 0 or panel_index >= len(self._dashboard._cards):
+            return
+        self._right_menu.hide()
+        if self._workspace_stack.currentWidget() is not self._dashboard:
+            self._show_dashboard_page()
+        QTimer.singleShot(280, lambda index=panel_index: self._focus_dashboard_panel(index))
+
+    def _focus_dashboard_panel(self, panel_index: int):
+        """Scroll to the selected panel when a navigation shortcut is used."""
+        if panel_index < 0 or panel_index >= len(self._dashboard._cards):
+            return
+        scroll = self._dashboard.findChild(QWidget, "DashboardScroll")
+        if scroll is not None and hasattr(scroll, "ensureWidgetVisible"):
+            scroll.ensureWidgetVisible(self._dashboard._cards[panel_index], 10, 10)
+
+    def _refresh_dashboard(self):
+        """Refresh the existing telemetry sources without replacing their live widgets."""
+        self._poll_real_states()
+        try:
+            self._panel_ring.update_metrics()
+        except Exception as exc:
+            print(f"[JARVIS HUD] Telemetry refresh failed: {type(exc).__name__}: {exc}")
+        self._dashboard.finish_loading()
 
     def _position_right_menu(self):
         """Anchor the dropdown to the right edge without clipping on narrow windows."""
@@ -350,6 +431,7 @@ class HUDMainWindow(QMainWindow):
         """Wire VisualizerBridge signals to UI components."""
         self._bridge.sig_audio_energy.connect(self.wireframe_visualizer.set_audio_energy)
         self._bridge.sig_audio_energy.connect(self._mini_orb.set_audio_energy)
+        self._bridge.sig_audio_energy.connect(self._dashboard.set_audio_energy)
         self._bridge.sig_state_changed.connect(self._on_state_changed)
         self._bridge.sig_auth_state_changed.connect(self._on_auth_state_changed)
         self._bridge.sig_audio_energy.connect(self.bihansa_visualizer.set_audio_energy)
@@ -367,6 +449,7 @@ class HUDMainWindow(QMainWindow):
             self.bihansa_visualizer if enabled else self.wireframe_visualizer
         )
         self._mini_orb.set_bihansa_mode(enabled)
+        self._dashboard.set_bihansa_mode(enabled)
         self._bihansa_toggle.setText("BIHANSA MODE: ON" if enabled else "BIHANSA MODE: OFF")
         # Keep BIHANSA-only controls out of the standard JARVIS view.
         self._bihansa_effects.setVisible(enabled)
@@ -458,6 +541,7 @@ class HUDMainWindow(QMainWindow):
         self.wireframe_visualizer.set_state(visual_state)
         self.bihansa_visualizer.set_state(visual_state)
         self._mini_orb.set_state(visual_state)
+        self._dashboard.set_state(visual_state)
         self._heart_reactor.set_state(visual_state)
         if self._privacy_locked:
             return
@@ -496,6 +580,7 @@ class HUDMainWindow(QMainWindow):
         self.wireframe_visualizer.set_state("PRIVACY_LOCK")
         self.bihansa_visualizer.set_state("PRIVACY_LOCK")
         self._mini_orb.set_state("PRIVACY_LOCK")
+        self._dashboard.set_state("PRIVACY_LOCK")
         self._heart_reactor.set_state("PRIVACY_LOCK")
         self._lbl_hud_status.setText("⊘ PRIVACY LOCK ENGAGED")
         self._lbl_hud_status.setStyleSheet("color: #ff1744;")

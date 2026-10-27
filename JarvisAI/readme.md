@@ -2646,3 +2646,20 @@ Every contribution helps move Jarvis closer to becoming a fully capable personal
 ### Built by Sathija Balachandra
 
 **Jarvis AI — Hear. See. Speak. Think. Act.**
+
+
+## Voice-driven UI controls
+
+With an authenticated owner session, JARVIS can activate a **currently visible, uniquely matched** HUD button or checkbox from an explicit spoken command. Examples:
+
+- `click settings`
+- `open AI provider settings`
+- `settings eka open karanna` (Singlish)
+- `click microphone`, `mute microphone`, `turn on microphone`, `turn off microphone`
+- `scroll down`, `scroll top`
+- `next tab`, `focus next`
+- `close dialog`
+
+Use the control's visible label when possible. If a label matches more than one visible control, JARVIS asks for a more specific phrase rather than choosing a target. Normal conversation is not interpreted as a click command.
+
+**Security boundaries:** voice UI commands require the owner-authenticated session and JARVIS must be awake (say `Hey Jarvis` or use `WAKE NOW`). When Voice ID is enabled, the current live owner voice is re-verified before dispatch. Commands are limited to visible JARVIS UI controls; they do not click arbitrary desktop applications or run shell commands. Explicit on/off/mute/unmute commands are state-aware and will not blindly toggle a control when its current state cannot be determined. The active centred overlay or native Qt modal dialog is searched instead of covered background controls; if more than one tab/scroll panel is a candidate, JARVIS does not guess. Destructive, publishing, messaging, payment, memory-import/export, and other high-impact operations must use their dedicated protected workflow. While a protected JARVIS confirmation is pending, say `CONFIRM ACTION` or `CANCEL ACTION` only for actions that allow spoken approval. Operations marked manual-click-only still require the HUD button.

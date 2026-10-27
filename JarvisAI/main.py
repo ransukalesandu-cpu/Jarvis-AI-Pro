@@ -47,6 +47,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from core.audio_callback_guard import enqueue_audio_frame
 from core.playback_interrupt import interrupt_playback
+from core.voice_ui_control import has_wake_name_prefix, parse_voice_ui_command
 import re
 import threading
 import time
@@ -3217,6 +3218,7 @@ class JarvisLive:
         print("[AudioTrace 3/LIVE] Receiver running; waiting for Gemini Live events.")
         out_buf, in_buf = [], []
         voice_confirmation_consumed = False
+        voice_ui_action_consumed = False
         holo_open_request_pending = False
         live_events_received = 0
         input_checkpoint_logged = False
@@ -3434,7 +3436,11 @@ class JarvisLive:
                                         )
                                     self._queue_auth_state_broadcast()
                                 security.mark_user_turn_started()
-                                if not voice_confirmation_consumed:
+                                if voice_ui_action_consumed:
+                                    # Ignore the remaining transcription chunks
+                                    # from a UI command already handled locally.
+                                    pass
+                                elif not voice_confirmation_consumed:
                                     decision = await asyncio.to_thread(
                                         confirm_gate.resolve_by_voice, txt
                                     )
@@ -3456,9 +3462,47 @@ class JarvisLive:
                                                 "the phrase was handled locally."
                                             )
                                     else:
-                                        in_buf.append(txt)
-                                        self._inflight_user_text = " ".join(in_buf).strip()
-                                        self._inflight_user_tool_started = False
+                                        candidate_text = " ".join([*in_buf, txt]).strip()
+                                        ui_command = parse_voice_ui_command(candidate_text)
+                                        queue_ui_command = getattr(
+                                            self.ui, "queue_voice_ui_command", None
+                                        )
+                                        if ui_command and callable(queue_ui_command):
+                                            # Consume this utterance immediately at the
+                                            # transcription boundary, before any model
+                                            # tool-call can execute a duplicate action.
+                                            voice_ui_action_consumed = True
+                                            in_buf.clear()
+                                            self._inflight_user_text = ""
+                                            self._inflight_user_tool_started = False
+                                            holo_open_request_pending = False
+                                            self.ui.write_log(f"You [UI command]: {candidate_text}")
+                                            wake_named_request = has_wake_name_prefix(candidate_text)
+                                            if not self._awake and not wake_named_request:
+                                                self.ui.write_log(
+                                                    "SYS: Voice UI command ignored while sleeping — say 'Hey Jarvis' or use WAKE NOW first."
+                                                )
+                                            else:
+                                                owner_authorized = security.is_owner_access_allowed()
+                                                if owner_authorized and security.voice_id_required():
+                                                    # If Voice ID is enabled, a PIN session alone
+                                                    # must not let a different nearby speaker operate
+                                                    # settings through voice. Re-check this exact live
+                                                    # utterance before sending it to the UI thread.
+                                                    owner_authorized = security.authorize_voice_confirmation()
+                                                if owner_authorized:
+                                                    if not queue_ui_command(ui_command):
+                                                        self.ui.write_log(
+                                                            "ERR: Voice UI command could not be queued."
+                                                        )
+                                                else:
+                                                    self.ui.write_log(
+                                                        "SEC: Voice UI command blocked — verify owner access and, when enabled, live owner Voice ID."
+                                                    )
+                                        else:
+                                            in_buf.append(txt)
+                                            self._inflight_user_text = " ".join(in_buf).strip()
+                                            self._inflight_user_tool_started = False
 
                         if sc.turn_complete:
                             # Start arrival-cadence tracking fresh for the next turn.
@@ -3552,8 +3596,8 @@ class JarvisLive:
 
                             full_in = " ".join(in_buf).strip()
                             if full_in:
-                                # A fresh user turn supersedes any previous
-                                # locally handled Holo-open request.
+                                # A fresh non-UI user turn supersedes any
+                                # previous locally handled Holo-open request.
                                 holo_open_request_pending = self._route_holo_news_voice(full_in)
                                 self._last_out_logged = ""   # new exchange
                                 self.ui.write_log(f"You: {full_in}")
@@ -3621,6 +3665,14 @@ class JarvisLive:
                                         "Do not repeat or initiate an action for that phrase."
                                     )},
                                 )
+                            elif voice_ui_action_consumed:
+                                fr = types.FunctionResponse(
+                                    id=fc.id, name=fc.name,
+                                    response={"result": (
+                                        "The user's visible UI command was routed locally. "
+                                        "Do not perform a second action for that input."
+                                    )},
+                                )
                             elif holo_open_request_pending:
                                 fr = types.FunctionResponse(
                                     id=fc.id, name=fc.name,
@@ -3644,6 +3696,9 @@ class JarvisLive:
                     if (voice_confirmation_consumed and response.server_content
                             and response.server_content.turn_complete):
                         voice_confirmation_consumed = False
+                    if (voice_ui_action_consumed and response.server_content
+                            and response.server_content.turn_complete):
+                        voice_ui_action_consumed = False
         except Exception as e:
             if _is_transient_live_disconnect(e):
                 # Let the session TaskGroup unwind so run() can rebuild the

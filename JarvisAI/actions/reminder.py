@@ -464,11 +464,11 @@ def reminder(
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "reminder",
-    "description": "Sets a dated reminder or starts a visible HUD countdown/Pomodoro timer. Use action='timer' with duration_minutes for a countdown or action='pomodoro' for a 25-minute focus timer. For a scheduled reminder use action='reminder' with date, time, message.",
+    "description": "Sets or cancels a dated OS reminder, or starts a visible HUD countdown/Pomodoro timer. For action='reminder', pass date, time, message. To cancel pass action='cancel' with the original date, time, and message. Use action='timer' with duration_minutes for a countdown or action='pomodoro' for a 25-minute focus timer.",
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "action": {"type": "STRING", "description": "reminder (default) | timer | countdown | pomodoro"},
+            "action": {"type": "STRING", "description": "reminder (default) | cancel | timer | countdown | pomodoro"},
             "duration_minutes": {"type": "INTEGER", "description": "Countdown length in minutes; for timer/countdown actions"},
             "date": {
                 "type": "STRING",
@@ -480,7 +480,7 @@ TOOL = {
             },
             "message": {
                 "type": "STRING",
-                "description": "Reminder message text"
+                "description": "Reminder message text; for cancellation, use the original reminder message to select the matching alarm"
             }
         },
         "required": []

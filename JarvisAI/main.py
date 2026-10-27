@@ -1588,6 +1588,7 @@ class JarvisLive:
                     conversation_history=list(self._session_log),
                     memory_enabled=memory_access,
                     assistant_names=[self._asst_name],
+                    assistant_name=self._asst_name,
                 )
                 provider = str(result.get("provider") or "unknown")
                 configured = str(result.get("configured_providers") or "none")

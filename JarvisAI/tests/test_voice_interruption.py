@@ -104,5 +104,28 @@ class VoiceInterruptionTests(unittest.TestCase):
         self.assertEqual(in_buf, ["jarvis stop"])
 
 
+    def test_fast_barge_in_accepts_quieter_voice_overlapping_playback(self):
+        guard = EchoGuard()
+        # Model microphone audio with a distinct speech component that leaves a
+        # 0.16 residual after the known speaker output is subtracted.
+        guard._hist = [
+            (0.30, np.array([1.0, 0, 0, 0, 0, 0, 0, 0], dtype=np.float32), 0.5)
+        ]
+        guard.set_tts_speaking(True, when=0.0)
+        mic_bands = np.array([0.84, 0.16, 0, 0, 0, 0, 0, 0], dtype=np.float32)
+        with patch("core.echo.band_energies", return_value=mic_bands):
+            detections = [
+                guard.is_user_speech(
+                    np.ones(256, dtype=np.int16), 16000, 0.5,
+                    when=when, fast=True,
+                )
+                for when in (0.40, 0.48, 0.56)
+            ]
+        # EchoGuard's 150 ms speech-duration check still applies.
+        self.assertFalse(detections[0])
+        self.assertFalse(detections[1])
+        self.assertTrue(detections[2])
+
+
 if __name__ == "__main__":
     unittest.main()

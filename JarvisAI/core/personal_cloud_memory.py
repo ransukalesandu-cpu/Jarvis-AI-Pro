@@ -38,8 +38,9 @@ MAX_EVIDENCE_CHARS = 360
 # Keep extraction targeted so the extra provider call does not run for every turn.
 _PERSONAL_DISCLOSURE_CUE = re.compile(
     r"\b(?:my name is|my name's|call me|i am called|i'm called|"
-    r"my sister|my brother|my siblings|my family|i have (?:a|an|one|two|three|four|"
-    r"no|older|younger) (?:sister|brother|sibling|siblings)|only child|"
+    r"my sister|my brother|my siblings|my family|i have "
+    r"(?:(?:a|an|one|two|three|four|no|\d+)\s+)?(?:(?:older|younger)\s+)?"
+    r"(?:sister|brother|sibling|siblings)|only child|"
     r"i study|i'm studying|i am studying|i work|i'm working|i am working|"
     r"my job is|i like|i love|i prefer|my favourite|my favorite|"
     r"my goal is|i want to|i speak|i prefer to be called)\b",

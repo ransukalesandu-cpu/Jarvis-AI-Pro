@@ -66,6 +66,14 @@ class PersonalCloudMemoryTests(unittest.TestCase):
             "My name is Lesandu.",
             {"fact_key": "medical_history", "value": "healthy", "evidence_quote": "My name is Lesandu."},
         ))
+        self.assertIsNone(validate_personal_fact(
+            "I have a younger sister. Her name is Anna.",
+            {"fact_key": "siblings", "value": "I have a younger sister named Anna", "evidence_quote": "I have a younger sister. Her name is Anna."},
+        ))
+        self.assertIsNone(validate_personal_fact(
+            "I am Muslim and prefer halal food.",
+            {"fact_key": "preferences", "value": "prefer halal food", "evidence_quote": "I am Muslim and prefer halal food."},
+        ))
 
     def test_extraction_keeps_only_grounded_candidates(self):
         source = "My name is Lesandu. My friend's name is Peter."

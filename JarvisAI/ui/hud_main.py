@@ -268,11 +268,7 @@ class HUDMainWindow(QMainWindow):
         workspace = QWidget(self)
         workspace.setObjectName("HologramWorkspace")
         workspace.setStyleSheet("""
-            QWidget#HologramWorkspace {
-                background-color: #030911;
-                background-image: radial-gradient(ellipse at center,
-                    rgba(3, 38, 56, 0.36) 0%, rgba(3, 14, 25, 0.96) 57%, #02060b 100%);
-            }
+            QWidget#HologramWorkspace { background-color: #030911; }
         """)
         self.setCentralWidget(workspace)
         self._workspace = workspace
@@ -680,6 +676,7 @@ class HUDMainWindow(QMainWindow):
         self._lbl_hud_status.setText("⊘ PRIVACY LOCK ENGAGED")
         self._lbl_hud_status.setStyleSheet("color: #ff1744;")
         self._lock_banner.show()
+        self._lock_banner.raise_()
 
         # Blur sensitive memory & scheduler telemetry
         blur_mem = QGraphicsBlurEffect()

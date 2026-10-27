@@ -2654,11 +2654,12 @@ With an authenticated owner session, JARVIS can activate a **currently visible, 
 
 - `click settings`
 - `open AI provider settings`
-- `click microphone` or `mute microphone`
+- `settings eka open karanna` (Singlish)
+- `click microphone`, `mute microphone`, `turn on microphone`, `turn off microphone`
 - `scroll down`, `scroll top`
 - `next tab`, `focus next`
 - `close dialog`
 
 Use the control's visible label when possible. If a label matches more than one visible control, JARVIS asks for a more specific phrase rather than choosing a target. Normal conversation is not interpreted as a click command.
 
-**Security boundaries:** generic voice-click commands require the active owner-authenticated session and are limited to visible JARVIS UI controls; they do not click arbitrary desktop applications or run shell commands. Destructive, publishing, messaging, payment, memory-import/export, and other high-impact operations must use their dedicated protected workflow. While a confirmation is pending, say `CONFIRM ACTION` or `CANCEL ACTION` for actions that allow spoken approval. Operations marked manual-click-only still require the HUD button. The existing Voice ID and owner checks remain in force.
+**Security boundaries:** generic voice-click commands require the active owner-authenticated session and are limited to visible JARVIS UI controls; they do not click arbitrary desktop applications or run shell commands. If Voice ID is enabled, the current live owner voice is re-verified before dispatch. Explicit on/off/mute/unmute commands are state-aware and will not blindly toggle a control when its current state cannot be determined. The active centred overlay is searched instead of covered background controls; if more than one tab/scroll panel is a candidate, JARVIS does not guess. Destructive, publishing, messaging, payment, memory-import/export, and other high-impact operations must use their dedicated protected workflow. While a confirmation is pending, say `CONFIRM ACTION` or `CANCEL ACTION` for actions that allow spoken approval. Operations marked manual-click-only still require the HUD button.

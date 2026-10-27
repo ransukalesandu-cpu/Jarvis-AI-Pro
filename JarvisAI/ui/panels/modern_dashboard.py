@@ -18,11 +18,11 @@ from PyQt6.QtWidgets import (
 class FloatingHolographicOrb(QWidget):
     """A small painter-based holographic orb with audio-reactive breathing."""
 
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(self, parent: QWidget | None = None, size_px: int = 144):
         super().__init__(parent)
         self.setObjectName("FloatingHolographicOrb")
-        self.setMinimumSize(126, 126)
-        self.setMaximumSize(156, 156)
+        diameter = max(28, min(156, int(size_px)))
+        self.setFixedSize(diameter, diameter)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self._state = "IDLE"

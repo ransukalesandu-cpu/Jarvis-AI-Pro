@@ -58,8 +58,35 @@ _NAME_EVIDENCE = re.compile(
     r"\bi\s+am\s+called\b|\bi'm\s+called\b|mage\s+nama|මගේ\s*නම)",
     re.IGNORECASE,
 )
+_NAME_PREFIXES = (
+    re.compile(r"\bmy\s+name\s+is\s+", re.IGNORECASE),
+    re.compile(r"\bmy\s+name's\s+", re.IGNORECASE),
+    re.compile(r"\bcall\s+me\s+", re.IGNORECASE),
+    re.compile(r"\bi\s+am\s+called\s+", re.IGNORECASE),
+    re.compile(r"\bi'm\s+called\s+", re.IGNORECASE),
+    re.compile(r"\bmage\s+nama\s+", re.IGNORECASE),
+    re.compile(r"මගේ\s*නම\s*"),
+)
+
+
+def _self_name_segment(quote: str) -> str:
+    """Extract only the name immediately following an explicit first-person cue."""
+    for pattern in _NAME_PREFIXES:
+        match = pattern.search(quote)
+        if not match:
+            continue
+        tail = quote[match.end():]
+        segment = re.split(
+            r"[,.;!?]|(?:\s+(?:and|but|from|because|as|i|my|mage|mama|mata)\b)|"
+            r"(?:\s+(?:සහ|හා|මගේ|මම|මට)\s*)",
+            tail,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0]
+        return " ".join(segment.strip(" \t\r\n'\"").split())
+    return ""
 _SIBLING_EVIDENCE = re.compile(
-    r"(?:\bi\s+have\b.{0,60}\b(?:sister|brother|siblings?)\b|"
+    r"(?:\bi\s+have\b.{0,80}\b(?:sister|brother|siblings?)\b|"
     r"\bmy\s+(?:sister|brother|siblings?)\b|\bonly\s+child\b|"
     r"\bno\s+siblings\b|mage\s+(?:akka|ayya|aiya|malli|nangi|sahodara)|"
     r"මගේ\s*(?:අක්කා|අයියා|මල්ලි|නංගි|සහෝදර)|"
@@ -76,7 +103,8 @@ _SENSITIVE_CATEGORY = re.compile(
 )
 
 _SIBLING_IDENTIFYING = re.compile(
-    r"\b(?:named|called|name is|name's|birthday|age is|phone|email|address|school)\b|"
+    r"\b(?:named|called|name is|name's|birthday|age is|phone|email|address|school|"
+    r"occupation|profession|doctor|teacher|student|works? at)\b|"
     r"(?:නම|උපන්දිනය|දුරකථන|ලිපිනය)",
     re.IGNORECASE,
 )
@@ -142,12 +170,15 @@ def validate_personal_fact(source_text: str, candidate: Any) -> dict[str, str] |
         return None
     # Personal names and family statements are accepted only with direct
     # first-person relation language, not a name mentioned in a story/article.
-    if key == "name" and not _NAME_EVIDENCE.search(quote):
+    if key == "name" and (
+            not _NAME_EVIDENCE.search(quote)
+            or normalize_evidence(_self_name_segment(quote)) != value_norm):
         return None
     if key == "siblings" and not _SIBLING_EVIDENCE.search(quote):
         return None
-    # Keep family facts to sibling presence/relationship, not names or identifying details.
-    if key == "siblings" and _SIBLING_IDENTIFYING.search(quote):
+    # Never save another family member's identifying details, even if the
+    # extractor mislabels that detail as family_context or preferences.
+    if _SIBLING_EVIDENCE.search(quote) and _SIBLING_IDENTIFYING.search(quote):
         return None
     if (_SENSITIVE_TEXT.search(value) or _SENSITIVE_TEXT.search(quote)
             or _SENSITIVE_CATEGORY.search(value) or _SENSITIVE_CATEGORY.search(quote)):

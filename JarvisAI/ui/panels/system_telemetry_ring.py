@@ -78,9 +78,9 @@ class SystemTelemetryRing(QFrame):
         self.setMinimumWidth(280)
         self.setStyleSheet("""
             QFrame#SystemTelemetryRing {
-                background: rgba(13, 20, 30, 0.75);
-                border: 1px solid rgba(0, 229, 255, 0.35);
-                border-radius: 8px;
+                background: rgba(13, 20, 30, 0.82);
+                border: 1px solid rgba(104, 217, 255, 0.24);
+                border-radius: 16px;
             }
         """)
 

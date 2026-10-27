@@ -2,6 +2,7 @@ import time
 import subprocess
 import platform
 import shutil
+from urllib.parse import urlparse
 
 try:
     import psutil
@@ -10,6 +11,57 @@ except ImportError:
     _PSUTIL = False
 
 _SYSTEM = platform.system()
+
+# Browser-capable destinations can live inside the floating hologram task cards.
+# Native applications deliberately stay on the existing OS-launch path.
+_WEB_TASKS = {
+    "youtube": "https://www.youtube.com",
+    "youtube.com": "https://www.youtube.com",
+    "youtube music": "https://music.youtube.com",
+    "google": "https://www.google.com",
+    "google search": "https://www.google.com",
+    "gmail": "https://mail.google.com",
+    "google drive": "https://drive.google.com",
+    "google docs": "https://docs.google.com",
+    "chatgpt": "https://chatgpt.com",
+    "openai": "https://openai.com",
+    "netflix": "https://www.netflix.com",
+    "facebook": "https://www.facebook.com",
+    "instagram": "https://www.instagram.com",
+    "tiktok": "https://www.tiktok.com",
+}
+
+def _open_hologram_web_task(app_name: str, player) -> str | None:
+    """Route URL/site requests to the embedded HUD browser when that UI is active."""
+    if player is None:
+        return None
+    open_task_tab = getattr(player, "open_task_tab", None)
+    if not callable(open_task_tab):
+        return None
+
+    candidate = str(app_name or "").strip()
+    if not candidate:
+        return None
+
+    try:
+        parsed = urlparse(candidate)
+    except Exception:
+        parsed = None
+    if parsed and parsed.scheme.lower() in ("http", "https") and parsed.netloc:
+        url = candidate
+        title = parsed.hostname or candidate
+    else:
+        url = _WEB_TASKS.get(candidate.casefold())
+        title = candidate
+
+    if not url:
+        return None
+    try:
+        if open_task_tab(title, url):
+            return f"Opened {title} inside a JARVIS hologram task card."
+    except Exception as exc:
+        print(f"[open_app] Hologram task routing failed; retaining OS launch path: {exc}")
+    return None
 
 _APP_ALIASES: dict[str, dict[str, str]] = {
 
@@ -248,6 +300,14 @@ def open_app(
     if not app_name:
         return "No application name provided."
 
+    # Prefer an in-HUD mini browser for websites/URLs so browser tasks do not
+    # replace or cover the full-screen hologram with a separate OS window.
+    task_result = _open_hologram_web_task(app_name, player)
+    if task_result:
+        if player:
+            player.write_log(f"[open_app] {task_result}")
+        return task_result
+
     launcher = _OS_LAUNCHERS.get(_SYSTEM)
     if launcher is None:
         return f"Unsupported operating system: {_SYSTEM}"
@@ -276,7 +336,7 @@ def open_app(
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "open_app",
-    "description": "Opens any application on the computer. Use this whenever the user asks to open, launch, or start any app, website, or program. Always call this tool — never just say you opened it.",
+    "description": "Opens applications on the computer. Browser-capable sites such as YouTube, Google, Gmail, ChatGPT, Instagram, TikTok and explicit http/https URLs are opened inside JARVIS's floating hologram task cards when the hologram UI is active. Native programs such as Chrome, VS Code, Terminal, Word or Spotify use the normal OS launcher. Always call this tool — never just say you opened it.",
     "parameters": {
         "type": "OBJECT",
         "properties": {

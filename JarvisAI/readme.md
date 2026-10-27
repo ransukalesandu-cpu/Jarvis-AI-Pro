@@ -1514,11 +1514,16 @@ wizard collects the provider choice and setup needed to connect JARVIS.
 ### Response personality and voice
 
 Click **RESPONSE PERSONALITY** in the settings drawer to choose a saved style:
-**Conversational**, **Concise**, **Technical**, **Emergency**, **Research**,
-**System**, or **Custom**. Each standard mode can have bounded personal tuning;
-Custom has a name and your own short style instructions. Save the profile to
-store it in this device's local memory. It changes wording and tone only; it
-cannot change permissions, confirmation rules, or safety checks.
+**Auto Adaptive**, **Conversational / Normal**, **Affectionate**, **Strict / Motivational**,
+**Angry**, **Crazy / Chaotic**, **Playful**, **Funny / Comedian**, **Sarcastic**,
+**Storyteller**, **Calm**, **Hype**, **Teacher**, **Mentor**, **Detective**, **Poetic**,
+**Anime Energy**, **Professional**, **Concise**, **Technical**, **Emergency**, **Research**,
+**System**, or **Custom**. Standard modes have bounded personal tuning; Custom has a name
+and your own short style instructions. Save the profile to store it in this device's local
+memory. A manually selected mode stays active across topics until you explicitly choose
+another mode. Say **"switch to normal mode"** to return to Conversational, or **"switch
+to auto mode"** to enable automatic style adaptation. Modes change delivery only; they
+cannot change permissions, confirmation rules, truthfulness, or safety checks.
 
 The voice selector offers the Gemini Live presets **Charon**, **Puck**, **Kore**,
 **Fenrir**, and **Aoede**. Try each in the UI and save the one you prefer; these

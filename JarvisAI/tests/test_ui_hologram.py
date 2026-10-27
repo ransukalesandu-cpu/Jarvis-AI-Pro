@@ -209,8 +209,8 @@ class TestUIHologram(unittest.TestCase):
         # A small extra status orb is added to the header, not substituted for
         # either original central hologram widget.
         self.assertIsInstance(hud._mini_orb, FloatingHolographicOrb)
-        self.assertEqual(hud._mini_orb.size().width(), 36)
-        self.assertEqual(hud._mini_orb.size().height(), 36)
+        self.assertEqual(hud._mini_orb.size().width(), 28)
+        self.assertEqual(hud._mini_orb.size().height(), 28)
         self.assertIsInstance(hud._surface_brain, BentoPanelSurface)
         self.assertIsInstance(hud._surface_security, BentoPanelSurface)
         self.assertIsInstance(hud._surface_memory, BentoPanelSurface)

@@ -1,7 +1,7 @@
 # Preserve the Original JARVIS Hologram with Modern UI Enhancements
 
 ## Design rule
-The original central NeuralWireframeHead and BihansaHologramWidget implementations and their central layout block are preserved from the pre-dashboard HUD. The original visualizer stack continues to switch between those two widgets. The small 36 px orb in the header is an additional status indicator, never a replacement for the center hologram.
+The original central NeuralWireframeHead and BihansaHologramWidget implementations and their central layout block are preserved from the pre-dashboard HUD. The original visualizer stack continues to switch between those two widgets. The small 28 px orb in the header is an additional status indicator, never a replacement for the center hologram.
 
 ## Added around the hologram
 - Rounded bento-style telemetry surfaces around Brain, Security, Memory, Scheduler, and System Telemetry panels.

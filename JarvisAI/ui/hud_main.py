@@ -17,11 +17,11 @@ if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFOR
 import threading
 from typing import Optional, Callable
 
-from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal, QTimer, QSettings
+from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal, QTimer, QSettings, QEasingCurve, QPropertyAnimation
 from PyQt6.QtGui import QFont, QColor
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QFrame, QGraphicsBlurEffect, QCheckBox, QStackedWidget
+    QPushButton, QFrame, QGraphicsBlurEffect, QGraphicsOpacityEffect, QCheckBox, QStackedWidget
 )
 
 from audio.visualizer_bridge import get_visualizer_bridge, VisualizerBridge
@@ -33,6 +33,7 @@ from ui.panels.security_panel import SecurityPanel
 from ui.panels.memory_panel import MemoryPanel
 from ui.panels.scheduler_panel import SchedulerPanel
 from ui.panels.system_telemetry_ring import SystemTelemetryRing
+from ui.panels.modern_dashboard import ModernDashboard
 
 try:
     from security.auth_manager import AuthManager, PRIVACY_LOCK, lock_workstation
@@ -56,7 +57,7 @@ class HUDMainWindow(QMainWindow):
 
     def __init__(self, bridge: Optional[VisualizerBridge] = None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("JARVIS AI PRO — NEURAL WIREFRAME HUD")
+        self.setWindowTitle("JARVIS AI PRO — COMMAND CENTER")
         self.resize(1280, 800)
         self.setMinimumSize(1024, 680)
 
@@ -101,8 +102,8 @@ class HUDMainWindow(QMainWindow):
 
         # 1. Header Bar
         hdr_layout = QHBoxLayout()
-        hdr_title = QLabel("J.A.R.V.I.S  //  NEURAL HUD SYSTEM")
-        hdr_title.setFont(QFont("Courier New", 12, QFont.Weight.Bold))
+        hdr_title = QLabel("J.A.R.V.I.S  //  COMMAND CENTER")
+        hdr_title.setFont(QFont("Aptos Display", 12, QFont.Weight.Bold))
         hdr_title.setStyleSheet("color: #00e5ff; letter-spacing: 2px;")
         hdr_layout.addWidget(hdr_title)
 
@@ -132,36 +133,64 @@ class HUDMainWindow(QMainWindow):
 
         main_layout.addLayout(hdr_layout)
 
-        # 2. Main Holographic Workspace (Left Panels, Central Hologram, Right Panels)
-        body_layout = QHBoxLayout()
-        body_layout.setSpacing(16)
-
-        # --- LEFT TELEMETRY COLUMN ---
-        left_col = QVBoxLayout()
-        left_col.setSpacing(12)
-
+        # 2. Modern bento-grid dashboard. The large face renderer is now a
+        # secondary view; the main screen uses a compact audio-reactive orb.
         self._panel_brain = HybridBrainPanel(self)
         self._panel_security = SecurityPanel(self)
+        self._panel_memory = MemoryPanel(self)
+        self._panel_scheduler = SchedulerPanel(self)
+        self._panel_ring = SystemTelemetryRing(self)
 
-        left_col.addWidget(self._panel_brain)
-        left_col.addWidget(self._panel_security)
-        left_col.addStretch()
+        self._workspace_stack = QStackedWidget(self)
+        self._workspace_stack.setObjectName("WorkspacePageStack")
+        self._dashboard = ModernDashboard(
+            (
+                self._panel_brain,
+                self._panel_memory,
+                self._panel_security,
+                self._panel_scheduler,
+                self._panel_ring,
+            ),
+            self._workspace_stack,
+        )
+        self._dashboard.avatar_requested.connect(self._show_avatar_page)
+        self._dashboard.refresh_requested.connect(self._poll_real_states)
+        self._workspace_stack.addWidget(self._dashboard)
 
-        body_layout.addLayout(left_col, stretch=1)
+        # Traditional avatar view remains available on demand, but no longer
+        # takes the main landing page's visual space.
+        self._avatar_page = QWidget(self._workspace_stack)
+        avatar_layout = QVBoxLayout(self._avatar_page)
+        avatar_layout.setContentsMargins(4, 4, 4, 4)
+        avatar_layout.setSpacing(10)
 
-        # --- CENTER WIREFRAME HOLOGRAM ---
-        center_col = QVBoxLayout()
-        center_col.setSpacing(8)
+        avatar_header = QHBoxLayout()
+        avatar_title = QLabel("AVATAR VISUALIZER  /  AUDIO-REACTIVE MODE")
+        avatar_title.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
+        avatar_title.setStyleSheet("color: #68d9ff; letter-spacing: 1px;")
+        avatar_header.addWidget(avatar_title)
+        avatar_header.addStretch(1)
+        self._btn_dashboard = QPushButton("← COMMAND CENTER")
+        self._btn_dashboard.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_dashboard.setStyleSheet(
+            "QPushButton { color:#c7e0e9; background:rgba(104,217,255,0.06); "
+            "border:1px solid rgba(104,217,255,0.30); border-radius:10px; "
+            "padding:9px 12px; font:700 8pt 'Consolas'; } "
+            "QPushButton:hover { background:rgba(104,217,255,0.16); border-color:#80e7ff; }"
+        )
+        self._btn_dashboard.clicked.connect(self._show_dashboard_page)
+        avatar_header.addWidget(self._btn_dashboard)
+        avatar_layout.addLayout(avatar_header)
 
-        self._visualizer_stack = QStackedWidget(self)
-        self.wireframe_visualizer = NeuralWireframeHead(self)
-        self.bihansa_visualizer = BihansaHologramWidget(self)
+        self._visualizer_stack = QStackedWidget(self._avatar_page)
+        self.wireframe_visualizer = NeuralWireframeHead(self._avatar_page)
+        self.bihansa_visualizer = BihansaHologramWidget(self._avatar_page)
         self._visualizer_stack.addWidget(self.wireframe_visualizer)
         self._visualizer_stack.addWidget(self.bihansa_visualizer)
         self._visualizer_stack.setCurrentWidget(self.wireframe_visualizer)
-        center_col.addWidget(self._visualizer_stack, stretch=1)
+        avatar_layout.addWidget(self._visualizer_stack, stretch=1)
 
-        # Optional visual and voice-reactivity controls; they never enable the microphone or camera.
+        # Bihansa-only visual controls remain on the dedicated avatar page.
         controls_layout = QHBoxLayout()
         self._bihansa_effects = QCheckBox("NEURAL EFFECTS")
         self._bihansa_effects.setChecked(True)
@@ -171,60 +200,48 @@ class HUDMainWindow(QMainWindow):
         self._bihansa_voice_reactive.setStyleSheet("QCheckBox { color: #ff9be8; spacing: 6px; }")
         controls_layout.addWidget(self._bihansa_effects)
         controls_layout.addWidget(self._bihansa_voice_reactive)
-        controls_layout.addStretch()
-        center_col.addLayout(controls_layout)
+        controls_layout.addStretch(1)
+        avatar_layout.addLayout(controls_layout)
         self._bihansa_effects.toggled.connect(self.bihansa_visualizer.set_effects_enabled)
         self._bihansa_voice_reactive.toggled.connect(self.bihansa_visualizer.set_voice_reactive)
 
-        # Status Banner underneath wireframe
         self._lbl_hud_status = QLabel("● SYSTEM STANDBY")
-        self._lbl_hud_status.setFont(QFont("Courier New", 11, QFont.Weight.Bold))
+        self._lbl_hud_status.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
         self._lbl_hud_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._lbl_hud_status.setStyleSheet("color: #00e5ff;")
-        center_col.addWidget(self._lbl_hud_status)
+        self._lbl_hud_status.setStyleSheet("color: #68d9ff;")
+        avatar_layout.addWidget(self._lbl_hud_status)
 
         self._lbl_avatar_text = QLabel("")
         self._lbl_avatar_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._lbl_avatar_text.setWordWrap(True)
         self._lbl_avatar_text.setStyleSheet("color: #ffb3e2; font-size: 10px; padding: 4px;")
         self._lbl_avatar_text.hide()
-        center_col.addWidget(self._lbl_avatar_text)
+        avatar_layout.addWidget(self._lbl_avatar_text)
+        self._workspace_stack.addWidget(self._avatar_page)
+        self._workspace_stack.setCurrentWidget(self._dashboard)
+        self._dashboard.set_state("IDLE")
+        self._page_transition = None
+        self._page_transition_widget = None
 
-        # Privacy Lock Banner Overlay (Hidden by default)
-        self._lock_banner = QFrame(self)
+        # Visible on either page, but hidden unless the security layer engages.
+        self._lock_banner = QFrame(central_widget)
         self._lock_banner.setStyleSheet("""
             QFrame {
                 background-color: rgba(183, 28, 28, 0.92);
                 border: 2px solid #ff1744;
-                border-radius: 8px;
+                border-radius: 10px;
             }
         """)
-        lb_layout = QVBoxLayout(self._lock_banner)
-        lb_text = QLabel("SYSTEM PRIVACY LOCK ENGAGED — MUTED & LOCKED")
-        lb_text.setFont(QFont("Courier New", 12, QFont.Weight.Bold))
-        lb_text.setStyleSheet("color: #ffffff;")
-        lb_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lb_layout.addWidget(lb_text)
+        lock_layout = QVBoxLayout(self._lock_banner)
+        lock_text = QLabel("SYSTEM PRIVACY LOCK ENGAGED — MUTED & LOCKED")
+        lock_text.setFont(QFont("Consolas", 11, QFont.Weight.Bold))
+        lock_text.setStyleSheet("color: #ffffff; background: transparent;")
+        lock_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lock_layout.addWidget(lock_text)
         self._lock_banner.hide()
+        main_layout.addWidget(self._lock_banner)
 
-        body_layout.addLayout(center_col, stretch=2)
-
-        # --- RIGHT TELEMETRY COLUMN ---
-        right_col = QVBoxLayout()
-        right_col.setSpacing(12)
-
-        self._panel_memory = MemoryPanel(self)
-        self._panel_scheduler = SchedulerPanel(self)
-        self._panel_ring = SystemTelemetryRing(self)
-
-        right_col.addWidget(self._panel_memory)
-        right_col.addWidget(self._panel_scheduler)
-        right_col.addWidget(self._panel_ring)
-        right_col.addStretch()
-
-        body_layout.addLayout(right_col, stretch=1)
-
-        main_layout.addLayout(body_layout, stretch=1)
+        main_layout.addWidget(self._workspace_stack, stretch=1)
 
         # 3. Clock Timer
         self._clock_timer = QTimer(self)
@@ -234,6 +251,7 @@ class HUDMainWindow(QMainWindow):
     def _wire_signals(self):
         """Wire VisualizerBridge signals to UI components."""
         self._bridge.sig_audio_energy.connect(self.wireframe_visualizer.set_audio_energy)
+        self._bridge.sig_audio_energy.connect(self._dashboard.set_audio_energy)
         self._bridge.sig_state_changed.connect(self._on_state_changed)
         self._bridge.sig_auth_state_changed.connect(self._on_auth_state_changed)
         self._bridge.sig_audio_energy.connect(self.bihansa_visualizer.set_audio_energy)
@@ -243,6 +261,47 @@ class HUDMainWindow(QMainWindow):
         self._bihansa_effects.toggled.connect(lambda value: self._settings.setValue("bihansa/effects", value) if hasattr(self, "_settings") else None)
         self._bihansa_voice_reactive.toggled.connect(lambda value: self._settings.setValue("bihansa/voice_reactive", value) if hasattr(self, "_settings") else None)
 
+    def _switch_workspace(self, page: QWidget) -> None:
+        """Switch dashboard/avatar pages with a short opacity transition."""
+        if not hasattr(self, "_workspace_stack"):
+            return
+        current = getattr(self, "_page_transition", None)
+        if current is not None:
+            try:
+                current.stop()
+            except RuntimeError:
+                pass
+        previous_page = getattr(self, "_page_transition_widget", None)
+        if previous_page is not None and previous_page is not page:
+            previous_page.setGraphicsEffect(None)
+
+        self._workspace_stack.setCurrentWidget(page)
+        effect = QGraphicsOpacityEffect(page)
+        page.setGraphicsEffect(effect)
+        effect.setOpacity(0.0)
+        animation = QPropertyAnimation(effect, b"opacity", self)
+        animation.setDuration(260)
+        animation.setStartValue(0.0)
+        animation.setEndValue(1.0)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        def finish_transition():
+            if self._page_transition is animation:
+                page.setGraphicsEffect(None)
+                self._page_transition = None
+                self._page_transition_widget = None
+
+        animation.finished.connect(finish_transition)
+        self._page_transition = animation
+        self._page_transition_widget = page
+        animation.start()
+
+    def _show_dashboard_page(self) -> None:
+        self._switch_workspace(self._dashboard)
+
+    def _show_avatar_page(self) -> None:
+        self._switch_workspace(self._avatar_page)
+
     @pyqtSlot(bool)
     def _set_bihansa_enabled(self, enabled: bool):
         """Switch only the central visualizer; normal JARVIS remains available."""
@@ -250,6 +309,7 @@ class HUDMainWindow(QMainWindow):
         self._visualizer_stack.setCurrentWidget(
             self.bihansa_visualizer if enabled else self.wireframe_visualizer
         )
+        self._dashboard.set_bihansa_mode(enabled)
         self._bihansa_toggle.setText("BIHANSA MODE: ON" if enabled else "BIHANSA MODE: OFF")
         # Keep BIHANSA-only controls out of the standard JARVIS view.
         self._bihansa_effects.setVisible(enabled)
@@ -340,6 +400,7 @@ class HUDMainWindow(QMainWindow):
         visual_state = "PRIVACY_LOCK" if self._privacy_locked else st
         self.wireframe_visualizer.set_state(visual_state)
         self.bihansa_visualizer.set_state(visual_state)
+        self._dashboard.set_state(visual_state)
         if self._privacy_locked:
             return
 
@@ -376,6 +437,7 @@ class HUDMainWindow(QMainWindow):
         self._privacy_locked = True
         self.wireframe_visualizer.set_state("PRIVACY_LOCK")
         self.bihansa_visualizer.set_state("PRIVACY_LOCK")
+        self._dashboard.set_state("PRIVACY_LOCK")
         self._lbl_hud_status.setText("⊘ PRIVACY LOCK ENGAGED")
         self._lbl_hud_status.setStyleSheet("color: #ff1744;")
         self._lock_banner.show()

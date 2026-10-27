@@ -164,6 +164,7 @@ class HUDMainWindow(QMainWindow):
             "QFrame#leftMegaMenu { background: rgba(9,17,27,245); border: 1px solid #17485a; border-radius: 14px; }"
         )
         left_menu_layout = QVBoxLayout(self._left_menu)
+        self._left_menu_layout = left_menu_layout
         left_menu_layout.setContentsMargins(8, 8, 8, 8)
         left_menu_layout.setSpacing(8)
         left_menu_title = QLabel("NEURAL SYSTEMS")
@@ -283,11 +284,20 @@ class HUDMainWindow(QMainWindow):
         self._menu_hide_timer.timeout.connect(self._hide_left_mega_menu)
         left_rail.installEventFilter(self)
         self._left_menu.installEventFilter(self)
-        for button in self._left_icon_buttons:
+        for index, button in enumerate(self._left_icon_buttons):
             button.installEventFilter(self)
+            button.clicked.connect(
+                lambda checked=False, selected=index: self._activate_left_menu(selected)
+            )
         self._right_menu_button.clicked.connect(self._toggle_right_dropdown)
         self._right_menu.installEventFilter(self)
 
+
+    def resizeEvent(self, event):
+        """Keep floating menus inside the central workspace after window resizes."""
+        super().resizeEvent(event)
+        if hasattr(self, "_right_menu") and self._right_menu.isVisible():
+            self._position_right_menu()
 
     def eventFilter(self, watched, event):
         """Open the left mega menu on hover; keep it open while pointer enters the panel."""
@@ -305,16 +315,35 @@ class HUDMainWindow(QMainWindow):
                 self._menu_hide_timer.start()
         return super().eventFilter(watched, event)
 
+    def _activate_left_menu(self, selected_index: int):
+        """Open the mega menu and bring the clicked Brain/Security panel forward."""
+        surfaces = (self._surface_brain, self._surface_security)
+        if selected_index < 0 or selected_index >= len(surfaces):
+            return
+        selected = surfaces[selected_index]
+        self._left_menu_layout.removeWidget(selected)
+        self._left_menu_layout.insertWidget(1, selected)
+        self._left_menu.show()
+        self._left_menu.raise_()
+        selected.setFocus(Qt.FocusReason.OtherFocusReason)
+
     def _hide_left_mega_menu(self):
         self._left_menu.hide()
+
+    def _position_right_menu(self):
+        """Anchor the dropdown to the right edge without clipping on narrow windows."""
+        host = self.centralWidget()
+        if host is None:
+            return
+        x = max(8, host.width() - self._right_menu.width() - 12)
+        self._right_menu.move(x, 50)
+        self._right_menu.raise_()
 
     def _toggle_right_dropdown(self):
         """Show a floating right dropdown without shrinking the hologram workspace."""
         should_show = not self._right_menu.isVisible()
         if should_show:
-            host = self.centralWidget()
-            self._right_menu.move(max(8, host.width() - self._right_menu.width() - 12), 50)
-            self._right_menu.raise_()
+            self._position_right_menu()
         self._right_menu.setVisible(should_show)
 
     def _wire_signals(self):

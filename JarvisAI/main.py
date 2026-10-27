@@ -4955,6 +4955,7 @@ class JarvisLive:
             show = self.ui.show_confirm,
             hide = self.ui.hide_confirm,
             log  = self.ui.write_log,
+            owner_autopilot_allowed = security.owner_autopilot_authorized,
         )
         security.bind(
             logger=self.ui.write_log,

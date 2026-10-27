@@ -76,11 +76,12 @@ class BentoPanelSurface(QFrame):
         if self._stack.currentWidget() is self.panel:
             return
         self._skeleton.stop()
-        self.panel.setGraphicsEffect(None)
+        # Fade the stack, not the panel itself: the security layer may apply a
+        # blur effect to sensitive telemetry while privacy lock is engaged.
         from PyQt6.QtWidgets import QGraphicsOpacityEffect
-        effect = QGraphicsOpacityEffect(self.panel)
+        effect = QGraphicsOpacityEffect(self._stack)
         effect.setOpacity(0.0)
-        self.panel.setGraphicsEffect(effect)
+        self._stack.setGraphicsEffect(effect)
         self._stack.setCurrentWidget(self.panel)
         animation = QPropertyAnimation(effect, b"opacity", self)
         animation.setDuration(220)
@@ -90,7 +91,7 @@ class BentoPanelSurface(QFrame):
 
         def finish():
             if self._reveal_animation is animation:
-                self.panel.setGraphicsEffect(None)
+                self._stack.setGraphicsEffect(None)
                 self._reveal_animation = None
 
         animation.finished.connect(finish)

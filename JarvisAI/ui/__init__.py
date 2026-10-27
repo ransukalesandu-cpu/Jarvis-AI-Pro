@@ -7414,6 +7414,8 @@ class MainWindow(QMainWindow):
             "settings": ("settings", "controls", "gear"),
             "microphone": ("microphone", "mic"),
             "mic": ("mic", "microphone"),
+            "ai provider settings": ("ai provider settings", "ai provider keys", "provider keys", "ai provider"),
+            "response personality settings": ("response personality settings", "response personality", "personality"),
             "fullscreen": ("fullscreen", "full screen"),
             "console": ("console", "command console"),
             "remote": ("remote", "remote control"),
@@ -7585,6 +7587,44 @@ class MainWindow(QMainWindow):
             return
         try:
             label = button.text().strip() or button.toolTip().strip() or target
+            if command.action == "set_state":
+                desired = command.desired_state
+                if desired not in {"on", "off"}:
+                    self._log.append_log("SYS: I could not determine the requested on/off state.")
+                    return
+
+                # Prefer Qt's real checked state for checkable controls. For
+                # non-checkable status buttons, infer state only from explicit
+                # words in the button's own visible label.
+                current_state = None
+                if button.isCheckable():
+                    current_state = "on" if button.isChecked() else "off"
+                else:
+                    label_norm = normalize_label(button.text())
+                    off_markers = {
+                        "off", "muted", "disabled", "sleeping", "stopped",
+                        "inactive", "closed", "paused", "disconnected",
+                    }
+                    on_markers = {
+                        "on", "active", "unmuted", "enabled", "awake",
+                        "running", "connected",
+                    }
+                    words = set(label_norm.split())
+                    if words & off_markers:
+                        current_state = "off"
+                    elif words & on_markers:
+                        current_state = "on"
+
+                if current_state is None:
+                    self._log.append_log(
+                        f"SYS: I found '{label}', but cannot safely tell whether it is "
+                        f"already {desired}. Use 'toggle {target}' or inspect the button."
+                    )
+                    return
+                if current_state == desired:
+                    self._log.append_log(f"SYS: '{label}' is already {desired}.")
+                    return
+
             button.click()
             self._log.append_log(f"SYS: Voice command activated '{label}'.")
         except RuntimeError:

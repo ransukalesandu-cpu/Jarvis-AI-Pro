@@ -1059,8 +1059,12 @@ def browser_control(
         elif not url.lower().startswith(("https://", "http://")):
             result = "The in-HUD web viewer accepts HTTP or HTTPS pages only."
         elif player and hasattr(player, "show_webpage"):
-            player.show_webpage(url, "ARTICLE / WEB PAGE")
-            result = f"Showing inside the JARVIS HUD: {url}"
+            shown = player.show_webpage(url, "ARTICLE / WEB PAGE")
+            result = (
+                f"Showing inside the JARVIS HUD: {url}"
+                if shown is not False else
+                "The JARVIS HUD could not open that URL as an embedded task card."
+            )
         else:
             result = "The in-HUD web viewer is unavailable."
         _log(player, result)

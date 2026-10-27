@@ -4,6 +4,7 @@ from __future__ import annotations
 import unittest
 
 from core.voice_ui_control import (
+    has_wake_name_prefix,
     is_high_impact_ui_label,
     normalize_label,
     parse_voice_ui_command,
@@ -11,6 +12,14 @@ from core.voice_ui_control import (
 
 
 class VoiceUICommandParserTests(unittest.TestCase):
+    def test_wake_name_prefix(self):
+        for text in ("Hey Jarvis open settings", "Jarvis, open settings", "Maya mute microphone"):
+            with self.subTest(text=text):
+                self.assertTrue(has_wake_name_prefix(text))
+        for text in ("open settings", "hey there open settings", ""):
+            with self.subTest(text=text):
+                self.assertFalse(has_wake_name_prefix(text))
+
     def test_click_and_open_commands(self):
         for text, target in (
             ("click settings", "settings"),

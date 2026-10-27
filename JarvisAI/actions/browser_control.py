@@ -1143,12 +1143,26 @@ def browser_control(
         return result
 
     # ── Interactive actions (click/type/read…) ───────────────────────────────
-    # These require a physically controllable browser; the automation window
-    # only opens here, and as soon as it opens it goes to the user's last
-    # navigated page — it doesn't sit on a blank page.
+    # These require a physically controllable native browser. Make room for it
+    # before the automation window opens, leaving only the compact face visible.
+    enter_compact = getattr(player, "enter_compact_overlay", None) if player else None
+    exit_compact = getattr(player, "exit_compact_overlay", None) if player else None
+    compact_requested = callable(enter_compact)
+    if compact_requested:
+        try:
+            enter_compact()
+        except Exception as exc:
+            print(f"[Browser] Could not request compact hologram mode: {exc}")
+            compact_requested = False
+
     try:
         sess = _registry.get(browser)
     except Exception as e:
+        if compact_requested and callable(exit_compact):
+            try:
+                exit_compact()
+            except Exception:
+                pass
         result = f"Could not start browser session: {e}"
         _log(player, result)
         return result

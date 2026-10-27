@@ -58,12 +58,15 @@ _MANUAL_CLICK_ONLY_KEYS = {
 _show_cb: Optional[Callable[[str, str], None]] = None
 _hide_cb: Optional[Callable[[], None]] = None
 _log_cb:  Optional[Callable[[str], None]] = None
+_owner_autopilot_cb: Optional[Callable[[], bool]] = None
+_autopilot_running = False
 
 
-def bind(show, hide, log=None) -> None:
-    """Wire this module to the HUD. Called once from main.py at startup."""
-    global _show_cb, _hide_cb, _log_cb
+def bind(show, hide, log=None, owner_autopilot_allowed=None) -> None:
+    """Wire the HUD and verified-host no-prompt policy once at startup."""
+    global _show_cb, _hide_cb, _log_cb, _owner_autopilot_cb
     _show_cb, _hide_cb, _log_cb = show, hide, log
+    _owner_autopilot_cb = owner_autopilot_allowed
 
 
 def _log(msg: str) -> None:
@@ -75,12 +78,61 @@ def _log(msg: str) -> None:
 
 
 def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
-    """Park an irreversible action behind the on-screen gate.
+    """Execute directly for a fully verified live host; otherwise show the gate.
 
-    Returns the sentence the tool should hand back to the model — phrased as an
-    instruction so the assistant asks the user out loud in their own language,
-    rather than reading an English string verbatim."""
-    global _pending
+    Owner Autopilot is not a global prompt-disable switch: its callback must
+    verify both local PIN and current live owner voice/anti-spoof, and reject
+    turns influenced by untrusted external content. The action still runs
+    through its normal caller-side authorization, rate-limit and audit logic.
+    """
+    global _pending, _autopilot_running
+
+    # Preserve any unresolved prompt; never stack or silently replace it.
+    with _lock:
+        if _autopilot_running:
+            return "Another verified-host action is currently running. Wait for it to finish."
+        if _pending is not None and time.monotonic() - _pending.at <= TIMEOUT_SECONDS:
+            existing_title = _pending.title
+            _log(f"SYS: Refused to replace pending confirmation — {existing_title}")
+            return (
+                f"A different confirmation is already waiting: {existing_title}. "
+                "Resolve or cancel it before requesting another action."
+            )
+        if _pending is not None:
+            _pending = None
+
+    trusted_owner = False
+    if _owner_autopilot_cb is not None:
+        try:
+            trusted_owner = _owner_autopilot_cb() is True
+        except Exception:
+            trusted_owner = False
+
+    if trusted_owner:
+        # Claim the single in-flight slot before running the operation. The
+        # callback executes on the action worker, not on the Qt UI thread.
+        with _lock:
+            if _autopilot_running:
+                return "Another verified-host action is currently running. Wait for it to finish."
+            if _pending is not None and time.monotonic() - _pending.at <= TIMEOUT_SECONDS:
+                return (
+                    f"A different confirmation is already waiting: {_pending.title}. "
+                    "Resolve or cancel it before requesting another action."
+                )
+            if _pending is not None:
+                _pending = None
+            _autopilot_running = True
+        _log(f"SYS: Owner Autopilot — confirmed-host request running without a confirmation banner: {title}")
+        try:
+            result = run() or "Done."
+            _log(f"SYS: Owner Autopilot completed — {title}. {result}")
+            return f"[OWNER_AUTOPILOT_COMPLETED] {result}"
+        except Exception as e:
+            _log(f"ERR: Owner Autopilot action failed — {title}: {type(e).__name__}: {e}")
+            raise
+        finally:
+            with _lock:
+                _autopilot_running = False
 
     if _show_cb is None:
         # No interface bound (headless, or a very early call). Refuse rather
@@ -89,6 +141,8 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
                 f"not available, so I have not done it.")
 
     with _lock:
+        if _autopilot_running:
+            return "Another verified-host action is currently running. Wait for it to finish."
         if _pending is not None and time.monotonic() - _pending.at <= TIMEOUT_SECONDS:
             existing_title = _pending.title
             _log(f"SYS: Refused to replace pending confirmation — {existing_title}")
@@ -123,7 +177,6 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
         f"[CONFIRMATION_PENDING] I have put a confirmation on screen for: {title}. "
         f"{guidance} Do not claim it is done."
     )
-
 
 def resolve(accepted: bool, source: str = "HUD") -> None:
     """Called by the UI when the user presses CONFIRM or CANCEL.

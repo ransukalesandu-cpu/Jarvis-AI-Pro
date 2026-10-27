@@ -66,7 +66,7 @@ function selfNameSegment(quote: string): string {
 const SIBLING_EVIDENCE =
   /\bi\s+have\b.{0,80}\b(?:sister|brother|siblings?)\b|\bmy\s+(?:sister|brother|siblings?)\b|\bonly\s+child\b|\bno\s+siblings\b|\bmage\s+(?:akka|ayya|aiya|malli|nangi|sahodara)|මගේ\s*(?:අක්කා|අයියා|මල්ලි|නංගි|සහෝදර)|මට\s*[^.!?]{0,50}(?:සහෝදර|අක්කා|අයියා|මල්ලි|නංගි)/i;
 const SIBLING_IDENTIFYING =
-  /\b(?:named|called|name is|name's|birthday|age is|phone|email|address|school|occupation|profession|doctor|teacher|student|works? at)\b|(?:නම|උපන්දිනය|දුරකථන|ලිපිනය)/i;
+  /\b(?:my\s+)?(?:sister|brother|siblings?)(?:['’]s)?\s+(?:name|age|birthday|phone|email|address|school|occupation|profession)\b|\b(?:my\s+)?(?:sister|brother|siblings?)\s+(?:named|called|is\s+[A-Z][\w'-]+|works?\s+at|studies\s+at|attends)\b|\b(?:her|his|their)\s+(?:name|age|birthday|phone|email|address|school|occupation|profession)\b|(?:මගේ\s*(?:අක්කා|අයියා|මල්ලි|නංගි|සහෝදර)(?:ගේ)?\s*(?:නම|උපන්දිනය|වයස|දුරකථන|ලිපිනය|පාසල))/i;
 
 export function validatePersonalFact(input: {
   fact_key?: unknown;
@@ -96,7 +96,7 @@ export function validatePersonalFact(input: {
   }
   // Don't retain another family member's identifying information even if an
   // extractor labels it as a generic family_context or preference.
-  if (SIBLING_EVIDENCE.test(evidence_quote) && SIBLING_IDENTIFYING.test(evidence_quote)) {
+  if (input.fact_key !== "name" && SIBLING_EVIDENCE.test(evidence_quote) && SIBLING_IDENTIFYING.test(evidence_quote)) {
     return { ok: false, reason: "sibling_identifying_details_not_stored" };
   }
   if (isSensitiveFactContent(value) || isSensitiveFactContent(evidence_quote)) {

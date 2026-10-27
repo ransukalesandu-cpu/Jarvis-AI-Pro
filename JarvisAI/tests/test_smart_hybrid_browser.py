@@ -18,6 +18,19 @@ class SmartHybridBrowserTests(unittest.TestCase):
         result = classifier.route("open a website")
         self.assertEqual(result["intent"], "CHAT")
 
+    def test_intent_classifier_does_not_force_gemini_model_on_other_provider(self):
+        router = Mock()
+        router.query.return_value = {
+            "text": '{"intent":"BROWSER","reason":"explicit navigation"}'
+        }
+        classifier = SmartIntentRouter(router_factory=Mock(return_value=router))
+        with patch("core.smart_intent_router._configured_preferred_provider", return_value="openai"), \
+             patch("core.smart_intent_router._configured_keys", return_value={"openai": "test-key"}):
+            result = classifier.route("open https://example.com")
+
+        self.assertEqual(result["intent"], "BROWSER")
+        self.assertNotIn("model", router.query.call_args.kwargs)
+
     def test_empty_request_rejected(self):
         with self.assertRaises(ValueError):
             SmartIntentRouter().route(" ")

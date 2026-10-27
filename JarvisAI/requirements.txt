@@ -83,7 +83,7 @@ pdfplumber                   # file_processor — PDF text and tables
 PyPDF2                       # file_processor — PDF fallback reader
 python-docx                  # file_processor — .docx reading
 paho-mqtt                    # printer_control plugin — MQTT printers
-pynvml                       # system_monitor + the HUD's GPU meter (NVIDIA)
+nvidia-ml-py  # supported NVIDIA Management Library Python bindings
 
 # ── Optional: heavy extras, install only if you want the feature ──────────────
 # Left out on purpose — together they are several hundred megabytes, which is a

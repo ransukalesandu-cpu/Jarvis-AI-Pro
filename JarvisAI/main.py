@@ -77,15 +77,12 @@ from pathlib import Path
 # explicitly request GPU rasterization for the canvas-heavy Holo UI. Do this
 # before importing PyQt/WebEngine so its renderer process inherits the flags.
 # Keep user-supplied Chromium flags intact and never force past the GPU blocklist.
-_chromium_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "").split()
-if _platform.system() == "Linux":
-    if "--no-sandbox" not in _chromium_flags:
-        _chromium_flags.append("--no-sandbox")
-elif _platform.system() == "Windows":
-    for _gpu_flag in ("--enable-gpu-rasterization", "--enable-zero-copy"):
-        if _gpu_flag not in _chromium_flags:
-            _chromium_flags.append(_gpu_flag)
-os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(_chromium_flags)
+from core.qtwebengine_flags import qtwebengine_chromium_flags
+
+_chromium_flags = qtwebengine_chromium_flags(
+    _platform.system(), os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+)
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = _chromium_flags
 
 try:
     import sounddevice as sd

@@ -149,9 +149,15 @@ class HybridLLMRouter:
         for provider in order:
             if provider != "ollama" and not self._supabase_enabled and not self._key(provider):
                 continue
+            # A generic model override belongs to the preferred provider only.
+            # Reusing (for example) a Gemini model name during Groq/OpenAI/Claude
+            # failover makes otherwise healthy fallback providers reject requests.
+            provider_kwargs = dict(kwargs)
+            if provider != self.preferred_provider:
+                provider_kwargs.pop("model", None)
             try:
                 result = self._validate_result(
-                    self.providers[provider](prompt, system_prompt, **kwargs), provider
+                    self.providers[provider](prompt, system_prompt, **provider_kwargs), provider
                 )
                 result.update({
                     "provider": provider,

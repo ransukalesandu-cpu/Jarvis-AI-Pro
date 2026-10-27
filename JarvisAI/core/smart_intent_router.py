@@ -76,7 +76,6 @@ class SmartIntentRouter:
                     "You are a conservative intent classifier, not an executor. "
                     'Output JSON only, e.g. {"intent":"CHAT","reason":"..."}'
                 ),
-                model="gemini-2.5-flash",
             )
             payload = _extract_json(result.get("text", ""))
             intent = str(payload.get("intent") or "").strip().upper()

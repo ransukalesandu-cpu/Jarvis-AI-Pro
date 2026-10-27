@@ -73,6 +73,32 @@ class HybridLLMRouterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "non-empty prompt"):
             router.query("   ")
 
+    def test_explicit_model_override_is_not_reused_for_fallback_provider(self):
+        router = HybridLLMRouter(
+            preferred_provider="gemini",
+            api_keys={"gemini": "test-gemini", "groq": "test-groq"},
+            online_check=False,
+        )
+        calls = []
+
+        def fail_gemini(prompt, system_prompt, **kwargs):
+            calls.append(("gemini", dict(kwargs)))
+            raise RuntimeError("Gemini model unavailable")
+
+        def answer_groq(prompt, system_prompt, **kwargs):
+            calls.append(("groq", dict(kwargs)))
+            return {"text": "fallback answer", "model": "groq-default"}
+
+        router.providers["gemini"] = fail_gemini
+        router.providers["groq"] = answer_groq
+        result = router.query("hello", model="gemini-2.5-flash")
+
+        self.assertEqual(result["text"], "fallback answer")
+        self.assertEqual(calls[0][0], "gemini")
+        self.assertEqual(calls[0][1]["model"], "gemini-2.5-flash")
+        self.assertEqual(calls[1][0], "groq")
+        self.assertNotIn("model", calls[1][1])
+
     def test_provider_failure_falls_back_to_next_configured_provider(self):
         router = HybridLLMRouter(
             api_keys={"gemini": "test-gemini", "groq": "test-groq", "openai": "test-openai"},

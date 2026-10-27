@@ -227,7 +227,7 @@ class FloatingTaskCard(QFrame):
     def eventFilter(self, watched, event):
         if watched in (self._title_bar, self._title_label):
             if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
-                self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+                self._drag_offset = event.globalPosition().toPoint() - self.mapToGlobal(self.rect().topLeft())
                 return False
             if event.type() == QEvent.Type.MouseMove and self._drag_offset is not None:
                 if event.buttons() & Qt.MouseButton.LeftButton:

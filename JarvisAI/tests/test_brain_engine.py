@@ -80,7 +80,7 @@ class BrainEngineTests(unittest.TestCase):
     def test_memory_retrieval_failure_falls_back_without_exposing_exception(self):
         retriever = Mock(side_effect=RuntimeError("private memory payload"))
         query = Mock(return_value=({"text": "answer", "provider": "gemini"}, "gemini"))
-        result = BrainEngine(query_fn=query, memory_retriever=retriever).respond("Help me")
+        result = BrainEngine(query_fn=query, memory_retriever=retriever, memory_enabled=True).respond("Help me")
         self.assertEqual(result["text"], "answer")
         self.assertEqual(result["memory_hits"], 0)
         self.assertNotIn("private memory payload", repr(result))
@@ -107,7 +107,7 @@ class BrainEngineTests(unittest.TestCase):
             "source": "user_stated", "trust_level": "confirmed",
             "verification_status": "user_confirmed", "project": "Jarvis",
         }])
-        engine = BrainEngine(query_fn=query, memory_retriever=retriever)
+        engine = BrainEngine(query_fn=query, memory_retriever=retriever, memory_enabled=True)
         result = engine.respond(
             "Continue the project plan",
             base_system_prompt="You are {assistant_name} on {platform}.",

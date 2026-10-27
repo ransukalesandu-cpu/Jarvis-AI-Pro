@@ -315,8 +315,23 @@ def daily_planner(parameters: dict, player=None, session_memory=None) -> str:
                     selected = [row for row in pending if row.get("date") and row.get("date") >= today]
                     return "Upcoming items:\n" + _display(selected, "No upcoming saved items.")
                 if operation == "checkin":
-                    overdue = [row for row in pending if row.get("date") and row.get("date") < today]
-                    today_rows = [row for row in pending if row.get("date") == today]
+                    now = datetime.now()
+                    overdue = [
+                        row for row in pending
+                        if row.get("date") and (
+                            row.get("date") < today
+                            or (
+                                row.get("date") == today
+                                and (_scheduled_datetime(row) is not None)
+                                and _scheduled_datetime(row) < now
+                            )
+                        )
+                    ]
+                    overdue_ids = {str(row.get("id", "")) for row in overdue}
+                    today_rows = [
+                        row for row in pending
+                        if row.get("date") == today and str(row.get("id", "")) not in overdue_ids
+                    ]
                     unscheduled = [row for row in pending if not row.get("date")]
                     sections = ["Your check-in:"]
                     sections.append("Overdue / may have been missed:\n" + _display(overdue, "Nothing overdue in the saved planner."))

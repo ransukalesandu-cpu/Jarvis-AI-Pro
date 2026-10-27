@@ -250,6 +250,40 @@ class TestUIHologram(unittest.TestCase):
         hud._bihansa_toggle.setChecked(False)
         self.assertEqual(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
 
+    def test_left_icon_click_opens_and_prioritizes_selected_panel(self):
+        """Icon clicks must work without relying on hover-only event handling."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.show()
+        app.processEvents()
+
+        hud._left_icon_buttons[0].click()
+        self.assertTrue(hud._left_menu.isVisible())
+        self.assertIs(hud._left_menu_layout.itemAt(1).widget(), hud._surface_brain)
+
+        hud._left_icon_buttons[1].click()
+        self.assertTrue(hud._left_menu.isVisible())
+        self.assertIs(hud._left_menu_layout.itemAt(1).widget(), hud._surface_security)
+
+    def test_right_dropdown_repositions_after_resize(self):
+        """The floating settings menu must remain anchored inside the window."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.resize(1100, 760)
+        hud.show()
+        app.processEvents()
+        hud._toggle_right_dropdown()
+        self.assertTrue(hud._right_menu.isVisible())
+
+        hud.resize(1024, 700)
+        app.processEvents()
+        expected_x = max(
+            8, hud.centralWidget().width() - hud._right_menu.width() - 12
+        )
+        self.assertEqual(hud._right_menu.x(), expected_x)
+        self.assertLessEqual(
+            hud._right_menu.x() + hud._right_menu.width(),
+            hud.centralWidget().width(),
+        )
+
     def test_hologram_hud_ui_adapter(self):
         """Test HologramHUDUI adapter class wrapping HUDMainWindow."""
         ui = HologramHUDUI(bridge=self.bridge)

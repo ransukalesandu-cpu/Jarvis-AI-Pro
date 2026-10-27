@@ -7521,11 +7521,17 @@ class MainWindow(QMainWindow):
                 return
             delta = -1 if command.action == "previous_tab" else 1
             focused = QApplication.focusWidget()
-            tab = next(
+            focused_tab = next(
                 (item for item in tabs if focused is not None and
                  (item is focused or item.isAncestorOf(focused))),
-                tabs[-1],
+                None,
             )
+            if focused_tab is None and len(tabs) > 1:
+                self._log.append_log(
+                    "SYS: Several tab controls are visible. Focus the one you want first."
+                )
+                return
+            tab = focused_tab or tabs[0]
             new_index = tab.currentIndex() + delta
             if 0 <= new_index < tab.count():
                 tab.setCurrentIndex(new_index)
@@ -7543,10 +7549,16 @@ class MainWindow(QMainWindow):
                 self._log.append_log("SYS: No visible scrollable panel was found.")
                 return
             focused = QApplication.focusWidget()
-            area = next(
+            focused_area = next(
                 (item for item in areas if focused is not None and item.isAncestorOf(focused)),
-                areas[-1],
+                None,
             )
+            if focused_area is None and len(areas) > 1:
+                self._log.append_log(
+                    "SYS: Several scrollable panels are visible. Focus the panel you want to scroll."
+                )
+                return
+            area = focused_area or areas[0]
             bar = area.verticalScrollBar()
             step = max(1, bar.singleStep()) * 3
             if command.target == "top":

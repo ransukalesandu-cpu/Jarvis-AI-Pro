@@ -215,9 +215,10 @@ class HUDMainWindow(QMainWindow):
         self._lock_banner.hide()
 
         # Right-side dropdown contains secondary telemetry and settings controls.
-        self._right_menu = QFrame(self)
+        self._right_menu = QFrame(central_widget)
         self._right_menu.setObjectName("rightDropdownMenu")
         self._right_menu.setFixedWidth(300)
+        self._right_menu.setMaximumHeight(650)
         self._right_menu.setStyleSheet(
             "QFrame#rightDropdownMenu { background: rgba(9,17,27,248); border: 1px solid #17485a; border-radius: 14px; }"
         )
@@ -254,10 +255,6 @@ class HUDMainWindow(QMainWindow):
         right_menu_layout.addWidget(self._surface_scheduler)
         right_menu_layout.addWidget(self._surface_ring)
         self._right_menu.hide()
-        dropdown_row = QHBoxLayout()
-        dropdown_row.addStretch()
-        dropdown_row.addWidget(self._right_menu)
-        main_layout.addLayout(dropdown_row)
 
         self._bihansa_effects.toggled.connect(self.bihansa_visualizer.set_effects_enabled)
         self._bihansa_voice_reactive.toggled.connect(self.bihansa_visualizer.set_voice_reactive)
@@ -300,8 +297,13 @@ class HUDMainWindow(QMainWindow):
         self._left_menu.hide()
 
     def _toggle_right_dropdown(self):
-        """Toggle the compact right dropdown without changing assistant state."""
-        self._right_menu.setVisible(not self._right_menu.isVisible())
+        """Show a floating right dropdown without shrinking the hologram workspace."""
+        should_show = not self._right_menu.isVisible()
+        if should_show:
+            host = self.centralWidget()
+            self._right_menu.move(max(8, host.width() - self._right_menu.width() - 12), 50)
+            self._right_menu.raise_()
+        self._right_menu.setVisible(should_show)
 
     def _wire_signals(self):
         """Wire VisualizerBridge signals to UI components."""

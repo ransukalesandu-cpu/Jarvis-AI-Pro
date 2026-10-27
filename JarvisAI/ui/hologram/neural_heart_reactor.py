@@ -1,7 +1,7 @@
 """Subtle breathing neural-heart / quantum-reactor overlay for the central HUD.
 
 Independent transparent paint layer; NeuralWireframeHead and status orb renderers
-remain unchanged.
+remain unchanged. The heart continuously cycles through red, pink and orange.
 """
 from __future__ import annotations
 
@@ -41,6 +41,16 @@ class NeuralHeartReactor(QWidget):
         self._state = str(state or "IDLE").upper()
         self.update()
 
+    @staticmethod
+    def _cycle_color(elapsed: float) -> QColor:
+        """Smoothly loop only through red -> pink -> orange -> red."""
+        palette = ((255, 48, 68), (255, 65, 160), (255, 139, 35))
+        phase = (elapsed / 3.2) % len(palette)
+        index = int(phase)
+        blend = phase - index
+        start, end = palette[index], palette[(index + 1) % len(palette)]
+        return QColor(*(round(a + (b - a) * blend) for a, b in zip(start, end)))
+
     def paintEvent(self, event):
         w, h = self.width(), self.height()
         if w < 80 or h < 120:
@@ -50,15 +60,9 @@ class NeuralHeartReactor(QWidget):
         t = time.monotonic() - self._started_at
         pulse = (math.sin(t * 2.0 * math.pi * 0.42) + 1.0) * 0.5
         breath = 1.0 + 0.055 * math.sin(t * 2.0 * math.pi * 0.42)
-
-        if self._state in ("PRIVACY_LOCK", "LOCKDOWN"):
-            c = QColor(255, 45, 75)
-        elif self._state == "THINKING":
-            c = QColor(143, 100, 255)
-        elif self._state == "SPEAKING":
-            c = QColor(55, 235, 255)
-        else:
-            c = QColor(0, 220, 255)
+        c = self._cycle_color(t)
+        # State can gently intensify the reactor, but never changes its palette.
+        state_boost = 1.18 if self._state in ("SPEAKING", "THINKING") else 1.0
 
         # Small heart (about 40px) on the hologram's left side; smaller than orb.
         cx, cy = max(31.0, min(47.0, w * 0.085)), h * 0.37
@@ -66,7 +70,7 @@ class NeuralHeartReactor(QWidget):
 
         aura = QRadialGradient(QPointF(cx, cy), 42.0 * breath)
         aura_center = QColor(c)
-        aura_center.setAlpha(28 + int(18 * pulse))
+        aura_center.setAlpha(min(255, int((28 + 18 * pulse) * state_boost)))
         aura.setColorAt(0.0, aura_center)
         aura.setColorAt(0.55, QColor(c.red(), c.green(), c.blue(), 9))
         aura.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
@@ -76,7 +80,7 @@ class NeuralHeartReactor(QWidget):
 
         # Only a few dim neural wires, so the hologram remains visually dominant.
         p.setBrush(Qt.BrushStyle.NoBrush)
-        wire = QPen(QColor(c.red(), c.green(), c.blue(), 58 + int(28 * pulse)), 0.8)
+        wire = QPen(QColor(c.red(), c.green(), c.blue(), int((58 + 28 * pulse) * state_boost)), 0.8)
         wire.setCapStyle(Qt.PenCapStyle.RoundCap)
         p.setPen(wire)
         head_anchor = QPointF(w * 0.30, h * 0.30)
@@ -97,7 +101,7 @@ class NeuralHeartReactor(QWidget):
             p.drawPath(strand)
 
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QBrush(QColor(c.red(), c.green(), c.blue(), 90 + int(50 * pulse))))
+        p.setBrush(QBrush(QColor(c.red(), c.green(), c.blue(), int((90 + 50 * pulse) * state_boost))))
         p.drawEllipse(head_anchor, 1.7, 1.7)
         p.drawEllipse(orb_anchor, 2.0, 2.0)
 
@@ -114,8 +118,8 @@ class NeuralHeartReactor(QWidget):
         heart.cubicTo(left + hw * 1.10, top + hh * 0.08,
                       cx + hw * 0.10, top - hh * 0.02, cx, top + hh * 0.27)
         heart.closeSubpath()
-        p.setBrush(QBrush(QColor(c.red(), c.green(), c.blue(), 20 + int(12 * pulse))))
-        p.setPen(QPen(QColor(c.red(), c.green(), c.blue(), 175 + int(55 * pulse)), 1.05))
+        p.setBrush(QBrush(QColor(c.red(), c.green(), c.blue(), int((20 + 12 * pulse) * state_boost))))
+        p.setPen(QPen(QColor(c.red(), c.green(), c.blue(), min(255, int((175 + 55 * pulse) * state_boost))), 1.05))
         p.drawPath(heart)
 
         # Sparse internal mesh.
@@ -127,13 +131,13 @@ class NeuralHeartReactor(QWidget):
             QPointF(cx + hw * 0.18, top + hh * 0.62),
             QPointF(cx, top + hh * 0.84),
         ]
-        p.setPen(QPen(QColor(c.red(), c.green(), c.blue(), 150), 0.75))
+        p.setPen(QPen(QColor(c.red(), c.green(), c.blue(), min(255, int(150 * state_boost))), 0.75))
         for a, b in ((0, 1), (0, 2), (1, 2), (1, 3), (1, 4),
                      (2, 3), (2, 4), (3, 4), (3, 5), (4, 5)):
             p.drawLine(points[a], points[b])
 
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QBrush(QColor(220, 255, 255, 190 + int(45 * pulse))))
+        p.setBrush(QBrush(QColor(255, 225, 235, min(255, 190 + int(45 * pulse)))))
         core = 2.2 + 0.65 * pulse
         p.drawEllipse(QPointF(cx, cy + 1.0), core, core)
         p.end()

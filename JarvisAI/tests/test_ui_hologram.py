@@ -30,6 +30,7 @@ app = QApplication.instance() or QApplication(sys.argv)
 from audio.visualizer_bridge import VisualizerBridge, get_visualizer_bridge
 from ui.hologram.wireframe_head import NeuralWireframeHead
 from ui.hologram.bihansa_hologram import BihansaHologramWidget
+from ui.hologram.neural_heart_reactor import NeuralHeartReactor
 from ui.panels.hybrid_brain_panel import HybridBrainPanel
 from ui.panels.security_panel import SecurityPanel
 from ui.panels.memory_panel import MemoryPanel
@@ -187,11 +188,15 @@ class TestUIHologram(unittest.TestCase):
         self.assertFalse(hud._lock_banner.isHidden())
         self.assertEqual(hud.wireframe_visualizer.get_state(), "PRIVACY_LOCK")
         self.assertEqual(hud.bihansa_visualizer.get_state(), "PRIVACY_LOCK")
+        self.assertEqual(hud._mini_orb._state, "PRIVACY_LOCK")
+        self.assertEqual(hud._heart_reactor._state, "PRIVACY_LOCK")
 
         # Audio state updates must not override an auth-only lock.
         self.bridge.update_state("SPEAKING")
         self.assertEqual(hud.bihansa_visualizer.get_state(), "PRIVACY_LOCK")
         self.assertEqual(hud.wireframe_visualizer.get_state(), "PRIVACY_LOCK")
+        self.assertEqual(hud._mini_orb._state, "PRIVACY_LOCK")
+        self.assertEqual(hud._heart_reactor._state, "PRIVACY_LOCK")
 
         # Clear PRIVACY_LOCK
         self.bridge.update_auth_state("FULL_ACCESS")
@@ -206,11 +211,13 @@ class TestUIHologram(unittest.TestCase):
         self.assertIsInstance(hud.bihansa_visualizer, BihansaHologramWidget)
         self.assertEqual(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
 
-        # A small extra status orb is added to the header, not substituted for
-        # either original central hologram widget.
+        # The status orb remains below the hologram; the heart is a separate
+        # transparent overlay and does not replace either original visualizer.
         self.assertIsInstance(hud._mini_orb, FloatingHolographicOrb)
-        self.assertEqual(hud._mini_orb.size().width(), 28)
-        self.assertEqual(hud._mini_orb.size().height(), 28)
+        self.assertEqual(hud._mini_orb.size().width(), 48)
+        self.assertEqual(hud._mini_orb.size().height(), 48)
+        self.assertIsInstance(hud._heart_reactor, NeuralHeartReactor)
+        self.assertIs(hud._heart_reactor.parentWidget(), hud._hologram_stage)
         self.assertIsInstance(hud._surface_brain, BentoPanelSurface)
         self.assertIsInstance(hud._surface_security, BentoPanelSurface)
         self.assertIsInstance(hud._surface_memory, BentoPanelSurface)
@@ -234,6 +241,7 @@ class TestUIHologram(unittest.TestCase):
         self.bridge.update_state("LISTENING")
         self.bridge.push_audio_energy(0.75)
         self.assertEqual(hud._mini_orb._state, "LISTENING")
+        self.assertEqual(hud._heart_reactor._state, "LISTENING")
         self.assertEqual(hud.wireframe_visualizer.get_state(), "LISTENING")
         self.assertEqual(hud.bihansa_visualizer.get_state(), "LISTENING")
 
@@ -243,6 +251,40 @@ class TestUIHologram(unittest.TestCase):
         self.assertTrue(hud._mini_orb._bihansa)
         hud._bihansa_toggle.setChecked(False)
         self.assertEqual(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
+
+    def test_left_icon_click_opens_and_prioritizes_selected_panel(self):
+        """Icon clicks must work without relying on hover-only event handling."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.show()
+        app.processEvents()
+
+        hud._left_icon_buttons[0].click()
+        self.assertTrue(hud._left_menu.isVisible())
+        self.assertIs(hud._left_menu_layout.itemAt(1).widget(), hud._surface_brain)
+
+        hud._left_icon_buttons[1].click()
+        self.assertTrue(hud._left_menu.isVisible())
+        self.assertIs(hud._left_menu_layout.itemAt(1).widget(), hud._surface_security)
+
+    def test_right_dropdown_repositions_after_resize(self):
+        """The floating settings menu must remain anchored inside the window."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.resize(1100, 760)
+        hud.show()
+        app.processEvents()
+        hud._toggle_right_dropdown()
+        self.assertTrue(hud._right_menu.isVisible())
+
+        hud.resize(1024, 700)
+        app.processEvents()
+        expected_x = max(
+            8, hud.centralWidget().width() - hud._right_menu.width() - 12
+        )
+        self.assertEqual(hud._right_menu.x(), expected_x)
+        self.assertLessEqual(
+            hud._right_menu.x() + hud._right_menu.width(),
+            hud.centralWidget().width(),
+        )
 
     def test_hologram_hud_ui_adapter(self):
         """Test HologramHUDUI adapter class wrapping HUDMainWindow."""

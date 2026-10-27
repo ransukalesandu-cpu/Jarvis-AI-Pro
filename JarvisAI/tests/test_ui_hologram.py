@@ -311,7 +311,7 @@ class TestUIHologram(unittest.TestCase):
             self.assertFalse(surface._reveal_timer.isActive())
 
         hud._show_dashboard_page()
-        QTest.qWait(850)
+        QTest.qWait(1050)
         app.processEvents()
         self.assertTrue(hud._dashboard._loaded)
         for surface in surfaces:

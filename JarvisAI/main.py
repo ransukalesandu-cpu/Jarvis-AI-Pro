@@ -4710,7 +4710,7 @@ def main():
         if splash is not None:
             splash.close()
 
-        if args.hologram_hud and HologramHUDUI is not None:
+        if HologramHUDUI is not None:
             # The hologram adapter intentionally has no API-key or owner-PIN
             # enrollment dialogs. On a fresh install, route through the full
             # desktop UI so its existing first-run API and PIN setup can run.

@@ -16,8 +16,8 @@ from actions.open_app import _launch_windows
 
 class WindowsAppLaunchSecurityTests(unittest.TestCase):
     def test_resolved_executable_is_started_without_a_shell(self):
-        with patch("actions.open_app.shutil.which", return_value=r"C:\\Windows\\System32\\calc.exe"), \\
-             patch("actions.open_app.subprocess.Popen") as popen, \\
+        with patch("actions.open_app.shutil.which", return_value=r"C:\\Windows\\System32\\calc.exe"), \
+             patch("actions.open_app.subprocess.Popen") as popen, \
              patch("actions.open_app.time.sleep"):
             self.assertTrue(_launch_windows("calc.exe"))
 
@@ -28,9 +28,9 @@ class WindowsAppLaunchSecurityTests(unittest.TestCase):
 
     def test_uri_with_shell_metacharacters_uses_shell_execute_not_cmd(self):
         uri = "https://example.test/path?a=1&b=2"
-        with patch("actions.open_app.shutil.which", return_value=None), \\
-             patch("actions.open_app.os.startfile", create=True) as startfile, \\
-             patch("actions.open_app.subprocess.Popen") as popen, \\
+        with patch("actions.open_app.shutil.which", return_value=None), \
+             patch("actions.open_app.os.startfile", create=True) as startfile, \
+             patch("actions.open_app.subprocess.Popen") as popen, \
              patch("actions.open_app.time.sleep"):
             self.assertTrue(_launch_windows(uri))
 

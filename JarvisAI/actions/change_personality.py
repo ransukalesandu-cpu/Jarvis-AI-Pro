@@ -26,6 +26,32 @@ def change_personality(parameters: dict, **context) -> str:
         "researcher": "research",
         "operator": "system",
         "custom": "custom",
+        "normal mode": "conversational",
+        "normal": "conversational",
+        "standard": "conversational",
+        "friendly": "affectionate",
+        "angry mode": "angry",
+        "rage": "angry",
+        "crazy mode": "crazy",
+        "chaotic": "crazy",
+        "comedy": "funny",
+        "comedian": "funny",
+        "jokes": "funny",
+        "dry wit": "sarcastic",
+        "sarcasm": "sarcastic",
+        "coach": "motivational",
+        "motivation": "motivational",
+        "narrator": "storyteller",
+        "peaceful": "calm",
+        "excited": "hype",
+        "high energy": "hype",
+        "instructor": "teacher",
+        "advisor": "mentor",
+        "investigator": "detective",
+        "poet": "poetic",
+        "anime style": "anime",
+        "business": "professional",
+        "professional mode": "professional",
     }
     mode = aliases.get(mode, mode)
     if mode == "bihansa":
@@ -109,8 +135,10 @@ def change_personality(parameters: dict, **context) -> str:
         return "Switched back to JARVIS mode and restored the previous voice and personality settings."
     if mode not in MODE_DEFINITIONS:
         return (
-            "I couldn't identify that personality. Choose conversational, concise, "
-            "technical, emergency, research, system, or custom."
+            "I couldn't identify that mode. Try normal, auto, angry, crazy, funny, "
+            "sarcastic, motivational, storyteller, calm, hype, teacher, mentor, "
+            "detective, poetic, anime, professional, concise, technical, emergency, "
+            "research, system, affectionate, strict, playful, or custom."
         )
 
     current = get_voice_personality()
@@ -145,33 +173,42 @@ def change_personality(parameters: dict, **context) -> str:
         except Exception:
             # The preference is saved even if the live session cannot reconnect.
             return f"{label} personality saved. It will apply when the session reconnects."
-    return f"Switched to {label} personality."
+    if mode == "auto":
+        return "Auto Adaptive mode is on. I will adapt my style naturally to each turn."
+    return (
+        f"Switched to {label} mode. I will stay in this mode across topics until "
+        "you ask for normal mode or explicitly choose another mode."
+    )
 
 
 TOOL = {
     "name": "change_personality",
     "description": (
-        "Change JARVIS's response personality when the user asks by voice to switch, "
-        "change, or use a different personality/mode/style. Supported modes: "
-        "conversational (natural/warm), concise (short answers), technical (precise "
-        "technical explanations), emergency (calm safety-first guidance), research "
-        "(evidence-led), system (operational status/diagnostics), custom, Bihansa, and Jarvis. "
-        "When the user says 'switch to Bihansa', 'Bihansa mode', or asks for the caring "
-        "female companion style, select mode bihansa; this selects the Aoede voice and "
-        "applies the saved Bihansa companion style. When the user says 'switch to Jarvis', "
-        "select mode jarvis to restore the previously saved personality and voice. "
-        "Map natural/normal to conversational, short/brief to concise, expert to "
-        "technical, researcher to research, and operator to system. This changes "
-        "response style and voice only; it must never alter permissions or safety checks. "
-        "Do not call this unless the user explicitly asks to change personality."
+        "Switch JARVIS's persistent response mode when the user explicitly asks for a "
+        "mode/personality/style. Modes: auto, conversational/normal, affectionate, strict, "
+        "angry, crazy/chaotic, playful, funny/comedian, sarcastic, motivational, storyteller, "
+        "calm, hype/high-energy, teacher, mentor, detective, poetic, anime energy, professional, "
+        "concise, technical, emergency, research, system, custom, Bihansa, or Jarvis. "
+        "After a manual mode is selected, keep that style for ordinary replies across topics "
+        "until the user asks for normal mode or selects another mode; never silently adapt "
+        "out of a chosen manual mode. Normal maps to conversational, Auto maps to auto. "
+        "Bihansa selects Aoede and its companion style; Jarvis restores the prior saved profile "
+        "when available. Modes change delivery only, never permissions, safety rules, or truthfulness. "
+        "Only call this tool when the user explicitly asks to switch mode."
     ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
             "mode": {
                 "type": "STRING",
-                "description": "Target mode: bihansa, jarvis, conversational, concise, technical, emergency, research, system, or custom",
-                "enum": ["bihansa", "jarvis", "conversational", "concise", "technical", "emergency", "research", "system", "custom"],
+                "description": "Target persistent mode. Use a canonical ID such as angry, crazy, motivational, or conversational for normal mode.",
+                "enum": [
+                    "auto", "bihansa", "jarvis", "conversational", "affectionate",
+                    "strict", "angry", "crazy", "playful", "funny", "sarcastic",
+                    "motivational", "storyteller", "calm", "hype", "teacher",
+                    "mentor", "detective", "poetic", "anime", "professional",
+                    "concise", "technical", "emergency", "research", "system", "custom"
+                ],
             },
             "custom_name": {
                 "type": "STRING",

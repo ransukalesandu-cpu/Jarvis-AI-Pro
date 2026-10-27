@@ -1577,15 +1577,17 @@ class JarvisLive:
 
         def _work() -> None:
             try:
+                memory_access = get_memory_provider_access_enabled()
                 brain = BrainEngine(
                     config_path=API_CONFIG_PATH,
-                    memory_enabled=get_memory_provider_access_enabled(),
+                    memory_enabled=memory_access,
                 )
                 result = brain.respond(
                     text,
                     base_system_prompt=_load_system_prompt(),
                     conversation_history=list(self._session_log),
-                    memory_enabled=get_memory_provider_access_enabled(),
+                    memory_enabled=memory_access,
+                    assistant_names=[self._asst_name],
                 )
                 provider = str(result.get("provider") or "unknown")
                 configured = str(result.get("configured_providers") or "none")

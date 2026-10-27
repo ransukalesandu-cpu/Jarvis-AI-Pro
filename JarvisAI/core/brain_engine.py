@@ -242,9 +242,9 @@ class BrainEngine:
     ) -> dict[str, Any]:
         """Answer a request using bounded history and optional provider-safe memory.
 
-        Memory access is explicitly controllable per call. No memory is written
-        from model-generated answers; the existing confirmed-memory workflow owns
-        any persistent writes.
+        Memory access is explicitly controllable per call. This engine does not
+        promote model-generated answers directly into confirmed semantic facts;
+        the app's existing end-of-session summary workflow remains separate.
         """
         request = str(user_text or "").strip()
         if not request:

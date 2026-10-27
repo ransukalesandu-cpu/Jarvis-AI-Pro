@@ -2,6 +2,10 @@
 
 Personal Mode reduces repetitive confirmation banners for selected **local** desktop actions. It is intended for a trusted, single-user installation where you control the PC and understand that desktop automation can interact with whichever application is currently focused.
 
+## Verified Host Owner Autopilot
+
+Owner Autopilot is separate from the `JARVIS_PERSONAL_MODE` environment switch. It skips JARVIS's own confirmation banners for a direct current-turn command only when the local owner PIN and enrolled live Voice ID/anti-spoof factors are both verified and the current speech is re-verified as the host. The bypass fails closed if owner factors are missing, live voice verification fails, Privacy Lock is active, or untrusted external content is the source of the action. Rate limits, protected-path checks and the tamper-evident audit log remain enabled. Native Windows/macOS security prompts, UAC, browser permissions and third-party app permission dialogs are not bypassed.
+
 ## Enable on Windows
 
 Open PowerShell and set the variable **before starting JARVIS**:

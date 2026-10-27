@@ -55,6 +55,10 @@ _BOOL_SETTINGS = {
         cfg.get_memory_provider_access_enabled, cfg.save_memory_provider_access_enabled,
         "Allow saved memory context to be included in AI-provider requests.",
     ),
+    "personal_cloud_memory": (
+        cfg.get_personal_cloud_memory_enabled, cfg.save_personal_cloud_memory_enabled,
+        "Store directly stated personal profile facts in the user's Supabase account and recall them for personalized answers.",
+    ),
 }
 _ENUM_SETTINGS = {
     "media_resolution": (
@@ -89,6 +93,7 @@ def _current_settings() -> dict:
         "proactive_audio": cfg.get_proactive_audio_enabled(),
         "morning_brief": cfg.get_brief_enabled(),
         "memory_provider_access": cfg.get_memory_provider_access_enabled(),
+        "personal_cloud_memory": cfg.get_personal_cloud_memory_enabled(),
         "media_resolution": cfg.get_media_resolution(),
         "hud_style": cfg.get_hud_style(),
         "neural_render_scale": cfg.get_neural_render_scale(),
@@ -135,6 +140,53 @@ def _set_setting(setting: str, raw_value) -> str:
         getter, setter, _description = _BOOL_SETTINGS[setting]
         if getter() == parsed:
             return f"{setting} is already {'on' if parsed else 'off'}."
+        if setting == "personal_cloud_memory":
+            if parsed:
+                def _enable_personal_cloud_memory():
+                    try:
+                        from core.personal_cloud_memory import set_cloud_personal_memory_consent
+                        set_cloud_personal_memory_consent(True)
+                    except Exception as exc:
+                        return (
+                            "Personal cloud memory was not enabled. Check Supabase configuration "
+                            f"and the OS credential vault ({type(exc).__name__}). No profile facts were uploaded."
+                        )
+                    setter(True)
+                    return (
+                        "Enabled personal cloud memory. JARVIS may save only directly stated, "
+                        "allowlisted personal facts, not raw conversations. The saved profile may be "
+                        "sent to the configured AI provider when relevant. You can ask to list or clear it."
+                    )
+
+                return confirm_gate.request(
+                    key="jarvis-settings-personal-cloud-memory",
+                    title="Enable personal profile memory in Supabase",
+                    detail=(
+                        "Stores short, directly stated personal facts (such as your name, sibling "
+                        "information, education, interests, preferences, and goals) in your own "
+                        "Supabase-authenticated profile. Raw conversations, contact details, credentials, "
+                        "and sensitive categories are excluded. When a personal-disclosure cue is detected, "
+                        "that single utterance may be sent to the configured AI provider for narrow extraction; "
+                        "raw conversation history is not uploaded to the memory endpoint. Relevant saved facts "
+                        "may also be sent to the configured AI provider for personalized replies. You can turn "
+                        "this off or delete "
+                        "the saved profile. Continue only if you consent."
+                    ),
+                    run=_enable_personal_cloud_memory,
+                )
+            try:
+                from core.personal_cloud_memory import set_cloud_personal_memory_consent
+                set_cloud_personal_memory_consent(False)
+                server_disabled = True
+            except Exception:
+                server_disabled = False
+            setter(False)
+            if server_disabled:
+                return "Disabled personal cloud memory. JARVIS will no longer capture or use saved personal facts."
+            return (
+                "Disabled personal cloud memory on this device. No new facts will be saved or used here. "
+                "The cloud profile may remain stored until Supabase is reachable; use personal_memory clear to delete it."
+            )
         if setting == "memory_provider_access" and parsed:
             return confirm_gate.request(
                 key="jarvis-settings-memory-provider-access",
@@ -242,7 +294,7 @@ TOOL = {
                 "enum": [
                     "assistant_mode", "voice", "personality_mode", "startup_intro",
                     "wake_word", "push_to_talk", "thinking", "proactive_audio",
-                    "morning_brief", "memory_provider_access", "media_resolution",
+                    "morning_brief", "memory_provider_access", "personal_cloud_memory", "media_resolution",
                     "hud_style", "neural_render_scale", "assistant_name", "user_name",
                 ],
                 "description": "Exact setting to read or change.",

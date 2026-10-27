@@ -981,6 +981,10 @@ JARVIS stores long-term memory on this computer in SQLite. The app keeps a
 compact identity/preference core and retrieves additional records only when a
 request needs them.
 
+### Optional Supabase Personal Profile Memory
+
+JARVIS has a separate, opt-in cloud profile for directly stated facts such as the user's preferred name, sibling information, study/work context, interests, and preferences. It defaults off, requires confirmation to enable, validates every fact against a quote from the current utterance, and does not store raw conversation history. If a personal-disclosure cue is detected, that single utterance may be sent to the configured text provider for extraction. See [Personal Cloud Memory documentation](../docs/PERSONAL_CLOUD_MEMORY.md).
+
 The active database is `memory/long_term.db` (SQLite WAL mode). On first
 startup after this update, existing `memory/long_term.json` data is imported
 without dropping legacy categories or extension fields. JARVIS first creates a

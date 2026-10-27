@@ -229,6 +229,7 @@ _TIERS: dict[str, str] = {
     "system_status":    TIER_SAFE,
     "system_monitor":   TIER_SAFE,
     "recall_memory":    TIER_SAFE,
+    "personal_memory":  TIER_SENSITIVE,
     "memory_health":    TIER_SAFE,
     "purge_memory":     TIER_DANGEROUS,
     "memory_export":    TIER_DANGEROUS,
@@ -303,6 +304,7 @@ _CONFIRMATION_LABELS = {
     "remember_intention": "Save a future intention",
     "proactive_feedback": "Update suggestion feedback",
     "purge_memory": "Purge stored project memories",
+    "personal_memory": "Manage saved personal profile",
     "memory_export": "Export local memory data",
     "memory_import": "Replace local memory data",
 }
@@ -536,6 +538,8 @@ def tier_for(name: str, params: dict | None = None) -> str:
     # Voice ID (when enabled), rate limits and the audit ledger.
     if _personal_mode_relaxes(name, action):
         return TIER_SENSITIVE
+    if name == "personal_memory":
+        return TIER_DANGEROUS if operation in {"forget", "clear"} else TIER_SENSITIVE
     if name == "self_heal" and operation == "check":
         return TIER_SAFE
     if name == "self_update":

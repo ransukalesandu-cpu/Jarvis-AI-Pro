@@ -263,6 +263,20 @@ class BrainEngine:
         if use_memory:
             memory_rows = self._retrieve_memory(request, str(project or "").strip())
         memory_context = format_memory_context(memory_rows)
+        # Cloud personal-profile memory uses its own explicit opt-in. It is
+        # separate from broad local-memory sharing and contains only validated
+        # user-stated profile facts, never raw conversation history.
+        try:
+            from memory.config_manager import get_personal_cloud_memory_enabled
+            if get_personal_cloud_memory_enabled():
+                from core.personal_cloud_memory import get_personal_memory_context
+                personal_context = get_personal_memory_context()
+                if personal_context:
+                    memory_context = "\n\n".join(
+                        value for value in (memory_context, personal_context) if value
+                    )
+        except Exception as exc:
+            logger.warning("Personal profile context unavailable (%s)", type(exc).__name__)
         prompt = build_brain_user_prompt(
             request,
             profile=profile,

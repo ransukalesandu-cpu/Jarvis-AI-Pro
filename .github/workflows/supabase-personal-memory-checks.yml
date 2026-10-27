@@ -1,0 +1,31 @@
+name: Supabase personal-memory checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/jarvis-personal-memory/**"
+      - "supabase/migrations/*jarvis_personal_memory*.sql"
+      - ".github/workflows/supabase-personal-memory-checks.yml"
+  pull_request:
+    paths:
+      - "supabase/functions/jarvis-personal-memory/**"
+      - "supabase/migrations/*jarvis_personal_memory*.sql"
+      - ".github/workflows/supabase-personal-memory-checks.yml"
+  workflow_dispatch:
+
+jobs:
+  domain-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check the validation domain
+        run: deno check supabase/functions/jarvis-personal-memory/domain.ts supabase/functions/jarvis-personal-memory/domain_test.ts
+      - name: Test personal-memory privacy validation
+        run: deno test supabase/functions/jarvis-personal-memory/domain_test.ts

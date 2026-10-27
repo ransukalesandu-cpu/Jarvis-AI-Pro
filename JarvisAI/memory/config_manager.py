@@ -368,6 +368,15 @@ def save_memory_provider_access_enabled(enabled: bool) -> None:
     _save_flag("memory_provider_access", bool(enabled))
 
 
+def get_personal_cloud_memory_enabled() -> bool:
+    """Whether opt-in, user-stated profile facts may be stored in Supabase and recalled."""
+    return bool(load_api_keys().get("personal_cloud_memory_enabled", False))
+
+
+def save_personal_cloud_memory_enabled(enabled: bool) -> None:
+    _save_flag("personal_cloud_memory_enabled", bool(enabled))
+
+
 def get_memory_encryption_enabled() -> bool:
     return bool(load_api_keys().get("memory_encryption_enabled", False))
 

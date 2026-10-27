@@ -49,6 +49,8 @@ openpyxl
 fastapi>=0.110,<1
 uvicorn[standard]>=0.27,<1
 cryptography>=42,<50
+keyring>=25,<27  # native OS credential-store access for persistent Supabase identity
+SecretStorage>=3.3,<4; sys_platform == "linux"
 python-multipart>=0.0.9,<1
 qrcode[pil]>=7,<9
 

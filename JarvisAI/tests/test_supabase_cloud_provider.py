@@ -157,6 +157,31 @@ class SupabaseCloudProviderTests(unittest.TestCase):
                             self.assertNotEqual(session_file.read_bytes(), b"refresh-secret")
                             self.assertEqual(_load_persisted_refresh_token(), "refresh-secret")
 
+    def test_macos_native_keyring_persists_supabase_identity(self):
+        class FakeKeyring:
+            values = {}
+
+            @classmethod
+            def set_password(cls, service, account, value):
+                cls.values[(service, account)] = value
+
+            @classmethod
+            def get_password(cls, service, account):
+                return cls.values.get((service, account))
+
+        with patch("core.supabase_cloud_provider.sys.platform", "darwin"), \
+             patch("core.supabase_cloud_provider._native_keyring", return_value=FakeKeyring), \
+             patch.dict(_AUTH, {
+                 "access_token": "access-test",
+                 "refresh_token": "refresh-test",
+                 "expires_at": 9999999999.0,
+                 "refresh_failed": False,
+             }):
+            _persist_refresh_token("refresh-test")
+            self.assertEqual(_load_persisted_refresh_token(), "refresh-test")
+            from core.supabase_cloud_provider import has_persistent_auth_session
+            self.assertTrue(has_persistent_auth_session())
+
     def test_missing_public_configuration_fails_closed(self):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(RuntimeError, "configuration is incomplete"):

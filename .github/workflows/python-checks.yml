@@ -48,3 +48,17 @@ jobs:
       - name: Run unit tests
         working-directory: JarvisAI
         run: python -m pytest -q
+
+      - name: Set up Deno for Supabase personal-memory tests
+        if: ${{ hashFiles('supabase/functions/jarvis-personal-memory/domain_test.ts') != '' }}
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Type-check Supabase personal-memory function
+        if: ${{ hashFiles('supabase/functions/jarvis-personal-memory/domain_test.ts') != '' }}
+        run: deno check supabase/functions/jarvis-personal-memory/index.ts supabase/functions/jarvis-personal-memory/domain_test.ts
+
+      - name: Test Supabase personal-memory validators
+        if: ${{ hashFiles('supabase/functions/jarvis-personal-memory/domain_test.ts') != '' }}
+        run: deno test supabase/functions/jarvis-personal-memory/domain_test.ts

@@ -6,7 +6,6 @@ from unittest.mock import Mock, patch
 
 from memory.voice_personality import (
     MODE_DEFINITIONS,
-    get_voice_personality,
     voice_personality_prompt,
 )
 from actions.change_personality import change_personality

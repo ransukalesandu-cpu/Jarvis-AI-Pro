@@ -7494,8 +7494,18 @@ class MainWindow(QMainWindow):
         # selection to the most recently raised centred overlay while it is
         # visible, so covered background controls cannot receive the command.
         control_root: QWidget = self
+        # Native Qt dialogs (file choosers and QMessageBox prompts) are not
+        # necessarily children of the window's tracked custom overlays. When
+        # one is modal, scope voice actions to that dialog first.
+        try:
+            modal_widget = QApplication.activeModalWidget()
+            if modal_widget is not None and modal_widget.isVisible():
+                control_root = modal_widget
+        except RuntimeError:
+            pass
+
         active_overlay = getattr(self, "_voice_control_overlay", None)
-        if active_overlay is not None:
+        if control_root is self and active_overlay is not None:
             try:
                 if active_overlay.isVisible():
                     control_root = active_overlay

@@ -254,6 +254,10 @@ class HUDMainWindow(QMainWindow):
         right_menu_layout.addWidget(self._surface_scheduler)
         right_menu_layout.addWidget(self._surface_ring)
         self._right_menu.hide()
+        dropdown_row = QHBoxLayout()
+        dropdown_row.addStretch()
+        dropdown_row.addWidget(self._right_menu)
+        main_layout.addLayout(dropdown_row)
 
         self._bihansa_effects.toggled.connect(self.bihansa_visualizer.set_effects_enabled)
         self._bihansa_voice_reactive.toggled.connect(self.bihansa_visualizer.set_voice_reactive)

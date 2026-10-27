@@ -306,6 +306,8 @@ class CompactHologramOverlay(QWidget):
         self._restore_button.raise_()
 
     def _layout_overlay(self):
+        if not hasattr(self, "_stack") or not hasattr(self, "_restore_button"):
+            return
         self._stack.setGeometry(0, 0, self.width(), self.height())
         self._restore_button.move(self.width() - 38, 8)
         self._restore_button.raise_()

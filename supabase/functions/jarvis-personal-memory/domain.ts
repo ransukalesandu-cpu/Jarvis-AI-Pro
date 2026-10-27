@@ -41,6 +41,33 @@ export function isSensitiveFactContent(value: string): boolean {
   return patterns.some((pattern) => pattern.test(text));
 }
 
+function selfNameSegment(quote: string): string {
+  const prefixes = [
+    /\bmy\s+name\s+is\s+/i,
+    /\bmy\s+name's\s+/i,
+    /\bcall\s+me\s+/i,
+    /\bi\s+am\s+called\s+/i,
+    /\bi'm\s+called\s+/i,
+    /\bmage\s+nama\s+/i,
+    /මගේ\s*නම\s*/,
+  ];
+  for (const pattern of prefixes) {
+    const match = pattern.exec(quote);
+    if (!match) continue;
+    const tail = quote.slice(match.index + match[0].length);
+    const segment = tail.split(
+      /[,.;!?]|\s+(?:and|but|from|because|as|i|my|mage|mama|mata)\b|\s+(?:සහ|හා|මගේ|මම|මට)\s*/i,
+    )[0];
+    return normalizeEvidence(segment.replace(/^["']+|["']+$/g, ""));
+  }
+  return "";
+}
+
+const SIBLING_EVIDENCE =
+  /\bi\s+have\b.{0,80}\b(?:sister|brother|siblings?)\b|\bmy\s+(?:sister|brother|siblings?)\b|\bonly\s+child\b|\bno\s+siblings\b|\bmage\s+(?:akka|ayya|aiya|malli|nangi|sahodara)|මගේ\s*(?:අක්කා|අයියා|මල්ලි|නංගි|සහෝදර)|මට\s*[^.!?]{0,50}(?:සහෝදර|අක්කා|අයියා|මල්ලි|නංගි)/i;
+const SIBLING_IDENTIFYING =
+  /\b(?:named|called|name is|name's|birthday|age is|phone|email|address|school|occupation|profession|doctor|teacher|student|works? at)\b|(?:නම|උපන්දිනය|දුරකථන|ලිපිනය)/i;
+
 export function validatePersonalFact(input: {
   fact_key?: unknown;
   value?: unknown;
@@ -60,8 +87,16 @@ export function validatePersonalFact(input: {
   if (!quoteNormalized.includes(normalizeEvidence(value))) {
     return { ok: false, reason: "fact_not_in_evidence" };
   }
-  if (input.fact_key === "siblings" &&
-      /\b(?:named|called|name is|name's|birthday|age is|phone|email|address|school)\b|(?:නම|උපන්දිනය|දුරකථන|ලිපිනය)/i.test(evidence_quote)) {
+  if (input.fact_key === "name" &&
+      selfNameSegment(evidence_quote) !== normalizeEvidence(value)) {
+    return { ok: false, reason: "name_not_directly_stated" };
+  }
+  if (input.fact_key === "siblings" && !SIBLING_EVIDENCE.test(evidence_quote)) {
+    return { ok: false, reason: "sibling_fact_not_directly_stated" };
+  }
+  // Don't retain another family member's identifying information even if an
+  // extractor labels it as a generic family_context or preference.
+  if (SIBLING_EVIDENCE.test(evidence_quote) && SIBLING_IDENTIFYING.test(evidence_quote)) {
     return { ok: false, reason: "sibling_identifying_details_not_stored" };
   }
   if (isSensitiveFactContent(value) || isSensitiveFactContent(evidence_quote)) {

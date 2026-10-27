@@ -1066,12 +1066,12 @@ def browser_control(
         _log(player, result)
         return result
 
-    # ── Navigation is ALWAYS native ──────────────────────────────────────────
-    # go_to / search / new_tab open the site in the user's own browser —
-    # their own profile, logged-in accounts and start page; exactly as if the
-    # user had opened it themselves. A controlled window with about:blank never
-    # opens here. The only exception: if an automation flow is already running,
-    # navigation continues in that window (so multi-step tasks aren't split).
+    # ── Browser/task navigation ────────────────────────────────────────────────
+    # If a controlled browser session already exists, keep automation in that
+    # session so a multi-step flow is not split. Otherwise, default web tasks
+    # are shown inside the hologram's floating cards above. A browser explicitly
+    # named by the user keeps the native-browser path; if no HUD UI is available,
+    # the existing native launcher remains the fallback.
     if action in ("go_to", "search", "new_tab"):
         if _registry.has(browser):
             sess = _registry.get(browser)

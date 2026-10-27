@@ -315,11 +315,11 @@ Every tool or action is classified into one of three risk tiers.
 | ------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | **SAFE**      | Read-only or trivially reversible                 | `web_search`, `weather_report`, `battery_status`, `quiz`, `recall_memory`             |
 | **SENSITIVE** | Private reads or reversible changes, audited and rate-limited | `save_memory`, `open_app`, file listing/reading, screen capture, `file_processor`, `home_automation`, `self_heal` |
-| **DANGEROUS** | Operations that can send, publish, execute code, or make high-impact changes; requires approval | `send_message`, `email_gmail`, `instagram_account`, file changes, computer input, `code_helper`, `shutdown_jarvis`, `phone_call` |
+| **DANGEROUS** | Operations that can send, publish, execute code, or make high-impact changes; normally require approval unless verified-host Owner Autopilot is active | `send_message`, `email_gmail`, `instagram_account`, file changes, computer input, `code_helper`, `shutdown_jarvis`, `phone_call` |
 
 Browser, desktop, file, and computer tools are classified per requested action:
-searches and inspection avoid a confirmation click, while file changes and
-computer input that can submit or change data remain approval-gated. Email,
+searches and inspection avoid a confirmation click. Without Owner Autopilot,
+file changes and computer input that can submit or change data remain approval-gated. Email,
 Instagram, and phone plugin actions normally require confirmation. After
 both the local owner PIN and a current live Voice-ID/anti-spoof check verify the
 host, Owner Autopilot can skip JARVIS's own confirmation banner for the direct
@@ -397,9 +397,9 @@ rather than allowing external content to directly become an executable instructi
 
 # 👤 Human Confirmation Gate
 
-Dangerous actions require explicit human confirmation.
+Dangerous actions normally require explicit human confirmation. Owner Autopilot skips JARVIS's own confirmation banner only when both the local owner PIN and the current live enrolled Voice-ID/anti-spoof check verify the host for a direct command. Untrusted-content checks, rate limits, protected-path validation, and audit logging stay active; native operating-system and third-party permission prompts are not suppressed.
 
-Critically, the confirmation token is issued by the **user interface**, rather than being supplied by the AI model.
+Critically, the normal confirmation token is issued by the **user interface**, rather than being supplied by the AI model. The model cannot enable Owner Autopilot by supplying a flag or claiming that the host is verified.
 
 The model cannot simply send:
 
@@ -410,11 +410,12 @@ confirmed = true
 and bypass the confirmation system.
 
 Confirmation is selected per operation. Read-only search, listing, and
-inspection are audited without a click; writes, deletes, code execution,
+inspection are audited without a click. Normally, writes, deletes, code execution,
 messages, publication, and desktop/computer actions that can submit or change
-data require approval. Screen and camera captures are logged and remain subject
-to Voice ID when enabled, but do not require a click each time. Unknown actions
-inside broad-control tools fail closed to confirmation. Examples include:
+data require approval; verified-host Owner Autopilot can skip that extra JARVIS
+banner only for the direct live-verified host turn. Screen and camera captures
+are logged and remain subject to Voice ID when enabled. If host verification or
+provenance checks fail, the normal confirmation/authorization path remains in force. Examples include:
 
 * File deletion or bulk file operations
 * Computer input that types, clicks, pastes, or submits forms
@@ -423,7 +424,7 @@ inside broad-control tools fail closed to confirmation. Examples include:
 * Phone calls
 * Other actions classified as dangerous
 
-You can approve or cancel a pending request by clicking **CONFIRM** or **CANCEL** on the HUD, or by saying **"confirm action"** or **"cancel action"**. Voice phrases are accepted only while a confirmation is pending; a plain "yes" is not enough. On a fresh install, the confirmation UI and audit ledger initialize on the first JARVIS launch; API keys and a Voice ID profile are not needed for HUD confirmation prompts. Voice approvals use Voice ID only when it is enabled. **Dev Agent** and **memory export/import** require a manual HUD click. Other confirmation-gated actions—including email, messages, Instagram, phone calls, and computer controls—can be approved by voice; Voice ID is checked when enabled and supported on that platform.
+When a confirmation remains pending, you can click **CONFIRM** or **CANCEL** on the HUD, or use the documented spoken approval/cancel phrases where live owner Voice ID is available. A plain "yes" does not approve a pending operation. In Owner Autopilot, the direct host command itself is authorized by the PIN + fresh live Voice-ID/anti-spoof checks, so JARVIS does not show a second confirmation banner; this does not suppress native OS security prompts.
 
 ### Self-Healing System — Version 1
 

@@ -73,6 +73,27 @@ def profile_request(text: str) -> RequestProfile:
     )
 
 
+def profile_guidance(profile: RequestProfile) -> str:
+    """Translate a heuristic profile into safe task-specific answer guidance."""
+    if profile.kind == "planning":
+        return (
+            "Give an ordered plan with dependencies, milestones, risks, and a "
+            "clear verification step for each important stage."
+        )
+    if profile.kind == "technical":
+        return (
+            "Separate observed facts from hypotheses. For debugging, identify a "
+            "reproducible failure, likely cause, minimal fix, and regression test."
+        )
+    if profile.kind == "current_information":
+        return (
+            "Treat freshness as a requirement. Use a current source only if a live "
+            "search tool is available; otherwise say that current facts were not "
+            "verified and avoid presenting guesses as up-to-date."
+        )
+    return "Answer the question directly, adding detail only when it improves usefulness."
+
+
 def build_brain_protocol() -> str:
     """Return concise operating rules for the primary realtime Live model."""
     return (

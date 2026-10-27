@@ -120,6 +120,36 @@ def parse_voice_ui_command(text: str) -> VoiceUICommand | None:
         target = _clean_target(match.group(1))
         return VoiceUICommand("click", target, raw) if target else None
 
+    # Singlish suffix forms, common in spoken Sinhala-English commands:
+    # "settings eka open karanna", "settings button eka click karanna".
+    match = re.fullmatch(
+        r"(.+?)\s+(?:(?:eka|the)\s+)?"
+        r"(open|show|click|press|tap|select|toggle|close|dismiss)\s+karanna",
+        phrase,
+    )
+    if match:
+        target = _clean_target(match.group(1))
+        verb = match.group(2)
+        if verb in {"close", "dismiss"} and target in {
+            "dialog", "window", "panel", "overlay", "active dialog",
+            "active window", "active panel", "active overlay",
+        }:
+            return VoiceUICommand("close_active", "", raw)
+        return VoiceUICommand("click", target, raw) if target else None
+
+    match = re.fullmatch(
+        r"(open|show|click|press|tap|select|toggle|close|dismiss)\s+karanna\s+(.+)",
+        phrase,
+    )
+    if match:
+        verb, target = match.group(1), _clean_target(match.group(2))
+        if verb in {"close", "dismiss"} and target in {
+            "dialog", "window", "panel", "overlay", "active dialog",
+            "active window", "active panel", "active overlay",
+        }:
+            return VoiceUICommand("close_active", "", raw)
+        return VoiceUICommand("click", target, raw) if target else None
+
     # For "turn on microphone", "mute microphone", etc. the UI still chooses
     # the visible control; the parser never performs an OS-level operation.
     match = re.fullmatch(
@@ -162,5 +192,6 @@ def parse_voice_ui_command(text: str) -> VoiceUICommand | None:
 def _clean_target(value: str) -> str:
     target = normalize_label(value)
     target = re.sub(r"^(?:the|a|an)\s+", "", target)
+    target = re.sub(r"\s+eka$", "", target)
     target = re.sub(r"\s+(?:button|control|tab|menu|panel|option)$", "", target)
     return target.strip()

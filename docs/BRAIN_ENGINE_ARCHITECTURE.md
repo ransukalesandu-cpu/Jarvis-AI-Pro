@@ -8,7 +8,7 @@ Give JARVIS a stronger, consistent reasoning/context layer without replacing the
 
 1. **Primary voice/vision path:** Gemini Live remains responsible for low-latency audio, vision, and tool calls. `core.brain_protocol.build_brain_protocol()` adds concise quality rules to the Live session system instruction. The available `deep_reasoning` plugin remains the route for genuinely complex questions. Tool execution still goes through the current action/plugin registries and `core.security`.
 2. **Text fallback:** `core.brain_engine.BrainEngine` assembles a bounded request profile, recent labelled user/assistant turns, and optional provider-safe memory context, then calls the existing `query_text_fallback()` provider failover. Provider configuration and credential handling remain in the existing router.
-3. **Memory:** retrieval uses `memory.memory_controller.retrieve_context()` and requests `provider_safe=True`. Content is redacted again and labelled with provenance/verification metadata. No provider-generated answer is automatically saved as a durable memory.
+3. **Memory:** retrieval uses `memory.memory_controller.retrieve_context()` and requests `provider_safe=True`. Content is redacted again and labelled with provenance/verification metadata. The engine does not promote provider-generated answers directly into confirmed semantic facts; the app's separate end-of-session summary workflow remains in force.
 4. **Verification:** the engine reports provider/model/mode/latency and local context counts, not credentials or memory text. The fallback must not claim to perform browser/computer actions because it has no action tools. The Live path continues to verify tool results and protected operations using existing guards.
 
 ## Boundaries

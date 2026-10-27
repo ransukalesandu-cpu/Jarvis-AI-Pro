@@ -103,6 +103,19 @@ class TestUIHologram(unittest.TestCase):
         head.set_audio_energy(0.75)
         self.assertEqual(head._target_energy, 0.75)
 
+        # The JARVIS default visual must be a dense, depth-shaped face mesh,
+        # not the previous generic UV/geodesic sphere.
+        self.assertGreater(len(head._vertices), 600)
+        self.assertGreater(len(head._edges), 1500)
+        self.assertTrue(all(0 <= a < len(head._vertices) and 0 <= b < len(head._vertices)
+                            for a, b in head._edges))
+        nose_tip = head._face_surface(0.0, -0.135)
+        cheek = head._face_surface(0.52, -0.12)
+        brow = head._face_surface(0.34, 0.285)
+        eye_socket = head._face_surface(0.34, 0.18)
+        self.assertGreater(nose_tip[2], cheek[2])
+        self.assertGreater(brow[2], eye_socket[2])
+
     def test_bihansa_hologram_widget(self):
         """Test Bihansa 3D Neural Face visualizer creation, states, energy, visemes, and effects."""
         bihansa = BihansaHologramWidget()

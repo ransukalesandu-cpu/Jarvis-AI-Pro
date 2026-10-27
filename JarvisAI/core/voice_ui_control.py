@@ -17,6 +17,8 @@ class VoiceUICommand:
     action: str
     target: str = ""
     raw_text: str = ""
+    # "on" / "off" requests are state-aware, not blind clicks.
+    desired_state: str = ""
 
 
 _CONFIRMATION_PHRASES = {
@@ -157,16 +159,24 @@ def parse_voice_ui_command(text: str) -> VoiceUICommand | None:
         phrase,
     )
     if match:
+        desired_state = match.group(1)
         target = _clean_target(match.group(2))
-        return VoiceUICommand("click", target, raw) if target else None
+        return (
+            VoiceUICommand("set_state", target, raw, desired_state)
+            if target else None
+        )
 
     match = re.fullmatch(
-        r"(?:mute|unmute|enable|disable)\s+(?:the\s+)?(.+)",
+        r"(mute|unmute|enable|disable)\s+(?:the\s+)?(.+)",
         phrase,
     )
     if match:
-        target = _clean_target(match.group(1))
-        return VoiceUICommand("click", target, raw) if target else None
+        verb, target = match.group(1), _clean_target(match.group(2))
+        desired_state = "off" if verb in {"mute", "disable"} else "on"
+        return (
+            VoiceUICommand("set_state", target, raw, desired_state)
+            if target else None
+        )
 
     match = re.fullmatch(
         r"(click|press|tap|activate|choose|select|open|show|toggle|close|dismiss)"

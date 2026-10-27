@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from core.supabase_cloud_provider import (
     call_supabase_provider, _get_access_token, _AUTH,
     _load_persisted_refresh_token, _persist_refresh_token,
+    reset_supabase_auth_session,
 )
 
 
@@ -35,28 +36,80 @@ class SupabaseCloudProviderTests(unittest.TestCase):
         self.assertNotIn("SUPABASE_EMAIL", env)
         self.assertNotIn("SUPABASE_PASSWORD", env)
 
-    def test_failed_refresh_retries_same_identity_without_anonymous_signup(self):
-        with patch.dict(_AUTH, {
-            "access_token": "", "refresh_token": "stale-refresh-token", "expires_at": 0.0
-        }):
-            with patch("core.supabase_cloud_provider._load_persisted_refresh_token", return_value=""):
-                with patch("core.supabase_cloud_provider._request_json", side_effect=RuntimeError("network")) as request:
-                    for _ in range(2):
-                        with self.assertRaisesRegex(RuntimeError, "session refresh failed"):
-                            _get_access_token("https://example.supabase.co", "public-test-key", 3)
-                        self.assertEqual(_AUTH["access_token"], "")
-                        self.assertEqual(_AUTH["refresh_token"], "stale-refresh-token")
-                        self.assertEqual(_AUTH["expires_at"], 0.0)
+    def test_transient_refresh_failure_retries_same_identity_without_signup(self):
+        with TemporaryDirectory() as folder:
+            blocked_file = Path(folder) / "refresh.blocked"
+            session_file = Path(folder) / "session.dat"
+            with patch("core.supabase_cloud_provider._SESSION_FILE", session_file), \
+                 patch("core.supabase_cloud_provider._SESSION_BLOCKED_FILE", blocked_file), \
+                 patch.dict(_AUTH, {
+                     "access_token": "", "refresh_token": "stale-refresh-token",
+                     "expires_at": 0.0, "refresh_failed": False,
+                 }), \
+                 patch("core.supabase_cloud_provider._load_persisted_refresh_token", return_value=""), \
+                 patch("core.supabase_cloud_provider._request_json", side_effect=[
+                     RuntimeError("Supabase request failed (URLError)"),
+                     {"access_token": "recovered-jwt", "refresh_token": "rotated-refresh", "expires_in": 3600},
+                 ]) as request:
+                with self.assertRaisesRegex(RuntimeError, "session refresh failed"):
+                    _get_access_token("https://example.supabase.co", "public-test-key", 3)
+                self.assertEqual(_AUTH["access_token"], "")
+                self.assertEqual(_AUTH["refresh_token"], "stale-refresh-token")
+                self.assertEqual(_AUTH["expires_at"], 0.0)
+                self.assertTrue(_AUTH["refresh_failed"])
+                self.assertTrue(blocked_file.exists())
 
-                    self.assertEqual(request.call_count, 2)
-                    self.assertTrue(all(
-                        "/auth/v1/token?grant_type=refresh_token" in call.args[0]
-                        for call in request.call_args_list
-                    ))
-                    self.assertFalse(any(
-                        "/auth/v1/signup" in call.args[0]
-                        for call in request.call_args_list
-                    ))
+                token = _get_access_token("https://example.supabase.co", "public-test-key", 3)
+                self.assertEqual(token, "recovered-jwt")
+                self.assertEqual(request.call_count, 2)
+                self.assertTrue(all(
+                    "/auth/v1/token?grant_type=refresh_token" in call.args[0]
+                    for call in request.call_args_list
+                ))
+                self.assertFalse(blocked_file.exists())
+                self.assertFalse(_AUTH["refresh_failed"])
+
+    def test_permanent_refresh_failure_blocks_signup_until_explicit_reset(self):
+        with TemporaryDirectory() as folder:
+            blocked_file = Path(folder) / "refresh.blocked"
+            session_file = Path(folder) / "session.dat"
+            with patch("core.supabase_cloud_provider._SESSION_FILE", session_file), \
+                 patch("core.supabase_cloud_provider._SESSION_BLOCKED_FILE", blocked_file), \
+                 patch.dict(_AUTH, {
+                     "access_token": "", "refresh_token": "invalid-refresh-token",
+                     "expires_at": 0.0, "refresh_failed": False,
+                 }), \
+                 patch("core.supabase_cloud_provider._load_persisted_refresh_token", return_value=""), \
+                 patch("core.supabase_cloud_provider._request_json", side_effect=RuntimeError(
+                     "Supabase request failed with HTTP 401"
+                 )) as request:
+                with self.assertRaisesRegex(RuntimeError, "session refresh failed"):
+                    _get_access_token("https://example.supabase.co", "public-test-key", 3)
+                self.assertEqual(_AUTH["refresh_token"], "")
+                self.assertTrue(_AUTH["refresh_failed"])
+                self.assertTrue(blocked_file.exists())
+
+                with self.assertRaisesRegex(RuntimeError, "explicitly reset/re-enroll"):
+                    _get_access_token("https://example.supabase.co", "public-test-key", 3)
+                self.assertEqual(request.call_count, 1)
+                self.assertFalse(any(
+                    "/auth/v1/signup" in call.args[0]
+                    for call in request.call_args_list
+                ))
+
+                request.side_effect = None
+                request.return_value = {
+                    "access_token": "new-enrollment-jwt",
+                    "refresh_token": "new-enrollment-refresh",
+                    "expires_in": 3600,
+                }
+                reset_supabase_auth_session()
+                self.assertFalse(blocked_file.exists())
+                self.assertFalse(_AUTH["refresh_failed"])
+                token = _get_access_token("https://example.supabase.co", "public-test-key", 3)
+                self.assertEqual(token, "new-enrollment-jwt")
+                self.assertIn("/auth/v1/signup", request.call_args.args[0])
+                self.assertEqual(request.call_count, 2)
 
     def test_claude_name_maps_to_anthropic_function_provider(self):
         env = {

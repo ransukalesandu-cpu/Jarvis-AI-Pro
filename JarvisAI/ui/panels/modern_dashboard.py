@@ -429,10 +429,24 @@ class ModernDashboard(QWidget):
         content_layout.addStretch(1)
         scroll.setWidget(content)
 
-        # A short loading phase prevents an empty, uninitialized dashboard flash.
-        QTimer.singleShot(780, self.finish_loading)
+        # Loading begins when this separate page is actually opened, not while
+        # JARVIS is sitting on the hologram-only home screen.
+        self._loading_timer = QTimer(self)
+        self._loading_timer.setSingleShot(True)
+        self._loading_timer.timeout.connect(self.finish_loading)
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().showEvent(event)
+        if not self._loaded and not self._loading_timer.isActive():
+            self._loading_timer.start(780)
+
+    def hideEvent(self, event) -> None:  # noqa: N802 - Qt API
+        if not self._loaded:
+            self._loading_timer.stop()
+        super().hideEvent(event)
 
     def finish_loading(self) -> None:
+        self._loading_timer.stop()
         if self._loaded:
             return
         self._loaded = True

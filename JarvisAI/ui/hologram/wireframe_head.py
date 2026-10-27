@@ -80,11 +80,14 @@ class NeuralWireframeHead(_BASE_CANVAS):
         """Return a point on the stylized face surface for normalized u/v in [-1, 1]."""
         # A tapered jaw, broad cheek area and slightly narrower forehead create
         # a recognizable front-view head silhouette without using a portrait.
-        jaw_blend = max(0.0, min(1.0, (v + 1.0) / 0.82))
+        jaw_blend = max(0.0, min(1.0, (v + 0.95) / 0.75))
         jaw_blend = jaw_blend * jaw_blend * (3.0 - 2.0 * jaw_blend)
-        jaw_width = 0.47 + 0.53 * jaw_blend
-        forehead_taper = 1.0 - 0.085 * max(0.0, (v - 0.53) / 0.47)
-        half_width = 0.615 * jaw_width * forehead_taper
+        jaw_width = 0.68 + 0.32 * jaw_blend
+        # The oval envelope converges at the crown and chin so the mesh reads
+        # as a head silhouette rather than a rectangular sheet of wire lines.
+        head_oval = math.sqrt(max(0.02, 1.0 - v * v))
+        forehead_taper = 1.0 - 0.06 * max(0.0, (v - 0.60) / 0.40)
+        half_width = 0.66 * head_oval * jaw_width * forehead_taper
         x = u * half_width
         y = v * 0.96
 

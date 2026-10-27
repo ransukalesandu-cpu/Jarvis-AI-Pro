@@ -24,6 +24,31 @@ Deno.test("profile fact value must appear in user's evidence quote", () => {
     value: "Peter",
     evidence_quote: "My name is Lesandu.",
   }).ok, false);
+  assertEquals(validatePersonalFact({
+    fact_key: "name",
+    value: "Anna",
+    evidence_quote: "My name is Lesandu and my sister is Anna.",
+  }).ok, false);
+  assertEquals(validatePersonalFact({
+    fact_key: "name",
+    value: "Lesandu",
+    evidence_quote: "My name is Lesandu and my sister is Anna.",
+  }).ok, true);
+  assertEquals(validatePersonalFact({
+    fact_key: "name",
+    value: "ලසඳු",
+    evidence_quote: "මගේ නම ලසඳු",
+  }).ok, true);
+  assertEquals(validatePersonalFact({
+    fact_key: "siblings",
+    value: "I have two siblings",
+    evidence_quote: "I have two siblings.",
+  }).ok, true);
+  assertEquals(validatePersonalFact({
+    fact_key: "family_context",
+    value: "Anna",
+    evidence_quote: "My sister's name is Anna.",
+  }).ok, false);
 });
 
 Deno.test("rejects contact details and credentials instead of storing them", () => {

@@ -1613,6 +1613,23 @@ class JarvisLive:
                 if not self._session_log or self._session_log[-1] != user_entry:
                     self._session_log.append(user_entry)
                 self._session_log.append(assistant_entry)
+                try:
+                    from memory.config_manager import get_personal_cloud_memory_enabled
+                    from core.personal_cloud_memory import (
+                        capture_user_personal_facts, should_extract_personal_facts,
+                    )
+                    if (get_personal_cloud_memory_enabled()
+                            and should_extract_personal_facts(text.strip())):
+                        threading.Thread(
+                            target=capture_user_personal_facts,
+                            args=(text.strip(),),
+                            name="jarvis-personal-memory-capture",
+                            daemon=True,
+                        ).start()
+                except Exception as exc:
+                    self.ui.write_log(
+                        f"SYS: Personal-memory capture scheduling unavailable ({type(exc).__name__})."
+                    )
 
                 telemetry = getattr(self.ui, "update_hybrid_telemetry", None)
                 if callable(telemetry):
@@ -1996,6 +2013,29 @@ class JarvisLive:
             self._asst_name = "JARVIS"
             _user_name = ""
 
+        # User-owned cloud profile is separate from the broad local-memory sharing
+        # option. It is fetched only after the user has enabled personal cloud memory.
+        personal_profile_rows = []
+        personal_profile_context = ""
+        try:
+            from memory.config_manager import get_personal_cloud_memory_enabled
+            if get_personal_cloud_memory_enabled():
+                from core.personal_cloud_memory import (
+                    format_personal_memory_context, list_personal_memories,
+                )
+                personal_profile_rows = list_personal_memories()
+                personal_profile_context = format_personal_memory_context(personal_profile_rows)
+                cloud_name = next((
+                    str(row.get("value") or "").strip()
+                    for row in personal_profile_rows
+                    if row.get("fact_key") == "name" and str(row.get("value") or "").strip()
+                ), "")
+                if cloud_name:
+                    _user_name = cloud_name[:40]
+        except Exception as exc:
+            # Do not log profile values or let a cloud outage prevent Live startup.
+            print(f"[PersonalMemory] Profile retrieval unavailable ({type(exc).__name__}).")
+
         memory     = load_memory()
         memory_access = get_memory_provider_access_enabled()
         safe_memory = provider_safe_memory(memory) if memory_access else {}
@@ -2057,6 +2097,8 @@ class JarvisLive:
         })
 
         parts = [time_ctx, identity_ctx]
+        if personal_profile_context:
+            parts.append(personal_profile_context)
         if mem_str:
             parts.append(mem_str)
         parts.append(redact_sensitive_content(voice_personality_prompt(memory if memory_access else {})))
@@ -3300,6 +3342,21 @@ class JarvisLive:
                                 self._last_out_logged = ""   # new exchange
                                 self.ui.write_log(f"You: {full_in}")
                                 self._session_log.append(f"User: {full_in}")
+                                try:
+                                    from memory.config_manager import get_personal_cloud_memory_enabled
+                                    from core.personal_cloud_memory import (
+                                        capture_user_personal_facts, should_extract_personal_facts,
+                                    )
+                                    if (get_personal_cloud_memory_enabled()
+                                            and should_extract_personal_facts(full_in)):
+                                        asyncio.create_task(
+                                            asyncio.to_thread(capture_user_personal_facts, full_in)
+                                        )
+                                except Exception as exc:
+                                    print(
+                                        "[PersonalMemory] Capture scheduling unavailable "
+                                        f"({type(exc).__name__})."
+                                    )
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
                                         "type": "log", "speaker": "user",

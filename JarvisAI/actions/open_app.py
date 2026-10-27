@@ -80,16 +80,20 @@ def _normalize(raw: str) -> str:
 
 def _launch_windows(app_name: str) -> bool:
 
-    if shutil.which(app_name) or shutil.which(app_name.split(".")[0]):
+    resolved = shutil.which(app_name) or shutil.which(app_name.split(".")[0])
+    if resolved:
         try:
-            # app_name was resolved by shutil.which; launch it as argv, not
-            # through a shell that could interpret metacharacters.
-            subprocess.Popen(
-                [app_name],
-                shell=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            # Avoid shell parsing for normal executables. Windows command
+            # wrappers are opened via their registered handler instead.
+            if resolved.lower().endswith((".cmd", ".bat")):
+                os.startfile(resolved)
+            else:
+                subprocess.Popen(
+                    [resolved],
+                    shell=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
             time.sleep(1.5)
             return True
         except Exception as e:

@@ -14,8 +14,14 @@ from core.supabase_cloud_provider import (
 
 class SupabaseCloudProviderTests(unittest.TestCase):
     def setUp(self):
-        with patch.dict(_AUTH, {"access_token": "", "refresh_token": "", "expires_at": 0.0}):
-            pass
+        # Reset module-level auth state before every test; an immediately-exited
+        # patch.dict context would restore the previous values instead.
+        _AUTH.update({
+            "access_token": "",
+            "refresh_token": "",
+            "expires_at": 0.0,
+            "refresh_failed": False,
+        })
 
     def test_anonymous_sign_in_does_not_require_email_or_password(self):
         env = {

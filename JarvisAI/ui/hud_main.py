@@ -110,9 +110,8 @@ class HUDMainWindow(QMainWindow):
 
         # Small decorative/status orb in the header. The central hologram below
         # remains the same widget with the same layout, geometry and behavior.
-        self._mini_orb = FloatingHolographicOrb(self, size_px=28)
+        self._mini_orb = FloatingHolographicOrb(self, size_px=48)
         self._mini_orb.setToolTip("JARVIS live status")
-        hdr_layout.addWidget(self._mini_orb)
 
         hdr_layout.addStretch()
 
@@ -170,6 +169,10 @@ class HUDMainWindow(QMainWindow):
         self._visualizer_stack.addWidget(self.bihansa_visualizer)
         self._visualizer_stack.setCurrentWidget(self.wireframe_visualizer)
         center_col.addWidget(self._visualizer_stack, stretch=1)
+
+        # Small state-reactive orb below the hologram. The hologram widget itself
+        # and its rendering code are intentionally left untouched.
+        center_col.addWidget(self._mini_orb, alignment=Qt.AlignmentFlag.AlignHCenter)
 
         # Optional visual and voice-reactivity controls; they never enable the microphone or camera.
         controls_layout = QHBoxLayout()

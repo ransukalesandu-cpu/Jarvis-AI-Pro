@@ -296,7 +296,10 @@ class EchoGuard:
                 # tail filtering, but can hide a person speaking over JARVIS.
                 # Cap it for barge-in while retaining a residual floor and the
                 # two-consecutive-block confirmation in the microphone callback.
-                thr = max(0.06, min(thr, 0.10)) * adaptive_factor
+                # Lower the fast-path ceiling so a distinct but quieter voice can
+                # break through speaker echo; VAD and consecutive-block checks
+                # in _listen_audio still protect against transient noise.
+                thr = max(0.04, min(thr, 0.075)) * adaptive_factor
             elif self._tts_speaking:
                 thr = thr * adaptive_factor
 

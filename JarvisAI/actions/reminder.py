@@ -312,22 +312,23 @@ def _cancel_scheduled_task(task_name: str) -> bool:
         if os_name == "mac":
             label = f"com.jarvis.reminder.{task_name}"
             plist_path = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
-            existed = plist_path.exists()
+            if not plist_path.exists():
+                return False
             unload = subprocess.run(
                 ["launchctl", "unload", str(plist_path)],
                 capture_output=True, text=True,
-            ) if existed else None
-            if existed and unload is not None and unload.returncode != 0:
+            )
+            if unload.returncode != 0:
                 # Newer macOS versions may require bootout rather than unload.
-                subprocess.run(
+                bootout = subprocess.run(
                     ["launchctl", "bootout", f"gui/{os.getuid()}", str(plist_path)],
                     capture_output=True, text=True,
                 )
-            if not existed and (not script_path.exists()):
-                return False
+                if bootout.returncode != 0:
+                    return False
             plist_path.unlink(missing_ok=True)
             script_path.unlink(missing_ok=True)
-            return bool(existed or (unload is not None and unload.returncode == 0))
+            return True
 
         found = False
         if shutil.which("systemctl"):

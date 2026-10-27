@@ -89,6 +89,8 @@ class SupabaseCloudProviderTests(unittest.TestCase):
                 self.assertTrue(_AUTH["refresh_failed"])
                 self.assertTrue(blocked_file.exists())
 
+                # Simulate a new process: the persisted marker still blocks signup.
+                _AUTH["refresh_failed"] = False
                 with self.assertRaisesRegex(RuntimeError, "explicitly reset/re-enroll"):
                     _get_access_token("https://example.supabase.co", "public-test-key", 3)
                 self.assertEqual(request.call_count, 1)

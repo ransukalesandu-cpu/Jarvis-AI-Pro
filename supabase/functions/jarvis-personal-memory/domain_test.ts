@@ -29,6 +29,8 @@ Deno.test("profile fact value must appear in user's evidence quote", () => {
 Deno.test("rejects contact details and credentials instead of storing them", () => {
   assertTrue(isSensitiveFactContent("Email me at person@example.com"));
   assertTrue(isSensitiveFactContent("My password is hunter123"));
+  assertTrue(isSensitiveFactContent("I am Muslim and prefer halal food"));
+  assertTrue(isSensitiveFactContent("My medical diagnosis is sensitive"));
   assertFalse(isSensitiveFactContent("I have two siblings"));
   assertEquals(validatePersonalFact({
     fact_key: "family_context",

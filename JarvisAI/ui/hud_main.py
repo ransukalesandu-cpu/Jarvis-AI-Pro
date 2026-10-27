@@ -466,6 +466,8 @@ class HUDMainWindow(QMainWindow):
         self._privacy_locked = True
         self.wireframe_visualizer.set_state("PRIVACY_LOCK")
         self.bihansa_visualizer.set_state("PRIVACY_LOCK")
+        self._mini_orb.set_state("PRIVACY_LOCK")
+        self._heart_reactor.set_state("PRIVACY_LOCK")
         self._lbl_hud_status.setText("⊘ PRIVACY LOCK ENGAGED")
         self._lbl_hud_status.setStyleSheet("color: #ff1744;")
         self._lock_banner.show()

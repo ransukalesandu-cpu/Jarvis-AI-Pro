@@ -419,7 +419,10 @@ class HUDMainWindow(QMainWindow):
 
     def _layout_hologram_workspace(self):
         """Resize the hologram to the full canvas and lay task cards around its edges."""
-        if not hasattr(self, "_workspace"):
+        if not all(hasattr(self, name) for name in (
+            "_workspace", "_visualizer_stack", "_hud_topbar",
+            "_lbl_hud_status", "_lock_banner"
+        )):
             return
         width = max(1, self._workspace.width())
         height = max(1, self._workspace.height())

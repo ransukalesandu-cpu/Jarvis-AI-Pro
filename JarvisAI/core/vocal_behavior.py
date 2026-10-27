@@ -22,6 +22,7 @@ DEFAULT_SETTINGS = {
     "laughter": False,
     "profile": "professional",
     "tone": "natural",
+    "dynamic_emotions": True,
     "expressiveness": 30,
     "pause_naturalness": 45,
     "breath_volume": 16,
@@ -47,7 +48,7 @@ class VocalPlan:
 def normalize_settings(value: dict | None) -> dict:
     raw = value if isinstance(value, dict) else {}
     result = dict(DEFAULT_SETTINGS)
-    for key in ("enabled", "breathing", "sighs", "laughter"):
+    for key in ("enabled", "breathing", "sighs", "laughter", "dynamic_emotions"):
         result[key] = bool(raw.get(key, result[key]))
     profile = str(raw.get("profile", result["profile"])).strip().lower()
     result["profile"] = profile if profile in VOCAL_PROFILES else "professional"
@@ -156,13 +157,35 @@ def delivery_guidance(settings: dict | None) -> str:
     else:
         pauses = "Vary clause and idea pacing naturally; keep pauses brief and useful."
     tone_guidance = {
-        "natural": "Use a natural, balanced conversational voice.",
+        "natural": (
+            "Use a natural, balanced conversational voice with relaxed phrasing, "
+            "light contractions where suitable, varied sentence rhythm, and emphasis "
+            "on meaning rather than identical stress on every phrase."
+        ),
         "soft": "Use a softer, gentler delivery with relaxed pacing and clear words; do not whisper.",
         "confident": "Use a steady, confident, assured delivery without sounding aggressive.",
         "energetic": "Use lively, upbeat energy and clear emphasis without shouting or rushing.",
         "dramatic": "Use cinematic expressive emphasis and purposeful pauses, without overacting.",
         "robotic": "Use a clean, precise, even synthetic-assistant delivery while keeping words easy to understand.",
     }[cfg["tone"]]
+    emotional_guidance = []
+    if cfg["dynamic_emotions"]:
+        emotional_guidance.append(
+            "DYNAMIC EMOTIONAL PROSODY: Read the meaning and conversational context of "
+            "the current user message and your own reply, then adapt delivery naturally "
+            "within the selected personality. Use warm, reassuring gentleness for comfort; "
+            "patient empathy and a slower pace for distress or disappointment; interested "
+            "curiosity and clear emphasis for discovery or explanation; genuine-sounding "
+            "brightness and lift for good news or success; calm, grounded firmness for "
+            "serious or urgent matters; and restrained playful amusement for appropriate "
+            "humor. Let emotions move subtly between clauses when the meaning changes. "
+            "Change vocal energy, pitch contour, pace, emphasis, and pause length as a "
+            "human-style narrator would, while keeping words clear. Never force an emotion "
+            "that the context does not support, sound melodramatic, use the same sing-song "
+            "pattern on every sentence, or claim to literally experience human feelings. "
+            "The selected persistent personality remains the base style; dynamic expression "
+            "adds nuance rather than silently switching modes."
+        )
     optional = []
     if cfg["sighs"]:
         optional.append("Only use a subtle sigh or exhalation when the context clearly supports it.")
@@ -173,5 +196,6 @@ def delivery_guidance(settings: dict | None) -> str:
         f"Deliver speech in a {profile_text} manner.",
         pauses,
         "Keep words intelligible, vary emphasis gently, and avoid repetitive filler.",
+        *emotional_guidance,
         *optional,
     ])

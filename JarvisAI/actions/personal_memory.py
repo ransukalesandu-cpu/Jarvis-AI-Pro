@@ -16,6 +16,12 @@ def personal_memory(parameters: dict, **_kwargs) -> str:
     operation = str(parameters.get("operation") or "list").strip().lower()
     try:
         if operation == "list":
+            from memory.config_manager import get_personal_cloud_memory_enabled
+            if not get_personal_cloud_memory_enabled():
+                return (
+                    "Personal cloud memory is disabled on this device. I did not load the saved profile. "
+                    "Enable personal_cloud_memory to view it, or use operation=clear to delete it without viewing."
+                )
             rows = list_personal_memories()
             visible = [
                 {"fact_key": row["fact_key"], "value": row["value"]}

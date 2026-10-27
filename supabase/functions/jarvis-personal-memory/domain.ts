@@ -36,6 +36,7 @@ export function isSensitiveFactContent(value: string): boolean {
     /\b(?:password|passcode|one[- ]time code|api[-_ ]?key|access token|refresh token|secret key|credit card|bank account|passport number|national id|social security|home address|street address)\b/i,
     /\b\d{1,6}\s+[\w.-]+\s+(?:street|st|road|rd|avenue|ave|lane|ln|drive|dr)\b/i,
     /https?:\/\//i,
+    /\b(?:medical|diagnos\w*|illness|disease|medication|prescription|mental health|depression|anxiety|disability|disorder|religion|religious|muslim|christian|hindu|buddhist|jewish|atheist|political party|political affiliation|vote for|voting preference|sexual orientation|sexuality|gender identity|race|ethnicity|salary|income|bank balance|credit score|debt|loan balance|criminal record|immigration status|date of birth|birthday|my age is)\b/i,
   ];
   return patterns.some((pattern) => pattern.test(text));
 }
@@ -58,6 +59,10 @@ export function validatePersonalFact(input: {
   const quoteNormalized = normalizeEvidence(evidence_quote);
   if (!quoteNormalized.includes(normalizeEvidence(value))) {
     return { ok: false, reason: "fact_not_in_evidence" };
+  }
+  if (input.fact_key === "siblings" &&
+      /\b(?:named|called|name is|name's|birthday|age is|phone|email|address|school)\b|(?:නම|උපන්දිනය|දුරකථන|ලිපිනය)/i.test(evidence_quote)) {
+    return { ok: false, reason: "sibling_identifying_details_not_stored" };
   }
   if (isSensitiveFactContent(value) || isSensitiveFactContent(evidence_quote)) {
     return { ok: false, reason: "sensitive_content_not_stored" };

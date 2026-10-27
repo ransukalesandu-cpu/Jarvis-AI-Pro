@@ -110,7 +110,7 @@ class HUDMainWindow(QMainWindow):
 
         # Small decorative/status orb in the header. The central hologram below
         # remains the same widget with the same layout, geometry and behavior.
-        self._mini_orb = FloatingHolographicOrb(self, size_px=36)
+        self._mini_orb = FloatingHolographicOrb(self, size_px=28)
         self._mini_orb.setToolTip("JARVIS live status")
         hdr_layout.addWidget(self._mini_orb)
 

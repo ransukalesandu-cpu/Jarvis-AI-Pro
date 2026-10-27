@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import unittest
+from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -177,6 +178,42 @@ class DailyPlannerTests(unittest.TestCase):
         self.assertIn("Use HH:MM", result)
         self.assertFalse(self.store.exists())
         self.assertEqual(self.alarm_calls, [])
+
+
+
+    def test_checkin_flags_an_overdue_time_from_today(self):
+        class FrozenDate(date):
+            @classmethod
+            def today(cls):
+                return cls(2099, 1, 1)
+
+        class FrozenDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2099, 1, 1, 12, 0)
+
+        planner._save_state({
+            "items": [
+                {
+                    "id": "late123456", "title": "Morning revision", "kind": "task",
+                    "date": "2099-01-01", "time": "11:00", "status": "pending",
+                    "alarm_enabled": True, "alarm_status": "scheduled", "created_at": "",
+                },
+                {
+                    "id": "later123456", "title": "Afternoon revision", "kind": "task",
+                    "date": "2099-01-01", "time": "13:00", "status": "pending",
+                    "alarm_enabled": True, "alarm_status": "scheduled", "created_at": "",
+                },
+            ]
+        })
+        with patch.object(planner, "date", FrozenDate), patch.object(planner, "datetime", FrozenDateTime):
+            result = planner.daily_planner({"operation": "checkin"})
+        overdue_section = result.split("Overdue / may have been missed:\\n", 1)[1].split("\\n\\nToday's plan:", 1)[0]
+        today_section = result.split("Today's plan:\\n", 1)[1].split("\\n\\nRemembered without a date:", 1)[0]
+        self.assertIn("Morning revision", overdue_section)
+        self.assertNotIn("Afternoon revision", overdue_section)
+        self.assertIn("Afternoon revision", today_section)
+        self.assertNotIn("Morning revision", today_section)
 
 
 

@@ -79,17 +79,17 @@ def _truthy(value: Any, default: bool = True) -> bool:
 
 
 def _validate_schedule(date_text: str, time_text: str) -> tuple[date | None, time | None, str]:
-    if bool(date_text) != bool(time_text):
-        return None, None, "A dated alarm needs both date (YYYY-MM-DD) and time (HH:MM)."
-    if not date_text:
+    if not date_text and not time_text:
         return None, None, ""
     try:
-        day = date.fromisoformat(date_text)
-        clock = time.fromisoformat(time_text)
+        day = date.fromisoformat(date_text) if date_text else None
+        clock = time.fromisoformat(time_text) if time_text else None
     except (TypeError, ValueError):
         return None, None, "I couldn't read that date/time. Use YYYY-MM-DD and HH:MM (24-hour time)."
-    if clock.second or clock.microsecond:
+    if clock and (clock.second or clock.microsecond):
         return None, None, "Use HH:MM without seconds for the alarm time."
+    if clock and not day:
+        return None, None, "A time-only item needs a date; use today's date if you mean today."
     return day, clock, ""
 
 
@@ -145,6 +145,8 @@ def _new_item(data: dict[str, Any], fallback_date: str = "", default_kind: str =
         return None, "Every plan item needs a title."
     day_text = _clean(data.get("date"), 10) or fallback_date
     time_text = _clean(data.get("time"), 5)
+    if not day_text and time_text:
+        day_text = date.today().isoformat()
     day, clock, error = _validate_schedule(day_text, time_text)
     if error:
         return None, f"{title}: {error}"

@@ -12,6 +12,7 @@ for directory in (ROOT_DIR, JARVIS_DIR):
         sys.path.insert(0, str(directory))
 
 from actions.open_app import _launch_windows
+from actions.dev_agent import _open_vscode
 
 
 class WindowsAppLaunchSecurityTests(unittest.TestCase):
@@ -36,6 +37,17 @@ class WindowsAppLaunchSecurityTests(unittest.TestCase):
 
         startfile.assert_called_once_with(wrapper)
         popen.assert_not_called()
+
+    @unittest.skipIf(sys.platform == "win32", "POSIX argv behavior only")
+    def test_dev_agent_passes_project_path_without_shell(self):
+        project_dir = Path("/tmp/Jarvis Project")
+        with patch("actions.dev_agent.subprocess.Popen") as popen, \
+             patch("actions.dev_agent.time.sleep"):
+            self.assertTrue(_open_vscode(project_dir))
+
+        args, kwargs = popen.call_args
+        self.assertEqual(args[0], ["code", str(project_dir)])
+        self.assertIs(kwargs["shell"], False)
 
     def test_uri_with_shell_metacharacters_uses_shell_execute_not_cmd(self):
         uri = "https://example.test/path?a=1&b=2"

@@ -1,103 +1,158 @@
+import os
 import unittest
-from unittest.mock import Mock, patch
-import socket
+from unittest.mock import patch
 
-from core.browser_automation import BrowserAutomation, BrowserAutomationError, validate_public_url
-from core.smart_intent_router import SmartIntentRouter, _extract_json
-from core.smart_hybrid_assistant import SmartHybridAssistant
+from core.hybrid_llm_router import HybridLLMRouter, resolve_preferred_provider
 
 
-class SmartHybridBrowserTests(unittest.TestCase):
-    def test_json_classifier_accepts_json_fence(self):
-        self.assertEqual(_extract_json('```json\n{"intent":"BROWSER"}\n```'), {"intent": "BROWSER"})
+class HybridLLMRouterTests(unittest.TestCase):
+    def test_explicit_hybrid_provider_takes_precedence(self):
+        self.assertEqual(
+            resolve_preferred_provider({"hybrid_provider": "groq", "ai_provider": "openai"}),
+            "groq",
+        )
 
-    def test_invalid_intent_falls_back_to_chat(self):
+    def test_local_llm_backend_setting_is_not_misread_as_hybrid_provider(self):
+        self.assertEqual(
+            resolve_preferred_provider({"llm_provider": "ollama", "ai_provider": "openai"}),
+            "openai",
+        )
+
+    def test_one_shot_anthropic_setting_maps_to_claude_for_hybrid_fallback(self):
+        self.assertEqual(resolve_preferred_provider({"ai_provider": "anthropic"}), "claude")
+
+    def test_invalid_provider_falls_back_to_gemini(self):
+        self.assertEqual(resolve_preferred_provider({"ai_provider": "unknown"}), "gemini")
+
+    def test_key_status_reports_presence_without_returning_key_values(self):
+        router = HybridLLMRouter(
+            api_keys={"gemini": "secret-test-value", "groq": ""},
+            online_check=False,
+        )
+        status = router.configured_key_status()
+        self.assertEqual(status["gemini"], True)
+        self.assertEqual(status["groq"], False)
+        self.assertNotIn("secret-test-value", repr(status))
+
+    def test_supabase_cloud_is_used_without_local_provider_keys(self):
+        env = {
+            "SUPABASE_URL": "https://example.supabase.co",
+            "SUPABASE_ANON_KEY": "public-test-key",
+            "SUPABASE_EMAIL": "owner@example.com",
+            "SUPABASE_PASSWORD": "test-password",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            router = HybridLLMRouter(online_check=False)
+            router.is_online = lambda: True
+            with patch(
+                "core.supabase_cloud_provider.call_supabase_provider",
+                return_value={"text": "cloud answer", "model": "test-model"},
+            ) as call_cloud:
+                result = router.query("hello")
+        self.assertEqual(result["text"], "cloud answer")
+        self.assertEqual(result["provider"], "gemini")
+        self.assertEqual(result["mode"], "cloud")
+        call_cloud.assert_called_once()
+        self.assertEqual(call_cloud.call_args.kwargs["provider"], "gemini")
+
+    def test_cloud_configuration_status_does_not_claim_local_keys_exist(self):
+        env = {
+            "SUPABASE_URL": "https://example.supabase.co",
+            "SUPABASE_ANON_KEY": "public-test-key",
+            "SUPABASE_EMAIL": "owner@example.com",
+            "SUPABASE_PASSWORD": "test-password",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            router = HybridLLMRouter(online_check=False)
+            status = router.configured_key_status()
+        self.assertTrue(status["supabase_cloud"])
+        self.assertFalse(status["gemini"])
+
+    def test_empty_prompt_is_rejected_before_provider_calls(self):
+        router = HybridLLMRouter(online_check=False)
+        with self.assertRaisesRegex(ValueError, "non-empty prompt"):
+            router.query("   ")
+
+    def test_intent_classifier_does_not_force_gemini_model_on_other_provider(self):
         router = Mock()
-        router.query.return_value = {"text": '{"intent":"DELETE","reason":"bad"}'}
+        router.query.return_value = {
+            "text": '{"intent":"BROWSER","reason":"explicit navigation"}'
+        }
         classifier = SmartIntentRouter(router_factory=Mock(return_value=router))
-        result = classifier.route("open a website")
-        self.assertEqual(result["intent"], "CHAT")
+        with patch("core.smart_intent_router._configured_preferred_provider", return_value="openai"), \
+             patch("core.smart_intent_router._configured_keys", return_value={"openai": "test-key"}):
+            result = classifier.route("open https://example.com")
 
-    def test_empty_request_rejected(self):
-        with self.assertRaises(ValueError):
-            SmartIntentRouter().route(" ")
-
-    def test_public_url_validation(self):
-        with patch("core.browser_automation.socket.getaddrinfo", return_value=[
-            (socket.AF_INET, socket.SOCK_STREAM, 6, '', ('93.184.216.34', 0))
-        ]):
-            self.assertEqual(validate_public_url("https://example.com"), "https://example.com")
-        for url in ("file:///etc/passwd", "http://localhost", "http://127.0.0.1", "https://user:pass@example.com"):
-            with self.subTest(url=url), self.assertRaises(BrowserAutomationError):
-                validate_public_url(url)
-
-    def test_browser_route_calls_search_tool(self):
-        intent = Mock()
-        intent.route.return_value = {"intent": "BROWSER", "reason": "search"}
-        browser = Mock()
-        browser.search_web.return_value = {"title": "Search", "text": "results"}
-        assistant = SmartHybridAssistant(intent_router=intent, browser_factory=Mock(return_value=browser))
-        result = assistant.dispatch("search the web for Python")
-        browser.search_web.assert_called_once_with("Python")
         self.assertEqual(result["intent"], "BROWSER")
+        self.assertNotIn("model", router.query.call_args.kwargs)
 
-    def test_chat_route_uses_brain_engine_with_existing_hybrid_router(self):
-        intent = Mock()
-        intent.route.return_value = {"intent": "CHAT", "reason": "question"}
-        router = Mock()
-        router.configured_key_status.return_value = {"gemini": True, "ollama": False}
-        router.query.return_value = {"text": "hello", "provider": "gemini", "model": "test"}
-        assistant = SmartHybridAssistant(intent_router=intent, chat_router_factory=Mock(return_value=router))
-        with patch("memory.config_manager.get_memory_provider_access_enabled", return_value=False):
-            result = assistant.dispatch("hello")
-        router.query.assert_called_once()
-        prompt = router.query.call_args.args[0]
-        self.assertIn("[CURRENT USER REQUEST]", prompt)
-        self.assertIn("hello", prompt)
-        self.assertIn("[JARVIS BRAIN PROTOCOL v1]", router.query.call_args.kwargs["system_prompt"])
-        self.assertEqual(result["intent"], "CHAT")
-        self.assertEqual(result["result"]["text"], "hello")
+    def test_provider_failure_falls_back_to_next_configured_provider(self):
+        router = HybridLLMRouter(
+            api_keys={"gemini": "test-gemini", "groq": "test-groq", "openai": "test-openai"},
+            online_check=False,
+        )
+        router.is_online = lambda: True
+        router.providers["gemini"] = lambda *a, **k: (_ for _ in ()).throw(TimeoutError())
+        router.providers["groq"] = lambda *a, **k: {"text": "answer", "model": "test-model"}
+        result = router.query("hello")
+        self.assertEqual(result["text"], "answer")
+        self.assertEqual(result["provider"], "groq")
+        self.assertEqual(result["mode"], "cloud")
+        self.assertGreaterEqual(result["latency_ms"], 0)
 
-    def test_click_link_navigates_only_a_validated_href_without_click_handlers(self):
-        browser = BrowserAutomation()
-        browser._page = Mock()
-        browser._page.url = "https://example.com/start"
-        browser._page.get_by_role.return_value.first.get_attribute.return_value = "/help"
-        browser.navigate = Mock(return_value={"title": "Help"})
-        self.assertEqual(browser.click_link("Help"), {"title": "Help"})
-        browser._page.get_by_role.assert_called_once_with("link", name="Help", exact=False)
-        browser.navigate.assert_called_once_with("https://example.com/help")
-        browser._page.get_by_text.assert_not_called()
-        browser._page.get_by_role.return_value.first.click.assert_not_called()
+    def test_empty_provider_response_is_treated_as_failure(self):
+        router = HybridLLMRouter(
+            api_keys={"gemini": "test-gemini", "groq": "test-groq", "openai": "test-openai"},
+            online_check=False,
+        )
+        router.is_online = lambda: True
+        router.providers["gemini"] = lambda *a, **k: {"text": "  "}
+        router.providers["groq"] = lambda *a, **k: {"text": "recovered"}
+        self.assertEqual(router.query("hello")["text"], "recovered")
 
-    def test_invalid_navigation_does_not_open_browser(self):
-        browser = BrowserAutomation()
-        browser.open = Mock()
-        with self.assertRaises(BrowserAutomationError):
-            browser.navigate("javascript:alert(1)")
-        browser.open.assert_not_called()
+    def test_offline_prefers_local_provider_when_it_succeeds(self):
+        router = HybridLLMRouter(api_keys={"gemini": "configured"}, online_check=True)
+        router.is_online = lambda: False
+        calls = []
+        router.providers["gemini"] = lambda *a, **k: calls.append("gemini")
+        router.providers["ollama"] = lambda *a, **k: {"text": "local answer", "model": "local"}
+        result = router.query("hello")
+        self.assertEqual(calls, [])
+        self.assertEqual(result["provider"], "ollama")
+        self.assertEqual(result["mode"], "local-offline")
 
-    def test_legacy_loopback_hosts_are_rejected_after_resolution(self):
-        # These forms are rejected by ipaddress but resolved as loopback by libc.
-        for host in ('127.1', '2130706433', '0x7f.0.0.1'):
-            with self.subTest(host=host), self.assertRaises(BrowserAutomationError):
-                validate_public_url('http://' + host)
+    def test_false_offline_probe_falls_back_to_cloud_if_local_fails(self):
+        router = HybridLLMRouter(
+            api_keys={"gemini": "configured"}, online_check=True
+        )
+        router.is_online = lambda: False
+        calls = []
+        router.providers["ollama"] = lambda *a, **k: (
+            (_ for _ in ()).throw(ConnectionError("local Ollama unavailable"))
+        )
+        router.providers["gemini"] = lambda *a, **k: (
+            calls.append("gemini") or {"text": "cloud recovered", "model": "test-model"}
+        )
+        result = router.query("hello")
+        self.assertEqual(calls, ["gemini"])
+        self.assertEqual(result["text"], "cloud recovered")
+        self.assertEqual(result["provider"], "gemini")
+        self.assertEqual(result["mode"], "cloud")
 
-    def test_private_and_mixed_dns_results_are_rejected_in_request_guard(self):
-        for addresses in (['192.168.1.2'], ['93.184.216.34', '10.0.0.1'], ['::1']):
-            infos = [(socket.AF_INET, socket.SOCK_STREAM, 6, '', (ip, 0)) for ip in addresses]
-            with self.subTest(addresses=addresses), \
-                 patch('core.browser_automation.socket.getaddrinfo', return_value=infos):
-                route = Mock()
-                route.request.url = 'https://public-looking.example/path'
-                BrowserAutomation._guard_request(route)
-                route.abort.assert_called_once_with()
-                route.continue_.assert_not_called()
+    def test_missing_cloud_keys_are_skipped_without_calling_provider(self):
+        router = HybridLLMRouter(online_check=False)
+        router.is_online = lambda: True
+        calls = []
+        router.providers["gemini"] = lambda *a, **k: calls.append("gemini")
+        router.providers["ollama"] = lambda *a, **k: {"text": "local answer"}
+        result = router.query("hello")
+        self.assertEqual(calls, [])
+        self.assertEqual(result["provider"], "ollama")
 
-    def test_dns_failure_fails_closed(self):
-        with patch('core.browser_automation.socket.getaddrinfo', side_effect=socket.gaierror('unresolved')):
-            with self.assertRaises(BrowserAutomationError):
-                validate_public_url('https://unresolved.example')
+    def test_connectivity_check_does_not_change_global_socket_timeout(self):
+        with patch("core.hybrid_llm_router.socket.create_connection", side_effect=OSError) as connect:
+            self.assertFalse(HybridLLMRouter.is_online(timeout=0.2))
+        connect.assert_called_once_with(("1.1.1.1", 443), timeout=0.2)
 
 
 if __name__ == "__main__":

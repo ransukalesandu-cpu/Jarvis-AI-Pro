@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import traceback
 
 import numpy as np
 

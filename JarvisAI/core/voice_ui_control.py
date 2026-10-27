@@ -50,9 +50,10 @@ _CONFIRMATION_PHRASES = {
 # dedicated action flow (including its confirmation gate, where applicable).
 _HIGH_IMPACT_TERMS = (
     "delete", "remove", "purge", "erase", "wipe",
-    "shutdown", "shut down", "power off", "restart system",
-    "factory reset", "reset all", "clear all", "clear memory",
-    "purge memory", "delete memory", "erase memory",
+    "shutdown", "shut down", "power off", "restart", "reboot",
+    "factory reset", "reset all", "reset memory", "reset settings",
+    "clear all", "clear memory", "clear history", "clear conversation",
+    "delete history", "erase history", "purge memory", "delete memory", "erase memory",
     "memory import", "memory export", "import memory", "export memory",
     "publish", "post now", "send message", "send email", "send reply",
     "make call", "call now", "phone call", "purchase", "buy now",

@@ -21,6 +21,9 @@ class VoiceUICommandParserTests(unittest.TestCase):
             ("tap microphone", "microphone"),
             ("turn on microphone", "microphone"),
             ("mute the microphone", "microphone"),
+            ("settings eka open karanna", "settings"),
+            ("settings button eka click karanna", "settings"),
+            ("open karanna settings", "settings"),
         ):
             with self.subTest(text=text):
                 command = parse_voice_ui_command(text)

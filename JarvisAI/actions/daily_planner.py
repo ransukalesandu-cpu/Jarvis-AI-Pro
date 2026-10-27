@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import uuid
 from datetime import date, datetime, time
@@ -81,13 +82,15 @@ def _truthy(value: Any, default: bool = True) -> bool:
 def _validate_schedule(date_text: str, time_text: str) -> tuple[date | None, time | None, str]:
     if not date_text and not time_text:
         return None, None, ""
+    if date_text and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_text):
+        return None, None, "Use YYYY-MM-DD for dates."
+    if time_text and not re.fullmatch(r"\d{2}:\d{2}", time_text):
+        return None, None, "Use HH:MM (24-hour time) for alarms."
     try:
         day = date.fromisoformat(date_text) if date_text else None
-        clock = time.fromisoformat(time_text) if time_text else None
+        clock = datetime.strptime(time_text, "%H:%M").time() if time_text else None
     except (TypeError, ValueError):
         return None, None, "I couldn't read that date/time. Use YYYY-MM-DD and HH:MM (24-hour time)."
-    if clock and (clock.second or clock.microsecond):
-        return None, None, "Use HH:MM without seconds for the alarm time."
     if clock and not day:
         return None, None, "A time-only item needs a date; use today's date if you mean today."
     return day, clock, ""
@@ -150,8 +153,8 @@ def _new_item(data: dict[str, Any], fallback_date: str = "", default_kind: str =
     title = _clean(data.get("title") or data.get("summary"), 160)
     if not title:
         return None, "Every plan item needs a title."
-    day_text = _clean(data.get("date"), 10) or fallback_date
-    time_text = _clean(data.get("time"), 5)
+    day_text = str(data.get("date") or "").strip() or fallback_date
+    time_text = str(data.get("time") or "").strip()
     if not day_text and time_text:
         day_text = date.today().isoformat()
     day, clock, error = _validate_schedule(day_text, time_text)
@@ -253,7 +256,7 @@ def daily_planner(parameters: dict, player=None, session_memory=None) -> str:
                         return "Give me the day's activities as items with a title and, when known, a time. No plan was changed."
                     if len(plan_items) > _MAX_PLAN_ITEMS:
                         return f"I can add up to {_MAX_PLAN_ITEMS} items in one plan request."
-                    fallback_date = _clean(parameters.get("date"), 10) or today
+                    fallback_date = str(parameters.get("date") or "").strip() or today
                     # Validate the day once so a typo cannot silently schedule every item on the wrong day.
                     try:
                         date.fromisoformat(fallback_date)
@@ -301,7 +304,7 @@ def daily_planner(parameters: dict, player=None, session_memory=None) -> str:
             if operation in {"today", "list", "upcoming", "recall", "checkin"}:
                 pending = [row for row in items if row.get("status", "pending") == "pending"]
                 if operation == "today":
-                    target_day = _clean(parameters.get("date"), 10) or today
+                    target_day = str(parameters.get("date") or "").strip() or today
                     try:
                         date.fromisoformat(target_day)
                     except ValueError:
@@ -341,8 +344,8 @@ def daily_planner(parameters: dict, player=None, session_memory=None) -> str:
                     return error
                 if item is None:
                     return "No item was changed."
-                new_date = _clean(parameters.get("date"), 10)
-                new_time = _clean(parameters.get("time"), 5)
+                new_date = str(parameters.get("date") or "").strip()
+                new_time = str(parameters.get("time") or "").strip()
                 day, clock, schedule_error = _validate_schedule(new_date, new_time)
                 if schedule_error:
                     return schedule_error

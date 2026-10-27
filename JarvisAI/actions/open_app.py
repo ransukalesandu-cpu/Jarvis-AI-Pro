@@ -1,3 +1,4 @@
+import os
 import time
 import subprocess
 import platform
@@ -79,14 +80,20 @@ def _normalize(raw: str) -> str:
 
 def _launch_windows(app_name: str) -> bool:
 
-    if shutil.which(app_name) or shutil.which(app_name.split(".")[0]):
+    resolved = shutil.which(app_name) or shutil.which(app_name.split(".")[0])
+    if resolved:
         try:
-            subprocess.Popen(
-                app_name,
-                shell=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            # Avoid shell parsing for normal executables. Windows command
+            # wrappers are opened via their registered handler instead.
+            if resolved.lower().endswith((".cmd", ".bat")):
+                os.startfile(resolved)
+            else:
+                subprocess.Popen(
+                    [resolved],
+                    shell=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
             time.sleep(1.5)
             return True
         except Exception as e:
@@ -94,11 +101,13 @@ def _launch_windows(app_name: str) -> bool:
 
     if ":" in app_name:
         try:
-            subprocess.Popen(f"start {app_name}", shell=True)
+            # Windows ShellExecute opens registered URI handlers without
+            # passing user-controlled text through cmd.exe / shell parsing.
+            os.startfile(app_name)
             time.sleep(1.0)
             return True
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[open_app] URI launch failed: {e}")
 
     try:
         import pyautogui

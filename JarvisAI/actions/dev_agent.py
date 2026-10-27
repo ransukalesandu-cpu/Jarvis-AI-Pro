@@ -336,12 +336,19 @@ def _open_vscode(project_dir: Path) -> bool:
     ]
     for cmd in vscode_candidates:
         try:
-            subprocess.Popen(
-                [cmd, str(project_dir)],
-                shell=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
+            if os.name == "nt" and cmd.lower().endswith((".cmd", ".bat")):
+                # ShellExecute handles registered Windows command wrappers
+                # without constructing a cmd.exe command string.
+                os.startfile(cmd, arguments=f'"{project_dir}"')
+            else:
+                # A sequence with shell=True drops normal argv semantics on
+                # POSIX, so VS Code opened without the requested project path.
+                subprocess.Popen(
+                    [cmd, str(project_dir)],
+                    shell=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
             time.sleep(1.5)
             print(f"[DevAgent] 💻 VSCode opened: {project_dir}")
             return True

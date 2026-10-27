@@ -23,7 +23,9 @@ class BihansaHologramWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(320, 320)
-        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._reduced_motion = False
         self._glow_intensity = 1.0
         self._animation_speed = 1.0
@@ -176,7 +178,7 @@ class BihansaHologramWidget(QWidget):
         yr, zr = y * cp - zr * sp, y * sp + zr * cp
         xr, yr = xr * cr - yr * sr, xr * sr + yr * cr
         perspective = 1.0 / max(.55, 1.0 + zr * .18)
-        scale = min(w, h) * .43 * self._breath_scale * perspective
+        scale = min(w, h) * .48 * self._breath_scale * perspective
         return QPointF(w * .5 + xr * scale, h * .455 - yr * scale)
 
     def paintEvent(self, _event):
@@ -187,7 +189,7 @@ class BihansaHologramWidget(QWidget):
         w, h = float(self.width()), float(self.height())
         elapsed = time.monotonic() - self._start_time
         t = 0.0 if self._reduced_motion else elapsed * self._animation_speed
-        p.fillRect(self.rect(), QColor("#09040f"))
+        # Transparent canvas: only the procedural face and its emissive effects are painted.
         cx, cy, size = w * .5, h * .455, min(w, h)
         pink = QColor("#ff4fc8")
         hot = QColor("#ffb1ee")

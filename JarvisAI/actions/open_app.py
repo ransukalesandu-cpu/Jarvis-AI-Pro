@@ -318,17 +318,41 @@ def open_app(
     if player:
         player.write_log(f"[open_app] {app_name}")
 
+    # Let the native app own the desktop: request compact hologram mode
+    # before launching, so the full-screen HUD cannot cover the target window.
+    # Headless/shim UIs have no compact-mode hook and keep the old behavior.
+    enter_compact = getattr(player, "enter_compact_overlay", None) if player else None
+    exit_compact = getattr(player, "exit_compact_overlay", None) if player else None
+    compact_requested = callable(enter_compact)
+    if compact_requested:
+        try:
+            enter_compact()
+        except Exception as exc:
+            print(f"[open_app] Could not request compact hologram mode: {exc}")
+            compact_requested = False
+
     try:
         if launcher(normalized):
+            if player:
+                player.write_log(f"[open_app] {app_name} launched; compact hologram requested")
             return f"Opened {app_name}."
         if normalized.lower() != app_name.lower():
             if launcher(app_name):
+                if player:
+                    player.write_log(f"[open_app] {app_name} launched; compact hologram requested")
                 return f"Opened {app_name}."
+        if compact_requested and callable(exit_compact):
+            exit_compact()
         return (
             f"Could not confirm that {app_name} launched. "
             f"It may still be loading, or it might not be installed."
         )
     except Exception as e:
+        if compact_requested and callable(exit_compact):
+            try:
+                exit_compact()
+            except Exception:
+                pass
         print(f"[open_app] Error: {e}")
         return f"Failed to open {app_name}: {e}"
 

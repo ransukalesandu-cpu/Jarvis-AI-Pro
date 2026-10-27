@@ -1097,6 +1097,24 @@ def browser_control(
         else:
             nav_url = params.get("url", "").strip()
 
+        # Default web navigation now opens as a floating task card in the
+        # full-screen hologram. If the user named a browser or an automation
+        # session is active, preserve the existing browser workflow above/below.
+        if not browser and player and callable(getattr(player, "show_webpage", None)):
+            try:
+                host = urlsplit(nav_url).hostname or "WEB TASK"
+                title = (
+                    "SEARCH / " + str(params.get("query", "")).strip()[:40]
+                    if action == "search" else host.upper()
+                )
+                opened = player.show_webpage(nav_url, title)
+                if opened is not False:
+                    result = f"Opened inside JARVIS hologram task card: {nav_url}"
+                    _log(player, result)
+                    return result
+            except Exception as exc:
+                print(f"[Browser] In-HUD task-card navigation failed; trying native browser: {exc}")
+
         result = _open_native(nav_url, browser)
         if result.startswith("Opened") and nav_url:
             _registry.note_native_url(_normalize_url(nav_url))
@@ -1179,7 +1197,7 @@ def _log(player, text: str):
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "browser_control",
-    "description": "Controls web pages. Use action='view' to render an article/page inside the JARVIS HUD (especially when the user says 'show/open that article here' or 'in the HUD'); this is display-only and does not use the user's external browser. Use go_to/search/new_tab for the existing native browser. Other actions click/type/scroll/read/screenshot in the controlled browser. Always pass 'browser' when the user names one.",
+    "description": "Controls web pages. With no browser specified, go_to/search/new_tab open in floating JARVIS hologram task cards by default; these use an embedded JavaScript-capable page and keep the hologram visible. Use action='view' for a display-only in-HUD page/article. Name a browser explicitly when the user wants the existing native browser or wants to automate a specific browser session. Other actions click/type/scroll/read/screenshot in a controlled browser. Always pass 'browser' when the user names one.",
     "parameters": {
         "type": "OBJECT",
         "properties": {

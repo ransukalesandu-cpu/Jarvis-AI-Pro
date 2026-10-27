@@ -17,11 +17,11 @@ if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFOR
 import threading
 from typing import Optional, Callable
 
-from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal, QTimer, QSettings
+from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal, QTimer, QSettings, QEvent
 from PyQt6.QtGui import QFont, QColor
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QFrame, QGraphicsBlurEffect, QCheckBox, QStackedWidget
+    QPushButton, QToolButton, QFrame, QGraphicsBlurEffect, QCheckBox, QStackedWidget
 )
 
 from audio.visualizer_bridge import get_visualizer_bridge, VisualizerBridge
@@ -98,70 +98,84 @@ class HUDMainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
 
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(16, 16, 16, 16)
-        main_layout.setSpacing(12)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(6)
 
-        # 1. Header Bar
-        hdr_layout = QHBoxLayout()
-        hdr_title = QLabel("J.A.R.V.I.S  //  NEURAL HUD SYSTEM")
-        hdr_title.setFont(QFont("Courier New", 12, QFont.Weight.Bold))
-        hdr_title.setStyleSheet("color: #00e5ff; letter-spacing: 2px;")
-        hdr_layout.addWidget(hdr_title)
+        # Minimal top row: remove decorative title/clock; keep one compact menu control.
+        top_row = QHBoxLayout()
+        top_row.addStretch()
+        self._right_menu_button = QToolButton(self)
+        self._right_menu_button.setText("⋮")
+        self._right_menu_button.setToolTip("JARVIS menu and settings")
+        self._right_menu_button.setFixedSize(38, 38)
+        self._right_menu_button.setStyleSheet(
+            "QToolButton { color: #00e5ff; background: rgba(10,18,28,190); "
+            "border: 1px solid #17485a; border-radius: 19px; font-size: 23px; }"
+            "QToolButton:hover { background: #102a38; border-color: #00e5ff; }"
+        )
+        top_row.addWidget(self._right_menu_button)
+        main_layout.addLayout(top_row)
 
-        # Small decorative/status orb in the header. The central hologram below
-        # remains the same widget with the same layout, geometry and behavior.
         self._mini_orb = FloatingHolographicOrb(self, size_px=48)
         self._mini_orb.setToolTip("JARVIS live status")
 
-        hdr_layout.addStretch()
-
-        self._lbl_clock = QLabel("--:--:--")
-        self._lbl_clock.setFont(QFont("Courier New", 11, QFont.Weight.Bold))
-        self._lbl_clock.setStyleSheet("color: #00e5ff;")
-        hdr_layout.addWidget(self._lbl_clock)
-
-        self._bihansa_toggle = QPushButton("BIHANSA MODE: OFF")
-        self._bihansa_toggle.setCheckable(True)
-        self._bihansa_toggle.setStyleSheet(
-            "QPushButton { color: #ff9be8; background: #21101f; border: 1px solid #ff4fc8; padding: 8px 12px; font-weight: bold; }"
-            "QPushButton:checked { color: #100613; background: #ff75d4; }"
-        )
-        self._bihansa_toggle.toggled.connect(self._set_bihansa_enabled)
-        hdr_layout.addWidget(self._bihansa_toggle)
-
-        self._bihansa_settings_btn = QPushButton("⚙ SETTINGS")
-        self._bihansa_settings_btn.setStyleSheet(
-            "QPushButton { color: #c8d9d5; background: #101923; border: 1px solid #42606b; padding: 8px 12px; }"
-            "QPushButton:hover { color: #ffb3e2; border-color: #ff4fc8; }"
-        )
-        self._bihansa_settings_btn.clicked.connect(self._open_bihansa_settings)
-        hdr_layout.addWidget(self._bihansa_settings_btn)
-
-        main_layout.addLayout(hdr_layout)
-
-        # 2. Main Holographic Workspace (Left Panels, Central Hologram, Right Panels)
-        body_layout = QHBoxLayout()
-        body_layout.setSpacing(16)
-
-        # --- LEFT TELEMETRY COLUMN ---
-        left_col = QVBoxLayout()
-        left_col.setSpacing(12)
-
+        # --- Existing panels remain available, but collapse into icon-first menus. ---
         self._panel_brain = HybridBrainPanel(self)
         self._panel_security = SecurityPanel(self)
+        self._panel_memory = MemoryPanel(self)
+        self._panel_scheduler = SchedulerPanel(self)
+        self._panel_ring = SystemTelemetryRing(self)
         self._surface_brain = BentoPanelSurface(self._panel_brain, self)
         self._surface_security = BentoPanelSurface(self._panel_security, self)
+        self._surface_memory = BentoPanelSurface(self._panel_memory, self)
+        self._surface_scheduler = BentoPanelSurface(self._panel_scheduler, self)
+        self._surface_ring = BentoPanelSurface(self._panel_ring, self)
 
-        left_col.addWidget(self._surface_brain)
-        left_col.addWidget(self._surface_security)
-        left_col.addStretch()
+        body_layout = QHBoxLayout()
+        body_layout.setSpacing(8)
 
-        body_layout.addLayout(left_col, stretch=1)
+        # Left icon rail. Text labels are intentionally replaced with tooltips.
+        left_rail = QWidget(self)
+        left_rail.setFixedWidth(44)
+        self._left_rail = left_rail
+        left_rail_layout = QVBoxLayout(left_rail)
+        left_rail_layout.setContentsMargins(0, 8, 0, 8)
+        left_rail_layout.setSpacing(8)
+        self._left_icon_buttons = []
+        for symbol, tooltip in (("◈", "Neural / Hybrid Brain"), ("⛨", "Security / Host verification")):
+            button = QToolButton(left_rail)
+            button.setText(symbol)
+            button.setToolTip(tooltip)
+            button.setFixedSize(40, 40)
+            button.setStyleSheet(
+                "QToolButton { color: #00d9f5; background: #0b131d; border: 1px solid #183544; "
+                "border-radius: 12px; font-size: 20px; }"
+                "QToolButton:hover { color: #ffffff; background: #123044; border-color: #00e5ff; }"
+            )
+            left_rail_layout.addWidget(button)
+            self._left_icon_buttons.append(button)
+        left_rail_layout.addStretch()
 
-        # --- CENTER WIREFRAME HOLOGRAM ---
+        self._left_menu = QFrame(self)
+        self._left_menu.setObjectName("leftMegaMenu")
+        self._left_menu.setFixedWidth(270)
+        self._left_menu.setStyleSheet(
+            "QFrame#leftMegaMenu { background: rgba(9,17,27,245); border: 1px solid #17485a; border-radius: 14px; }"
+        )
+        left_menu_layout = QVBoxLayout(self._left_menu)
+        left_menu_layout.setContentsMargins(8, 8, 8, 8)
+        left_menu_layout.setSpacing(8)
+        left_menu_title = QLabel("NEURAL SYSTEMS")
+        left_menu_title.setStyleSheet("color: #00e5ff; font-weight: bold; letter-spacing: 1px; padding: 4px;")
+        left_menu_layout.addWidget(left_menu_title)
+        left_menu_layout.addWidget(self._surface_brain)
+        left_menu_layout.addWidget(self._surface_security)
+        left_menu_layout.addStretch()
+        self._left_menu.hide()
+
+        # Center hologram stack is preserved; only surrounding navigation changes.
         center_col = QVBoxLayout()
-        center_col.setSpacing(8)
-
+        center_col.setSpacing(6)
         self._visualizer_stack = QStackedWidget(self)
         self.wireframe_visualizer = NeuralWireframeHead(self)
         self.bihansa_visualizer = BihansaHologramWidget(self)
@@ -169,27 +183,8 @@ class HUDMainWindow(QMainWindow):
         self._visualizer_stack.addWidget(self.bihansa_visualizer)
         self._visualizer_stack.setCurrentWidget(self.wireframe_visualizer)
         center_col.addWidget(self._visualizer_stack, stretch=1)
-
-        # Small state-reactive orb below the hologram. The hologram widget itself
-        # and its rendering code are intentionally left untouched.
         center_col.addWidget(self._mini_orb, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-        # Optional visual and voice-reactivity controls; they never enable the microphone or camera.
-        controls_layout = QHBoxLayout()
-        self._bihansa_effects = QCheckBox("NEURAL EFFECTS")
-        self._bihansa_effects.setChecked(True)
-        self._bihansa_effects.setStyleSheet("QCheckBox { color: #ff9be8; spacing: 6px; }")
-        self._bihansa_voice_reactive = QCheckBox("VOICE REACTIVE VISUALS")
-        self._bihansa_voice_reactive.setChecked(True)
-        self._bihansa_voice_reactive.setStyleSheet("QCheckBox { color: #ff9be8; spacing: 6px; }")
-        controls_layout.addWidget(self._bihansa_effects)
-        controls_layout.addWidget(self._bihansa_voice_reactive)
-        controls_layout.addStretch()
-        center_col.addLayout(controls_layout)
-        self._bihansa_effects.toggled.connect(self.bihansa_visualizer.set_effects_enabled)
-        self._bihansa_voice_reactive.toggled.connect(self.bihansa_visualizer.set_voice_reactive)
-
-        # Status Banner underneath wireframe
         self._lbl_hud_status = QLabel("● SYSTEM STANDBY")
         self._lbl_hud_status.setFont(QFont("Courier New", 11, QFont.Weight.Bold))
         self._lbl_hud_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -203,7 +198,6 @@ class HUDMainWindow(QMainWindow):
         self._lbl_avatar_text.hide()
         center_col.addWidget(self._lbl_avatar_text)
 
-        # Privacy Lock Banner Overlay (Hidden by default)
         self._lock_banner = QFrame(self)
         self._lock_banner.setStyleSheet("""
             QFrame {
@@ -220,32 +214,90 @@ class HUDMainWindow(QMainWindow):
         lb_layout.addWidget(lb_text)
         self._lock_banner.hide()
 
-        body_layout.addLayout(center_col, stretch=2)
+        # Right-side dropdown contains secondary telemetry and settings controls.
+        self._right_menu = QFrame(self)
+        self._right_menu.setObjectName("rightDropdownMenu")
+        self._right_menu.setFixedWidth(300)
+        self._right_menu.setStyleSheet(
+            "QFrame#rightDropdownMenu { background: rgba(9,17,27,248); border: 1px solid #17485a; border-radius: 14px; }"
+        )
+        right_menu_layout = QVBoxLayout(self._right_menu)
+        right_menu_layout.setContentsMargins(10, 10, 10, 10)
+        right_menu_layout.setSpacing(8)
 
-        # --- RIGHT TELEMETRY COLUMN ---
-        right_col = QVBoxLayout()
-        right_col.setSpacing(12)
+        self._bihansa_toggle = QPushButton("BIHANSA MODE: OFF")
+        self._bihansa_toggle.setCheckable(True)
+        self._bihansa_toggle.setStyleSheet(
+            "QPushButton { color: #ff9be8; background: #21101f; border: 1px solid #ff4fc8; padding: 8px 12px; font-weight: bold; border-radius: 8px; }"
+            "QPushButton:checked { color: #100613; background: #ff75d4; }"
+        )
+        self._bihansa_toggle.toggled.connect(self._set_bihansa_enabled)
+        right_menu_layout.addWidget(self._bihansa_toggle)
 
-        self._panel_memory = MemoryPanel(self)
-        self._panel_scheduler = SchedulerPanel(self)
-        self._panel_ring = SystemTelemetryRing(self)
-        self._surface_memory = BentoPanelSurface(self._panel_memory, self)
-        self._surface_scheduler = BentoPanelSurface(self._panel_scheduler, self)
-        self._surface_ring = BentoPanelSurface(self._panel_ring, self)
+        self._bihansa_settings_btn = QPushButton("⚙  BIHANSA SETTINGS")
+        self._bihansa_settings_btn.setStyleSheet(
+            "QPushButton { color: #c8d9d5; background: #101923; border: 1px solid #42606b; padding: 8px 12px; border-radius: 8px; }"
+            "QPushButton:hover { color: #ffb3e2; border-color: #ff4fc8; }"
+        )
+        self._bihansa_settings_btn.clicked.connect(self._open_bihansa_settings)
+        right_menu_layout.addWidget(self._bihansa_settings_btn)
 
-        right_col.addWidget(self._surface_memory)
-        right_col.addWidget(self._surface_scheduler)
-        right_col.addWidget(self._surface_ring)
-        right_col.addStretch()
+        self._bihansa_effects = QCheckBox("Neural effects")
+        self._bihansa_effects.setChecked(True)
+        self._bihansa_effects.setStyleSheet("QCheckBox { color: #ff9be8; spacing: 6px; padding: 4px; }")
+        self._bihansa_voice_reactive = QCheckBox("Voice-reactive visuals")
+        self._bihansa_voice_reactive.setChecked(True)
+        self._bihansa_voice_reactive.setStyleSheet("QCheckBox { color: #ff9be8; spacing: 6px; padding: 4px; }")
+        right_menu_layout.addWidget(self._bihansa_effects)
+        right_menu_layout.addWidget(self._bihansa_voice_reactive)
+        right_menu_layout.addWidget(self._surface_memory)
+        right_menu_layout.addWidget(self._surface_scheduler)
+        right_menu_layout.addWidget(self._surface_ring)
+        self._right_menu.hide()
 
-        body_layout.addLayout(right_col, stretch=1)
+        self._bihansa_effects.toggled.connect(self.bihansa_visualizer.set_effects_enabled)
+        self._bihansa_voice_reactive.toggled.connect(self.bihansa_visualizer.set_voice_reactive)
 
+        body_layout.addWidget(left_rail, 0)
+        body_layout.addWidget(self._left_menu, 0)
+        body_layout.addLayout(center_col, 1)
         main_layout.addLayout(body_layout, stretch=1)
 
-        # 3. Clock Timer
-        self._clock_timer = QTimer(self)
-        self._clock_timer.timeout.connect(self._update_clock)
-        self._clock_timer.start(500)
+        # Hover expansion is delayed very slightly so the pointer can travel from rail to menu.
+        self._menu_hide_timer = QTimer(self)
+        self._menu_hide_timer.setSingleShot(True)
+        self._menu_hide_timer.setInterval(220)
+        self._menu_hide_timer.timeout.connect(self._hide_left_mega_menu)
+        left_rail.installEventFilter(self)
+        self._left_menu.installEventFilter(self)
+        for button in self._left_icon_buttons:
+            button.installEventFilter(self)
+        self._right_menu_button.clicked.connect(self._toggle_right_dropdown)
+        self._right_menu.installEventFilter(self)
+
+
+    def eventFilter(self, watched, event):
+        """Open the left mega menu on hover; keep it open while pointer enters the panel."""
+        if hasattr(self, "_left_menu") and (watched is self._left_menu or (hasattr(self, "_left_rail") and watched.parent() is self._left_rail)):
+            if event.type() == QEvent.Type.Enter:
+                self._menu_hide_timer.stop()
+                self._left_menu.show()
+            elif event.type() == QEvent.Type.Leave:
+                self._menu_hide_timer.start()
+        if hasattr(self, "_left_rail") and watched is self._left_rail:
+            if event.type() == QEvent.Type.Enter:
+                self._menu_hide_timer.stop()
+                self._left_menu.show()
+            elif event.type() == QEvent.Type.Leave:
+                self._menu_hide_timer.start()
+        return super().eventFilter(watched, event)
+
+    def _hide_left_mega_menu(self):
+        self._left_menu.hide()
+
+    def _toggle_right_dropdown(self):
+        """Toggle the compact right dropdown without changing assistant state."""
+        self._right_menu.setVisible(not self._right_menu.isVisible())
 
     def _wire_signals(self):
         """Wire VisualizerBridge signals to UI components."""

@@ -1119,9 +1119,26 @@ def browser_control(
             except Exception as exc:
                 print(f"[Browser] In-HUD task-card navigation failed; trying native browser: {exc}")
 
+        # An explicitly named browser is a native app task. Minimize the
+        # full HUD before launching it and keep only the transparent overlay.
+        enter_compact = getattr(player, "enter_compact_overlay", None) if player else None
+        exit_compact = getattr(player, "exit_compact_overlay", None) if player else None
+        compact_requested = bool(browser and callable(enter_compact))
+        if compact_requested:
+            try:
+                enter_compact()
+            except Exception as exc:
+                print(f"[Browser] Could not request compact hologram mode: {exc}")
+                compact_requested = False
+
         result = _open_native(nav_url, browser)
         if result.startswith("Opened") and nav_url:
             _registry.note_native_url(_normalize_url(nav_url))
+        elif compact_requested and callable(exit_compact):
+            try:
+                exit_compact()
+            except Exception:
+                pass
         _log(player, result)
         return result
 

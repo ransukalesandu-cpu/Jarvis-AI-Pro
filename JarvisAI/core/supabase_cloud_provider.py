@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 _SESSION_FILE = Path(__file__).resolve().parent.parent / "config" / "supabase_auth_refresh.dat"
+_SESSION_BLOCKED_FILE = _SESSION_FILE.with_suffix(".blocked")
 
 
 def _load_persisted_refresh_token() -> str:
@@ -46,7 +47,67 @@ def _persist_refresh_token(token: str) -> None:
 
 
 _AUTH_LOCK = threading.RLock()
-_AUTH: dict[str, Any] = {"access_token": "", "refresh_token": "", "expires_at": 0.0}
+_AUTH: dict[str, Any] = {
+    "access_token": "", "refresh_token": "", "expires_at": 0.0, "refresh_failed": False
+}
+
+
+def _refresh_failure_marked() -> bool:
+    """Fail closed when a prior refresh failure blocked automatic identity replacement."""
+    try:
+        _SESSION_BLOCKED_FILE.stat()
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+
+
+def _mark_refresh_failure() -> None:
+    """Persist a non-secret block marker so a restart cannot silently create a new identity."""
+    _SESSION_BLOCKED_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temp = _SESSION_BLOCKED_FILE.with_name(_SESSION_BLOCKED_FILE.name + ".tmp")
+    try:
+        temp.write_text("refresh_failed\n", encoding="ascii")
+        if os.name != "nt":
+            os.chmod(temp, 0o600)
+        os.replace(temp, _SESSION_BLOCKED_FILE)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def _clear_refresh_failure_marker() -> None:
+    """Remove the fail-closed marker only after a successful session acquisition."""
+    _SESSION_BLOCKED_FILE.unlink(missing_ok=True)
+
+
+def _is_transient_refresh_failure(error: RuntimeError) -> bool:
+    """Keep a retryable token only for network failures and retryable HTTP statuses."""
+    message = str(error).casefold()
+    if any(f"http {status}" in message for status in (408, 425, 429, *range(500, 600))):
+        return True
+    return any(marker in message for marker in (
+        "urlerror", "timeouterror", "connectionerror", "connection reset",
+        "temporarily unavailable", "temporary failure", "network is unreachable",
+    ))
+
+
+def reset_supabase_auth_session() -> None:
+    """Explicitly clear the failed session before a user-approved host re-enrollment.
+
+    Callers must put this behind an explicit owner-confirmed reset flow. It is
+    intentionally never invoked automatically after a refresh failure.
+    """
+    with _AUTH_LOCK:
+        try:
+            _SESSION_FILE.unlink(missing_ok=True)
+            _SESSION_BLOCKED_FILE.unlink(missing_ok=True)
+        except OSError:
+            raise RuntimeError("Could not reset the Supabase Auth session safely") from None
+        _AUTH.update({
+            "access_token": "", "refresh_token": "", "expires_at": 0.0,
+            "refresh_failed": False,
+        })
 
 
 def _request_json(
@@ -75,6 +136,10 @@ def _get_access_token(base_url: str, public_key: str, timeout: float) -> str:
 
         headers = {"Content-Type": "application/json", "apikey": public_key}
         refresh = str(_AUTH.get("refresh_token") or "").strip() or _load_persisted_refresh_token()
+        if not refresh and (_AUTH.get("refresh_failed") or _refresh_failure_marked()):
+            raise RuntimeError(
+                "Supabase session refresh is blocked; explicitly reset/re-enroll the host session before creating a new identity"
+            ) from None
         auth_result: dict[str, Any] | None = None
         if refresh:
             try:
@@ -82,8 +147,26 @@ def _get_access_token(base_url: str, public_key: str, timeout: float) -> str:
                     base_url + "/auth/v1/token?grant_type=refresh_token",
                     headers=headers, body={"refresh_token": refresh}, timeout=timeout,
                 )
-            except RuntimeError:
-                auth_result = None
+            except RuntimeError as exc:
+                # Never replace the Auth identity automatically. Retry a saved token
+                # only for classified transient transport/server failures; permanent
+                # refresh failures require an explicit owner-approved session reset.
+                retryable = _is_transient_refresh_failure(exc)
+                _AUTH.update({
+                    "access_token": "",
+                    "refresh_token": refresh if retryable else "",
+                    "expires_at": 0.0,
+                    "refresh_failed": True,
+                })
+                try:
+                    _mark_refresh_failure()
+                except OSError:
+                    raise RuntimeError(
+                        "Supabase refresh failed and the block marker could not be saved; fix local storage before restarting"
+                    ) from None
+                raise RuntimeError(
+                    "Supabase session refresh failed; retry connectivity or explicitly reset/re-enroll the host session"
+                ) from None
 
         if auth_result is None:
             # Supabase anonymous sign-in; no email or password is collected/stored.
@@ -97,10 +180,19 @@ def _get_access_token(base_url: str, public_key: str, timeout: float) -> str:
         expires_in = max(60, int(auth_result.get("expires_in") or 3600))
         if not access:
             raise RuntimeError("Supabase anonymous sign-in did not return an access token")
+        try:
+            _clear_refresh_failure_marker()
+        except OSError:
+            _AUTH.update({
+                "access_token": "", "refresh_token": refresh_token,
+                "expires_at": 0.0, "refresh_failed": True,
+            })
+            raise RuntimeError("Could not clear the Supabase session block marker safely") from None
         _AUTH.update({
             "access_token": access,
             "refresh_token": refresh_token,
             "expires_at": time.monotonic() + expires_in,
+            "refresh_failed": False,
         })
         if refresh_token:
             try:
@@ -109,8 +201,15 @@ def _get_access_token(base_url: str, public_key: str, timeout: float) -> str:
                 # Fail closed on Windows rather than silently losing the stable
                 # Auth identity needed to recognize the enrolled host next launch.
                 if sys.platform == "win32":
-                    _AUTH.update({"access_token": "", "refresh_token": "", "expires_at": 0.0})
-                    raise RuntimeError("Could not securely persist the Supabase Auth session") from None
+                    _AUTH.update({
+                        "access_token": "", "refresh_token": "", "expires_at": 0.0,
+                        "refresh_failed": True,
+                    })
+                    try:
+                        _mark_refresh_failure()
+                    except OSError:
+                        pass
+                    raise RuntimeError("Could not securely persist the Supabase Auth session; automatic re-enrollment is blocked") from None
         return access
 
 

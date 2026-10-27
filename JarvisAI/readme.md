@@ -29,6 +29,7 @@ It can:
 * 🔌 Discover additional skills through plugins
 * 📧 Read, search, and send email
 * 📅 Check and manage your calendar
+* 🗓️ Plan the day, remember events/tasks, set OS alarms, and review overdue items
 * 🏠 Control smart-home devices
 * 🖨️ Monitor and control a 3D printer
 * 🧠 Quiz you on any topic
@@ -838,6 +839,9 @@ Only the **caller portion** is saved as the voicemail/message.
 This prevents Jarvis's own responses from becoming part of the caller's stored message.
 
 ---
+
+
+For the local day planner, alarm scheduling, and forgotten-task check-in, see [Daily Planner documentation](docs/DAILY_PLANNER.md).
 
 ## 🔔 Owner Notification
 

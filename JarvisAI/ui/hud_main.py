@@ -649,9 +649,16 @@ class _HudSetupController(QObject):
         self._win.sig_setup_requested.connect(self.show_gemini_setup)
 
     def _api_configured(self) -> bool:
+        """Match the live Gemini session's source of truth: the local config file.
+
+        `JarvisLive._get_api_key` reads config/api_keys.json directly, so an
+        environment-only key must not mark the HUD ready when that file is
+        missing or has no usable key.
+        """
         try:
-            from memory.config_manager import is_configured
-            return bool(is_configured())
+            from memory.config_manager import load_api_keys
+            key = load_api_keys().get("gemini_api_key", "")
+            return isinstance(key, str) and len(key.strip()) > 15
         except Exception:
             return False
 

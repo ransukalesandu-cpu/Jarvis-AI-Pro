@@ -743,8 +743,10 @@ class _HudSetupController(QObject):
             self.show_gemini_setup()
             return
         try:
-            from core.security import get_auth_manager
-            auth = get_auth_manager()
+            auth = getattr(self._win, "_auth_manager", None)
+            if auth is None:
+                from core.security import get_auth_manager
+                auth = get_auth_manager()
             if auth.is_pin_enrolled():
                 self._mark_ready()
                 return

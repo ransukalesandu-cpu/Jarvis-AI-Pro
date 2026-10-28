@@ -1761,6 +1761,9 @@ class HUDMainWindow(QMainWindow):
             and event.type() == QEvent.Type.Resize
         ):
             self._apply_hologram_stage_spacing()
+            # Spacing can resize the face stack and move the orb. Refresh the
+            # stage-local chin and blocked-region bounds after that layout pass.
+            self._sync_task_blocked_rect()
         if watched is self._left_menu_trigger or watched is self._left_rail or watched in self._left_icon_buttons:
             if event.type() == QEvent.Type.Enter:
                 if self._workspace_stack.currentWidget() is not self._dashboard:

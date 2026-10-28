@@ -216,14 +216,13 @@ class TestUIHologram(unittest.TestCase):
         hud.eventFilter(hud._left_menu_trigger, enter)
         self.assertFalse(hud._left_rail.isHidden())
 
-        # Leaving the tab schedules a delayed collapse so the pointer can move
-        # into the rail without the menu disappearing between widgets.
+        # Leaving the tab schedules a delayed collapse so pointer travel into
+        # the rail is safe; the global cursor is controlled for deterministic CI.
         leave = QEvent(QEvent.Type.Leave)
         hud.eventFilter(hud._left_menu_trigger, leave)
-        # Move the real Qt test cursor away too; the collapse callback checks
-        # widgetAt(QCursor.pos()) to avoid closing while crossing into the rail.
-        QTest.mouseMove(hud._home_page, QPoint(220, 180))
-        QTest.qWait(260)
+        with patch("ui.hud_main.QCursor") as cursor:
+            cursor.pos.return_value = QPoint(2000, 2000)
+            QTest.qWait(260)
         self.assertTrue(hud._left_rail.isHidden())
 
     def test_hud_status_label_does_not_report_errors_as_standby(self):

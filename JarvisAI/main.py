@@ -2279,6 +2279,41 @@ class JarvisLive:
         context = metacognitive_context(query, provider_safe=True)
         return redact_sensitive_content(context.strip())
 
+    # ── HUD voice-command feedback ─────────────────────────────────────────
+    # One tool call is one visible task: the HUD highlights the target panel,
+    # marks it RUNNING, and only confirms success when the tool's own result text
+    # says so. Both helpers are no-ops for any other UI implementation.
+    @staticmethod
+    def _command_summary(args: dict) -> str:
+        for key in ("query", "title", "action", "file_path", "url", "text", "topic"):
+            value = args.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()[:80]
+        return ""
+
+    def _hud_command_started(self, action_name: str, args: dict) -> None:
+        begin = getattr(self.ui, "begin_command", None)
+        if not callable(begin):
+            return
+        try:
+            begin(action_name, self._command_summary(args))
+        except Exception:
+            failsoft.suppress("main:JarvisLive._hud_command_started")
+
+    def _hud_command_finished(self, action_name: str, response) -> None:
+        finish = getattr(self.ui, "finish_command", None)
+        if not callable(finish):
+            return
+        payload = getattr(response, "response", None) or {}
+        try:
+            text = str(payload.get("result", "")) if isinstance(payload, dict) else str(payload)
+        except Exception:
+            text = ""
+        try:
+            finish(action_name, text[:400])
+        except Exception:
+            failsoft.suppress("main:JarvisLive._hud_command_finished")
+
     async def _execute_tool(self, fc) -> types.FunctionResponse:
         name = fc.name
         args = dict(fc.args or {})
@@ -3503,7 +3538,9 @@ class JarvisLive:
                                     )},
                                 )
                             else:
+                                self._hud_command_started(fc.name, dict(fc.args or {}))
                                 fr = await self._execute_tool(fc)
+                                self._hud_command_finished(fc.name, fr)
                             fn_responses.append(fr)
                         await self.session.send_tool_response(
                             function_responses=fn_responses

@@ -13,6 +13,21 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   `autonomous_ui_enabled` / `JARVIS_AUTONOMOUS_UI=1`. With the flag off the
   HUD is exactly as it was, and `test_hud_stays_clean_while_the_ui_flag_is_off`
   enforces it.
+- **RAM profiler** (`JarvisAI/tools/profile_ram.py`, adopted from PR #143): samples
+  the JARVIS process tree (RSS, USS, CPU, system-available RAM) into CSV with
+  `--label`/`--append`, so idle / voice / screen / hologram runs can be compared on
+  the 4 GB target machine. Sampling core is split into testable helpers.
+- **Lazy Qt WebEngine** (`JarvisAI/core/qt_webengine.py`): Chromium is imported on
+  first use instead of with the UI package. `import ui` no longer pulls the Earth
+  globe, the document workspace or `PyQt6.QtWebEngine*` — measured in the sandbox
+  as 137 ms/69 MB → 109 ms/49 MB, and `import ui.hud_main` 164 ms/62 MB → 150 ms/58 MB.
+  The WebEngine path itself is unchanged; it loads when the legacy immersive view is
+  actually constructed.
+- **`docs/CLOUD_FIRST_RAM_AUDIT.md`** — evidence-based audit (what was measured,
+  what was not, what needs the Windows laptop), including the open playback-queue and
+  cloud-scheduler questions.
+- Import-boundary regression tests (`tests/test_lazy_ui_imports.py`) that fail if the
+  HUD import starts dragging in Chromium, OpenCV or the WebEngine panels again.
 - **Autonomous task engine** (`JarvisAI/agent/`): validated planning (model or
   deterministic), bounded execution with retries/backoff/deadlines/loop
   detection, resumable JSON persistence plus an fsynced journal, pause/resume/
@@ -32,6 +47,66 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   covering state transitions, persistence/resume, retries and budgets,
   cancellation, policy boundaries, vision/OCR fallbacks, computer-use validation,
   voice routing and the Qt surfaces.
+- **Holographic command centre** (`docs/HOLOGRAPHIC_UI_UPGRADE.md`). The central
+  hologram is now a real copper/amber wireframe *face* with a dome crown, tapered
+  jaw, eye sockets, nose ridge and mouth crease — with hidden surfaces culled and
+  a three-quarter gaze instead of an endless spin — and it clears to the HUD
+  backdrop so it no longer floats inside a black rectangle. The status orb and
+  the small "quantum heart" are docked together beneath the face, with a real
+  filament from the heart to the chin.
+- **Task-panel producers** (`core/task_sources.py`): the HUD's glass panels are
+  no longer limited to voice commands. A `TaskSourceRegistry` polls the pending
+  reminder (`memory.prospective_memory`) and Steam's own manifest state
+  (`actions/game_updater`) and hands them to
+  `TaskPanelManager.sync_sources()`, which opens, updates in place, and retires
+  producer cards without touching command panels. A producer that raises is
+  reported as *unavailable*, never as "nothing to show"; a dismissed card stays
+  closed until its producer stops reporting the fact.
+- **Real music transport** (`core/media_transport.py`): the music panel's
+  play/pause/previous/next buttons now send the OS media keys. The buttons are
+  drawn only when a key can actually be delivered, the play/pause glyph flips only
+  after a press succeeds, and a successful music command opens one persistent
+  `media:now` card. Deliberately not routed through `spotify_control`, which
+  would launch Spotify from a panel showing any other player.
+- **Battery-threshold settings UI** (`ui/panels/battery_settings.py`,
+  `core/battery_settings.py`): *BATTERY THRESHOLDS* in the right dropdown edits
+  `battery/fifty|low|critical|full`, validates the ordering before saving, and
+  moves the adaptive-performance tiers to the same numbers. Junk or broken
+  settings still degrade to the documented defaults.
+- **Responsive HUD chrome** (`core/hud_layout.py`): the left rail (44 → 38 → 32
+  px) and the right dropdown (300 px, capped at 34 % of the width, floor 208 px)
+  now follow the window instead of being pinned to constants; the window's
+  minimum size is 860×620 so the rules are reachable. Also fixes the dropdown
+  opening as a 30 px empty strip: as a free-floating child it never received a
+  height until it was sized explicitly.
+- **`core/hologram_theme.py`** — one palette shared by every renderer.
+  `JARVIS_PALETTE` is copper/amber, `BIHANSA_PALETTE` is rose pink, per-state
+  accents sit on top of the persona instead of replacing it, and
+  `VisualPreferences` persists glow, reduced motion, charging effects and the
+  battery-saver toggle through `QSettings`.
+- **`core/system_status.py`** — edge-triggered battery monitor (a machine with no
+  sensor reports *unavailable*, never 0 %), subsystem health monitor with
+  recovery notices, `AdaptivePerformance` that picks a render budget from battery
+  + CPU load with hysteresis, and a deduplicated, bounded notification centre.
+- **`core/subsystem_probes.py`** — real microphone / speaker / network / provider
+  probes that run in one daemon thread, so the 5-second HUD tick never blocks on
+  DNS. `JARVIS_DISABLE_SUBSYSTEM_PROBES=1` keeps tests offline.
+- **`ui/task_panels.py`** — context-aware glass task panels. Controls exist only
+  when their callback does, `progress=None` renders an indeterminate sweep rather
+  than a fake percentage, media panels only grow when a thumbnail file really
+  exists, and placement is deterministic: candidates are scored for overlap with
+  the face, with other panels and with the screen edge.
+- **`ui/dynamic_island.py`** — the minimised representation: drag, expand,
+  collapse, restore, notification display. A view only; it holds no handle on the
+  microphone, audio or the live session.
+- **`ui/health_strip.py`** — four live subsystem indicators (letter glyph + real
+  detail tooltip; unavailable is hollow, never green) plus an in-HUD toast.
+- **Voice-command feedback** — `main.py` wraps real tool execution in
+  `begin_command` / `finish_command`, so a command opens a highlighted task panel
+  and is only marked COMPLETED when the tool's own result text does not read as a
+  failure.
+- **`docs/HOLOGRAPHIC_UI_UPGRADE.md`** — what shipped, what is partial, and how to
+  run it.
 - **`core/failsoft.py`** — the sanctioned way to fail soft without failing
   silently. `failsoft.suppress("<module>:<operation>")` replaces a bare `pass` in
   an `except` handler, records the failure in a bounded, thread-safe table
@@ -70,6 +145,16 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The hologram sat in a black rectangle.** Both renderers cleared to
+  `transparent`, which Qt composites as black on a plain child widget. They now
+  clear to `hologram_theme.BACKDROP_RGB`, the same colour the window paints, and
+  the stage/stack no longer paint an opaque background.
+- **The status strip was clipped.** Four indicators needed 206 px but the widget
+  asked for 150, so the AI-session indicator was cut off.
+- **A finished task panel could crash the HUD.** Archiving ran from a
+  `QTimer.singleShot` whose context outlived the window; PyQt aborts the process
+  when an exception escapes a slot, so the timer is now parented to the window and
+  every status/timer slot is exception-proof.
 - **Playback could lose barge-in protection.** In `core/audio_playback.py` the
   viseme/HUD work and the echo-guard bookkeeping shared one `try` block, and the
   level came from a bare `max()` over the viseme schedule. An empty schedule
@@ -113,6 +198,13 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Screen capture no longer round-trips through PNG**
+  (`JarvisAI/actions/screen_processor.py`): raw screen pixels go straight to the
+  JPEG that is sent. Same bytes, 251 ms → 26 ms per synthetic 1920×1080 frame; the
+  intermediate PNG buffer is gone. Falls back to the old path if PIL is missing or
+  the direct encode fails.
+- **OpenCV is imported on first camera use** instead of at startup; screen capture
+  never needed it.
 - Every silent `except: pass` / `except: continue` handler in the app now records
   through `core.failsoft.suppress()`: **177 `pass` sites and 25 `continue` sites**
   across 60 files, renamed to the subsystem they belong to (for example

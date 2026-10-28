@@ -14,6 +14,8 @@ from PyQt6.QtCore import Qt, QTimer, QPointF, QRectF, pyqtSlot, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import QWidget
 
+from core.hologram_theme import BIHANSA_PALETTE, ThemePalette, backdrop_rgb
+
 
 class BihansaHologramWidget(QWidget):
     """Procedurally generated pink neural face with audio-reactive mouth motion."""
@@ -27,6 +29,7 @@ class BihansaHologramWidget(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self._reduced_motion = False
+        self._palette: ThemePalette = BIHANSA_PALETTE
         self._glow_intensity = 1.0
         self._animation_speed = 1.0
         self._state = "IDLE"
@@ -52,6 +55,12 @@ class BihansaHologramWidget(QWidget):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._timer.start(33)
+
+    def set_palette(self, palette: ThemePalette):
+        """Adopt the persona palette so both modes share one identity system."""
+        if palette is not None:
+            self._palette = palette
+            self.update()
 
     def set_reduced_motion(self, enabled: bool):
         self._reduced_motion = bool(enabled)
@@ -186,17 +195,17 @@ class BihansaHologramWidget(QWidget):
         if not p.isActive():
             return
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        # Clear the previous frame without covering the parent HUD with a solid fill.
-        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
-        p.fillRect(self.rect(), Qt.GlobalColor.transparent)
+        # Clear to the HUD backdrop colour so the hologram has no visible box.
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+        p.fillRect(self.rect(), QColor(*backdrop_rgb()))
         p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
         w, h = float(self.width()), float(self.height())
         elapsed = time.monotonic() - self._start_time
         t = 0.0 if self._reduced_motion else elapsed * self._animation_speed
         cx, cy, size = w * .5, h * .455, min(w, h)
-        pink = QColor("#ff4fc8")
-        hot = QColor("#ffb1ee")
-        cyan = QColor("#67eaff")
+        pink = QColor(*self._palette.primary)
+        hot = QColor(*self._palette.secondary)
+        cyan = QColor(*self._palette.accent)
         speaking = self._state == "SPEAKING"
         accent = cyan if self._state == "LISTENING" else pink
 

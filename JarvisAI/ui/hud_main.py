@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
 from audio.visualizer_bridge import get_visualizer_bridge, VisualizerBridge
 from ui.hologram.wireframe_head import NeuralWireframeHead
 from ui.hologram.holo_rim_light import NeuralRimLight
+from ui.hologram.holo_state_pulse import HologramStatePulse
 from ui.hologram.bihansa_hologram import BihansaHologramWidget
 from ui.hologram.neural_heart_reactor import NeuralHeartReactor
 from ui.hologram.bihansa_settings import BihansaModeSettings, BihansaSettingsDialog
@@ -353,6 +354,17 @@ class HUDMainWindow(QMainWindow):
             palette_for_mode("bihansa").primary, palette_for_mode("bihansa").accent
         )
         self._bihansa_rim_light.set_enabled_effect(False)
+        self._jarvis_state_pulse = HologramStatePulse(self.wireframe_visualizer)
+        self._jarvis_state_pulse.set_bounds_provider(self.wireframe_visualizer.face_rect)
+        self._jarvis_state_pulse.set_colors(
+            palette_for_mode("jarvis").primary, palette_for_mode("jarvis").accent
+        )
+        self._bihansa_state_pulse = HologramStatePulse(self.bihansa_visualizer)
+        self._bihansa_state_pulse.set_bounds_provider(self._bihansa_face_bounds)
+        self._bihansa_state_pulse.set_colors(
+            palette_for_mode("bihansa").primary, palette_for_mode("bihansa").accent
+        )
+        self._bihansa_state_pulse.set_enabled_effect(False)
         self._visualizer_stack.addWidget(self.wireframe_visualizer)
         self._visualizer_stack.addWidget(self.bihansa_visualizer)
         self._visualizer_stack.setCurrentWidget(self.wireframe_visualizer)
@@ -813,6 +825,7 @@ class HUDMainWindow(QMainWindow):
             and self._bihansa_effects.isChecked()
         )
         self._bihansa_rim_light.set_enabled_effect(enabled)
+        self._bihansa_state_pulse.set_enabled_effect(enabled)
 
     @pyqtSlot(float)
     def _on_rim_audio_energy(self, level: float) -> None:
@@ -856,6 +869,7 @@ class HUDMainWindow(QMainWindow):
             self.bihansa_visualizer if enabled else self.wireframe_visualizer
         )
         self._jarvis_rim_light.set_enabled_effect(not enabled)
+        self._jarvis_state_pulse.set_enabled_effect(not enabled)
         self._sync_bihansa_rim_enabled()
         self._mini_orb.set_bihansa_mode(enabled)
         self._dashboard.set_bihansa_mode(enabled)
@@ -989,6 +1003,8 @@ class HUDMainWindow(QMainWindow):
         self.bihansa_visualizer.set_state(visual_state)
         self._jarvis_rim_light.set_state(visual_state)
         self._bihansa_rim_light.set_state(visual_state)
+        self._jarvis_state_pulse.set_state(visual_state)
+        self._bihansa_state_pulse.set_state(visual_state)
         self._mini_orb.set_state(visual_state)
         self._dashboard.set_state(visual_state)
         self._heart_reactor.set_state(visual_state)
@@ -1044,6 +1060,8 @@ class HUDMainWindow(QMainWindow):
         self.bihansa_visualizer.set_state("PRIVACY_LOCK")
         self._jarvis_rim_light.set_state("PRIVACY_LOCK")
         self._bihansa_rim_light.set_state("PRIVACY_LOCK")
+        self._jarvis_state_pulse.set_state("PRIVACY_LOCK")
+        self._bihansa_state_pulse.set_state("PRIVACY_LOCK")
         self._mini_orb.set_state("PRIVACY_LOCK")
         self._dashboard.set_state("PRIVACY_LOCK")
         self._heart_reactor.set_state("PRIVACY_LOCK")
@@ -1173,6 +1191,9 @@ class HUDMainWindow(QMainWindow):
             rim = getattr(self, f"_{mode}_rim_light", None)
             if rim is not None:
                 rim.set_colors(renderer_palette.primary, renderer_palette.accent)
+            pulse = getattr(self, f"_{mode}_state_pulse", None)
+            if pulse is not None:
+                pulse.set_colors(renderer_palette.primary, renderer_palette.accent)
         widgets = [
             getattr(self, name, None)
             for name in (
@@ -1204,6 +1225,7 @@ class HUDMainWindow(QMainWindow):
         for widget in (
             self.wireframe_visualizer, self.bihansa_visualizer, self._mini_orb,
             self._jarvis_rim_light, self._bihansa_rim_light,
+            self._jarvis_state_pulse, self._bihansa_state_pulse,
         ):
             setter = getattr(widget, "set_reduced_motion", None)
             if callable(setter):
@@ -1394,6 +1416,12 @@ class HUDMainWindow(QMainWindow):
             budget.frame_interval_ms, budget.particle_scale, budget.glow_scale
         )
         self._bihansa_rim_light.set_performance_budget(
+            budget.frame_interval_ms, budget.particle_scale, budget.glow_scale
+        )
+        self._jarvis_state_pulse.set_performance_budget(
+            budget.frame_interval_ms, budget.particle_scale, budget.glow_scale
+        )
+        self._bihansa_state_pulse.set_performance_budget(
             budget.frame_interval_ms, budget.particle_scale, budget.glow_scale
         )
         self._mini_orb.set_performance_budget(

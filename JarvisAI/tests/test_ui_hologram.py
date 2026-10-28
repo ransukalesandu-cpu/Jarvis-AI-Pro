@@ -22,7 +22,7 @@ from unittest.mock import patch
 import numpy as np
 
 from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, Qt
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QLineEdit
 from PyQt6.QtTest import QTest
 
 # Ensure QApplication exists before testing Qt widgets
@@ -219,7 +219,7 @@ class TestUIHologram(unittest.TestCase):
 
         self.assertEqual(list(overlay._key_fields), ["gemini_api_key"])
         self.assertIs(overlay._key_fields["gemini_api_key"], overlay._key_field)
-        self.assertEqual(overlay._key_field.echoMode(), overlay._key_field.EchoMode.Password)
+        self.assertEqual(overlay._key_field.echoMode(), QLineEdit.EchoMode.Password)
 
         payloads = []
         overlay.done.connect(payloads.append)
@@ -231,7 +231,7 @@ class TestUIHologram(unittest.TestCase):
         self.assertNotIn("anthropic_api_key", payloads[0])
 
         overlay._show_key_button.setChecked(True)
-        self.assertEqual(overlay._key_field.echoMode(), overlay._key_field.EchoMode.Normal)
+        self.assertEqual(overlay._key_field.echoMode(), QLineEdit.EchoMode.Normal)
         self.assertEqual(overlay._show_key_button.text(), "HIDE")
         overlay._show_key_button.setChecked(False)
         self.assertEqual(overlay._key_field.echoMode(), overlay._key_field.EchoMode.Password)

@@ -21,7 +21,7 @@ import tempfile
 from unittest.mock import Mock, patch
 import numpy as np
 
-from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt
+from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt, QPoint
 from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton
 from PyQt6.QtTest import QTest
 
@@ -205,6 +205,85 @@ class TestUIHologram(unittest.TestCase):
         self.assertTrue(hud._lock_banner.isHidden())
         self.assertEqual(hud.bihansa_visualizer.get_state(), "SPEAKING")
         self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
+
+    def test_left_mega_menu_expands_on_hover_and_starts_collapsed(self):
+        """The home hologram stays clean until the left-edge trigger is hovered."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        # Real geometry/window handles are required before Qt global-coordinate
+        # APIs are exercised; hidden top-level widgets are unsafe in offscreen CI.
+        hud.show()
+        app.processEvents()
+        self.assertTrue(hud._left_rail.isHidden())
+        self.assertFalse(hud._left_menu_trigger.isHidden())
+
+        enter = QEvent(QEvent.Type.Enter)
+        hud.eventFilter(hud._left_menu_trigger, enter)
+        self.assertFalse(hud._left_rail.isHidden())
+
+        # Capture the delayed-collapse callback instead of running a real timer,
+        # which would also advance unrelated HUD timers in a full-suite test.
+        leave = QEvent(QEvent.Type.Leave)
+        with patch("ui.hud_main.QTimer") as timer_mock:
+            hud.eventFilter(hud._left_menu_trigger, leave)
+            timer_mock.singleShot.assert_called_once()
+            self.assertEqual(timer_mock.singleShot.call_args[0][0], 180)
+            collapse = timer_mock.singleShot.call_args[0][1]
+
+        with patch("ui.hud_main.QCursor") as cursor:
+            cursor.pos.return_value = QPoint(2000, 2000)
+            collapse()
+        self.assertTrue(hud._left_rail.isHidden())
+
+    def test_hud_status_label_does_not_report_errors_as_standby(self):
+        """Error and disconnected states must remain visible in the home status."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+
+        for state in ("ERROR", "FAILED", "AUDIO_ERROR", "SESSION_ERROR"):
+            with self.subTest(state=state):
+                hud._on_state_changed(state)
+                self.assertIn("ERROR", hud._lbl_hud_status.text())
+                self.assertNotIn("STANDBY", hud._lbl_hud_status.text())
+
+        for state in ("DISCONNECTED", "OFFLINE", "CONNECTION_LOST"):
+            with self.subTest(state=state):
+                hud._on_state_changed(state)
+                self.assertIn("DISCONNECTED", hud._lbl_hud_status.text())
+                self.assertNotIn("STANDBY", hud._lbl_hud_status.text())
+
+        hud._on_state_changed("CUSTOM_PROVIDER_STATE")
+        self.assertIn("CUSTOM PROVIDER STATE", hud._lbl_hud_status.text())
+        self.assertNotIn("STANDBY", hud._lbl_hud_status.text())
+
+        hud._on_state_changed("IDLE")
+        self.assertIn("STANDBY", hud._lbl_hud_status.text())
+
+    def test_neural_face_landmarks_are_aligned_and_not_spherical(self):
+        """Guard against the face regressing to a featureless glowing ball."""
+        head = self._track_widget(NeuralWireframeHead())
+
+        self.assertGreaterEqual(len(head._feature_edges), 25)
+        self.assertEqual(len(head._eyes), 2)
+
+        left_eye = head._vertices[head._eyes[0]]
+        right_eye = head._vertices[head._eyes[1]]
+        self.assertLess(left_eye[0], 0.0)
+        self.assertGreater(right_eye[0], 0.0)
+        self.assertAlmostEqual(left_eye[0], -right_eye[0], delta=1e-6)
+        self.assertAlmostEqual(left_eye[1], right_eye[1], delta=1e-6)
+        self.assertAlmostEqual(left_eye[2], right_eye[2], delta=1e-6)
+
+        # Sculpted sockets recede behind the brow and the mouth crease sits
+        # behind the upper lip; these depth changes make the mesh read as a face.
+        eye_socket = NeuralWireframeHead._head_surface(0.40, 0.18)[2]
+        brow = NeuralWireframeHead._head_surface(0.40, 0.33)[2]
+        upper_lip = NeuralWireframeHead._head_surface(0.0, -0.30)[2]
+        mouth_crease = NeuralWireframeHead._head_surface(0.0, -0.37)[2]
+        self.assertLess(eye_socket, brow)
+        self.assertLess(mouth_crease, upper_lip)
+
+        crown = NeuralWireframeHead._head_surface(0.0, 1.0)
+        chin = NeuralWireframeHead._head_surface(0.0, -1.0)
+        self.assertGreater(crown[1] - chin[1], 2.0)
 
     def test_first_run_setup_asks_only_for_gemini_api_key(self):
         """The first-run credentials card must expose one Gemini key field only."""

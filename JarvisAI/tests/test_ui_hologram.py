@@ -21,7 +21,7 @@ import tempfile
 from unittest.mock import Mock, patch
 import numpy as np
 
-from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt
+from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt, QPoint
 from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton
 from PyQt6.QtTest import QTest
 
@@ -220,7 +220,10 @@ class TestUIHologram(unittest.TestCase):
         # into the rail without the menu disappearing between widgets.
         leave = QEvent(QEvent.Type.Leave)
         hud.eventFilter(hud._left_menu_trigger, leave)
-        QTest.qWait(220)
+        # Move the real Qt test cursor away too; the collapse callback checks
+        # widgetAt(QCursor.pos()) to avoid closing while crossing into the rail.
+        QTest.mouseMove(hud._home_page, QPoint(220, 180))
+        QTest.qWait(260)
         self.assertTrue(hud._left_rail.isHidden())
 
     def test_first_run_setup_asks_only_for_gemini_api_key(self):

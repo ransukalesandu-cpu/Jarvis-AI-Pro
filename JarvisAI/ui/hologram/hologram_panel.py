@@ -29,6 +29,7 @@ from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import QWidget
 
 from core.hologram_theme import JARVIS_PALETTE, ThemePalette
+from .holo_scanline_overlay import HologramScanlineOverlay
 from .holographic_orb import HolographicOrb
 from .quantum_heart_reactor import QuantumHeartReactor
 from .wireframe_head import NeuralWireframeHead
@@ -54,6 +55,8 @@ class JarvisHologramPanel(QWidget):
         self.head = NeuralWireframeHead(self)
         self.orb = HolographicOrb(self)
         self.heart = QuantumHeartReactor(self)
+        # Transparent child overlay: follows the head's geometry and palette.
+        self.scanline = HologramScanlineOverlay(self.head)
 
         self.head.sig_state_changed.connect(self._on_state_changed)
 
@@ -112,6 +115,7 @@ class JarvisHologramPanel(QWidget):
         self.head.set_palette(palette)
         self.orb.set_palette(palette)
         self.heart.set_palette(palette)
+        self.scanline.update()
         self.update()
 
     def palette(self) -> ThemePalette:
@@ -125,6 +129,7 @@ class JarvisHologramPanel(QWidget):
         self.head.set_reduced_motion(enabled)
         self.orb.set_reduced_motion(enabled)
         self.heart.set_reduced_motion(enabled)
+        self.scanline.set_reduced_motion(enabled)
 
     def set_performance_budget(self, frame_interval_ms: int, particle_scale: float, glow_scale: float) -> None:
         interval = max(16, min(200, int(frame_interval_ms)))
@@ -134,6 +139,7 @@ class JarvisHologramPanel(QWidget):
         self.head.set_performance_budget(frame_interval_ms, particle_scale, glow_scale)
         self.orb.set_performance_budget(frame_interval_ms, particle_scale, glow_scale)
         self.heart.set_performance_budget(frame_interval_ms, particle_scale, glow_scale)
+        self.scanline.set_performance_budget(frame_interval_ms, particle_scale, glow_scale)
 
     def face_rect(self):
         """Bounding box of the face mesh, translated into panel coordinates."""

@@ -428,7 +428,7 @@ class PersonaChromaticHandoff(QWidget):
         alpha = int(_clamp(alpha_ceiling * envelope * self._glow_scale, 0, alpha_ceiling))
         if alpha <= 0:
             return
-        pen = QPen(QColor(*primary, alpha))
+        pen = QPen(QColor(primary[0], primary[1], primary[2], alpha))
         pen.setWidthF(max(1.0, min(bounds.width(), bounds.height()) * width_scale))
         painter.setPen(pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -455,12 +455,12 @@ class PersonaChromaticHandoff(QWidget):
             start = rotation + (360.0 / ARC_COUNT) * index
             painter.setBrush(Qt.BrushStyle.NoBrush)
             # A low-alpha broad stroke gives a restrained glow without effects on the host.
-            glow = QPen(QColor(*rgb, int(alpha * 0.24)))
+            glow = QPen(QColor(rgb[0], rgb[1], rgb[2], int(alpha * 0.24)))
             glow.setWidthF(width * 2.4)
             glow.setCapStyle(Qt.PenCapStyle.RoundCap)
             painter.setPen(glow)
             painter.drawArc(rect, int(start * 16), int(ARC_SPAN_DEGREES * 16))
-            core = QPen(QColor(*rgb, alpha))
+            core = QPen(QColor(rgb[0], rgb[1], rgb[2], alpha))
             core.setWidthF(width)
             core.setCapStyle(Qt.PenCapStyle.RoundCap)
             painter.setPen(core)

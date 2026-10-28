@@ -210,12 +210,20 @@ class TestUIHologram(unittest.TestCase):
         """Error and disconnected states must remain visible in the home status."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
 
-        hud._on_state_changed("ERROR")
-        self.assertIn("ERROR", hud._lbl_hud_status.text())
-        self.assertNotIn("STANDBY", hud._lbl_hud_status.text())
+        for state in ("ERROR", "FAILED", "AUDIO_ERROR", "SESSION_ERROR"):
+            with self.subTest(state=state):
+                hud._on_state_changed(state)
+                self.assertIn("ERROR", hud._lbl_hud_status.text())
+                self.assertNotIn("STANDBY", hud._lbl_hud_status.text())
 
-        hud._on_state_changed("DISCONNECTED")
-        self.assertIn("DISCONNECTED", hud._lbl_hud_status.text())
+        for state in ("DISCONNECTED", "OFFLINE", "CONNECTION_LOST"):
+            with self.subTest(state=state):
+                hud._on_state_changed(state)
+                self.assertIn("DISCONNECTED", hud._lbl_hud_status.text())
+                self.assertNotIn("STANDBY", hud._lbl_hud_status.text())
+
+        hud._on_state_changed("CUSTOM_PROVIDER_STATE")
+        self.assertIn("CUSTOM PROVIDER STATE", hud._lbl_hud_status.text())
         self.assertNotIn("STANDBY", hud._lbl_hud_status.text())
 
         hud._on_state_changed("IDLE")

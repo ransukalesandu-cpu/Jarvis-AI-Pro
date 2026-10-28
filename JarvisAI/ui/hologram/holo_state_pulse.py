@@ -304,15 +304,26 @@ class HologramStatePulse(QWidget):
 
     def paintEvent(self, event) -> None:
         del event
-        if not self._enabled or (not self._pulses and not self._lock_static_active):
-            return
-        bounds = self._resolve_bounds()
-        if bounds.width() <= 0 or bounds.height() <= 0:
+        if not self._enabled:
             return
 
         painter = QPainter(self)
         if not painter.isActive():
             return
+        # Clear the overlay backing store on every requested paint so expired
+        # pulses cannot leave a stale ring after the timer has stopped.
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+        painter.fillRect(self.rect(), Qt.GlobalColor.transparent)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+
+        if not self._pulses and not self._lock_static_active:
+            painter.end()
+            return
+        bounds = self._resolve_bounds()
+        if bounds.width() <= 0 or bounds.height() <= 0:
+            painter.end()
+            return
+
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         margin = self.GLOBAL_MARGIN

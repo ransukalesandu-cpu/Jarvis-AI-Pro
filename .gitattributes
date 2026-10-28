@@ -1,0 +1,22 @@
+# Normalise line endings in the repository, not in each contributor's editor.
+* text=auto eol=lf
+
+# Windows batch files must keep CRLF or cmd.exe mis-parses labels.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets — never diff, never convert.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.mp4 binary
+*.obj binary
+*.so binary
+*.dll binary
+*.pyd binary
+*.wav binary
+*.mp3 binary
+
+# Generated/vendored files that would only add noise to reviews.
+JarvisAI/dashboard/static/crypto-js.min.js linguist-vendored

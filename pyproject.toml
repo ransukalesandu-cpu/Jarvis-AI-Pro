@@ -5,10 +5,105 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "jarvis-ai"
 version = "1.0.0"
-description = "Jarvis AI personal assistant"
+description = "JARVIS AI — a local-first voice assistant with a holographic desktop UI"
 readme = "README.md"
 requires-python = ">=3.11"
 dynamic = ["dependencies"]
+license = { text = "MIT" }
+keywords = ["voice-assistant", "ai", "llm", "pyqt6", "automation", "jarvis"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: X11 Applications :: Qt",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+
+[project.urls]
+Homepage = "https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro"
+Issues = "https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/issues"
+Changelog = "https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/blob/main/CHANGELOG.md"
 
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"] }
+
+# ── pytest ───────────────────────────────────────────────────────────────────
+# Configuration lives here (not in JarvisAI/) so that `pytest` behaves the same
+# whether it is started from the repository root or from inside JarvisAI/.
+# JarvisAI/conftest.py puts `core`, `actions`, `memory`, ... on sys.path.
+[tool.pytest.ini_options]
+testpaths = ["JarvisAI/tests"]
+addopts = "-ra --strict-markers"
+# Long, chatty tracebacks add nothing when a third-party wheel is missing.
+filterwarnings = [
+  "default",
+]
+markers = [
+  "windows_only: test exercises Windows-only behaviour",
+  "posix_only: test exercises macOS/Linux-only behaviour",
+  "gui: test needs a working Qt display stack (offscreen is fine)",
+  "slow: test that takes more than a couple of seconds",
+]
+
+# ── ruff (lint) ──────────────────────────────────────────────────────────────
+# The CI gate runs `ruff check` with this configuration. The rule set is
+# deliberately a *ratchet*: it starts with the rules that catch real runtime
+# breakage (undefined names, broken imports, syntax-level mistakes) and is kept
+# clean at zero findings. Wider rule families are available locally, e.g.
+#
+#     ruff check --select E,F,B,SIM,UP,RUF JarvisAI
+#
+# See docs/DEVELOPMENT.md for the current debt in those families and the plan
+# for switching them on one at a time.
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+  ".git",
+  "build",
+  "dist",
+  "supabase",
+  "JarvisAI/dashboard/static",
+]
+
+[tool.ruff.lint]
+select = [
+  "E9",   # syntax / IO errors that stop the module from loading
+  "F63",  # invalid comparisons, e.g. `x is "str"`
+  "F7",   # control-flow mistakes: `return` outside a function, etc.
+  "F82",  # undefined names in __all__ / dunder definitions
+  "F821", # undefined name — catches typos and missing imports at runtime
+  "F823", # local variable referenced before assignment
+]
+# No blanket ignores. If a finding appears here it is a real bug.
+
+[tool.ruff.lint.per-file-ignores]
+# Test helpers intentionally reach into module internals and redefine names.
+"JarvisAI/tests/**" = ["F811"]
+
+# ── coverage ─────────────────────────────────────────────────────────────────
+# Run with:  pytest --cov  (needs requirements-dev.txt)
+[tool.coverage.run]
+source = ["JarvisAI"]
+branch = false
+omit = [
+  "*/tests/*",
+  "*/conftest.py",
+  "JarvisAI/dashboard/static/*",
+]
+
+[tool.coverage.report]
+skip_covered = true
+show_missing = true
+exclude_lines = [
+  "pragma: no cover",
+  "if __name__ == .__main__.:",
+  "raise NotImplementedError",
+]

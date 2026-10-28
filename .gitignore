@@ -49,3 +49,12 @@ JarvisAI/logs/
 logs/
 master_voice.emb*
 Jarvis_Received_Files/
+
+# Tool caches and reports produced by the dev workflow
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml

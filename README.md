@@ -2620,6 +2620,33 @@ Security features are implemented as **defense-in-depth controls**. No security 
 
 ---
 
+# 🧑‍💻 Contributing & Development
+
+Want to change something? The full guide lives in **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
+
+```bash
+python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
+python -m pip install -r requirements.txt -r requirements-dev.txt
+pre-commit install          # optional: runs the same checks before each commit
+python -m pytest            # ~400 tests, no API key or hardware required
+ruff check JarvisAI         # the lint gate CI enforces
+```
+
+Notes for contributors:
+
+* `requirements.txt` is for **running** Jarvis; `requirements-dev.txt` is for
+  **working on** it (pytest, coverage, ruff, pre-commit).
+* Tests are runnable from any directory — `JarvisAI/conftest.py` wires up
+  `sys.path` and skips the GUI modules when Qt's system libraries (`libGL`,
+  `libEGL`) are missing.
+* Lint runs as a ratchet: the rules that catch real runtime breakage (undefined
+  names, broken imports) are enforced at zero findings, and wider rule families
+  are switched on one at a time. The current debt table is in
+  `docs/DEVELOPMENT.md`.
+* User-visible changes get an entry in [CHANGELOG.md](CHANGELOG.md).
+
+---
+
 # 🙏 Third-Party Software
 
 | Software / Asset      | Purpose                         | License                     |

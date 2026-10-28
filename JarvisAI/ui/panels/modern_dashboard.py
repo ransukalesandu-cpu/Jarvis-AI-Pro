@@ -14,6 +14,8 @@ from PyQt6.QtWidgets import (
     QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
+from core.hologram_theme import budget_glow
+
 
 class FloatingHolographicOrb(QWidget):
     """A small painter-based holographic orb with audio-reactive breathing."""
@@ -32,6 +34,7 @@ class FloatingHolographicOrb(QWidget):
         self._palette = None          # ThemePalette | None → built-in cyan
         self._reduced_motion = False
         self._glow = 1.0
+        self._base_glow = 1.0        # what set_glow()/the palette asked for
         self._charging = False
         self._charge_phase = 0.0
         self._timer = QTimer(self)
@@ -54,9 +57,10 @@ class FloatingHolographicOrb(QWidget):
 
     def set_glow(self, intensity: float) -> None:
         try:
-            self._glow = max(0.2, min(1.6, float(intensity)))
+            self._base_glow = max(0.2, min(1.6, float(intensity)))
         except (TypeError, ValueError):
-            self._glow = 1.0
+            self._base_glow = 1.0
+        self._glow = self._base_glow
 
     def set_charging(self, charging: bool) -> None:
         """Real charger state; extends the orbit rings while plugged in."""
@@ -65,7 +69,8 @@ class FloatingHolographicOrb(QWidget):
 
     def set_performance_budget(self, frame_interval_ms: int, particle_scale: float, glow_scale: float) -> None:
         self._timer.setInterval(max(16, min(200, int(frame_interval_ms))) if not self._reduced_motion else 120)
-        self._glow = max(0.2, min(1.6, self._glow * float(glow_scale)))
+        # From the base, never from the current value: see budget_glow().
+        self._glow = budget_glow(self._base_glow, glow_scale)
         self.update()
 
     def set_audio_energy(self, energy: float) -> None:

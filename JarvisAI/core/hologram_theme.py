@@ -168,6 +168,25 @@ def state_accent(state: str) -> float:
     return STATE_ACCENTS.get(str(state or "IDLE").upper(), 0.0)
 
 
+def budget_glow(base_glow: float, glow_scale: float) -> float:
+    """Bloom intensity for a render budget, derived from the *base* glow.
+
+    This must never read the current value. Scaling the live value every poll
+    ratchets it downward: ``balanced`` (0.75) then ``saver`` (0.45) pins the orb
+    at the 0.2 floor within two 5-second ticks, and it never comes back when the
+    machine returns to ``full``.
+    """
+    try:
+        base = float(base_glow)
+    except (TypeError, ValueError):
+        base = 1.0
+    try:
+        scale = float(glow_scale)
+    except (TypeError, ValueError):
+        scale = 1.0
+    return max(0.2, min(1.6, base * scale))
+
+
 @dataclass(frozen=True)
 class VisualPreferences:
     """User-tunable visual settings, already validated.

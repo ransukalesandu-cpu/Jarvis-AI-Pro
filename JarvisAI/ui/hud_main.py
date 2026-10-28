@@ -1281,7 +1281,15 @@ class HUDMainWindow(QMainWindow):
             reduced_motion=self._prefs.reduced_motion,
             battery_saver_enabled=self._prefs.battery_saver,
         )
-        glow = budget.glow_scale * max(0.2, self._prefs.glow)
+        # The owner's glow preference is the base every renderer scales from.
+        # It used to reach only the heart filament: the face and the orb ignored
+        # it, so the setting looked broken.
+        base_glow = max(0.2, min(1.6, float(self._prefs.glow)))
+        glow = budget.glow_scale * base_glow
+        for widget in (self.wireframe_visualizer, self._mini_orb):
+            setter = getattr(widget, "set_glow", None)
+            if callable(setter):
+                setter(base_glow)
         self.wireframe_visualizer.set_performance_budget(
             budget.frame_interval_ms, budget.particle_scale, budget.glow_scale
         )
@@ -1293,6 +1301,33 @@ class HUDMainWindow(QMainWindow):
         if budget.tier != self._last_budget_tier:
             self._last_budget_tier = budget.tier
             self._budget_reason = budget.reason
+            self._show_budget_reason(budget)
+
+    def _show_budget_reason(self, budget) -> None:
+        """Say out loud why the visuals just dimmed.
+
+        Without this the HUD quietly drops to 15 fps and 25 % particles and the
+        owner has no way to tell whether that is a setting, a flat battery or a
+        crash — which is exactly what "the effects stopped working" looks like.
+        """
+        if budget.tier == "full":
+            text = "Visual effects: full quality."
+        else:
+            text = (
+                f"Visual effects reduced to '{budget.tier}' "
+                f"({budget.reason}): {1000 // budget.frame_interval_ms} fps, "
+                f"{budget.particle_scale:.0%} particles, {budget.glow_scale:.0%} glow."
+            )
+        try:
+            self._battery_settings_btn.setToolTip(text)
+        except Exception:
+            failsoft.suppress("ui.hud_main:_show_budget_reason")
+        try:
+            self._notifications.push(
+                Notification("visual:budget", "Visual effects", text, PRIORITY_LOW)
+            )
+        except Exception:
+            failsoft.suppress("ui.hud_main:_show_budget_reason.notify")
 
     @_safe_slot("ui.hud_main:_refresh_health")
     def _refresh_health(self) -> None:

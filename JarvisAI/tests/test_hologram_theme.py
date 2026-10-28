@@ -18,6 +18,7 @@ import unittest
 
 from core.hologram_theme import (
     BIHANSA_PALETTE,
+    budget_glow,
     JARVIS_PALETTE,
     PALETTES,
     STATE_ACCENTS,
@@ -152,6 +153,34 @@ class TestVisualPreferences(unittest.TestCase):
         fallback = VisualPreferences.from_settings(Exploding(), fallback_mode="bihansa")
         self.assertEqual(fallback.mode, "bihansa")
         self.assertAlmostEqual(fallback.glow, 1.0)
+
+
+class BudgetGlowTests(unittest.TestCase):
+    """The orb must scale from its base glow, never from its current value.
+
+    Scaling the live value every 5-second poll ratcheted the orb down to the
+    0.2 floor and left it there: after a laptop dipped to `balanced` and back to
+    `full`, the hologram stayed dim for the rest of the session.
+    """
+
+    def test_full_budget_is_the_base(self):
+        self.assertAlmostEqual(budget_glow(1.0, 1.0), 1.0)
+        self.assertAlmostEqual(budget_glow(0.8, 1.0), 0.8)
+
+    def test_repeated_saver_ticks_do_not_ratchet_down(self):
+        values = [budget_glow(1.0, 0.45) for _ in range(20)]
+        self.assertEqual(len(set(round(v, 6) for v in values)), 1)
+        self.assertAlmostEqual(values[0], 0.45)
+
+    def test_glow_recovers_when_the_budget_returns_to_full(self):
+        dimmed = budget_glow(1.0, 0.45)
+        self.assertLess(dimmed, 1.0)
+        self.assertAlmostEqual(budget_glow(1.0, 1.0), 1.0)   # not 0.2
+
+    def test_clamped_and_junk_tolerant(self):
+        self.assertAlmostEqual(budget_glow(1.0, 9.0), 1.6)
+        self.assertAlmostEqual(budget_glow(1.0, 0.0), 0.2)
+        self.assertAlmostEqual(budget_glow("junk", "junk"), 1.0)
 
 
 if __name__ == "__main__":

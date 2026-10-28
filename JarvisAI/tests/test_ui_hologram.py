@@ -209,6 +209,10 @@ class TestUIHologram(unittest.TestCase):
     def test_left_mega_menu_expands_on_hover_and_starts_collapsed(self):
         """The home hologram stays clean until the left-edge trigger is hovered."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        # Real geometry/window handles are required before Qt global-coordinate
+        # APIs are exercised; hidden top-level widgets are unsafe in offscreen CI.
+        hud.show()
+        app.processEvents()
         self.assertTrue(hud._left_rail.isHidden())
         self.assertFalse(hud._left_menu_trigger.isHidden())
 

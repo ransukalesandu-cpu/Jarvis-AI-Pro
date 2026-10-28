@@ -14,7 +14,7 @@ for path in (str(ROOT_DIR), str(JARVIS_DIR)):
 if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFORM" not in os.environ:
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
-from PyQt6.QtCore import QRectF
+from PyQt6.QtCore import QPointF, QRectF
 from PyQt6.QtWidgets import QApplication, QWidget
 
 app = QApplication.instance() or QApplication(sys.argv)
@@ -140,9 +140,9 @@ class TestPersonaChromaticHandoff(unittest.TestCase):
 
     def test_annulus_excludes_face_interior(self):
         clip = self.effect._annulus_clip_path(QRectF(100.0, 100.0, 200.0, 200.0))
-        self.assertFalse(clip.contains(200.0, 200.0))
-        self.assertFalse(clip.contains(250.0, 200.0))
-        self.assertTrue(clip.contains(310.0, 200.0))
+        self.assertFalse(clip.contains(QPointF(200.0, 200.0)))
+        self.assertFalse(clip.contains(QPointF(230.0, 200.0)))
+        self.assertTrue(clip.contains(QPointF(310.0, 200.0)))
 
     def test_invalid_rgb_raises(self):
         with self.assertRaises(TypeError):

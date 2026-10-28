@@ -397,6 +397,15 @@ class NeuralWireframeHead(_BASE_CANVAS):
             side,
         ).toRect()
 
+    def chin_anchor(self) -> QPointF:
+        """Return a widget-local point just below the rendered face chin.
+
+        Used by the optional composite hologram panel to draw a responsive
+        neural connection to the orb without changing face rendering logic.
+        """
+        rect = self.face_rect()
+        return QPointF(rect.center().x(), rect.bottom() - rect.height() * 0.04)
+
     def paintEvent(self, event):
         painter = QPainter(self)
         if not painter.isActive():

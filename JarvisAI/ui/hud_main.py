@@ -688,7 +688,7 @@ class HUDMainWindow(QMainWindow):
             self._apply_responsive_chrome()
             self._position_left_menu_trigger()
             if hasattr(self, "_right_menu") and self._right_menu.isVisible():
-                self._position_right_menu(size=False)
+                self._position_right_menu()
             self._apply_hologram_stage_spacing()
             self._sync_task_blocked_rect()
             if hasattr(self, "_toast") and self._toast.isVisible():
@@ -810,17 +810,12 @@ class HUDMainWindow(QMainWindow):
             print(f"[JARVIS HUD] Telemetry refresh failed: {type(exc).__name__}: {exc}")
         self._dashboard.finish_loading()
 
-    def _position_right_menu(self, *, size: bool = True) -> None:
-        """Anchor the dropdown without clipping on narrow windows.
-
-        A resize event already updates panel dimensions in _apply_responsive_chrome;
-        pass size=False there to avoid adjustSize being called twice per native resize.
-        """
+    def _position_right_menu(self):
+        """Size and anchor the floating dropdown in one pass."""
         host = self.centralWidget()
         if host is None:
             return
-        if size:
-            self._size_right_menu(host.width(), host.height())
+        self._size_right_menu(host.width(), host.height())
         x = hud_layout.dropdown_x(host.width(), self._right_menu.width())
         self._right_menu.move(x, hud_layout.DROPDOWN_TOP)
         self._right_menu.raise_()
@@ -854,11 +849,6 @@ class HUDMainWindow(QMainWindow):
             for button in getattr(self, "_left_icon_buttons", ()):
                 if button.width() != size:
                     button.setFixedSize(size, size)
-        if getattr(self, "_right_menu", None) is not None:
-            # ResizeEvent owns placement after all responsive sizes are applied.
-            # Do not also reposition from here: that calls adjustSize/raise_ twice
-            # during the same native resize on Windows Qt.
-            self._size_right_menu(width, height)
 
     def _toggle_right_dropdown(self):
         """Show a floating right dropdown without shrinking the hologram workspace."""

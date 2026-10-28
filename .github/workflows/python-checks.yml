@@ -156,8 +156,36 @@ jobs:
 
       - name: Test Windows launch, Hologram setup, auth, and audio paths
         working-directory: JarvisAI
-        run: >-
-          python -m pytest -vv
+        shell: pwsh
+        run: |
+          python -m pytest -vv `
+            tests/test_ui_hologram.py `
+            tests/test_launchers.py `
+            tests/test_live_api_key_config.py `
+            tests/test_auth_flow.py `
+            tests/test_owner_identity_security.py `
+            tests/test_audio_capture.py `
+            tests/test_audio_playback.py `
+            tests/test_live_audio_helpers.py `
+            tests/test_playback_interrupt.py `
+            tests/test_ui_import_smoke.py `
+            tests/test_lazy_ui_imports.py `
+            tests/test_screen_capture_encoding.py `
+            tests/test_project_health.py `
+            tests/test_windows_setup.py 2>&1 | Tee-Object -FilePath pytest-windows.log
+          exit $LASTEXITCODE
+
+      # The raw job log lives behind a signed blob URL that is not always
+      # readable; these annotations are. Only emitted when the run above failed.
+      - name: Surface the end of the test log
+        if: failure()
+        working-directory: JarvisAI
+        shell: pwsh
+        run: |
+          if (Test-Path pytest-windows.log) {
+            Get-Content pytest-windows.log -Tail 40 | ForEach-Object { Write-Host "::error::$_" }
+          }
+          exit 0
           tests/test_ui_hologram.py
           tests/test_launchers.py
           tests/test_live_api_key_config.py

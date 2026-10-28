@@ -426,6 +426,17 @@ def ensure_venv(
 # ── dependencies ─────────────────────────────────────────────────────────────
 
 
+def _which(name: str) -> str | None:
+    """Shutil lookup, wrapped so tests never have to patch a global module."""
+    return shutil.which(name)
+
+
+def _spawn(command: Sequence[str], cwd: Path) -> subprocess.CompletedProcess:
+    """Start the app with the console attached (no capture: tracebacks belong to
+    the user). Separate from the injected ``run`` used for probing."""
+    return subprocess.run(list(command), cwd=str(cwd))  # noqa: S603 - fixed arg list
+
+
 def _short(output: str, limit: int = 1200) -> str:
     text = (output or "").strip()
     return text if len(text) <= limit else text[:limit] + "\n…"
@@ -643,7 +654,7 @@ def verify(
     for label, module in OPTIONAL_IMPORTS:
         ok, _detail = _import_check(python, module, cwd=base, run=run)
         (available if ok else unavailable).append(label)
-    if "OCR bridge (pytesseract)" in available and shutil.which("tesseract") is None:
+    if "OCR bridge (pytesseract)" in available and _which("tesseract") is None:
         # The Python package is only a bridge; without the engine OCR still fails.
         available.remove("OCR bridge (pytesseract)")
         unavailable.append("OCR bridge (pytesseract installed, but the Tesseract engine "
@@ -751,6 +762,7 @@ def launch(
     run: Runner = _run,
     extra_args: Sequence[str] = (),
     capture: bool = False,
+    spawn: Callable[[Sequence[str], Path], object] | None = None,
 ) -> int:
     """Start the real entry point and propagate its exit code.
 
@@ -781,8 +793,9 @@ def launch(
         result = run(command, cwd=base)
         return int(getattr(result, "returncode", 1))
     # No capture: stdout/stderr belong to the user's console, tracebacks included.
+    start = spawn or _spawn
     try:
-        completed = subprocess.run(command, cwd=str(base))  # noqa: S603 - fixed arg list
+        completed = start(command, base)
     except OSError as exc:
         print(f"  [X] Could not start Python: {exc}")
         return 2

@@ -573,7 +573,7 @@ def test_verify_lists_available_optional_features(project):
 
 def test_verify_marks_ocr_unavailable_without_the_tesseract_engine(project, monkeypatch):
     make_venv(project)
-    monkeypatch.setattr(ws.shutil, "which", lambda name: None)
+    monkeypatch.setattr(ws, "_which", lambda name: None)
     checks = ws.verify(project, run=healthy_run())
     optional = next(c for c in checks if c.name == "Optional features")
     assert "Tesseract engine" in optional.detail
@@ -614,23 +614,21 @@ def test_check_as_dict_is_json_serialisable():
 
 # ── launch() ───────────────────────────────────────────────────────────────
 
-def test_launch_propagates_the_app_exit_code(project, monkeypatch):
+def test_launch_propagates_the_app_exit_code(project):
     make_venv(project)
-    monkeypatch.setattr(ws.subprocess, "run", lambda *a, **k: completed(3))
-    assert ws.launch(project, run=healthy_run()) == 3
+    assert ws.launch(project, run=healthy_run(), spawn=lambda command, cwd: completed(3)) == 3
 
 
-def test_launch_uses_the_venv_python_real_entry_point_and_cwd(project, monkeypatch):
+def test_launch_uses_the_venv_python_real_entry_point_and_cwd(project):
     python = make_venv(project)
     seen = {}
 
-    def fake_run(command, cwd=None, **kwargs):
+    def fake_spawn(command, cwd):
         seen["command"] = command
         seen["cwd"] = cwd
         return completed(0)
 
-    monkeypatch.setattr(ws.subprocess, "run", fake_run)
-    assert ws.launch(project, run=healthy_run()) == 0
+    assert ws.launch(project, run=healthy_run(), spawn=fake_spawn) == 0
     assert seen["command"][0] == str(python)
     assert seen["command"][1] == str(project / "main.py")
     assert "--hologram-hud" in seen["command"]
@@ -647,14 +645,22 @@ def test_launch_refuses_to_start_when_main_py_is_missing(project):
     assert ws.launch(project, run=healthy_run()) == 2
 
 
-def test_launch_reports_a_python_that_cannot_be_started(project, monkeypatch):
+def test_launch_reports_a_python_that_cannot_be_started(project):
     make_venv(project)
 
-    def boom(*a, **k):
+    def boom(*_a, **_k):
         raise OSError("The system cannot find the file specified")
 
-    monkeypatch.setattr(ws.subprocess, "run", boom)
-    assert ws.launch(project, run=healthy_run()) == 2
+    assert ws.launch(project, run=healthy_run(), spawn=boom) == 2
+
+
+def test_launch_capture_mode_returns_the_injected_exit_code(project):
+    make_venv(project)
+    assert ws.launch(project, run=FakeRun([
+        ("-m pip --version", completed(0, "pip 24.0")),
+        ("print('%d.%d' % sys.version_info[:2])", completed(0, "3.12")),
+        ("main.py", completed(7, "")),
+    ]), capture=True) == 7
 
 
 # ── CLI behaviour (exit codes the batch menu relies on) ─────────────────────

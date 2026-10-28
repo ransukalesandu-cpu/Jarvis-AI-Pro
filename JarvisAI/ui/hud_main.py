@@ -765,9 +765,10 @@ class HUDMainWindow(QMainWindow):
                 if button.width() != size:
                     button.setFixedSize(size, size)
         if getattr(self, "_right_menu", None) is not None:
+            # ResizeEvent owns placement after all responsive sizes are applied.
+            # Do not also reposition from here: that calls adjustSize/raise_ twice
+            # during the same native resize on Windows Qt.
             self._size_right_menu(width, height)
-            if self._right_menu.isVisible():
-                self._position_right_menu()
 
     def _toggle_right_dropdown(self):
         """Show a floating right dropdown without shrinking the hologram workspace."""

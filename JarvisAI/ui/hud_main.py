@@ -412,7 +412,7 @@ class HUDMainWindow(QMainWindow):
         try:
             controller.sync(self.isMinimized())
         except Exception:
-            pass
+            failsoft.suppress("ui.hud_main:changeEvent")
 
     def closeEvent(self, event):
         controller = getattr(self, "_island_controller", None)
@@ -420,7 +420,7 @@ class HUDMainWindow(QMainWindow):
             try:
                 controller.shutdown()
             except Exception:
-                pass
+                failsoft.suppress("ui.hud_main:closeEvent")
         super().closeEvent(event)
 
     def _toggle_dashboard_page(self):
@@ -503,7 +503,7 @@ class HUDMainWindow(QMainWindow):
 
             get_service().stop("Stopped from the HUD menu.")
         except Exception:
-            pass
+            failsoft.suppress("ui.hud_main:_stop_agent_task")
         if self._panel_agent is not None:
             self._panel_agent.refresh()
 

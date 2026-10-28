@@ -31,6 +31,8 @@ from agent import policy as policy_module
 from agent.models import StepKind, Task, TaskStep
 from agent.store import redact
 
+from core import failsoft
+
 _MAX_OUTPUT = 6000
 _CLIP_HEAD = 1500
 _CLIP_MARKER = "\n\u2026 [{} characters clipped] \u2026\n"
@@ -100,7 +102,7 @@ class ExecutionContext:
         try:
             self.logger(redact(message, 500))
         except Exception:
-            pass
+            failsoft.suppress("agent.executor:log")
 
 
 class StepExecutor:
@@ -509,7 +511,7 @@ def run_process(
         if process.stdout is not None:
             process.stdout.close()
     except Exception:
-        pass
+        failsoft.suppress("agent.executor:run_process")
     with lock:
         output = _clip_output("".join(chunks))
     if logger:
@@ -566,16 +568,16 @@ def _terminate(process: subprocess.Popen) -> None:
     try:
         process.terminate()
     except Exception:
-        pass
+        failsoft.suppress("agent.executor:_terminate")
     try:
         process.wait(timeout=3)
         return
     except Exception:
-        pass
+        failsoft.suppress("agent.executor:_terminate")
     try:
         process.kill()
     except Exception:
-        pass
+        failsoft.suppress("agent.executor:_terminate")
 
 
 _TEST_COUNT_RE = re.compile(

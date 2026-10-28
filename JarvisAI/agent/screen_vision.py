@@ -31,6 +31,8 @@ from agent.models import StepKind  # noqa: F401  (re-exported for callers' typin
 from agent.screen_capture import Screenshot, ScreenCapture, ScreenCaptureError
 from agent.store import redact
 
+from core import failsoft
+
 logger = logging.getLogger("Jarvis.Agent.Vision")
 
 _MAX_ELEMENTS = 12
@@ -318,7 +320,7 @@ class OcrEngine:
                 if os.path.isfile(candidate):
                     return True
         except Exception:
-            pass
+            failsoft.suppress("agent.screen_vision:available")
         self._failure_reason = "the Tesseract OCR engine is not installed"
         return False
 
@@ -725,4 +727,5 @@ class ContinuousObserver:
                 try:
                     callback(observation)
                 except Exception:
+                    failsoft.suppress("agent.screen_vision:_loop")
                     continue

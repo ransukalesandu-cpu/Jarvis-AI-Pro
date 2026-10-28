@@ -18,6 +18,8 @@ from typing import Any, Callable
 
 from agent.models import Task, TaskReport, TaskState
 
+from core import failsoft
+
 
 @dataclass(frozen=True)
 class AgentEvent:
@@ -88,6 +90,7 @@ class EventBus:
                 callback(event)
             except Exception:
                 # A UI listener must never be able to stop the engine.
+                failsoft.suppress("agent.events:publish")
                 continue
 
     def publish_report(self, task: Task, report: TaskReport) -> None:

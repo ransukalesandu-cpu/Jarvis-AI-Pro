@@ -30,6 +30,8 @@ from typing import Any, Callable, Iterable
 
 from agent.models import Task, TaskReport, TaskState
 
+from core import failsoft
+
 _MAX_OUTPUT_CHARS = 8000
 _MAX_JOURNAL_BYTES = 2 * 1024 * 1024
 _MAX_TASKS = 40
@@ -61,7 +63,7 @@ def redact(text: str, limit: int = _MAX_OUTPUT_CHARS) -> str:
 
         value = redact_secrets(value)
     except Exception:  # pragma: no cover - redaction must never break persistence
-        pass
+        failsoft.suppress("agent.store:redact")
     # A second, engine-local pass for shapes core's patterns do not cover.
     for marker in ("api_key=", "apikey=", "token=", "password=", "passwd=", "secret="):
         lowered = value.casefold()

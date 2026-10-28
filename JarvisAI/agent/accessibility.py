@@ -25,6 +25,8 @@ from typing import Any, Iterable
 
 from agent.screen_vision import ElementTarget
 
+from core import failsoft
+
 
 def _normalise(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
@@ -125,6 +127,7 @@ class AccessibilityBridge:
                             if window.getState().contains(pyatspi.STATE_ACTIVE):
                                 return str(window.name or "")
                         except Exception:
+                            failsoft.suppress("agent.accessibility:active_window")
                             continue
             if self.platform == "Darwin":
                 from AppKit import NSWorkspace
@@ -174,6 +177,7 @@ class AccessibilityBridge:
                     try:
                         box = control.rectangle()
                     except Exception:
+                        failsoft.suppress("agent.accessibility:_windows_elements")
                         continue
                     if box.width() <= 0 or box.height() <= 0:
                         continue
@@ -184,6 +188,7 @@ class AccessibilityBridge:
                     }
                     count += 1
             except Exception:
+                failsoft.suppress("agent.accessibility:_windows_elements")
                 continue
 
     def _linux_elements(self) -> Iterable[dict[str, Any]]:
@@ -212,6 +217,7 @@ class AccessibilityBridge:
                         for index in range(node.childCount):
                             stack.append(node.getChildAtIndex(index))
                     except Exception:
+                        failsoft.suppress("agent.accessibility:_linux_elements")
                         continue
 
     def _mac_elements(self) -> Iterable[dict[str, Any]]:
@@ -269,7 +275,7 @@ class AccessibilityBridge:
                         }
                         count += 1
             except Exception:
-                pass
+                failsoft.suppress("agent.accessibility:_mac_elements")
             children = attribute(node, kAXChildrenAttribute)
             if children:
                 stack.extend(list(children))

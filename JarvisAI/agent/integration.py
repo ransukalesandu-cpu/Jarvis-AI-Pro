@@ -36,6 +36,8 @@ from agent.settings import AgentSettings
 from agent.store import TaskStore, redact
 from agent.voice import SpeechAnnouncer, VoiceCommandRouter, status_sentence
 
+from core import failsoft
+
 logger = logging.getLogger("Jarvis.Agent")
 
 _SERVICE: "AgentService | None" = None
@@ -139,11 +141,11 @@ class AgentService:
         try:
             self.runner.shutdown()
         except Exception:
-            pass
+            failsoft.suppress("agent.integration:shutdown")
         try:
             self.capture.close()
         except Exception:
-            pass
+            failsoft.suppress("agent.integration:shutdown")
 
     def attach_speaker(self, speak: Callable[[str], None] | None) -> None:
         """Give the agent the voice layer's speak function (from the tool ctx)."""
@@ -426,7 +428,7 @@ class AgentService:
         try:
             self._announcer.announce(event)
         except Exception:
-            pass
+            failsoft.suppress("agent.integration:_on_event")
 
     def _on_milestone(self, message: str) -> None:
         # The announcer already handles rate limiting; this exists for callers
@@ -464,7 +466,7 @@ def reset_service(service: AgentService | None = None) -> None:
             try:
                 _SERVICE.shutdown()
             except Exception:
-                pass
+                failsoft.suppress("agent.integration:reset_service")
         _SERVICE = service
 
 
@@ -477,7 +479,7 @@ def shutdown_service() -> None:
         try:
             service.shutdown()
         except Exception:
-            pass
+            failsoft.suppress("agent.integration:shutdown_service")
 
 
 def service_available() -> bool:

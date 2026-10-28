@@ -29,6 +29,8 @@ from PyQt6.QtWidgets import (
 
 from agent.presentation import progress_text, state_color, state_label, step_line
 
+from core import failsoft
+
 _ACCENT = "#00e5ff"
 
 
@@ -222,7 +224,7 @@ class AutonomousPanel(QWidget):
             try:
                 self._unsubscribe()
             except Exception:
-                pass
+                failsoft.suppress("ui.panels.autonomous_panel:bind")
             self._unsubscribe = None
         self._service = service
         self._bind_service()
@@ -315,7 +317,7 @@ class AutonomousPanel(QWidget):
             else:
                 service.pause()
         except Exception:
-            pass
+            failsoft.suppress("ui.panels.autonomous_panel:_pause")
         QTimer.singleShot(150, self.refresh)
 
     def _stop(self) -> None:
@@ -325,7 +327,7 @@ class AutonomousPanel(QWidget):
         try:
             service.stop("Stopped from the dashboard.")
         except Exception:
-            pass
+            failsoft.suppress("ui.panels.autonomous_panel:_stop")
         QTimer.singleShot(150, self.refresh)
 
     def _toggle_report(self) -> None:

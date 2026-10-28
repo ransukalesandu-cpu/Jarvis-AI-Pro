@@ -1716,7 +1716,7 @@ class JarvisLive:
             try:
                 self.ui.write_log(f"JARVIS: {agent_reply}")
             except Exception:
-                pass
+                failsoft.suppress("main:_on_text_command")
             if self._loop and self.session:
                 self.speak(agent_reply)
             return
@@ -1763,7 +1763,7 @@ class JarvisLive:
             try:
                 self.ui.write_log(f"AGENT: local command failed: {type(exc).__name__}")
             except Exception:
-                pass
+                failsoft.suppress("main:_route_agent_text")
             return None
 
     @staticmethod
@@ -4771,7 +4771,7 @@ def main():
 
             shutdown_service()
         except Exception:
-            pass
+            failsoft.suppress("main:main")
 
     app.aboutToQuit.connect(stop_live_on_app_exit)
 

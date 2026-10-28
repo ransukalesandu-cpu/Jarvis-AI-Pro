@@ -28,6 +28,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
+from core import failsoft
+
 
 class ScreenCaptureError(RuntimeError):
     """Capture is unavailable, paused, or failed. Message is user-safe."""
@@ -366,7 +368,7 @@ class ScreenCapture:
             try:
                 backend.close()
             except Exception:
-                pass
+                failsoft.suppress("agent.screen_capture:close")
 
 
 @dataclass(frozen=True)

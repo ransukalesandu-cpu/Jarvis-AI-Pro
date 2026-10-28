@@ -40,6 +40,8 @@ from agent.models import (
 from agent.planner import PlanError, TaskPlanner
 from agent.store import TaskStore, redact
 
+from core import failsoft
+
 
 @dataclass
 class RunnerConfig:
@@ -282,7 +284,7 @@ class TaskRunner:
                     task.blockers.append(f"The task engine crashed: {redact(exc, 200)}")
                     self._finalize(task)
                 except Exception:
-                    pass
+                    failsoft.suppress("agent.runner:_worker_loop")
             if self._cancel.is_set():
                 with self._lock:
                     self._queue.clear()
@@ -631,7 +633,7 @@ class TaskRunner:
             if self._milestone:
                 self._milestone(message)
         except Exception:
-            pass
+            failsoft.suppress("agent.runner:_milestone_safe")
 
     def _announce(self, message: str) -> None:
         """Speak a milestone through the injected callback (throttled by caller)."""

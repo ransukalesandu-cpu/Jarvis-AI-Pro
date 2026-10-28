@@ -36,6 +36,8 @@ from agent.presentation import (
     summarize_task,
 )
 
+from core import failsoft
+
 
 class DynamicIsland(QWidget):
     """Frameless state pill with an expandable task view."""
@@ -285,7 +287,7 @@ class DynamicIslandController(QObject):
                 self._service = get_service()
                 island.attach_service(self._service)
             except Exception:
-                pass
+                failsoft.suppress("ui.dynamic_island:sync")
         island.refresh()
         island.show()
         island.raise_()
@@ -296,7 +298,7 @@ class DynamicIslandController(QObject):
             self._window.raise_()
             self._window.activateWindow()
         except Exception:
-            pass
+            failsoft.suppress("ui.dynamic_island:restore_window")
         if self._island is not None:
             self._island.hide()
 
@@ -304,7 +306,7 @@ class DynamicIslandController(QObject):
         try:
             self.ensure_island().service().pause()
         except Exception:
-            pass
+            failsoft.suppress("ui.dynamic_island:_pause")
         if self._island is not None:
             QTimer.singleShot(150, self._island.refresh)
 
@@ -312,7 +314,7 @@ class DynamicIslandController(QObject):
         try:
             self.ensure_island().service().stop("Stopped from the status widget.")
         except Exception:
-            pass
+            failsoft.suppress("ui.dynamic_island:_stop")
         if self._island is not None:
             QTimer.singleShot(150, self._island.refresh)
 

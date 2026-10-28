@@ -36,7 +36,7 @@ from PyQt6.QtWidgets import (
     QAbstractButton, QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QScrollArea,
     QSizePolicy, QSplitter, QStackedWidget, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
-    QProgressBar, QSlider,
+    QProgressBar, QSlider, QToolButton,
 )
 from core.voice_ui_control import (
     VoiceUICommand, is_high_impact_ui_label, normalize_label,

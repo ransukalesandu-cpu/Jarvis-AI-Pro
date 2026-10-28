@@ -92,6 +92,11 @@ def make_runner(testcase, *, steps, outcomes=(), config=None, workspace=None,
         clock=time.time,
     )
     runner.test_sleeps = sleeps  # type: ignore[attr-defined]
+    # Join the worker before the temp directory is removed: a test that only
+    # waits for `task.state.terminal` can return while the worker thread is
+    # still writing its last journal entry, and cleanup then fails with
+    # "Directory not empty" (cleanups are LIFO, so this runs before cleanup).
+    testcase.addCleanup(runner.wait, 10.0)
     return runner, executor, bus
 
 

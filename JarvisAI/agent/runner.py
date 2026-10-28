@@ -601,8 +601,11 @@ class TaskRunner:
         )
         task.report = report
         task.note(f"finished: {task.state.value}")
-        self.store.save(task)
+        # Journal the report first, then the snapshot that says "finished": a
+        # reader who sees a terminal task can rely on its report already being
+        # in the journal, instead of catching a finished task with no report.
         self.store.save_report(report)
+        self.store.save(task)
         self.bus.publish_report(task, report)
         self.store.append_event(task.id, {
             "kind": "finished", "state": task.state.value,

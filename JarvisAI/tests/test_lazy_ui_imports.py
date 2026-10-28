@@ -94,11 +94,36 @@ class TestUIPackageIsLazy(unittest.TestCase):
         self.assertEqual(attempts, [])
 
     def test_the_lazy_axes_are_still_reachable(self):
-        """The deferral must not remove the feature, only delay it."""
-        from ui import _earth_panel_class, _workspace_class
+        """The deferral must not remove the feature, only delay it.
 
-        self.assertEqual(_earth_panel_class().__name__, "EarthGlobePanel")
-        self.assertEqual(_workspace_class().__name__, "HudWorkspace")
+        Load WebEngine-backed classes in a clean child interpreter. Other UI tests
+        can have OpenCV/Qt GUI DLLs mapped in-process, and importing Chromium there
+        can trigger native Windows loader failures during process shutdown. The
+        subprocess still asserts the real deferred imports succeed; it isolates
+        their optional native libraries from the rest of the test runner.
+        """
+        source = textwrap.dedent(
+            """
+            from ui import _earth_panel_class, _workspace_class
+            print(_earth_panel_class().__name__)
+            print(_workspace_class().__name__)
+            """
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", source],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            cwd=str(JARVIS_DIR),
+            env=dict(os.environ),
+        )
+        self.assertEqual(
+            proc.returncode, 0,
+            f"lazy WebEngine-backed imports failed in an isolated process:\n"
+            f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}",
+        )
+        self.assertIn("EarthGlobePanel", proc.stdout)
+        self.assertIn("HudWorkspace", proc.stdout)
 
 
 class TestCameraLazyImport(unittest.TestCase):

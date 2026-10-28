@@ -67,6 +67,15 @@ class TestLaunchersAndImports(unittest.TestCase):
         import voice.persona as persona
         self.assertTrue(hasattr(persona, "JARVIS_SPOKEN_SYSTEM_PROMPT"))
 
+    def test_windows_launcher_rebuilds_virtualenv_when_python_is_not_312(self):
+        launcher = (ROOT / "JarvisAI" / "Run_Jarvis.bat").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("sys.version_info[:2] == (3, 12)", launcher)
+        self.assertIn('rmdir /s /q ".venv"', launcher)
+        self.assertIn("Existing virtual environment is not Python 3.12", launcher)
+        self.assertIn("Existing virtual environment is incomplete", launcher)
+
     def test_root_launchers_exist(self):
         self.assertTrue((ROOT / "run.py").exists())
         self.assertTrue((ROOT / "main.py").exists())

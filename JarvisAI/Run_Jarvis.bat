@@ -73,6 +73,21 @@ set "PYTHON_ARGS="
 :python_verified
 echo [OK] Supported Python interpreter found.
 
+REM Recreate stale or incomplete environments instead of reusing an unsupported Python.
+REM This prevents an old Python 3.15 venv from surviving after the launcher selects 3.12.
+if exist ".venv" (
+    if not exist ".venv\Scripts\python.exe" (
+        echo [WARN] Existing virtual environment is incomplete; rebuilding it...
+        rmdir /s /q ".venv"
+    ) else (
+        ".venv\Scripts\python.exe" -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 12) else 1)" >nul 2>&1
+        if errorlevel 1 (
+            echo [WARN] Existing virtual environment is not Python 3.12; rebuilding it...
+            rmdir /s /q ".venv"
+        )
+    )
+)
+
 REM Create an isolated environment so system Python packages are untouched.
 if not exist ".venv\Scripts\python.exe" (
     echo.

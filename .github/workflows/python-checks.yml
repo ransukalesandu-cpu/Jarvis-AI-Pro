@@ -171,6 +171,37 @@ jobs:
           tests/test_lazy_ui_imports.py
           tests/test_screen_capture_encoding.py
           tests/test_project_health.py
+          tests/test_windows_setup.py
+
+      # The unit tests use a fake runner; this step exercises the real Windows
+      # API surface of the same module (the py launcher, PATH python, and the
+      # honest failure path when no .venv exists yet).
+      - name: Check the installer CLI on Windows
+        working-directory: JarvisAI
+        shell: pwsh
+        run: |
+          python tools/windows_setup.py --help
+          if ($LASTEXITCODE -ne 0) { throw "--help failed" }
+          python tools/windows_setup.py interpreters
+          if ($LASTEXITCODE -ne 0) { throw "no usable Python was found by the installer" }
+          python tools/windows_setup.py status
+          if ($LASTEXITCODE -ne 1) { throw "status must report 1 when .venv is missing" }
+          python tools/windows_setup.py verify
+          if ($LASTEXITCODE -ne 1) { throw "verify must fail (exit 1) instead of claiming success without a .venv" }
+
+      # These are the only automated checks that execute the .bat files on
+      # Windows. They cover the two non-destructive paths: menu -> Exit, and a
+      # launch on a machine where nothing is installed yet (answer "n" to the
+      # install offer, which must exit 1 without touching anything).
+      - name: Smoke the BAT files on Windows
+        working-directory: JarvisAI
+        shell: cmd
+        run: |
+          echo 4| Jarvis_Setup.bat
+          if errorlevel 1 exit /b 1
+          echo n| Run_Jarvis.bat
+          if not errorlevel 1 exit /b 1
+          exit /b 0
 
       # See the Linux job: annotations are readable from the check run even when
       # the raw log is not.
@@ -192,3 +223,4 @@ jobs:
           tests/test_lazy_ui_imports.py
           tests/test_screen_capture_encoding.py
           tests/test_project_health.py
+          tests/test_windows_setup.py

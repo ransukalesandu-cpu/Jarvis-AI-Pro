@@ -45,6 +45,22 @@ Then launch the app the same way a user would:
 python main.py
 ```
 
+On Windows the supported path is the setup BAT: `JarvisAI\Jarvis_Setup.bat`
+(menu: Install / Repair, Verify, Launch, Exit) wraps
+`JarvisAI/tools/windows_setup.py`, which is where the logic lives and where it is
+tested (`tests/test_windows_setup.py`). The same commands work by hand:
+
+```bat
+py -3.12 JarvisAI\tools\windows_setup.py interpreters
+py -3.12 JarvisAI\tools\windows_setup.py install --yes
+py -3.12 JarvisAI\tools\windows_setup.py verify --json
+py -3.12 JarvisAI\tools\windows_setup.py launch
+```
+
+The batch files are kept deliberately thin so no decision depends on
+`if errorlevel` branching; `tests/test_launchers.py` asserts that they resolve
+their own folder, never delete `.venv`, and never embed a credential.
+
 ---
 
 ## 2. Running the tests
@@ -282,3 +298,11 @@ module starts importing the bare `config` package again.
 | `pytest: error: unrecognized arguments: --cov` | `pytest-cov` is missing: `pip install -r requirements-dev.txt`. |
 | ruff reports `F821 undefined name` | The CI gate found a genuine missing import — fix it, do not add `noqa`. |
 | Tests pass locally, fail on Windows CI | A path, `pkill`-style assumption, or `\` separator leaked in. Guard with `core/host_env.is_windows()`. |
+| `Jarvis_Setup.bat` says *No supported Python (3.11 - 3.13) was found* | Python is missing, is older than 3.11, or the `py` launcher is not installed. Run `py -0p` to list installed versions; install 3.12 from python.org (tick *Python Launcher*), or pass an interpreter explicitly: `python tools\windows_setup.py install --python "C:\Python312\python.exe"`. |
+| `.venv` was renamed to `.venv.broken-<timestamp>` | Its Python was outside 3.11–3.13, or pip inside it was broken. Nothing was deleted: rename it back after installing a supported Python if you need the packages in it. |
+| `pip` fails with `ConnectionError`, `ReadTimeoutError` or `SSL` errors | Network/proxy/index problem, not a JARVIS problem. The installer retries once automatically; check the proxy (`pip config list`) and run **Install / Repair** again. |
+| `ERROR: ResolutionImpossible` / conflicting dependencies | Usually a leftover package pinned by hand inside `.venv`. The installer never guesses: inspect with `python -m pip check`, or move `.venv` aside (`Install / Repair` does this for you) and reinstall. |
+| `Could not build wheels for ...` | That package has no wheel for your Python version. Stay on 3.11–3.13 (`tools\windows_setup.py interpreters` shows what is installed). |
+| Installer says *Dependencies already satisfied in .venv - skipping pip* | Not an error: verification already proved every startup import works. Use `install --force` if you really want pip to run again. |
+| JARVIS starts, then closes instantly | Launch it from `Run_Jarvis.bat` or `Jarvis_Setup.bat` → **3** so the console stays open with Python's traceback. The batch files never hide the exit code. |
+| Verify passes but voice / Supabase do not work | Verification only proves packages and files. Keys, microphone, network and Supabase are external services — **Verify** reports them as `SKIP` (needs network / real keys), never as passed. |

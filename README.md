@@ -2105,7 +2105,62 @@ Create a virtual environment for the project. Follow the
 commands for your operating system **in order**. Run each command, wait for it
 to finish, then continue to the next step.
 
-## Windows 10/11
+## Windows 10/11 (recommended: the setup BAT)
+
+You need Windows 10 or 11, an internet connection, and a normal user account —
+**no administrator rights**. Allow roughly 3 GB of free space: the finished
+`.venv` is about 1.5 GB (measured with Python 3.11 + PyQt6 + WebEngine) plus the
+Playwright browser download that `setup.py` fetches afterwards.
+
+**1. Install Python 3.11–3.13** (3.12 is recommended). Either accept the
+python.org installer and tick **“Add python.exe to PATH”** and **“Python
+Launcher”**, or use one command in PowerShell:
+
+```powershell
+winget install --id Python.Python.3.12 --exact --scope user --accept-package-agreements --accept-source-agreements
+```
+
+**2. Get the project folder** (any of these):
+
+```powershell
+git clone https://github.com/ranasukalesandu-cpu/Jarvis-AI-Pro.git
+```
+
+…or download the ZIP from GitHub and extract it. Avoid extracting into
+`C:\Program Files` — JARVIS writes `logs/`, `memory/` and `config/` next to
+`main.py`, and a user account cannot write there.
+
+**3. Double-click `JarvisAI\Jarvis_Setup.bat`.** A menu appears:
+
+| Choice | What it does |
+| --- | --- |
+| **1. Install / Repair** | Finds a compatible Python, creates `.venv` (or reuses a healthy one), installs the dependencies, then verifies everything. |
+| **2. Verify** | Checks the interpreter, `.venv`, dependencies, imports, entry point, configuration and optional features. Changes nothing. |
+| **3. Launch** | Starts JARVIS from `.venv` and stays open if it exits with an error. |
+| **4. Exit** | Leaves the window. Nothing was changed. |
+
+Choose **1**, wait for `[OK] Environment ready`, then choose **3**.
+
+**4. For every day after that, double-click `JarvisAI\Run_Jarvis.bat`.** It
+launches straight away (no dependency reinstall on every start) and only offers
+to run the installer when `.venv` is missing or unusable.
+
+What the installer deliberately does **not** do:
+
+* it does not delete anything — an unusable `.venv` is renamed to
+  `.venv.broken-<timestamp>` so it can be inspected or restored;
+* it does not touch `config/api_keys.json`, `config/secrets.json`, the owner
+  voice ID, the PIN vault or `memory/` — repair is not a reset;
+* it does not remove, downgrade or reinstall your system Python, and it never
+  installs anything outside `.venv`;
+* it does not print or embed API keys — it only reports whether they exist.
+
+Optional features are opt-in and never installed silently: local **Voice ID**
+(asked during install → `torch`, ~2 GB), the **wake word** (⚙ → WAKE WORD in the
+app) and **OCR** (needs the separate Tesseract engine). JARVIS runs without all
+three, and **Verify** lists them as available/unavailable instead of failing.
+
+### Manual commands (same result, no BAT)
 
 Before starting, install Python 3.12 and Git. Open **PowerShell** and check
 Python:

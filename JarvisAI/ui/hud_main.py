@@ -684,7 +684,7 @@ class HUDMainWindow(QMainWindow):
             self._apply_responsive_chrome()
             self._position_left_menu_trigger()
             if hasattr(self, "_right_menu") and self._right_menu.isVisible():
-                self._position_right_menu()
+                self._position_right_menu(size=False)
             self._apply_hologram_stage_spacing()
             self._sync_task_blocked_rect()
             if hasattr(self, "_toast") and self._toast.isVisible():
@@ -806,12 +806,17 @@ class HUDMainWindow(QMainWindow):
             print(f"[JARVIS HUD] Telemetry refresh failed: {type(exc).__name__}: {exc}")
         self._dashboard.finish_loading()
 
-    def _position_right_menu(self):
-        """Anchor the dropdown to the right edge without clipping on narrow windows."""
+    def _position_right_menu(self, *, size: bool = True) -> None:
+        """Anchor the dropdown without clipping on narrow windows.
+
+        A resize event already updates panel dimensions in _apply_responsive_chrome;
+        pass size=False there to avoid adjustSize being called twice per native resize.
+        """
         host = self.centralWidget()
         if host is None:
             return
-        self._size_right_menu(host.width(), host.height())
+        if size:
+            self._size_right_menu(host.width(), host.height())
         x = hud_layout.dropdown_x(host.width(), self._right_menu.width())
         self._right_menu.move(x, hud_layout.DROPDOWN_TOP)
         self._right_menu.raise_()

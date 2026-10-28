@@ -1,0 +1,13 @@
+# ── JARVIS AI — developer dependencies ───────────────────────────────────────
+# Everything needed to work ON JARVIS, not to run it. Runtime dependencies stay
+# in requirements.txt so a normal install never pulls a test runner.
+#
+#     python -m pip install -r requirements.txt -r requirements-dev.txt
+#
+# Versions are floors with a major-version cap, matching the runtime file's
+# policy: patches and minors flow in, a new major must be adopted deliberately.
+
+pytest>=8,<10
+pytest-cov>=5,<8
+ruff>=0.9,<1
+pre-commit>=3.7,<5

@@ -5,14 +5,61 @@ on:
     branches: [main]
     paths:
       - "JarvisAI/**"
+      - "voice/**"
+      - "scripts/**"
+      - "main.py"
+      - "run.py"
+      - "setup.py"
+      - "pyproject.toml"
+      - "requirements*.txt"
+      - ".editorconfig"
+      - ".pre-commit-config.yaml"
+      - "supabase/**"
       - ".github/workflows/python-checks.yml"
   pull_request:
     paths:
       - "JarvisAI/**"
+      - "voice/**"
+      - "scripts/**"
+      - "main.py"
+      - "run.py"
+      - "setup.py"
+      - "pyproject.toml"
+      - "requirements*.txt"
+      - ".editorconfig"
+      - ".pre-commit-config.yaml"
+      - "supabase/**"
       - ".github/workflows/python-checks.yml"
   workflow_dispatch:
 
+# A newer push to the same branch makes the previous run pointless; cancel it so
+# runners are not queued behind a result nobody will read.
+concurrency:
+  group: python-checks-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Lint needs no runtime dependencies: ruff is a standalone wheel and the
+      # rule set in pyproject.toml is static-analysis only. That keeps this job
+      # at a few seconds so a typo is reported long before the test matrix ends.
+      - name: Install ruff
+        run: python -m pip install --upgrade pip ruff
+
+      - name: Lint (undefined names, broken imports, syntax-level mistakes)
+        run: ruff check --output-format=github JarvisAI
+
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -25,7 +72,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: JarvisAI/requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            JarvisAI/requirements.txt
+            requirements-dev.txt
 
       - name: Install PortAudio runtime for audio-module tests
         run: sudo apt-get install -y libportaudio2 libegl1
@@ -35,7 +85,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
-          python -m pip install pytest
+          python -m pip install -r ../requirements-dev.txt
 
       - name: Compile Python files
         working-directory: JarvisAI
@@ -78,7 +128,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: JarvisAI/requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            JarvisAI/requirements.txt
 
       - name: Install declared runtime dependencies
         working-directory: JarvisAI

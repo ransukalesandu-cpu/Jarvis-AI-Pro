@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 JARVIS_DIR = ROOT_DIR / "JarvisAI"
@@ -197,6 +198,15 @@ class TestOwnerIdentitySecurity(unittest.TestCase):
 
     # 11. Camera failure handling
     def test_camera_failure_handling(self):
+        # OpenCV needs libGL. On a headless box the camera path is unreachable
+        # anyway, so skip with a readable reason instead of erroring out of the
+        # whole file (and, before conftest.py, out of the whole suite).
+        try:
+            import cv2  # noqa: F401  (declared here so the skip reason is obvious)
+        except ImportError:
+            # pytest.importorskip only skips on ModuleNotFoundError, and this is
+            # an ImportError raised by OpenCV's own loader.
+            pytest.skip("cv2 cannot load (missing libGL/libEGL); camera unusable")
         with patch.object(face_auth, "is_authorization_enabled", return_value=True), \
              patch.object(face_auth, "is_enrolled", return_value=True), \
              patch.object(face_auth, "backend_ready", return_value=True):

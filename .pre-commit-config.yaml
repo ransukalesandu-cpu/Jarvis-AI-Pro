@@ -1,0 +1,39 @@
+# Fast, local checks that run on `git commit` once installed with:
+#
+#     pre-commit install
+#
+# They mirror the CI gate so a broken commit is caught in seconds instead of
+# after a round-trip through GitHub Actions. Hooks that rewrite files (ruff
+# --fix, trailing whitespace) are safe: JARVIS's test suite covers the parts of
+# the app that a formatter could break.
+minimum_pre_commit_version: "3.7.0"
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        # Markdown uses two trailing spaces as a hard line break.
+        exclude: \.md$
+      - id: end-of-file-fixer
+        exclude: \.(png|jpg|jpeg|ico|mp4|obj|so|dll|pyd|wav|mp3)$
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+        exclude: ^JarvisAI/dashboard/static/
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=5120"]
+      - id: debug-statements
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+        exclude: \.(bat|cmd)$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.10
+    hooks:
+      # Blocking: the same rule set CI enforces (see [tool.ruff.lint]).
+      - id: ruff
+        args: [--fix]
+        files: ^JarvisAI/.*\.py$

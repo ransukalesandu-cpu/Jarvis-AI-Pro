@@ -7,8 +7,6 @@ to instantly silence Jarvis output when the user speaks.
 import audioop
 import collections
 import logging
-import math
-import struct
 import time
 from typing import Callable, Optional
 

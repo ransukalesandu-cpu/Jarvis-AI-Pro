@@ -9,13 +9,12 @@ Orchestrates the step-up adaptive authentication sequence for sensitive commands
 
 from __future__ import annotations
 
-import sys
 import threading
 from typing import Callable, Optional, Tuple
 
 from core import voice_id
 from security import face_auth
-from security.auth_manager import AuthManager, FULL_ACCESS_MODE, RESTRICTED_MODE, CHALLENGE_MODE, PRIVACY_LOCK
+from security.auth_manager import AuthManager, RESTRICTED_MODE
 
 
 class AdaptiveAuthManager:

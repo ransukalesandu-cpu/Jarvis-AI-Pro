@@ -11,7 +11,7 @@ import time
 from typing import Dict, List, Tuple
 
 from PyQt6.QtCore import Qt, QTimer, QPointF, QRectF, pyqtSlot, pyqtSignal
-from PyQt6.QtGui import QColor, QBrush, QFont, QPainter, QPainterPath, QPen
+from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import QWidget
 
 

@@ -13,7 +13,7 @@ from typing import Callable, Dict, Any, Optional
 
 try:
     import pyautogui
-    from PIL import Image, ImageGrab
+    from PIL import ImageGrab
 except ImportError:
     pyautogui = None
     ImageGrab = None

@@ -6,7 +6,6 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
 
 from memory import memory_manager as mm
 from memory.associative_memory import link_memories, traverse
@@ -14,7 +13,12 @@ from memory.consolidation import consolidate
 from memory.memory_lifecycle import delete_memory, expire_due
 from memory.memory_reflection import reflect_outcome
 from memory.procedural_memory import learn_procedure, record_result
-from memory.prospective_memory import create_intention, matching_intentions
+from memory.prospective_memory import (
+    create_intention,
+    mark_intention,
+    matching_intentions,
+    pending_intentions,
+)
 from memory.retrieval_engine import retrieve, format_results
 from memory.semantic_memory import remember_fact
 from memory.memory_scoring import decay_factor
@@ -176,6 +180,26 @@ class CognitiveMemoryTests(unittest.TestCase):
                                 project="Jarvis", expires_at=future)
         self.assertFalse(matching_intentions(event="memory work starts"))
         self.assertEqual(matching_intentions(event="memory work completes")[0]["id"], item["id"])
+
+    def test_pending_intentions_lists_active_items_soonest_first(self):
+        """The scheduler panel reads this; it must ignore closed intentions.
+
+        The panel previously called a class that never existed inside a bare
+        `try/except`, so it always rendered "No upcoming tasks".
+        """
+        soon = (datetime.now() + timedelta(hours=1)).isoformat(timespec="minutes")
+        later = (datetime.now() + timedelta(days=2)).isoformat(timespec="minutes")
+        first = create_intention("Call the bank", "time", later)
+        second = create_intention("Submit the report", "time", soon)
+        event_item = create_intention("Run memory regression tests", "event", "deploy finishes")
+
+        pending = pending_intentions()
+        ids = [row["id"] for row in pending]
+        self.assertEqual(ids[:2], [second["id"], first["id"]])
+        self.assertIn(event_item["id"], ids)
+
+        self.assertTrue(mark_intention(second["id"], "completed"))
+        self.assertNotIn(second["id"], [row["id"] for row in pending_intentions()])
 
     def test_consolidation_does_not_merge_distinct_episodes(self):
         mm.add_memory_record({"id": "ep-1", "type": "episodic", "content": "install app; result A",

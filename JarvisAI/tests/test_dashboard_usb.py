@@ -1,4 +1,3 @@
-import os
 import sys
 import time
 import socket
@@ -26,12 +25,10 @@ except ImportError:
     _HAS_FASTAPI = False
 
 from services.adb_bridge import (
-    find_adb,
     parse_adb_devices,
     select_authorized_device,
     is_reverse_rule_active,
     apply_reverse_forwarding,
-    remove_reverse_forwarding,
 )
 
 

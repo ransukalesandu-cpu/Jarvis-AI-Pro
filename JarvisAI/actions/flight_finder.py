@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 
-from core.host_env import is_windows, is_mac, is_linux
+from core.host_env import is_windows, is_mac
 
 def _get_base_dir() -> Path:
     if getattr(sys, "frozen", False):

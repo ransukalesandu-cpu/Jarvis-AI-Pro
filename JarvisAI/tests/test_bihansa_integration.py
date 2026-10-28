@@ -6,11 +6,9 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import QRectF
 from PyQt6.QtGui import QImage, QPainter
 from PyQt6.QtWidgets import QApplication
 
-from memory import config_manager as cfg
 from ui.hologram.bihansa_hologram import BihansaHologramWidget
 from ui.hologram.bihansa_settings import BihansaModeSettings
 

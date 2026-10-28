@@ -16,8 +16,8 @@ for path in (str(ROOT_DIR), str(JARVIS_DIR)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from security.auth_manager import AuthManager, configured_cooldown_seconds
-from security.lockdown import clamp_lockdown_duration, lock_workstation, teardown_audio_stream, execute_privacy_lockdown
+from security.auth_manager import configured_cooldown_seconds
+from security.lockdown import clamp_lockdown_duration, lock_workstation, teardown_audio_stream
 from core.echo import EchoGuard
 
 

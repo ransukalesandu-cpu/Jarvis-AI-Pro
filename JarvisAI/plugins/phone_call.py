@@ -17,7 +17,6 @@ Uses Twilio Voice API for telephony. Configure in environment variables (see .en
 """
 
 import asyncio
-import base64
 import json
 import os
 import secrets

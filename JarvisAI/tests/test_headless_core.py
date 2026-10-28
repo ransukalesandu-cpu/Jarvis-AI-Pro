@@ -1,7 +1,6 @@
 """Tests for Headless Core execution and Dashboard Server AI File Ingestion."""
 import unittest
 import tempfile
-import asyncio
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 

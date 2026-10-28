@@ -7,10 +7,8 @@ Default voice: 'en-GB-RyanNeural' (Paul Bettany / J.A.R.V.I.S. cadence).
 import asyncio
 import io
 import logging
-import queue
 import re
-import threading
-from typing import Generator, Optional
+from typing import Generator
 
 try:
     import edge_tts

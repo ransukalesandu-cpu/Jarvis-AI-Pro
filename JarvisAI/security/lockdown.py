@@ -6,11 +6,9 @@ and Privacy Lock execution.
 from __future__ import annotations
 
 import ctypes
-import os
 import sys
 import logging
-from pathlib import Path
-from typing import Any, Sequence, Optional
+from typing import Any, Sequence
 
 logger = logging.getLogger("Jarvis.Lockdown")
 

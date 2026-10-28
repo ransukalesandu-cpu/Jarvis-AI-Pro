@@ -18,6 +18,7 @@ ambiguous name is never used again, and that the legacy ``config`` import path
 still works for anyone who wrote extensions against it.
 """
 
+import ast
 import importlib
 import sys
 import types
@@ -26,6 +27,22 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _target_names(target):
+    """Names bound by an assignment target, unpacking tuples and lists.
+
+    `A, B = "a", "b"` defines two module-level names, and JARVIS uses that form
+    for the risk tiers in core/security.py.
+    """
+    if isinstance(target, ast.Name):
+        return {target.id}
+    if isinstance(target, (ast.Tuple, ast.List)):
+        names = set()
+        for element in target.elts:
+            names |= _target_names(element)
+        return names
+    return set()
 
 def _poison_config_module():
     """Install a foreign module named `config`, like a wheel would."""
@@ -128,3 +145,96 @@ class TestPackaging:
     def test_pyproject_declares_the_supported_python_floor(self):
         pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
         assert 'requires-python = ">=3.11"' in pyproject
+
+
+class TestInternalImportGraph:
+    """Every `from <internal module> import <name>` must name something real.
+
+    Ruff catches an unused import (F401) and an undefined name (F821), but it
+    treats a module as a black box: if `foo.py` stops exporting `bar` while
+    `baz.py` still does `from foo import bar`, nothing complains until `baz` is
+    imported at runtime. Removing unused imports is exactly the kind of cleanup
+    that creates that bug, and most of the UI modules have no test that imports
+    them, so it would only surface when a user opens that window.
+
+    This test walks the real import graph statically — no modules are imported,
+    so it cannot be defeated by a missing GUI library or a camera.
+    """
+
+    @staticmethod
+    def _module_index():
+        """Map dotted module name -> source path for every first-party module."""
+        index = {}
+        for path in (REPO_ROOT / "JarvisAI").rglob("*.py"):
+            parts = list(path.relative_to(REPO_ROOT / "JarvisAI").with_suffix("").parts)
+            if parts[-1] == "__init__":
+                parts = parts[:-1]
+                if not parts:
+                    continue
+            index[".".join(parts)] = path
+        # The repository-root launcher module (main.py) as well.
+        index.setdefault("jarvis_launcher", REPO_ROOT / "main.py")
+        return index
+
+    @staticmethod
+    def _module_level_names(tree):
+        """Names bound at module scope, descending into try/if/with blocks."""
+        names = set()
+
+        def walk(body):
+            for node in body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    names.add(node.name)
+                elif isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        names.update(_target_names(target))
+                elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                    names.add(node.target.id)
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        names.add(alias.asname or alias.name.split(".")[0])
+                elif isinstance(node, ast.ImportFrom):
+                    for alias in node.names:
+                        if alias.name != "*":
+                            names.add(alias.asname or alias.name)
+                elif isinstance(node, (ast.Try, ast.If, ast.With)):
+                    walk(node.body)
+                    walk(getattr(node, "orelse", []) or [])
+                    walk(getattr(node, "finalbody", []) or [])
+
+        walk(tree.body)
+        return names
+
+    def test_internal_from_imports_resolve(self):
+        index = self._module_index()
+        problems = []
+        for module_name, path in sorted(index.items()):
+            if module_name == "jarvis_launcher":
+                continue  # copies another module's globals by design
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+            except SyntaxError as exc:  # pragma: no cover - compileall covers this
+                problems.append(f"{path.name}: {exc}")
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ImportFrom) or node.level:
+                    continue
+                target = index.get(node.module or "")
+                if target is None or target == path:
+                    continue
+                exported = self._module_level_names(
+                    ast.parse(target.read_text(encoding="utf-8", errors="replace"))
+                )
+                # `from package import submodule` binds the submodule, which is
+                # never mentioned in the package's __init__.py source.
+                is_package = target.name == "__init__.py"
+                for alias in node.names:
+                    if alias.name == "*" or alias.name in exported:
+                        continue
+                    if is_package and f"{node.module}.{alias.name}" in index:
+                        continue
+                    problems.append(
+                        f"{path.relative_to(REPO_ROOT)}:{node.lineno}: "
+                        f"`{node.module}` no longer defines `{alias.name}`"
+                    )
+        assert not problems, "Broken internal imports:\n" + "\n".join(problems)

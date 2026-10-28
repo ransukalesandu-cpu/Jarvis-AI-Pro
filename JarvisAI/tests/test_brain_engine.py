@@ -6,7 +6,6 @@ from unittest.mock import Mock, patch
 
 from core.brain_engine import (
     BrainEngine,
-    build_brain_user_prompt,
     format_memory_context,
     normalize_conversation_history,
 )

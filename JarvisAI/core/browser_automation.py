@@ -9,7 +9,6 @@ import ipaddress
 import re
 import socket
 from urllib.parse import quote_plus, urlparse, urljoin
-from typing import Any
 
 
 class BrowserAutomationError(RuntimeError):

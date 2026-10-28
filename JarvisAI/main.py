@@ -51,15 +51,20 @@ from core.playback_interrupt import interrupt_playback
 from core.voice_ui_control import has_wake_name_prefix, parse_voice_ui_command
 from core.audio_capture import open_input_stream_with_fallback
 from core.audio_playback import (
-    describe_output_route, open_output_stream, open_output_stream_with_fallback,
-    open_verified_output_fallback, run_audio_playback, stream_device_index,
+    run_audio_playback,
 )
 from core.live_audio import (
     CHANNELS, RECEIVE_SAMPLE_RATE, _OUTPUT_BLOCKSIZE,
-    _MIN_LIVE_AUDIO_FRAME_BYTES, _PLAYBACK_SLICE_BYTES, _MIN_PREBUFFER_BYTES,
-    _take_playback_pcm, _output_write_is_unpaced, _pcm_level, _live_audio_chunks,
+    _MIN_LIVE_AUDIO_FRAME_BYTES, _PLAYBACK_SLICE_BYTES,
+    _take_playback_pcm, _pcm_level, _live_audio_chunks,
     _error_text, _is_quota_error, _is_transient_live_disconnect,
     _is_live_operation_aborted,
+)
+# Re-exported on purpose: tests/test_live_pcm_buffering.py imports these from
+# `main`, and the module has always exposed them. Do not "clean up".
+from core.live_audio import (  # noqa: F401
+    _MIN_PREBUFFER_BYTES,
+    _output_write_is_unpaced,
 )
 import re
 import threading
@@ -107,7 +112,7 @@ except ImportError:
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
     save_session_summary, pop_last_session,
-    search_memory, set_trim_notifier, build_local_episode,
+    set_trim_notifier, build_local_episode,
     redact_sensitive_content, provider_safe_memory, provider_safe_text, record_memory_usage,
 )
 from memory.voice_personality import get_voice_personality, voice_personality_prompt
@@ -138,7 +143,6 @@ from core                      import confirm as confirm_gate
 from core                      import audio_devices
 from core                      import security
 from core                      import voice_id
-from core                      import injection_guard
 from core.action_loader        import discover_actions
 from core.echo                 import EchoGuard
 from core.viseme               import VisemeStream
@@ -150,7 +154,6 @@ from core.clap_wake             import DoubleClapDetector
 from core.brain_engine import BrainEngine
 from core.brain_protocol import build_brain_protocol
 from core.live_session import select_live_api_version, select_live_model
-from core.runtime_diagnostics import hybrid_runtime_snapshot
 
 # How long the assistant stays awake with no user speech before it auto-sleeps
 # again after the configured idle interval.

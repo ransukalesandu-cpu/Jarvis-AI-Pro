@@ -77,8 +77,10 @@ jobs:
             JarvisAI/requirements.txt
             requirements-dev.txt
 
-      - name: Install PortAudio runtime for audio-module tests
-        run: sudo apt-get install -y libportaudio2 libegl1
+      # PortAudio for the audio modules; libgl1/libegl1 so PyQt6 can load and
+      # the UI tests run here instead of being skipped by conftest.py.
+      - name: Install audio and Qt system libraries
+        run: sudo apt-get install -y libportaudio2 libgl1 libegl1
 
       - name: Install project and test dependencies
         working-directory: JarvisAI
@@ -156,3 +158,5 @@ jobs:
           tests/test_audio_playback.py
           tests/test_live_audio_helpers.py
           tests/test_playback_interrupt.py
+          tests/test_ui_import_smoke.py
+          tests/test_project_health.py

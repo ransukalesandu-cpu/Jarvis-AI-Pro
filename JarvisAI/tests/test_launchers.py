@@ -11,8 +11,8 @@ class TestLaunchersAndImports(unittest.TestCase):
         jarvis_dir = str(ROOT / "JarvisAI")
         voice_dir = str(ROOT / "voice")
 
-        # Import main module to trigger sys.path initialization
-        import main as root_main
+        # Importing main is the point of this test: it initialises sys.path.
+        import main as root_main  # noqa: F401
 
         self.assertIn(root_dir, sys.path)
         self.assertIn(jarvis_dir, sys.path)

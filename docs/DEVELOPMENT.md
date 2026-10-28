@@ -70,6 +70,16 @@ Notes:
   camera. Patch the hardware and HTTP boundaries; `tests/test_security_end_to_end.py`
   and `tests/test_audio_playback.py` are good models.
 
+Two tests guard the codebase's *shape* rather than a feature:
+
+* `tests/test_project_health.py` walks the internal import graph statically and
+  fails if a module imports a name its target no longer defines — the failure
+  mode that cleanup commits create and that only shows up at runtime, often on a
+  screen nobody tests.
+* `tests/test_ui_import_smoke.py` imports every module in `JarvisAI/ui/` once
+  (skipped where Qt cannot load), which is the only coverage the panels and
+  dashboards get.
+
 Coverage (optional):
 
 ```bash
@@ -87,11 +97,16 @@ ruff check --fix JarvisAI    # apply safe fixes
 ```
 
 The gate in `[tool.ruff.lint]` (pyproject.toml) is a **ratchet**: it enforces the
-rules that catch real runtime breakage — undefined names, invalid comparisons,
-broken `__all__` entries, `return` outside a function — and is kept at zero
-findings. It exists because it caught a genuine `NameError` in
-`core/audio_playback.py` (`_output_write_is_unpaced` was called but never
-imported) that no test exercised.
+rules that catch real runtime breakage — undefined names, unused imports,
+shadowed redefinitions, invalid comparisons, broken `__all__` entries — and is
+kept at zero findings. Every rule in it has already paid for itself:
+
+* `F821` caught a `NameError` in `core/audio_playback.py`
+  (`_output_write_is_unpaced` was called but never imported).
+* `F401`/`F811` found 110 dead or stale imports, including two UI panels that
+  called memory APIs that no longer exist (`get_memory_manager()`,
+  `ProspectiveMemory()`) inside bare `try/except` blocks — so the memory and
+  scheduler panels had been showing zeroes and "No upcoming tasks" for everyone.
 
 Wider families are not enabled yet. Current debt, for whoever picks up the next
 ratchet step:
@@ -100,12 +115,18 @@ ratchet step:
 | --- | --- | --- |
 | `BLE001` blind-except | ~770 | Deliberate: optional features fail soft by design. Enabling it needs a policy decision (log-and-continue vs. `noqa`), not a mass edit. |
 | `I001` import sorting | ~180 | Pure churn across 150+ files; do it as one isolated commit. |
-| `F401` unused import | ~110 | A handful are availability probes (`import psutil` in a `try/except`) that need converting to `importlib.util.find_spec` first. |
 | `S110` try-except-pass | ~175 | Same reasoning as `BLE001`. |
 | `UP`, `RUF`, `SIM` | ~250 | Mostly cosmetic modernisation (`X | None`, `datetime.UTC`). Safe but noisy. |
 
 Turn on **one** family per pull request, fix or `noqa` it with a reason, and
 update this table in the same commit.
+
+When a name is imported only for its side effect (a re-export, a probe, or
+`import main` in a test that is testing import-time setup) keep it and add
+`# noqa: F401` **with a comment saying why**. Three such cases exist today:
+`main.py` re-exports two `core.live_audio` helpers that tests import from
+`main`, `core/security.py` re-exports `FULL_ACCESS_MODE`, and
+`tests/test_launchers.py` imports `main` to trigger `sys.path` setup.
 
 ---
 
@@ -114,9 +135,10 @@ update this table in the same commit.
 `.github/workflows/python-checks.yml`:
 
 1. **lint** — `ruff check JarvisAI` on Python 3.12. Seconds, no dependencies.
-2. **checks** — installs the runtime requirements, `compileall`, runs
-   `diagnose.py` in CI mode, then the full `pytest` suite; also type-checks and
-   tests the Deno Supabase function when it changed.
+2. **checks** — installs the runtime requirements plus the Qt system libraries,
+   `compileall`, runs `diagnose.py` in CI mode, then the full `pytest` suite
+   (including the UI import smoke test); also type-checks and tests the Deno
+   Supabase function when it changed.
 3. **windows-ui-smoke** — installs the Windows-only extras and runs the
    launch/hologram/auth/audio tests on `windows-latest`. This is the only job
    that can catch Windows-specific regressions in Qt, `pycaw`, `winrt`, or

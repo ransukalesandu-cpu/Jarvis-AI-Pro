@@ -24,19 +24,19 @@ else:
     _WIN_HIDE: dict = {}
 
 from PyQt6.QtCore import (
-    QEvent, QEasingCurve, QLineF, QMimeData, QObject, QParallelAnimationGroup, QPoint, QPointF,
-    QPropertyAnimation, QRect, QRectF, QSize, Qt, QTimer, QUrl, pyqtSignal,
+    QEvent, QEasingCurve, QLineF, QParallelAnimationGroup, QPoint, QPointF,
+    QPropertyAnimation, QRectF, Qt, QTimer, QUrl, pyqtSignal,
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QConicalGradient, QDesktopServices, QDragEnterEvent, QDropEvent, QFont,
-    QFontDatabase, QImage, QKeySequence, QLinearGradient, QPainter, QPainterPath,
+    QImage, QKeySequence, QLinearGradient, QPainter, QPainterPath,
     QPen, QPixmap, QRadialGradient, QShortcut,
 )
 from PyQt6.QtWidgets import (
     QAbstractButton, QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect,
-    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QScrollArea,
+    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QScrollArea,
     QSizePolicy, QSplitter, QStackedWidget, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
-    QProgressBar, QSlider, QToolButton,
+    QSlider, QToolButton,
 )
 from core.voice_ui_control import (
     VoiceUICommand, is_high_impact_ui_label, normalize_label,
@@ -2665,7 +2665,7 @@ class VoicePersonalityOverlay(QWidget):
         lay.addWidget(label("VOCAL BEHAVIOR ENGINE", C.PRI, 9, True))
         lay.addWidget(label("Gemini streams the speech; optional breath texture is generated locally.", C.TEXT_DIM, 7))
 
-        from core.vocal_behavior import DEFAULT_SETTINGS, VOCAL_PROFILES, normalize_settings
+        from core.vocal_behavior import normalize_settings
         vocal = normalize_settings(self._settings.get("vocal"))
         self._vocal_checks = {}
         check_row = QHBoxLayout()

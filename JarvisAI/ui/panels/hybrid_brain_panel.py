@@ -8,8 +8,8 @@ measured round-trip latency, and active language mode (English / Sinhala / Singl
 from __future__ import annotations
 
 from typing import Optional
-from PyQt6.QtCore import Qt, pyqtSlot, QRectF
-from PyQt6.QtGui import QFont, QColor, QPainter, QPen, QBrush
+from PyQt6.QtCore import pyqtSlot
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
 
 

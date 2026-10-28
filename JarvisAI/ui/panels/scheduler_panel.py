@@ -7,8 +7,8 @@ displays upcoming reminders, tasks, and Quiet Hours / DND status.
 
 from __future__ import annotations
 
-from typing import Optional, List
-from PyQt6.QtCore import Qt, pyqtSlot
+from typing import Optional
+from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
 
@@ -88,12 +88,15 @@ class SchedulerPanel(QFrame):
         )
 
     def fetch_real_scheduler_state(self):
-        """Fetch live task items from prospective memory if available."""
+        """Show the soonest pending intention, straight from prospective memory."""
         try:
-            from memory.prospective_memory import ProspectiveMemory
-            pm = ProspectiveMemory()
-            tasks = pm.get_pending_tasks() if hasattr(pm, "get_pending_tasks") else []
-            next_title = tasks[0].get("title", "") if tasks else "No upcoming tasks"
+            from memory.prospective_memory import pending_intentions
+
+            tasks = pending_intentions()
+            next_title = (
+                str(tasks[0].get("content") or tasks[0].get("trigger") or "")
+                if tasks else "No upcoming tasks"
+            )
             self.update_scheduler_stats(next_title, False, "22:00 - 07:00")
         except Exception:
             pass

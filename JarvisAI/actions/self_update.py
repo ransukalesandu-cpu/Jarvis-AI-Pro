@@ -7,7 +7,6 @@ The update operation is separately gated by core.security as DANGEROUS.
 """
 from __future__ import annotations
 
-import platform
 import subprocess
 import sys
 from datetime import datetime, timezone

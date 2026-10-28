@@ -13,7 +13,7 @@ from core.vocal_behavior import (
     delivery_guidance,
     normalize_settings,
 )
-from memory.voice_personality import get_voice_personality, save_voice_personality
+from memory.voice_personality import save_voice_personality
 
 
 class _FixedRandom:

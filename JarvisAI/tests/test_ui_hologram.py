@@ -220,13 +220,54 @@ class TestUIHologram(unittest.TestCase):
         hud.eventFilter(hud._left_menu_trigger, enter)
         self.assertFalse(hud._left_rail.isHidden())
 
-        # Simulate leaving the hover region with a deterministic global cursor.
+        # Capture the delayed-collapse callback instead of running a real timer,
+        # which would also advance unrelated HUD timers in a full-suite test.
         leave = QEvent(QEvent.Type.Leave)
-        hud.eventFilter(hud._left_menu_trigger, leave)
+        with patch("ui.hud_main.QTimer") as timer_mock:
+            hud.eventFilter(hud._left_menu_trigger, leave)
+            timer_mock.singleShot.assert_called_once()
+            self.assertEqual(timer_mock.singleShot.call_args[0][0], 180)
+            collapse = timer_mock.singleShot.call_args[0][1]
+
         with patch("ui.hud_main.QCursor") as cursor:
             cursor.pos.return_value = QPoint(2000, 2000)
-            QTest.qWait(260)
+            collapse()
         self.assertTrue(hud._left_rail.isHidden())
+
+    def test_home_status_strip_is_only_visible_from_right_menu(self):
+        """Subsystem telemetry stays out of the default hologram home view."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.show()
+        app.processEvents()
+
+        self.assertIs(hud._status_strip.parentWidget(), hud._right_menu)
+        self.assertGreaterEqual(hud._right_menu.layout().indexOf(hud._status_strip), 0)
+        self.assertIs(hud._workspace_stack.currentWidget(), hud._home_page)
+        self.assertFalse(hud._status_strip.isVisible())
+
+        hud._toggle_right_dropdown()
+        app.processEvents()
+        self.assertTrue(hud._right_menu.isVisible())
+        self.assertTrue(hud._status_strip.isVisible())
+
+    def test_escape_closes_right_menu_then_home_hover_rail(self):
+        """Escape dismisses overlays in order without hiding dashboard navigation."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.show()
+        app.processEvents()
+        hud._left_rail.show()
+        hud._toggle_right_dropdown()
+        app.processEvents()
+
+        QTest.keyClick(hud, Qt.Key.Key_Escape)
+        app.processEvents()
+        self.assertTrue(hud._right_menu.isHidden())
+        self.assertFalse(hud._left_rail.isHidden())
+
+        QTest.keyClick(hud, Qt.Key.Key_Escape)
+        app.processEvents()
+        self.assertTrue(hud._left_rail.isHidden())
+        self.assertFalse(hud._left_menu_trigger.isHidden())
 
     def test_hud_status_label_does_not_report_errors_as_standby(self):
         """Error and disconnected states must remain visible in the home status."""

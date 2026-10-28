@@ -94,7 +94,7 @@ jobs:
       - name: Test Windows launch, Hologram setup, auth, and audio paths
         working-directory: JarvisAI
         run: >-
-          python -m pytest -q
+          python -m pytest -vv
           tests/test_ui_hologram.py
           tests/test_launchers.py
           tests/test_live_api_key_config.py

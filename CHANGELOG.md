@@ -34,6 +34,31 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   backdrop so it no longer floats inside a black rectangle. The status orb and
   the small "quantum heart" are docked together beneath the face, with a real
   filament from the heart to the chin.
+- **Task-panel producers** (`core/task_sources.py`): the HUD's glass panels are
+  no longer limited to voice commands. A `TaskSourceRegistry` polls the pending
+  reminder (`memory.prospective_memory`) and Steam's own manifest state
+  (`actions/game_updater`) and hands them to
+  `TaskPanelManager.sync_sources()`, which opens, updates in place, and retires
+  producer cards without touching command panels. A producer that raises is
+  reported as *unavailable*, never as "nothing to show"; a dismissed card stays
+  closed until its producer stops reporting the fact.
+- **Real music transport** (`core/media_transport.py`): the music panel's
+  play/pause/previous/next buttons now send the OS media keys. The buttons are
+  drawn only when a key can actually be delivered, the play/pause glyph flips only
+  after a press succeeds, and a successful music command opens one persistent
+  `media:now` card. Deliberately not routed through `spotify_control`, which
+  would launch Spotify from a panel showing any other player.
+- **Battery-threshold settings UI** (`ui/panels/battery_settings.py`,
+  `core/battery_settings.py`): *BATTERY THRESHOLDS* in the right dropdown edits
+  `battery/fifty|low|critical|full`, validates the ordering before saving, and
+  moves the adaptive-performance tiers to the same numbers. Junk or broken
+  settings still degrade to the documented defaults.
+- **Responsive HUD chrome** (`core/hud_layout.py`): the left rail (44 → 38 → 32
+  px) and the right dropdown (300 px, capped at 34 % of the width, floor 208 px)
+  now follow the window instead of being pinned to constants; the window's
+  minimum size is 860×620 so the rules are reachable. Also fixes the dropdown
+  opening as a 30 px empty strip: as a free-floating child it never received a
+  height until it was sized explicitly.
 - **`core/hologram_theme.py`** — one palette shared by every renderer.
   `JARVIS_PALETTE` is copper/amber, `BIHANSA_PALETTE` is rose pink, per-state
   accents sit on top of the persona instead of replacing it, and

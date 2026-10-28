@@ -81,6 +81,43 @@ task progress) is fed from real state. Nothing on screen invents a number.
 * The overlay follows the stage (resize-filtered) and excludes both the face
   rectangle and the orb/heart dock, so panels never land on the command centre.
 
+### Task-panel producers (`core/task_sources.py`)
+
+Voice commands are no longer the only source of panels. `TaskSourceRegistry`
+polls the subsystems that already know about work in progress and turns their
+state into `SourceTask`s; `TaskPanelManager.sync_sources()` diffs that list:
+
+* **reminders** — the soonest pending prospective intention
+  (`memory.prospective_memory.pending_intentions`), shown as `WAITING` because it
+  is scheduled, not running;
+* **downloads** — Steam's own manifest state (the same source
+  `actions/game_updater._get_download_status` reads), shown as `RUNNING` and
+  *indeterminate*: Steam reports a flag, not a percentage.
+
+The diff updates a card in place (same `source:` id ⇒ same panel, no flicker),
+closes cards whose producer stopped reporting, and never touches a voice-command
+panel. Dismissing a producer card hides it until that producer stops reporting
+the fact — so a reminder that comes due later is visible again. A producer that
+*raises* is recorded in `registry.errors` and omitted: "unavailable" is never
+reported as "nothing to show". The HUD polls this every 20 s (every fourth
+status tick) so a file-reading producer never runs at frame rate.
+
+### Music transport (`core/media_transport.py`)
+
+The music panel's play/pause, previous and next buttons are wired to the OS
+media keys (`pyautogui.press` on `playpause` / `nexttrack` / `prevtrack`). They
+are *not* routed through `actions/spotify_control`, because that handler calls
+`_ensure_spotify()` and would launch Spotify from a panel that may be showing a
+YouTube tab.
+
+* `TransportController.callbacks()` returns `{}` when no presser is available,
+  and the panel then draws no transport buttons at all.
+* The play/pause glyph flips only after the press reports success; a rejected
+  key leaves the glyph alone. Media keys are fire-and-forget, so the card never
+  claims what *is* playing — it shows the command that started it.
+* A successful music command opens one persistent `media:now` card (`WAITING`,
+  no progress sweep) with a dismiss control.
+
 ### Voice-command feedback (`main.py`, `ui/hud_main.py`)
 
 * `_execute_tool` is wrapped by `begin_command` / `finish_command`; the HUD opens
@@ -127,6 +164,14 @@ task progress) is fed from real state. Nothing on screen invents a number.
 * Reduced motion, battery saver and charging effects are persisted in
   `QSettings` under `visual/*` and re-applied live. Reduced motion forces the
   saver budget.
+* The four battery bands (`battery/fifty`, `battery/low`, `battery/critical`,
+  `battery/full`) are edited in a real dialog — **BATTERY THRESHOLDS** in the
+  right dropdown (`ui/panels/battery_settings.py`). `core/battery_settings.py` is
+  the single reader/writer: junk values degrade to the documented defaults, and
+  every save goes through `BatteryThresholds.validated()` so an out-of-order set
+  can never reach the disk. Saving re-arms the live monitor and moves the
+  adaptive-performance tiers to the same numbers, so the warning and the
+  behaviour cannot disagree.
 * Every timer is bounded to a widget or the window; no unbounded loops, no
   cross-thread widget updates (all cross-thread traffic is a Qt signal).
 
@@ -134,6 +179,14 @@ task progress) is fed from real state. Nothing on screen invents a number.
 
 * Minimal home page, expandable left rail, right dropdown, dashboard on its own
   page — all preserved from the previous UI.
+* **Responsive chrome** (`core/hud_layout.py`): the rail is 44 px normally, 38 px
+  under 1000 px and 32 px under 720 px, with buttons following it; the dropdown
+  keeps 300 px on a wide window, shrinks to at most 34 % of the width and never
+  below 208 px, and its height is clipped to the window. The window's minimum
+  size is now 860×620 (was 1024×680) so those rules are actually reachable.
+* The dropdown is a free-floating child, not a layout member, so it is sized with
+  an explicit `adjustSize()` — without it Qt never gave it a height and it opened
+  as a 30 px empty strip.
 * **Escape closes the innermost overlay** (dropdown → toast → expanded island).
 * Indicators carry text as well as colour; buttons have tooltips and accessible
   names; reduced motion is a first-class setting.
@@ -144,10 +197,8 @@ task progress) is fed from real state. Nothing on screen invents a number.
 
 | Area | What works | What is missing |
 | --- | --- | --- |
-| Task panels | Voice-triggered tool calls open panels with real state; the manager API supports update/archive/reopen | Other producers (the live media/download subsystems, the scheduler) do not yet push their own task specs; their panels would need one call each |
-| Music panel controls | Renders play/pause/previous/next *only* when the caller supplies callbacks | The live audio pipeline does not yet expose those callbacks, so today's panels show state + waveform only |
-| Battery thresholds | Fully configurable and persisted (`battery/*`), validated to stay ordered | No settings UI to edit them; they are read from `QSettings` |
-| Responsive layout | Panels reflow on resize; the face keeps the centre at every size | The left rail is a fixed 44 px and the right dropdown a fixed 300 px; on very narrow windows content shrinks rather than re-flowing |
+| Music transport | Play/pause/previous/next send real OS media keys when the platform can | There is still no *now playing* metadata: the OS media API is not queried, and the live Gemini audio stream is not a media player, so nothing here controls JARVIS's own voice output |
+| Task producers | Reminders and Steam downloads push their own panels | No producer yet for the autonomous-agent step list (it has its own dashboard card) or for arbitrary background tools |
 | Health indicators | Four indicators + audio-stream health feeding the island | The "audio error" indicator reflects the stream probe, not per-device error counts |
 | Persona | Palette + existing persona/voice path + auth isolation | Voice timbre itself is unchanged (that is the live session's job, not the HUD's) |
 
@@ -169,7 +220,7 @@ task progress) is fed from real state. Nothing on screen invents a number.
 
 ```bash
 # from the repository root
-python -m pytest JarvisAI/tests -q          # 586 passed, 9 warnings, 109 subtests
+python -m pytest JarvisAI/tests -q          # 804 passed, 1 skipped, 109 subtests
 ruff check JarvisAI                          # clean under the CI gate
 ```
 
@@ -192,8 +243,13 @@ New test files:
 | `tests/test_task_panels.py` | layout never covers the face or other panels, determinism, control visibility, indeterminate progress, thumbnail-driven sizing |
 | `tests/test_dynamic_island.py` | state normalisation, expand/collapse signals, drag vs click, keyboard, palette accents, "no audio handle" |
 | `tests/test_hud_hologram_upgrade.py` | end-to-end wiring: palette reaches every renderer, persona switch keeps Privacy Lock, command → highlighted panel → truthful completion, battery absent/low/charging, health strip, minimise/restore, Escape, persisted preferences, and a paint smoke test for every custom surface |
+| `tests/test_task_sources.py` | producer output (reminder/download), indeterminate progress, stable keys, failing producer reported as an error rather than as empty |
+| `tests/test_hud_task_wiring.py` | `sync_sources` open/update/close, in-place updates, dismissal memory, transport buttons only with a real backend, glyph flips only on a delivered key, now-playing card, and the window applying the responsive chrome |
+| `tests/test_media_transport.py` | media-key mapping, unavailable backend, rejected press, controller state truthfulness, action→command mapping |
+| `tests/test_battery_settings.py` | load/save with junk, broken and out-of-order settings; dialog validation, defaults restore, emit-on-save |
+| `tests/test_hud_layout.py` | rail/dropdown rules at every width |
 
-The pre-existing suite is unchanged and still green (469 → 586 with the new
+The pre-existing suite is unchanged and still green (469 → 804 with the new
 tests); no test was deleted or weakened.
 
 ## 5. Manual check

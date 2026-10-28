@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-from actions.desktop_automation import launch_app, desktop_automation
-import main
+from actions.desktop_automation import launch_app
 
 
 class TestPhaseUpgrades(unittest.TestCase):

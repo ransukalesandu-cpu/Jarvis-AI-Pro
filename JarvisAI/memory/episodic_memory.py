@@ -1,7 +1,6 @@
 """Structured event memory, kept compatible with the legacy episode list."""
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from memory.memory_manager import save_episode as _save_legacy_episode

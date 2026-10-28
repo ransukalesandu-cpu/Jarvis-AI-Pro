@@ -28,7 +28,7 @@ from PyQt6.QtTest import QTest
 # Ensure QApplication exists before testing Qt widgets
 app = QApplication.instance() or QApplication(sys.argv)
 
-from audio.visualizer_bridge import VisualizerBridge, get_visualizer_bridge
+from audio.visualizer_bridge import VisualizerBridge
 from ui.hologram.wireframe_head import NeuralWireframeHead
 from ui.hologram.bihansa_hologram import BihansaHologramWidget
 from ui.hologram.neural_heart_reactor import NeuralHeartReactor

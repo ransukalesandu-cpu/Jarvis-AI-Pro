@@ -81,12 +81,16 @@ select = [
   "F82",  # undefined names in __all__ / dunder definitions
   "F821", # undefined name — catches typos and missing imports at runtime
   "F823", # local variable referenced before assignment
+  "F401", # unused import — dead weight and, often, a rename that was missed
+  "F811", # redefinition of an unused name — usually a copy-paste slip
 ]
 # No blanket ignores. If a finding appears here it is a real bug.
 
 [tool.ruff.lint.per-file-ignores]
 # Test helpers intentionally reach into module internals and redefine names.
 "JarvisAI/tests/**" = ["F811"]
+# Re-export shims: the import *is* the public API.
+"JarvisAI/config/__init__.py" = ["F401"]
 
 # ── coverage ─────────────────────────────────────────────────────────────────
 # Run with:  pytest --cov  (needs requirements-dev.txt)

@@ -9,11 +9,10 @@ perspective projection, floating particle flow, and state-reactive morphing
 from __future__ import annotations
 
 import os
-import sys
 import math
 import random
 import time
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, pyqtSignal, QRectF, QPointF
 from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPainterPath

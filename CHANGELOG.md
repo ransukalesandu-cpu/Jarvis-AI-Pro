@@ -23,13 +23,32 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   whitespace, line endings and YAML/TOML/JSON validity before a commit lands,
   with Windows `.bat` files kept on CRLF.
 - `tests/test_project_health.py` — guards against the `config` import collision
-  coming back, against the two `requirements.txt` copies drifting apart, and
-  against dev-only packages leaking into the runtime dependency list.
+  coming back, against the two `requirements.txt` copies drifting apart, against
+  dev-only packages leaking into the runtime dependency list, and (new) walks
+  the internal import graph so a name removed from one module cannot silently
+  break an importer.
+- `tests/test_ui_import_smoke.py` — imports every `JarvisAI/ui/` module once
+  (skipped where Qt cannot load) so a broken panel import fails CI.
+- `memory.prospective_memory.pending_intentions()` — active intentions ordered
+  soonest-first, for the scheduler panel and any future planner UI.
 - CI: a dedicated fast `lint` job, broader path filters (root launchers,
   packaging files, `voice/`, `scripts/`), dependency caching across both
   requirement files, and cancellation of superseded runs.
 
 ### Fixed
+
+- **Memory panel always showed zero facts.** `MemoryPanel.fetch_real_memory_state()`
+  imported `get_memory_manager` and called `get_all_facts()` — neither exists in
+  `memory.memory_manager` — inside a bare `try/except`, so the counters stayed at
+  zero and nothing reported an error. It now uses `all_entries_for_ui()`.
+- **Scheduler panel always showed "No upcoming tasks".** Same pattern:
+  `ProspectiveMemory().get_pending_tasks()` was never a real API. A real
+  `pending_intentions()` helper was added to `memory/prospective_memory.py`
+  (active intentions, soonest time trigger first) and the panel now uses it.
+- 110 dead, duplicate or stale imports removed across the app (`ruff F401`/
+  `F811`), including an availability-probe block in `open_app.py` and
+  `youtube_video.py` that imported `psutil`, `pyautogui` and `numpy` and then
+  never read the flag it set.
 
 - **Crash when `config` was resolved to OpenCV's module.** Three action modules
   (`flight_finder`, `game_updater`, `youtube_video`) imported their OS helpers
@@ -50,6 +69,18 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   once OpenCV cannot load.
 
 ### Changed
+
+- The lint gate now also enforces `F401` (unused import) and `F811` (shadowed
+  redefinition) — zero findings across the codebase, with the three intentional
+  re-exports marked `# noqa: F401` and explained in place.
+- New `tests/test_ui_import_smoke.py` imports every UI module (skipped where Qt
+  cannot load) so a broken import in a panel fails CI rather than a user's
+  window. It runs in the Windows smoke job.
+- `tests/test_project_health.py` gained a static import-graph check: every
+  `from <internal module> import <name>` must resolve to something that module
+  actually defines. It immediately found the two dead panel APIs above.
+- CI's Ubuntu job installs `libgl1` alongside `libegl1`, so the Qt tests run
+  there instead of being skipped.
 
 - `pyproject.toml` gained project metadata (keywords, classifiers, project URLs)
   so the package describes itself on PyPI-style indexes.

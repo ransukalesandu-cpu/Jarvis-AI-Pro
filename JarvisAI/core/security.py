@@ -56,9 +56,9 @@ from core import confirm as confirm_gate
 from security.auth_manager import (
     AuthManager,
     RESTRICTED_MODE,
-    FULL_ACCESS_MODE,
     CHALLENGE_MODE,
-    PRIVACY_LOCK,
+    # Re-exported: tests/test_security_end_to_end.py imports it from here.
+    FULL_ACCESS_MODE,  # noqa: F401
 )
 from core.dispatcher import ActionDispatcher
 

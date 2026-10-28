@@ -8,8 +8,6 @@ and manages port forwarding for USB Android Tablet connections.
 import os
 import shutil
 import subprocess
-import sys
-from pathlib import Path
 
 
 def find_adb() -> str | None:

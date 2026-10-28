@@ -7,7 +7,6 @@ import base64
 import logging
 import re
 import subprocess
-import time
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger("Jarvis.PhoneController")

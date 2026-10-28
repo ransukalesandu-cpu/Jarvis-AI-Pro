@@ -128,7 +128,6 @@ def validate_anchor_update(events: list[dict]) -> None:
 
 def write_anchor(events: list[dict]) -> None:
     """Write an HMAC checkpoint outside SQLite for chain boundary and head."""
-    from memory.memory_manager import BASE_DIR
     rows = _signed(events)
     if not rows:
         return

@@ -1,7 +1,6 @@
 """Local hybrid FTS5 + deterministic embedding retrieval with strict budgets."""
 from __future__ import annotations
 
-import math
 import re
 import time
 from datetime import datetime

@@ -6,6 +6,8 @@ from __future__ import annotations
 import asyncio
 import time
 import traceback
+from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -17,10 +19,6 @@ from core.live_audio import (
     _output_write_is_unpaced,
     _pcm_level,
 )
-
-import asyncio
-from dataclasses import dataclass
-from typing import Any
 
 
 @dataclass(frozen=True)

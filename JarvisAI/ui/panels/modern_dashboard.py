@@ -8,7 +8,7 @@ from __future__ import annotations
 import math
 
 from PyQt6.QtCore import QEasingCurve, QPointF, QPropertyAnimation, QRectF, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QRadialGradient
+from PyQt6.QtGui import QColor, QPainter, QPen, QRadialGradient
 from PyQt6.QtWidgets import (
     QFrame, QGraphicsDropShadowEffect, QGridLayout, QHBoxLayout, QLabel,
     QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,

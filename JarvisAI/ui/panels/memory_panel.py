@@ -8,7 +8,7 @@ last recalled memory key, and memory health status.
 from __future__ import annotations
 
 from typing import Optional
-from PyQt6.QtCore import Qt, pyqtSlot
+from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
 
@@ -79,12 +79,17 @@ class MemoryPanel(QFrame):
         self._lbl_key.setText(f"LAST RECALLED: {key_disp}")
 
     def fetch_real_memory_state(self):
-        """Fetch live stats directly from JarvisAI memory manager if available."""
+        """Fetch live stats from the memory manager.
+
+        This called ``get_memory_manager().get_all_facts()`` — neither of which
+        exists — inside a bare ``try/except``, so the panel's counters stayed at
+        zero for everyone. ``all_entries_for_ui()`` is the supported listing.
+        """
         try:
-            from memory.memory_manager import get_memory_manager
-            mm = get_memory_manager()
-            facts = mm.get_all_facts() if hasattr(mm, "get_all_facts") else []
-            count = len(facts) if isinstance(facts, (list, dict)) else 0
-            self.update_memory_stats(count, getattr(mm, "_last_recalled_key", "user_preferences"), "ONLINE")
+            from memory.memory_manager import all_entries_for_ui
+
+            entries = all_entries_for_ui()
+            latest_key = str(entries[0].get("key", "None")) if entries else "None"
+            self.update_memory_stats(len(entries), latest_key, "ONLINE")
         except Exception:
             pass

@@ -16,7 +16,6 @@ from JarvisAI.main import (
     _take_playback_pcm,
     _MIN_LIVE_AUDIO_FRAME_BYTES,
     _PLAYBACK_SLICE_BYTES,
-    _MIN_PREBUFFER_BYTES,
 )
 
 

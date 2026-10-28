@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 import requests
 
 from core import injection_guard
-from memory.config_manager import get_plugin_config, save_plugin_config
+from memory.config_manager import get_plugin_config
 
 _GRAPH_ROOT = "https://graph.instagram.com"
 _TIMEOUT = (8, 25)

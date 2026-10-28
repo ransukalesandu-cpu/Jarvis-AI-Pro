@@ -5,7 +5,7 @@ Unknown actions are privileged by default.
 from __future__ import annotations
 
 from security.auth_manager import (
-    RESTRICTED_MODE, FULL_ACCESS_MODE, CHALLENGE_MODE, PRIVACY_LOCK,
+    FULL_ACCESS_MODE, PRIVACY_LOCK,
 )
 
 TIER_1_BASIC = "TIER_1_BASIC"

@@ -11,7 +11,7 @@ from typing import Optional
 import psutil
 
 from PyQt6.QtCore import Qt, QTimer, QRectF, pyqtSlot
-from PyQt6.QtGui import QFont, QColor, QPainter, QPen, QBrush
+from PyQt6.QtGui import QFont, QColor, QPainter, QPen
 from PyQt6.QtWidgets import QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel
 
 

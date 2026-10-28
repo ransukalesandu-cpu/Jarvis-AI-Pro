@@ -14,11 +14,10 @@ import time
 if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFORM" not in os.environ:
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
-import threading
 from typing import Optional, Callable
 
-from PyQt6.QtCore import Qt, QObject, pyqtSlot, pyqtSignal, QTimer, QSettings, QEvent, QPropertyAnimation, QEasingCurve
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtCore import Qt, QObject, pyqtSlot, pyqtSignal, QTimer, QSettings, QPropertyAnimation, QEasingCurve
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QToolButton, QFrame, QGraphicsBlurEffect, QGraphicsOpacityEffect, QCheckBox, QStackedWidget
@@ -38,7 +37,7 @@ from ui.panels.modern_dashboard import FloatingHolographicOrb, ModernDashboard
 from ui.panels.hud_surface import BentoPanelSurface
 
 try:
-    from security.auth_manager import AuthManager, PRIVACY_LOCK, lock_workstation
+    from security.auth_manager import PRIVACY_LOCK, lock_workstation
     from core.security import get_auth_manager
 except Exception:
     get_auth_manager = None

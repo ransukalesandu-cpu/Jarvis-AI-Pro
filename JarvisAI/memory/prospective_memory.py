@@ -49,6 +49,32 @@ def matching_intentions(*, event: str = "", project_state: str = "",
     return matches
 
 
+def pending_intentions(*, now: datetime | None = None) -> list[dict]:
+    """Active intentions, soonest time-trigger first.
+
+    The scheduler panel used to call ``ProspectiveMemory().get_pending_tasks()``
+    — a class that never existed — inside a bare ``try/except``, so the panel
+    silently showed "No upcoming tasks" forever. This is the function it wanted.
+    """
+    from memory.memory_lifecycle import expire_due
+
+    expire_due(now)
+    memory = load_memory()
+    rows = [
+        item for item in memory.get("memories", [])
+        if isinstance(item, dict)
+        and item.get("type") == "prospective"
+        and item.get("status") == "active"
+    ]
+
+    def sort_key(item: dict) -> tuple[int, str]:
+        trigger_type = str(item.get("trigger_type", ""))
+        # Time triggers sort first (they have a due date), then event/project.
+        return (0 if trigger_type == "time" else 1, str(item.get("trigger", "")))
+
+    return sorted(rows, key=sort_key)
+
+
 def mark_intention(memory_id: str, status: str, *, actor: str = "system") -> bool:
     if status not in {"active", "completed", "dismissed", "superseded"}:
         return False

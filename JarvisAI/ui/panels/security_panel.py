@@ -8,8 +8,8 @@ failed PIN attempt counter (e.g. 0/3), and current authentication method.
 from __future__ import annotations
 
 from typing import Optional
-from PyQt6.QtCore import Qt, pyqtSlot, QTimer
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtCore import pyqtSlot, QTimer
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
 
 

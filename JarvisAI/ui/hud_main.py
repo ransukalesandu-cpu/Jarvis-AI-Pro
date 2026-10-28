@@ -678,7 +678,12 @@ class _HudSetupController(QObject):
 
         try:
             from ui import SetupOverlay
-            overlay = SetupOverlay(self._win.centralWidget())
+            # This overlay is only used when the saved key is missing or rejected.
+            # Never allow the rejected value to be silently re-submitted as "keep".
+            overlay = SetupOverlay(
+                self._win.centralWidget(),
+                allow_keep_existing=False,
+            )
             central = self._win.centralWidget()
             width, height = 480, 370
             overlay.setGeometry(
@@ -713,8 +718,18 @@ class _HudSetupController(QObject):
         key = str(payload.get("gemini_api_key", "") if isinstance(payload, dict) else "").strip()
         if not key:
             if self._overlay is not None:
-                self._overlay._error_label.setText("Enter a Gemini API key to continue.")
+                self._overlay._error_label.setText("Enter a replacement Gemini API key to continue.")
                 self._overlay._error_label.show()
+                self._overlay._key_field.setFocus()
+            return
+        if len(key) <= 15:
+            if self._overlay is not None:
+                self._overlay._error_label.setText(
+                    "This key is too short to be a valid Gemini API key. "
+                    "Check the full key and try again."
+                )
+                self._overlay._error_label.show()
+                self._overlay._key_field.setFocus()
             return
         try:
             # Use the shared config manager so the key is written to the same

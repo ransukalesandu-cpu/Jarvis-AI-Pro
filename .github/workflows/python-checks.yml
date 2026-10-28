@@ -168,6 +168,8 @@ jobs:
           tests/test_live_audio_helpers.py
           tests/test_playback_interrupt.py
           tests/test_ui_import_smoke.py
+          tests/test_lazy_ui_imports.py
+          tests/test_screen_capture_encoding.py
           tests/test_project_health.py
 
       # See the Linux job: annotations are readable from the check run even when
@@ -187,4 +189,6 @@ jobs:
           tests/test_live_audio_helpers.py
           tests/test_playback_interrupt.py
           tests/test_ui_import_smoke.py
+          tests/test_lazy_ui_imports.py
+          tests/test_screen_capture_encoding.py
           tests/test_project_health.py

@@ -252,8 +252,9 @@ class HUDMainWindow(QMainWindow):
         top_row = QHBoxLayout()
         # Live subsystem health (mic / speaker / network / AI session). Unavailable
         # subsystems render as hollow rings — never a fabricated green dot.
+        # Keep live subsystem diagnostics out of the default hologram home view.
+        # They remain available from the right-side menu without losing real status.
         self._status_strip = HudStatusStrip(self, self._palette)
-        top_row.addWidget(self._status_strip, 0, Qt.AlignmentFlag.AlignVCenter)
         top_row.addStretch()
         self._dashboard_button = QToolButton(self)
         self._dashboard_button.setText("▦")
@@ -450,6 +451,9 @@ class HUDMainWindow(QMainWindow):
         right_menu_layout = QVBoxLayout(self._right_menu)
         right_menu_layout.setContentsMargins(10, 10, 10, 10)
         right_menu_layout.setSpacing(8)
+        # Telemetry is on demand: quick subsystem indicators live in this menu,
+        # not above the hologram where they compete with the main visual.
+        right_menu_layout.addWidget(self._status_strip)
 
         self._bihansa_toggle = QPushButton("BIHANSA MODE: OFF")
         self._bihansa_toggle.setCheckable(True)
@@ -1786,6 +1790,15 @@ class HUDMainWindow(QMainWindow):
                 return
             if hasattr(self, "_island") and self._island.isVisible() and self._island._expanded:
                 self._island.collapse()
+                return
+            # On the hologram home page, Escape also dismisses the hover rail.
+            # The dashboard rail stays visible because it is primary dashboard navigation.
+            if (
+                self._workspace_stack.currentWidget() is self._home_page
+                and not self._left_rail.isHidden()
+            ):
+                self._left_rail.hide()
+                self._left_menu_trigger.show()
                 return
         super().keyPressEvent(event)
 

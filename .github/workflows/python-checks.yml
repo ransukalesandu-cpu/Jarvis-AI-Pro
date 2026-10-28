@@ -101,15 +101,14 @@ jobs:
         working-directory: JarvisAI
         run: python -m pytest -q
 
-      # A failing test run is only useful if the failure can be read. The raw
-      # job log is not always reachable (it lives on a signed blob URL), while
-      # the job summary is part of the check run itself.
-      - name: Publish test failures to the job summary
+      # A failing test run is only useful if the failure can be read: the raw
+      # job log lives on a signed blob URL that is not always reachable. Re-run
+      # through the wrapper so each failure becomes a check-run annotation
+      # (readable from the PR) plus a job summary.
+      - name: Publish test failures as annotations
         if: failure()
         working-directory: JarvisAI
-        run: |
-          python -m pytest -q --tb=short 2>&1 | tail -n 120 >> "$GITHUB_STEP_SUMMARY"
-          exit 0
+        run: python scripts/ci_pytest_annotate.py -q --tb=short
 
       - name: Set up Deno for Supabase personal-memory tests
         if: ${{ hashFiles('supabase/functions/jarvis-personal-memory/domain_test.ts') != '' }}
@@ -171,22 +170,21 @@ jobs:
           tests/test_ui_import_smoke.py
           tests/test_project_health.py
 
-      # See the Linux job: the job summary is readable from the check run even
-      # when the raw log is not.
-      - name: Publish test failures to the job summary
+      # See the Linux job: annotations are readable from the check run even when
+      # the raw log is not.
+      - name: Publish test failures as annotations
         if: failure()
         working-directory: JarvisAI
-        run: |
-          python -m pytest -q --tb=short `
-            tests/test_ui_hologram.py `
-            tests/test_launchers.py `
-            tests/test_live_api_key_config.py `
-            tests/test_auth_flow.py `
-            tests/test_owner_identity_security.py `
-            tests/test_audio_capture.py `
-            tests/test_audio_playback.py `
-            tests/test_live_audio_helpers.py `
-            tests/test_playback_interrupt.py `
-            tests/test_ui_import_smoke.py `
-            tests/test_project_health.py *>&1 >> $env:GITHUB_STEP_SUMMARY
-          exit 0
+        run: >-
+          python scripts/ci_pytest_annotate.py -q --tb=short
+          tests/test_ui_hologram.py
+          tests/test_launchers.py
+          tests/test_live_api_key_config.py
+          tests/test_auth_flow.py
+          tests/test_owner_identity_security.py
+          tests/test_audio_capture.py
+          tests/test_audio_playback.py
+          tests/test_live_audio_helpers.py
+          tests/test_playback_interrupt.py
+          tests/test_ui_import_smoke.py
+          tests/test_project_health.py

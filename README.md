@@ -89,9 +89,36 @@ the command field, or use the matching HUD panel. Common starting requests are:
 | “Weather in Colombo” / “Find flights from Colombo to Tokyo” | Forecast or flight cards in the HUD. |
 | “Start a 20 minute timer” / “Set a reminder…” | Visible countdown or scheduled reminder. |
 | “Quiz me on [topic]” | Spoken interactive quiz, when the Quiz plugin is enabled. |
+| “Inspect my project, fix the errors and run all relevant tests” | Autonomous multi-step task: plans, acts, verifies, recovers and reports on the ▦ dashboard card. Say “stop” at any time. |
 
 JARVIS operates under the **Autonomous Biometric Authority & Privacy Defense Model**.
 Panels and cards provide viewing and navigation without requiring manual confirmation pop-ups for verified owners.
+
+## 🤖 Autonomous Task Agent, Screen Vision and Computer Use
+
+JARVIS can take a single instruction such as *“inspect my project, fix the
+errors, finish the UI upgrade, run all relevant tests and continue until the task
+is complete”* and carry it through: **plan → act → observe → verify → recover →
+continue → report**. It keeps working across failures, retries only transient
+errors, honours pause/stop immediately, survives an app restart, and reports the
+real test results instead of assuming success.
+
+* **Voice or text** starts and steers tasks (`stop`, `pause`, `resume`, `status`,
+  `report`); stop also works while the Live session is busy or offline.
+* **Screen awareness** uses on-demand capture (downscaled before upload), local
+  OCR, the OS accessibility tree, and Gemini/OpenAI vision — and says so when it
+  is unsure rather than guessing.
+* **Desktop actions** are addressed by *named target*, validated against the real
+  screen, re-observed after acting, and can run in dry-run mode.
+* **Safety is unchanged**: the owner must be verified, every step is classified
+  (read / write / consequential), consequential steps still use the existing
+  confirmation banner, and an emergency stop is never gated.
+* **UI**: a live card on the ▦ dashboard shows objective, stage, steps, test
+  results and controls; minimising the HUD shows a compact Dynamic-Island status
+  widget instead of an empty window. The neural hologram home screen is untouched.
+
+Full details, configuration keys, provider requirements and known limitations:
+[docs/AUTONOMOUS_AGENT.md](docs/AUTONOMOUS_AGENT.md).
 
 ## 🌍 Interactive Earth, Place Search, and Routes
 

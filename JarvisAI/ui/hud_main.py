@@ -16,7 +16,10 @@ if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFOR
 
 from typing import Optional, Callable
 
-from PyQt6.QtCore import Qt, QObject, pyqtSlot, pyqtSignal, QTimer, QSettings, QPropertyAnimation, QEasingCurve
+from PyQt6.QtCore import (
+    Qt, QObject, QEvent, pyqtSlot, pyqtSignal, QTimer, QSettings,
+    QPropertyAnimation, QEasingCurve,
+)
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -37,6 +40,19 @@ from ui.panels.modern_dashboard import FloatingHolographicOrb, ModernDashboard
 from ui.panels.hud_surface import BentoPanelSurface
 
 from core import failsoft
+
+# The autonomous-task surface and the minimised status widget are optional: a
+# failure to import them costs the owner the panel, never the HUD.
+try:
+    from ui.panels.autonomous_panel import AutonomousPanel
+except Exception:  # pragma: no cover - defensive
+    failsoft.suppress("ui.hud_main:import_autonomous_panel")
+    AutonomousPanel = None
+try:
+    from ui.dynamic_island import DynamicIslandController
+except Exception:  # pragma: no cover - defensive
+    failsoft.suppress("ui.hud_main:import_dynamic_island")
+    DynamicIslandController = None
 
 try:
     from security.auth_manager import PRIVACY_LOCK, lock_workstation
@@ -84,6 +100,11 @@ class HUDMainWindow(QMainWindow):
         self._privacy_locked = False
         self._init_ui()
         self._wire_signals()
+        # Minimising must not leave a large empty frame on the desktop: the
+        # Dynamic Island takes over while the HUD is minimised.
+        self._island_controller = (
+            DynamicIslandController(self) if DynamicIslandController is not None else None
+        )
         self._settings = QSettings("JarvisAI", "JarvisAIPro")
         from memory.config_manager import get_assistant_mode, load_api_keys
         enabled = (get_assistant_mode() == "bihansa" if "assistant_mode" in load_api_keys()
@@ -100,6 +121,12 @@ class HUDMainWindow(QMainWindow):
         self._poll_timer.start(1500)
 
     def _init_ui(self):
+        # Built before anything that references it: the right-hand menu and the
+        # dashboard's extra card both need the autonomous panel, and referencing
+        # it before assignment is how this broke the first time.
+        self._panel_agent = AutonomousPanel(self) if AutonomousPanel is not None else None
+        self._agent_stop_button = None
+
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
 
@@ -158,7 +185,13 @@ class HUDMainWindow(QMainWindow):
         left_rail_layout.setContentsMargins(0, 8, 0, 8)
         left_rail_layout.setSpacing(8)
         self._left_icon_buttons = []
-        for symbol, tooltip in (("◈", "Neural / Hybrid Brain"), ("⛨", "Security / Host verification")):
+        left_rail_entries = [
+            ("◈", "Neural / Hybrid Brain"),
+            ("⛨", "Security / Host verification"),
+        ]
+        if AutonomousPanel is not None:
+            left_rail_entries.append(("◉", "Autonomous task monitor"))
+        for symbol, tooltip in left_rail_entries:
             button = QToolButton(left_rail)
             button.setText(symbol)
             button.setToolTip(tooltip)
@@ -282,6 +315,27 @@ class HUDMainWindow(QMainWindow):
                 lambda checked=False, selected=panel_index: self._open_dashboard_panel(selected)
             )
             right_menu_layout.addWidget(panel_button)
+        if self._panel_agent is not None:
+            agent_button = QPushButton("AUTONOMOUS TASKS", self._right_menu)
+            agent_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            agent_button.setStyleSheet(
+                "QPushButton { color: #c8d9e5; background: rgba(12,24,35,220); "
+                "border: 1px solid #244857; border-radius: 8px; padding: 7px 10px; "
+                "text-align: left; }"
+                "QPushButton:hover { color: #ffffff; border-color: #00e5ff; background: #102a38; }"
+            )
+            agent_button.clicked.connect(self._open_agent_panel)
+            right_menu_layout.addWidget(agent_button)
+            self._agent_stop_button = QPushButton("STOP AUTONOMOUS TASK", self._right_menu)
+            self._agent_stop_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._agent_stop_button.setStyleSheet(
+                "QPushButton { color: #ffd6de; background: rgba(255,69,107,0.14); "
+                "border: 1px solid rgba(255,69,107,0.55); border-radius: 8px; "
+                "padding: 7px 10px; text-align: left; }"
+                "QPushButton:hover { background: rgba(255,69,107,0.30); }"
+            )
+            self._agent_stop_button.clicked.connect(self._stop_agent_task)
+            right_menu_layout.addWidget(self._agent_stop_button)
         self._right_menu.hide()
 
         self._bihansa_effects.toggled.connect(self.bihansa_visualizer.set_effects_enabled)
@@ -304,7 +358,11 @@ class HUDMainWindow(QMainWindow):
             self._surface_scheduler,
             self._surface_ring,
         )
-        self._dashboard = ModernDashboard(dashboard_panels, parent=self._workspace_stack)
+        self._dashboard = ModernDashboard(
+            dashboard_panels,
+            parent=self._workspace_stack,
+            extra_panel=self._panel_agent,
+        )
         # Preserve ModernDashboard objectName: its stylesheet selectors rely on it.
         self._workspace_stack.addWidget(self._dashboard)
         self._workspace_stack.setCurrentWidget(self._home_page)
@@ -330,9 +388,14 @@ class HUDMainWindow(QMainWindow):
         self._left_rail.hide()
 
         for index, button in enumerate(self._left_icon_buttons):
-            button.clicked.connect(
-                lambda checked=False, selected=index: self._open_dashboard_panel(selected)
-            )
+            if index >= 2 and self._panel_agent is not None:
+                button.clicked.connect(
+                    lambda checked=False: self._open_agent_panel()
+                )
+            else:
+                button.clicked.connect(
+                    lambda checked=False, selected=index: self._open_dashboard_panel(selected)
+                )
         self._dashboard_button.clicked.connect(self._toggle_dashboard_page)
         self._right_menu_button.clicked.connect(self._toggle_right_dropdown)
 
@@ -342,6 +405,28 @@ class HUDMainWindow(QMainWindow):
         super().resizeEvent(event)
         if hasattr(self, "_right_menu") and self._right_menu.isVisible():
             self._position_right_menu()
+
+    def changeEvent(self, event):
+        """Swap the full HUD for the compact status widget while minimised."""
+        super().changeEvent(event)
+        if event.type() != QEvent.Type.WindowStateChange:
+            return
+        controller = getattr(self, "_island_controller", None)
+        if controller is None:
+            return
+        try:
+            controller.sync(self.isMinimized())
+        except Exception:
+            failsoft.suppress("ui.hud_main:changeEvent")
+
+    def closeEvent(self, event):
+        controller = getattr(self, "_island_controller", None)
+        if controller is not None:
+            try:
+                controller.shutdown()
+            except Exception:
+                failsoft.suppress("ui.hud_main:closeEvent")
+        super().closeEvent(event)
 
     def _toggle_dashboard_page(self):
         """Switch between a clean hologram home and the separate Bento dashboard."""
@@ -406,6 +491,26 @@ class HUDMainWindow(QMainWindow):
         scroll = self._dashboard.findChild(QWidget, "DashboardScroll")
         if scroll is not None and hasattr(scroll, "ensureWidgetVisible"):
             scroll.ensureWidgetVisible(self._dashboard._cards[panel_index], 10, 10)
+
+    def _open_agent_panel(self):
+        """Open the dashboard and scroll to the autonomous task card."""
+        self._right_menu.hide()
+        if self._panel_agent is None:
+            return
+        if self._workspace_stack.currentWidget() is not self._dashboard:
+            self._show_dashboard_page()
+        QTimer.singleShot(280, self._dashboard.open_extra)
+
+    def _stop_agent_task(self):
+        """Immediate stop for a running autonomous task (no confirmation)."""
+        try:
+            from agent.integration import get_service
+
+            get_service().stop("Stopped from the HUD menu.")
+        except Exception:
+            failsoft.suppress("ui.hud_main:_stop_agent_task")
+        if self._panel_agent is not None:
+            self._panel_agent.refresh()
 
     def _refresh_dashboard(self):
         """Refresh the existing telemetry sources without replacing their live widgets."""

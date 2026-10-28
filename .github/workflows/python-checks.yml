@@ -101,6 +101,15 @@ jobs:
         working-directory: JarvisAI
         run: python -m pytest -q
 
+      # A failing test run is only useful if the failure can be read: the raw
+      # job log lives on a signed blob URL that is not always reachable. Re-run
+      # through the wrapper so each failure becomes a check-run annotation
+      # (readable from the PR) plus a job summary.
+      - name: Publish test failures as annotations
+        if: failure()
+        working-directory: JarvisAI
+        run: python scripts/ci_pytest_annotate.py -q --tb=short
+
       - name: Set up Deno for Supabase personal-memory tests
         if: ${{ hashFiles('supabase/functions/jarvis-personal-memory/domain_test.ts') != '' }}
         uses: denoland/setup-deno@v2
@@ -149,6 +158,25 @@ jobs:
         working-directory: JarvisAI
         run: >-
           python -m pytest -vv
+          tests/test_ui_hologram.py
+          tests/test_launchers.py
+          tests/test_live_api_key_config.py
+          tests/test_auth_flow.py
+          tests/test_owner_identity_security.py
+          tests/test_audio_capture.py
+          tests/test_audio_playback.py
+          tests/test_live_audio_helpers.py
+          tests/test_playback_interrupt.py
+          tests/test_ui_import_smoke.py
+          tests/test_project_health.py
+
+      # See the Linux job: annotations are readable from the check run even when
+      # the raw log is not.
+      - name: Publish test failures as annotations
+        if: failure()
+        working-directory: JarvisAI
+        run: >-
+          python scripts/ci_pytest_annotate.py -q --tb=short
           tests/test_ui_hologram.py
           tests/test_launchers.py
           tests/test_live_api_key_config.py

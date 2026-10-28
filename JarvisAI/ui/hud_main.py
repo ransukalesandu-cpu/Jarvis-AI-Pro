@@ -204,6 +204,12 @@ class HUDMainWindow(QMainWindow):
         # Settings must exist before the UI builds, because the palette, reduced
         # motion and battery-saver preferences are applied to every renderer.
         self._settings = QSettings("JarvisAI", "JarvisAIPro")
+        # Apply child geometry after Qt completes the top-level native resize.
+        # Resizing/raising floating children inside resizeEvent can re-enter
+        # Qt layout code and abort on offscreen Windows/Linux runners.
+        self._resize_layout_timer = QTimer(self)
+        self._resize_layout_timer.setSingleShot(True)
+        self._resize_layout_timer.timeout.connect(self._apply_deferred_resize_layout)
         self._prefs = VisualPreferences.from_settings(self._settings)
         self._palette = self._prefs.scaled_palette()
         self._budget_reason = ""
@@ -672,20 +678,18 @@ class HUDMainWindow(QMainWindow):
             # activating the layout from a resize event can re-enter native sizing.
             layout.setSpacing(spacing)
 
-    def resizeEvent(self, event):
-        """Keep floating menus inside the central workspace after window resizes."""
-        # Child resize events can fire from super().resizeEvent(). Defer task-region
-        # sync to the end of the outer resize so overlays never consume half-laid-out geometry.
+    def _apply_deferred_resize_layout(self) -> None:
+        """Synchronize floating chrome after the native resize event returns."""
         self._window_resize_depth = getattr(self, "_window_resize_depth", 0) + 1
         try:
-            super().resizeEvent(event)
-            # Chrome adapts before the menu is positioned: the dropdown's width is
-            # one of the things that decides where it goes.
             self._apply_responsive_chrome()
             self._position_left_menu_trigger()
             if hasattr(self, "_right_menu") and self._right_menu.isVisible():
+                # _apply_responsive_chrome already sized it; only position here.
                 self._position_right_menu(size=False)
-            self._apply_hologram_stage_spacing()
+            spacing_callback = getattr(self, "_apply_hologram_stage_spacing", None)
+            if callable(spacing_callback):
+                spacing_callback()
             self._sync_task_blocked_rect()
             if hasattr(self, "_toast") and self._toast.isVisible():
                 host = self.centralWidget()
@@ -698,6 +702,14 @@ class HUDMainWindow(QMainWindow):
             self._window_resize_depth = max(
                 0, getattr(self, "_window_resize_depth", 1) - 1
             )
+
+    def resizeEvent(self, event):
+        """Schedule responsive child geometry after this native resize finishes."""
+        super().resizeEvent(event)
+        timer = getattr(self, "_resize_layout_timer", None)
+        if timer is not None:
+            # Single-shot timer coalesces rapid drag-resize events into one layout pass.
+            timer.start(0)
 
     @_safe_slot("ui.hud_main:_on_island_energy")
     def _on_island_energy(self, energy: float) -> None:

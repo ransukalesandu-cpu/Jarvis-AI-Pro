@@ -26,7 +26,9 @@ config/earth_map_cache/
 **/*.pfx
 
 # Personal data and runtime state
+memory/agent/
 memory/long_term.json
+memory/agent/
 memory/long_term.json*
 memory/*.db
 memory/*.sqlite3

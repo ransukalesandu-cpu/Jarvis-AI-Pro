@@ -269,6 +269,11 @@ _TIERS: dict[str, str] = {
     # confirmation inside actions/self_heal.py. Keep provenance/rate controls.
     "self_heal":        TIER_DANGEROUS,
 
+    # Autonomous work: steering/reading a task is sensitive, starting one is
+    # dangerous (tier_for() narrows this again per operation). Individual steps
+    # are additionally classified by agent/policy.py before they run.
+    "autonomous_task":  TIER_DANGEROUS,
+
     # writes/executes code or touches the filesystem/OS broadly — DANGEROUS
     "code_helper":        TIER_DANGEROUS,
     "file_controller":    TIER_DANGEROUS,
@@ -530,6 +535,9 @@ _DANGEROUS_ACTIONS: dict[str, set[str]] = {
 }
 
 
+_AUTONOMOUS_SAFE_ACTIONS = {"status", "report", "pending", "pause", "resume", "stop"}
+
+
 def tier_for(name: str, params: dict | None = None) -> str:
     """Return the effective risk tier, using the requested operation when known."""
     # Routine GUI launches and read-only health checks should not interrupt the user
@@ -545,6 +553,14 @@ def tier_for(name: str, params: dict | None = None) -> str:
         return TIER_DANGEROUS if operation in {"forget", "clear"} else TIER_SENSITIVE
     if name == "self_heal" and operation == "check":
         return TIER_SAFE
+    if name == "autonomous_task":
+        # Stopping must never be gated: it is the emergency brake and the runner
+        # checks its cancellation event before every action. Reading progress,
+        # pausing and resuming stay SENSITIVE (the objective can be private);
+        # starting work is DANGEROUS and needs a verified owner.
+        if action == "stop":
+            return TIER_SAFE
+        return TIER_SENSITIVE if action in _AUTONOMOUS_SAFE_ACTIONS else TIER_DANGEROUS
     if name == "self_update":
         return TIER_SAFE if operation == "check" else TIER_DANGEROUS
     if name == "open_app":

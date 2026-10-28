@@ -34,7 +34,7 @@ from ui.dynamic_island import ISLAND_STATES, DynamicIsland, IslandIdleClock
 
 class TestDynamicIsland(unittest.TestCase):
     def setUp(self):
-        self.island = DynamicIsland(None, JARVIS_PALETTE)
+        self.island = DynamicIsland(None, palette=JARVIS_PALETTE)
         self.addCleanup(self._dispose)
 
     def _dispose(self):

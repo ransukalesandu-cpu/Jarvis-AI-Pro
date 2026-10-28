@@ -68,6 +68,17 @@ def bind(show, hide, log=None) -> None:
     _show_cb, _hide_cb, _log_cb = show, hide, log
 
 
+def is_bound() -> bool:
+    """True when a real UI is connected to show and hide the banner.
+
+    Headless runs (and modules imported by tests) leave this False, which is how
+    the autonomous engine knows nobody is present to approve a consequential
+    step and must therefore refuse it instead of hanging on a banner that can
+    never appear.
+    """
+    return _show_cb is not None and _hide_cb is not None
+
+
 def _log(msg: str) -> None:
     if _log_cb:
         try:

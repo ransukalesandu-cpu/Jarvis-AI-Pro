@@ -303,10 +303,15 @@ class ModernDashboard(QWidget):
         self,
         panels: tuple[QWidget, QWidget, QWidget, QWidget, QWidget],
         parent: QWidget | None = None,
+        extra_panel: QWidget | None = None,
     ):
         super().__init__(parent)
         self.setObjectName("ModernDashboard")
         self._panels = panels
+        # Optional sixth surface (the autonomous task view). Kept separate from
+        # ``_cards`` so the existing five telemetry cards keep their positions.
+        self._extra_panel = extra_panel
+        self._extra_card: MagneticCard | None = None
         self._loaded = False
         self._state = "IDLE"
         self.setStyleSheet("""
@@ -348,6 +353,7 @@ class ModernDashboard(QWidget):
         outer.setSpacing(14)
 
         scroll = QScrollArea(self)
+        self._scroll = scroll
         scroll.setObjectName("DashboardScroll")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -478,6 +484,14 @@ class ModernDashboard(QWidget):
         self._ready_group.hide()
         grid.addWidget(quick, 2, 1)
 
+        if extra_panel is not None:
+            extra_card = MagneticCard(extra_panel, content)
+            extra_card.setMinimumWidth(0)
+            extra_card.setSizePolicy(QSizePolicy.Policy.Expanding,
+                                     QSizePolicy.Policy.Preferred)
+            grid.addWidget(extra_card, 3, 0, 1, 2)
+            self._extra_card = extra_card
+
         content_layout.addLayout(grid)
         content_layout.addStretch(1)
         scroll.setWidget(content)
@@ -487,6 +501,14 @@ class ModernDashboard(QWidget):
         self._loading_timer = QTimer(self)
         self._loading_timer.setSingleShot(True)
         self._loading_timer.timeout.connect(self.finish_loading)
+
+    def open_extra(self) -> bool:
+        """Scroll the autonomous-task card into view (no-op when absent)."""
+        if self._extra_card is None:
+            return False
+        self.finish_loading()
+        self._scroll.ensureWidgetVisible(self._extra_card, 0, 24)
+        return True
 
     def showEvent(self, event) -> None:  # noqa: N802 - Qt API
         super().showEvent(event)

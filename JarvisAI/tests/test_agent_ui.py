@@ -323,3 +323,67 @@ class RouteAgentTextTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HUDWiringOrderTests(unittest.TestCase):
+    """Static guard for the bug the Qt tests found only in CI.
+
+    ``HUDMainWindow._init_ui`` built the right-hand menu, which reads
+    ``self._panel_agent``, before the line that assigned it — an
+    ``AttributeError`` that no machine without a working Qt stack can see. The
+    ordering rule is checked from the source instead, so it fails everywhere.
+    """
+
+    SOURCE = JARVIS_DIR / "ui" / "hud_main.py"
+
+    def _init_ui(self):
+        import ast
+
+        tree = ast.parse(self.SOURCE.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "_init_ui":
+                return node
+        self.fail("HUDMainWindow._init_ui was not found")
+
+    @staticmethod
+    def _self_attributes(node):
+        """(lineno, name, is_write) for every ``self.<name>`` in the method."""
+        import ast
+
+        found = []
+        for sub in ast.walk(node):
+            if not isinstance(sub, ast.Attribute):
+                continue
+            if not isinstance(sub.value, ast.Name) or sub.value.id != "self":
+                continue
+            found.append((sub.lineno, sub.attr, isinstance(sub.ctx, ast.Store)))
+        return found
+
+    def test_attributes_are_assigned_before_they_are_read(self):
+        attributes = self._self_attributes(self._init_ui())
+        first_write = {}
+        first_read = {}
+        for line, name, is_write in attributes:
+            if is_write:
+                first_write.setdefault(name, line)
+            else:
+                first_read.setdefault(name, line)
+        problems = [
+            f"self.{name} read on line {first_read[name]} but first assigned on line {line}"
+            for name, line in first_write.items()
+            if name in first_read and first_read[name] < line
+        ]
+        self.assertEqual(problems, [], "\n".join(problems))
+
+    def test_agent_panel_exists_before_the_menu_and_dashboard_use_it(self):
+        node = self._init_ui()
+        writes = [line for line, name, is_write in self._self_attributes(node)
+                  if name == "_panel_agent" and is_write]
+        self.assertTrue(writes, "self._panel_agent is never assigned in _init_ui")
+        first_write = min(writes)
+        for line, name, is_write in self._self_attributes(node):
+            if name in ("_panel_agent", "_dashboard") and not is_write:
+                self.assertLess(
+                    first_write, line,
+                    f"self.{name} used on line {line} before it exists",
+                )

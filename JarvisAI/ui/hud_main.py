@@ -121,6 +121,12 @@ class HUDMainWindow(QMainWindow):
         self._poll_timer.start(1500)
 
     def _init_ui(self):
+        # Built before anything that references it: the right-hand menu and the
+        # dashboard's extra card both need the autonomous panel, and referencing
+        # it before assignment is how this broke the first time.
+        self._panel_agent = AutonomousPanel(self) if AutonomousPanel is not None else None
+        self._agent_stop_button = None
+
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
 
@@ -352,7 +358,6 @@ class HUDMainWindow(QMainWindow):
             self._surface_scheduler,
             self._surface_ring,
         )
-        self._panel_agent = AutonomousPanel(self) if AutonomousPanel is not None else None
         self._dashboard = ModernDashboard(
             dashboard_panels,
             parent=self._workspace_stack,

@@ -462,6 +462,42 @@ class TestUIHologram(unittest.TestCase):
                 self.assertFalse(hud_ui._win._ready)
                 self.assertFalse(hud_ui._ready)
 
+    def test_hologram_first_run_saves_key_and_enables_live_core_when_pin_exists(self):
+        """The key submitted over the HUD is written to the shared config before core starts."""
+        with tempfile.TemporaryDirectory() as directory:
+            config_dir = Path(directory) / "config"
+            config_path = config_dir / "api_keys.json"
+            auth = Mock()
+            auth.is_pin_enrolled.return_value = True
+            with (
+                patch("memory.config_manager.CONFIG_DIR", config_dir),
+                patch("memory.config_manager.CONFIG_FILE", config_path),
+                patch("ui.API_FILE", config_path),
+                patch("ui.hud_main.get_auth_manager", return_value=auth),
+            ):
+                hud_ui = HologramHUDUI(bridge=self.bridge)
+                self._track_widget(hud_ui._win)
+                app.processEvents()
+
+                overlay = hud_ui._setup_controller._overlay
+                self.assertIsInstance(overlay, SetupOverlay)
+                self.assertFalse(hud_ui._win._ready)
+
+                key = "AIzaSyLongEnoughTestGeminiApiKey123"
+                overlay._key_field.setText(key)
+                overlay._submit()
+                app.processEvents()
+
+                self.assertTrue(config_path.exists())
+                import json
+                self.assertEqual(
+                    json.loads(config_path.read_text(encoding="utf-8"))["gemini_api_key"],
+                    key,
+                )
+                self.assertTrue(hud_ui._win._ready)
+                self.assertTrue(hud_ui._ready)
+                self.assertIsNone(hud_ui._setup_controller._overlay)
+
     def test_hologram_api_reconfiguration_keeps_the_same_hud_window(self):
         """An invalid key opens the Gemini form on top of the current HUD."""
         with tempfile.TemporaryDirectory() as directory:

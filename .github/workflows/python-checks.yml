@@ -188,6 +188,9 @@ jobs:
           if ($LASTEXITCODE -ne 1) { throw "status must report 1 when .venv is missing" }
           python tools/windows_setup.py verify
           if ($LASTEXITCODE -ne 1) { throw "verify must fail (exit 1) instead of claiming success without a .venv" }
+          # actions/runner ends a pwsh step with `exit $LASTEXITCODE`, so the
+          # expected non-zero codes above must be cleared explicitly.
+          exit 0
 
       # These are the only automated checks that execute the .bat files on
       # Windows. They cover the two non-destructive paths: menu -> Exit, and a

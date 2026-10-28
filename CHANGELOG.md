@@ -8,6 +8,21 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **RAM profiler** (`JarvisAI/tools/profile_ram.py`, adopted from PR #143): samples
+  the JARVIS process tree (RSS, USS, CPU, system-available RAM) into CSV with
+  `--label`/`--append`, so idle / voice / screen / hologram runs can be compared on
+  the 4 GB target machine. Sampling core is split into testable helpers.
+- **Lazy Qt WebEngine** (`JarvisAI/core/qt_webengine.py`): Chromium is imported on
+  first use instead of with the UI package. `import ui` no longer pulls the Earth
+  globe, the document workspace or `PyQt6.QtWebEngine*` — measured in the sandbox
+  as 137 ms/69 MB → 109 ms/49 MB, and `import ui.hud_main` 164 ms/62 MB → 150 ms/58 MB.
+  The WebEngine path itself is unchanged; it loads when the legacy immersive view is
+  actually constructed.
+- **`docs/CLOUD_FIRST_RAM_AUDIT.md`** — evidence-based audit (what was measured,
+  what was not, what needs the Windows laptop), including the open playback-queue and
+  cloud-scheduler questions.
+- Import-boundary regression tests (`tests/test_lazy_ui_imports.py`) that fail if the
+  HUD import starts dragging in Chromium, OpenCV or the WebEngine panels again.
 - **Autonomous task engine** (`JarvisAI/agent/`): validated planning (model or
   deterministic), bounded execution with retries/backoff/deadlines/loop
   detection, resumable JSON persistence plus an fsynced journal, pause/resume/
@@ -178,6 +193,13 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Screen capture no longer round-trips through PNG**
+  (`JarvisAI/actions/screen_processor.py`): raw screen pixels go straight to the
+  JPEG that is sent. Same bytes, 251 ms → 26 ms per synthetic 1920×1080 frame; the
+  intermediate PNG buffer is gone. Falls back to the old path if PIL is missing or
+  the direct encode fails.
+- **OpenCV is imported on first camera use** instead of at startup; screen capture
+  never needed it.
 - Every silent `except: pass` / `except: continue` handler in the app now records
   through `core.failsoft.suppress()`: **177 `pass` sites and 25 `continue` sites**
   across 60 files, renamed to the subsystem they belong to (for example

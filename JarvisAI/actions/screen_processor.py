@@ -16,11 +16,28 @@ from pathlib import Path
 
 import numpy as np
 
-try:
-    import cv2
+# OpenCV is the heaviest import in this module and the camera is the only thing
+# that needs it: screen capture runs through mss. Importing it with the module
+# charged every launch for a feature most sessions never use, so it is loaded on
+# the first camera call instead (the same pattern security/face_auth.py uses).
+cv2 = None
+_CV2 = False
+_CV2_LOAD_ATTEMPTED = False
+
+
+def _load_cv2() -> bool:
+    """Import OpenCV on first use. Returns True when it is usable."""
+    global cv2, _CV2, _CV2_LOAD_ATTEMPTED
+    if _CV2_LOAD_ATTEMPTED:
+        return _CV2
+    _CV2_LOAD_ATTEMPTED = True
+    try:
+        import cv2 as _cv2
+    except ImportError:
+        return False
+    cv2 = _cv2
     _CV2 = True
-except ImportError:
-    _CV2 = False
+    return True
 
 try:
     import mss
@@ -89,6 +106,21 @@ def _compress(img_bytes: bytes, source_format: str = "PNG") -> tuple[bytes, str]
         return img_bytes, f"image/{source_format.lower()}"
 
 
+def _encode_rgb(rgb: bytes, size) -> tuple[bytes, str]:
+    """Turn raw RGB pixels into the JPEG that is actually sent.
+
+    The bytes come straight from the screen grab, so there is no reason to
+    encode them to PNG and immediately decode them again: on a 1920x1080 screen
+    that intermediate PNG is several megabytes of allocation plus a full
+    deflate/inflate cycle, on a laptop with 4 GB of RAM, on every screenshot.
+    """
+    img = PIL.Image.frombytes("RGB", size, rgb)
+    img.thumbnail((_IMG_MAX_W, _IMG_MAX_H), PIL.Image.BILINEAR)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=_JPEG_Q, optimize=False)
+    return buf.getvalue(), "image/jpeg"
+
+
 def _capture_screen() -> tuple[bytes, str]:
 
     if not _MSS:
@@ -101,14 +133,23 @@ def _capture_screen() -> tuple[bytes, str]:
         monitors = sct.monitors          # [0] = all combined, [1..n] = real screens
         target   = monitors[1] if len(monitors) > 1 else monitors[0]
         shot     = sct.grab(target)
-        png      = mss.tools.to_png(shot.rgb, shot.size)
+
+        if _PIL:
+            try:
+                return _encode_rgb(shot.rgb, shot.size)
+            except Exception as e:
+                # Never lose a frame over an encoding optimisation: fall back to
+                # the PNG path and let _compress() do the same job.
+                print(f"[Vision] ⚠️  Direct RGB encode failed ({e}); using PNG path.")
+
+        png = mss.tools.to_png(shot.rgb, shot.size)
 
     return _compress(png, "PNG")
 
 
 def _cv2_backend() -> int:
     """Return the best OpenCV camera backend for the current OS."""
-    if not _CV2:
+    if not _load_cv2():
         return 0
     os_name = _get_os()
     if os_name == "windows":
@@ -120,7 +161,7 @@ def _cv2_backend() -> int:
 
 def _probe_camera(index: int, backend: int, warmup: int = 5) -> bool:
 
-    if not _CV2:
+    if not _load_cv2():
         return False
     cap = cv2.VideoCapture(index, backend)
     if not cap.isOpened():
@@ -159,7 +200,7 @@ def _get_camera_index() -> int:
 
 
 def _capture_camera() -> tuple[bytes, str]:
-    if not _CV2:
+    if not _load_cv2():
         raise RuntimeError(
             "OpenCV (cv2) is not installed. From the JarvisAI folder, run: "
             f'"{sys.executable}" -m pip install -r requirements.txt'

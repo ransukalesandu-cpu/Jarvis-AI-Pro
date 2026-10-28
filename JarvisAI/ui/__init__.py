@@ -47,16 +47,48 @@ try:
 except Exception:
     QOpenGLWidget = QWidget
     _OPENGL_CANVAS_AVAILABLE = False
-try:
-    from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
-    from PyQt6.QtWebEngineWidgets import QWebEngineView
+from core import qt_webengine
+
+QWebEnginePage = QWebEngineProfile = QWebEngineView = None
+_NEURAL_HAND_WEBVIEW_AVAILABLE = False
+_WEBENGINE_LOAD_ATTEMPTED = False
+
+
+def _load_webengine() -> bool:
+    """Import Qt WebEngine on first use instead of with this package.
+
+    Chromium costs tens of megabytes of mapped libraries and can spawn helper
+    processes, and its only consumers here are the immersive neural-hand view,
+    the Earth globe and the document workspace. See ``core.qt_webengine``.
+    """
+    global QWebEnginePage, QWebEngineProfile, QWebEngineView
+    global _NEURAL_HAND_WEBVIEW_AVAILABLE, _WEBENGINE_LOAD_ATTEMPTED
+    if _WEBENGINE_LOAD_ATTEMPTED:
+        return _NEURAL_HAND_WEBVIEW_AVAILABLE
+    _WEBENGINE_LOAD_ATTEMPTED = True
+    loaded = qt_webengine.load()
+    if not loaded:
+        return False
+    globals().update(loaded)
     _NEURAL_HAND_WEBVIEW_AVAILABLE = True
-except Exception:
-    QWebEnginePage = QWebEngineProfile = QWebEngineView = None
-    _NEURAL_HAND_WEBVIEW_AVAILABLE = False
-from core.earth_globe import EarthGlobePanel
+    return True
+
+
+def _earth_panel_class():
+    """Import the 3D globe panel (MapLibre + WebEngine) on demand."""
+    from core.earth_globe import EarthGlobePanel
+
+    return EarthGlobePanel
+
+
+def _workspace_class():
+    """Import the document/media workspace (WebEngine + QtPdf) on demand."""
+    from core.hud_workspace import HudWorkspace
+
+    return HudWorkspace
+
+
 from core.neural_viz import NeuralVizMixin
-from core.hud_workspace import HudWorkspace
 from core.jarvis_logo_overlay import JarvisLogoOverlay
 
 from core import failsoft
@@ -1461,7 +1493,7 @@ class NeuralImmersiveOverlay(QWidget):
 
         root.addWidget(self.hud, stretch=1)
 
-        if _NEURAL_HAND_WEBVIEW_AVAILABLE:
+        if _load_webengine():
             self._neural_hand_view = QWebEngineView(self)
             self._neural_hand_view.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
             self._neural_hand_view.setStyleSheet("background: transparent; border: none;")
@@ -4513,9 +4545,11 @@ class MainWindow(QMainWindow):
         self._hud_cam_stack = QStackedWidget()
         self._hud_cam_stack.addWidget(self._hologram_mode_stack)
         self._hud_cam_stack.addWidget(_cam_cont)
+        EarthGlobePanel = _earth_panel_class()
         self._earth_panel = EarthGlobePanel()
         self._earth_panel.close_requested.connect(self._close_earth)
         self._hud_cam_stack.addWidget(self._earth_panel)
+        HudWorkspace = _workspace_class()
         self._workspace = HudWorkspace()
         self._news_briefing_overlay = NewsBriefingOverlay(self._hud_cam_stack)
         self._workspace.news_briefing_items.connect(self._show_news_briefing_overlay)
@@ -4648,7 +4682,7 @@ class MainWindow(QMainWindow):
         self._neural_hand_profile = None
         if self._immersive_overlay._neural_hand_view is not None:
             server = self._workspace._holo_server
-            if server is not None and QWebEnginePage is not None:
+            if server is not None and _load_webengine():
                 profile = self._workspace._holo_profile
                 if profile is None:
                     profile = QWebEngineProfile(self._immersive_overlay._neural_hand_view)
@@ -5376,7 +5410,7 @@ class MainWindow(QMainWindow):
     def _grant_neural_hand_camera(self, origin, feature) -> None:
         page = self._neural_hand_page
         server = self._workspace._holo_server
-        if page is None:
+        if page is None or not _load_webengine():
             return
         try:
             host = QUrl(origin).host().lower()

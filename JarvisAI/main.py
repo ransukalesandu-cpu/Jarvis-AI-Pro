@@ -1702,6 +1702,20 @@ class JarvisLive:
                 wake_hint = "say 'Hey Jarvis', " + wake_hint
             self.ui.write_log(f"SYS: I'm asleep — {wake_hint} first.")
             return
+        # Autonomous-task commands (start / stop / pause / resume / status /
+        # report) are answered locally so they keep working while Live is busy,
+        # rate-limited or disconnected. Anything unrelated returns None and the
+        # sentence continues to the model unchanged.
+        agent_reply = self._route_agent_text(str(text or "").strip())
+        if agent_reply is not None:
+            self._interrupted = False
+            try:
+                self.ui.write_log(f"JARVIS: {agent_reply}")
+            except Exception:
+                pass
+            if self._loop and self.session:
+                self.speak(agent_reply)
+            return
         if not self._loop or not self.session:
             self._start_hybrid_text_fallback(str(text or "").strip())
             return
@@ -1718,6 +1732,35 @@ class JarvisLive:
             ),
             self._loop
         )
+
+    def _route_agent_text(self, text: str) -> str | None:
+        """Answer an autonomous-task command locally; None if it is not one."""
+        if not text:
+            return None
+        try:
+            from agent.integration import get_service
+
+            service = get_service()
+        except Exception:
+            return None
+        try:
+            from agent.voice import VoiceCommandRouter
+
+            command = VoiceCommandRouter().parse(text)
+            if command is None:
+                return None
+            # Only intercept clearly agent-shaped sentences. A running task makes
+            # stop/pause/resume/status/report meaningful even without a prefix.
+            if command.action == "run" and service.runner.active_task is not None:
+                return ("I'm already working on a task. Say stop if you want me "
+                        "to switch.")
+            return service.handle_voice(text)
+        except Exception as exc:
+            try:
+                self.ui.write_log(f"AGENT: local command failed: {type(exc).__name__}")
+            except Exception:
+                pass
+            return None
 
     @staticmethod
     def _normalize_briefing_language(value: str) -> str:
@@ -4715,6 +4758,14 @@ def main():
         live = startup.get("jarvis")
         if live is not None:
             live.request_shutdown()
+        # An autonomous task must not keep running (or hold capture handles)
+        # after the user closes the app.
+        try:
+            from agent.integration import shutdown_service
+
+            shutdown_service()
+        except Exception:
+            pass
 
     app.aboutToQuit.connect(stop_live_on_app_exit)
 

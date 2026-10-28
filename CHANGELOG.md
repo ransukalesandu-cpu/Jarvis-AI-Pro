@@ -8,6 +8,25 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Autonomous task engine** (`JarvisAI/agent/`): validated planning (model or
+  deterministic), bounded execution with retries/backoff/deadlines/loop
+  detection, resumable JSON persistence plus an fsynced journal, pause/resume/
+  cancel, and a final report. New `autonomous_task` voice tool (NON_BLOCKING),
+  per-step risk classification, and approval through the existing confirmation
+  gate.
+- **Screen vision and computer use**: on-demand capture with coordinate mapping
+  and buffer release, local OCR, Gemini/OpenAI vision with explicit uncertainty,
+  accessibility-tree lookup, and validated named-target desktop actions with
+  dry-run and post-action re-observation.
+- **UI**: live autonomous-task card on the Bento dashboard, HUD menu/rail entry
+  with an always-available STOP, and a compact Dynamic-Island status widget shown
+  when the HUD is minimised. The hologram home screen is unchanged.
+- `docs/AUTONOMOUS_AGENT.md` — configuration, security model, step kinds,
+  tests and known limitations.
+- Six new test modules (`test_agent_core/runner/screen/voice/integration/ui.py`)
+  covering state transitions, persistence/resume, retries and budgets,
+  cancellation, policy boundaries, vision/OCR fallbacks, computer-use validation,
+  voice routing and the Qt surfaces.
 - `docs/DEVELOPMENT.md` — setup, test, lint and CI workflow for contributors,
   including the current lint-debt table and a ratchet plan.
 - `requirements-dev.txt` — test/lint tooling separated from the runtime

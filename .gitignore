@@ -46,6 +46,8 @@ JarvisAI/config/auth_state.json.tmp
 JarvisAI/config/voice_id.dat
 JarvisAI/config/voice_id.tmp
 JarvisAI/logs/
+# Autonomous task state (snapshots, journals, queue) is per-machine runtime data
+JarvisAI/memory/agent/
 logs/
 master_voice.emb*
 Jarvis_Received_Files/

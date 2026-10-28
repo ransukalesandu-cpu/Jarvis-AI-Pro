@@ -266,6 +266,30 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(payloads, [])
         self.assertFalse(overlay._error_label.isHidden())
 
+    def test_recovery_setup_requires_replacement_even_when_old_key_exists(self):
+        """An invalid stored key must not be accepted by the keep-existing shortcut."""
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "api_keys.json"
+            config_path.write_text(
+                '{"gemini_api_key":"known-invalid-old-key"}',
+                encoding="utf-8",
+            )
+            with patch("ui.API_FILE", config_path):
+                overlay = self._track_widget(
+                    SetupOverlay(allow_keep_existing=False)
+                )
+
+        payloads = []
+        overlay.done.connect(payloads.append)
+        overlay._submit()
+        self.assertEqual(payloads, [])
+        self.assertFalse(overlay._error_label.isHidden())
+
+        replacement = "AIzaSyNewReplacementKeyLongEnough"
+        overlay._key_field.setText(replacement)
+        overlay._submit()
+        self.assertEqual(payloads, [{"gemini_api_key": replacement}])
+
     def test_hologram_visualizers_use_transparent_backgrounds(self):
         """Both original hologram renderers must preserve transparent pixels."""
         for widget_type in (NeuralWireframeHead, BihansaHologramWidget):
@@ -421,7 +445,7 @@ class TestUIHologram(unittest.TestCase):
             auth = Mock()
             auth.is_pin_enrolled.return_value = False
             with (
-                patch("memory.config_manager.is_configured", return_value=False),
+                patch("memory.config_manager.CONFIG_FILE", config_path),
                 patch("ui.API_FILE", config_path),
                 patch("ui.hud_main.get_auth_manager", return_value=auth),
             ):
@@ -438,6 +462,46 @@ class TestUIHologram(unittest.TestCase):
                 self.assertFalse(hud_ui._win._ready)
                 self.assertFalse(hud_ui._ready)
 
+    def test_hologram_first_run_saves_key_and_enables_live_core_when_pin_exists(self):
+        """The key submitted over the HUD is written to the shared config before core starts."""
+        with tempfile.TemporaryDirectory() as directory:
+            config_dir = Path(directory) / "config"
+            config_path = config_dir / "api_keys.json"
+            auth = Mock()
+            auth.is_pin_enrolled.return_value = True
+            with (
+                patch("memory.config_manager.CONFIG_DIR", config_dir),
+                patch("memory.config_manager.CONFIG_FILE", config_path),
+                patch("ui.API_FILE", config_path),
+                patch.dict(os.environ, {"GEMINI_API_KEY": ""}),
+                patch("ui.hud_main.get_auth_manager", return_value=auth),
+            ):
+                hud_ui = HologramHUDUI(bridge=self.bridge)
+                self._track_widget(hud_ui._win)
+                app.processEvents()
+
+                overlay = hud_ui._setup_controller._overlay
+                self.assertIsInstance(overlay, SetupOverlay)
+                self.assertFalse(hud_ui._win._ready)
+
+                key = "AIzaSyLongEnoughTestGeminiApiKey123"
+                overlay._key_field.setText(key)
+                overlay._submit()
+                app.processEvents()
+
+                self.assertTrue(config_path.exists())
+                import json
+                self.assertEqual(
+                    json.loads(config_path.read_text(encoding="utf-8"))["gemini_api_key"],
+                    key,
+                )
+                self.assertTrue(hud_ui._setup_controller._api_configured())
+                # Allow the zero-delay Qt callback to finish the setup transition.
+                QTest.qWait(50)
+                self.assertTrue(hud_ui._win._ready)
+                self.assertTrue(hud_ui._ready)
+                self.assertIsNone(hud_ui._setup_controller._overlay)
+
     def test_hologram_api_reconfiguration_keeps_the_same_hud_window(self):
         """An invalid key opens the Gemini form on top of the current HUD."""
         with tempfile.TemporaryDirectory() as directory:
@@ -447,7 +511,6 @@ class TestUIHologram(unittest.TestCase):
             auth.is_pin_enrolled.return_value = True
             with (
                 patch("memory.config_manager.CONFIG_FILE", config_path),
-                patch("memory.config_manager.is_configured", return_value=True),
                 patch("ui.API_FILE", config_path),
                 patch("ui.hud_main.get_auth_manager", return_value=auth),
             ):
@@ -462,26 +525,51 @@ class TestUIHologram(unittest.TestCase):
 
                 self.assertIs(hud_ui._win, original_window)
                 self.assertTrue(hud_ui._win.isVisible())
-                self.assertIsInstance(hud_ui._setup_controller._overlay, SetupOverlay)
+                overlay = hud_ui._setup_controller._overlay
+                self.assertIsInstance(overlay, SetupOverlay)
+                self.assertFalse(overlay._allow_keep_existing)
+                self.assertFalse(hud_ui._win._ready)
+
+                # Blank submit cannot silently recycle the rejected stored key.
+                payloads = []
+                overlay.done.connect(payloads.append)
+                overlay._submit()
+                self.assertEqual(payloads, [])
+                self.assertFalse(overlay._error_label.isHidden())
+
+                # A clearly malformed/short key is rejected before it is saved.
+                with patch("memory.config_manager.save_api_keys") as save_keys:
+                    hud_ui._setup_controller._save_gemini_key(
+                        {"gemini_api_key": "short"}
+                    )
+                    save_keys.assert_not_called()
+                self.assertTrue(overlay._error_label.isVisible())
                 self.assertFalse(hud_ui._win._ready)
 
     def test_hologram_hud_ui_adapter(self):
         """The configured adapter starts the live core without opening setup."""
-        auth = Mock()
-        auth.is_pin_enrolled.return_value = True
-        with (
-            patch("memory.config_manager.is_configured", return_value=True),
-            patch("ui.hud_main.get_auth_manager", return_value=auth),
-        ):
-            hud_ui = HologramHUDUI(bridge=self.bridge)
-            self._track_widget(hud_ui._win)
-            app.processEvents()
-            self.assertTrue(hud_ui._win._ready)
-            self.assertIsNone(hud_ui._setup_controller._overlay)
-            self.assertIsNotNone(hud_ui)
-            hud_ui.set_state("SPEAKING")
-            self.assertEqual(self.bridge.current_state, "SPEAKING")
-            hud_ui.set_audio_level(0.85)
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "api_keys.json"
+            config_path.write_text(
+                '{"gemini_api_key":"AIzaSyLongEnoughTestGeminiApiKey123"}',
+                encoding="utf-8",
+            )
+            auth = Mock()
+            auth.is_pin_enrolled.return_value = True
+            with (
+                patch("memory.config_manager.CONFIG_FILE", config_path),
+                patch("ui.API_FILE", config_path),
+                patch("ui.hud_main.get_auth_manager", return_value=auth),
+            ):
+                hud_ui = HologramHUDUI(bridge=self.bridge)
+                self._track_widget(hud_ui._win)
+                app.processEvents()
+                self.assertTrue(hud_ui._win._ready)
+                self.assertIsNone(hud_ui._setup_controller._overlay)
+                self.assertIsNotNone(hud_ui)
+                hud_ui.set_state("SPEAKING")
+                self.assertEqual(self.bridge.current_state, "SPEAKING")
+                hud_ui.set_audio_level(0.85)
 
 
 if __name__ == "__main__":

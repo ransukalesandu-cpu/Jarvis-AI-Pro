@@ -649,9 +649,16 @@ class _HudSetupController(QObject):
         self._win.sig_setup_requested.connect(self.show_gemini_setup)
 
     def _api_configured(self) -> bool:
+        """Match the live Gemini session's source of truth: the local config file.
+
+        `JarvisLive._get_api_key` reads config/api_keys.json directly, so an
+        environment-only key must not mark the HUD ready when that file is
+        missing or has no usable key.
+        """
         try:
-            from memory.config_manager import is_configured
-            return bool(is_configured())
+            from memory.config_manager import load_api_keys
+            key = load_api_keys().get("gemini_api_key", "")
+            return isinstance(key, str) and len(key.strip()) > 15
         except Exception:
             return False
 
@@ -678,7 +685,12 @@ class _HudSetupController(QObject):
 
         try:
             from ui import SetupOverlay
-            overlay = SetupOverlay(self._win.centralWidget())
+            # This overlay is only used when the saved key is missing or rejected.
+            # Never allow the rejected value to be silently re-submitted as "keep".
+            overlay = SetupOverlay(
+                self._win.centralWidget(),
+                allow_keep_existing=False,
+            )
             central = self._win.centralWidget()
             width, height = 480, 370
             overlay.setGeometry(
@@ -713,8 +725,18 @@ class _HudSetupController(QObject):
         key = str(payload.get("gemini_api_key", "") if isinstance(payload, dict) else "").strip()
         if not key:
             if self._overlay is not None:
-                self._overlay._error_label.setText("Enter a Gemini API key to continue.")
+                self._overlay._error_label.setText("Enter a replacement Gemini API key to continue.")
                 self._overlay._error_label.show()
+                self._overlay._key_field.setFocus()
+            return
+        if len(key) <= 15:
+            if self._overlay is not None:
+                self._overlay._error_label.setText(
+                    "This key is too short to be a valid Gemini API key. "
+                    "Check the full key and try again."
+                )
+                self._overlay._error_label.show()
+                self._overlay._key_field.setFocus()
             return
         try:
             # Use the shared config manager so the key is written to the same

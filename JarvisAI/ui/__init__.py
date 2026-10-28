@@ -2108,8 +2108,9 @@ class SetupOverlay(QWidget):
 
     done = pyqtSignal(object)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, allow_keep_existing: bool = True):
         super().__init__(parent)
+        self._allow_keep_existing = bool(allow_keep_existing)
         self.setObjectName("GeminiSetupOverlay")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
@@ -2166,10 +2167,12 @@ class SetupOverlay(QWidget):
         field = QLineEdit()
         field.setObjectName("GeminiApiKeyField")
         field.setEchoMode(QLineEdit.EchoMode.Password)
-        field.setPlaceholderText(
-            "Saved locally · leave blank to keep" if self._existing_gemini_key
-            else "Paste your Gemini API key"
-        )
+        if self._allow_keep_existing and self._existing_gemini_key:
+            field.setPlaceholderText("Saved locally · leave blank to keep")
+        elif self._existing_gemini_key:
+            field.setPlaceholderText("Paste a replacement Gemini API key")
+        else:
+            field.setPlaceholderText("Paste your Gemini API key")
         field.setMinimumHeight(40)
         field.setFont(QFont("Consolas", 10))
         field.setStyleSheet("""
@@ -2244,9 +2247,12 @@ class SetupOverlay(QWidget):
         self._show_key_button.setText("HIDE" if visible else "SHOW")
 
     def _submit(self) -> None:
-        # An existing key can be kept by leaving the field blank; first-run still
-        # requires a non-empty value. Never emit optional provider credentials.
-        key = self._key_field.text().strip() or self._existing_gemini_key
+        # Existing credentials may only be retained in a normal setup/review.
+        # Recovery from a rejected/missing key must force the user to enter a new one.
+        entered_key = self._key_field.text().strip()
+        key = entered_key or (
+            self._existing_gemini_key if self._allow_keep_existing else ""
+        )
         if not key:
             self._key_field.setStyleSheet(self._key_field.styleSheet() + """
                 QLineEdit#GeminiApiKeyField { border: 1px solid #e97869; }

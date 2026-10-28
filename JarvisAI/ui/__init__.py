@@ -7941,11 +7941,13 @@ class MainWindow(QMainWindow):
             self._leave_immersive_view()
         ov = SetupOverlay(self.centralWidget())
         cw = self.centralWidget()
-        ow, oh = 440, 490
+        # A compact, centered credential card: one required Gemini key, no provider list.
+        ow, oh = 480, 370
         ov.setGeometry(
-            (cw.width()  - ow) // 2,
-            (cw.height() - oh) // 2,
-            ow, oh,
+            max(12, (cw.width() - ow) // 2),
+            max(12, (cw.height() - oh) // 2),
+            min(ow, max(300, cw.width() - 24)),
+            min(oh, max(300, cw.height() - 24)),
         )
         ov.done.connect(self._on_setup_done)
         ov.show()

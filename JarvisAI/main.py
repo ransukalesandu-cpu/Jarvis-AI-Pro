@@ -4658,14 +4658,12 @@ class JarvisLive:
                 return
 
 def _select_desktop_ui_mode(*, hud_available: bool, api_configured: bool, pin_enrolled: bool) -> str:
-    """Use the new HUD only when its module and required first-run setup are ready.
+    """Keep the upgraded Hologram HUD selected through first-run setup.
 
-    The legacy UI remains the safe setup path on a fresh install; it must never
-    be bypassed just because --hologram-hud was supplied.
+    API-key and owner-PIN enrollment are handled inside the HUD. Missing setup
+    must never route the user back to the legacy desktop window.
     """
-    if hud_available and api_configured and pin_enrolled:
-        return "hologram"
-    return "setup"
+    return "hologram" if hud_available else "unavailable"
 
 
 def main():
@@ -4688,8 +4686,11 @@ def main():
             traceback.print_exc()
         return
 
-    if JarvisUI is None:
-        print("[JARVIS] Desktop UI dependencies are unavailable. Use --headless or install the UI dependencies.")
+    if HologramHUDUI is None:
+        print(
+            "[JARVIS] The upgraded Hologram HUD could not be loaded. "
+            "The legacy UI will not be opened as a fallback; repair/install the UI dependencies."
+        )
         return
     from PyQt6.QtCore import QTimer
     from PyQt6.QtWidgets import QApplication
@@ -4742,29 +4743,25 @@ def main():
             pin_enrolled=_pin_enrolled,
         )
         if _ui_mode == "hologram":
-            print("[JARVIS] Launching the upgraded Neural Wireframe Hologram HUD.")
-            ui = HologramHUDUI()
-        else:
             _missing_setup = []
             if not _api_configured:
                 _missing_setup.append("Gemini API key")
             if not _pin_enrolled:
                 _missing_setup.append("owner PIN")
-            if HologramHUDUI is None:
-                _missing_setup.append("Hologram HUD module (import unavailable)")
-            if _setup_check_error is not None and not _missing_setup:
+            if _setup_check_error is not None:
                 _missing_setup.append("setup status could not be verified")
-            _reason = ", ".join(_missing_setup) or "setup verification"
-            print(
-                "[JARVIS] Opening first-run setup UI because the following "
-                f"requirement(s) are missing: {_reason}."
-            )
-            print(
-                "[JARVIS] Finish setup, close JARVIS, and launch it again. "
-                "The next launch will use the upgraded Hologram HUD once the "
-                "Gemini API key and owner PIN are both configured."
-            )
-            ui = JarvisUI("face.png")
+            if _missing_setup:
+                print(
+                    "[JARVIS] Keeping the Hologram HUD active during first-run setup; "
+                    f"pending: {', '.join(_missing_setup)}."
+                )
+            else:
+                print("[JARVIS] Launching the upgraded Neural Wireframe Hologram HUD.")
+            ui = HologramHUDUI()
+        else:
+            # Never instantiate the legacy UI just because setup is incomplete.
+            print("[JARVIS] Hologram HUD is unavailable; refusing legacy UI fallback.")
+            return
         startup["ui"] = ui
 
         def runner():

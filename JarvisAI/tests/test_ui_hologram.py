@@ -18,7 +18,7 @@ if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFOR
 
 import unittest
 import tempfile
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import numpy as np
 
 from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, Qt
@@ -413,14 +413,75 @@ class TestUIHologram(unittest.TestCase):
             hud.centralWidget().width(),
         )
 
+    def test_hologram_stays_visible_with_setup_overlay_when_gemini_key_is_missing(self):
+        """A fresh install displays the Gemini form over the HUD, not a legacy window."""
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "api_keys.json"
+            config_path.write_text("{}", encoding="utf-8")
+            auth = Mock()
+            auth.is_pin_enrolled.return_value = False
+            with (
+                patch("memory.config_manager.is_configured", return_value=False),
+                patch("ui.API_FILE", config_path),
+                patch("ui.hud_main.get_auth_manager", return_value=auth),
+            ):
+                hud_ui = HologramHUDUI(bridge=self.bridge)
+                self._track_widget(hud_ui._win)
+                app.processEvents()
+
+                self.assertTrue(hud_ui._win.isVisible())
+                self.assertIsInstance(hud_ui._setup_controller._overlay, SetupOverlay)
+                self.assertIs(
+                    hud_ui._setup_controller._overlay.parentWidget(),
+                    hud_ui._win.centralWidget(),
+                )
+                self.assertFalse(hud_ui._win._ready)
+                self.assertFalse(hud_ui._ready)
+
+    def test_hologram_api_reconfiguration_keeps_the_same_hud_window(self):
+        """An invalid key opens the Gemini form on top of the current HUD."""
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "api_keys.json"
+            config_path.write_text('{"gemini_api_key":"existing-gemini-key"}', encoding="utf-8")
+            auth = Mock()
+            auth.is_pin_enrolled.return_value = True
+            with (
+                patch("memory.config_manager.CONFIG_FILE", config_path),
+                patch("memory.config_manager.is_configured", return_value=True),
+                patch("ui.API_FILE", config_path),
+                patch("ui.hud_main.get_auth_manager", return_value=auth),
+            ):
+                hud_ui = HologramHUDUI(bridge=self.bridge)
+                self._track_widget(hud_ui._win)
+                app.processEvents()
+                self.assertTrue(hud_ui._win._ready)
+
+                original_window = hud_ui._win
+                hud_ui.prompt_reconfig()
+                app.processEvents()
+
+                self.assertIs(hud_ui._win, original_window)
+                self.assertTrue(hud_ui._win.isVisible())
+                self.assertIsInstance(hud_ui._setup_controller._overlay, SetupOverlay)
+                self.assertFalse(hud_ui._win._ready)
+
     def test_hologram_hud_ui_adapter(self):
-        """Test HologramHUDUI adapter class wrapping HUDMainWindow."""
-        ui = HologramHUDUI(bridge=self.bridge)
-        self._track_widget(ui._win)
-        self.assertIsNotNone(ui)
-        ui.set_state("SPEAKING")
-        self.assertEqual(self.bridge.current_state, "SPEAKING")
-        ui.set_audio_level(0.85)
+        """The configured adapter starts the live core without opening setup."""
+        auth = Mock()
+        auth.is_pin_enrolled.return_value = True
+        with (
+            patch("memory.config_manager.is_configured", return_value=True),
+            patch("ui.hud_main.get_auth_manager", return_value=auth),
+        ):
+            hud_ui = HologramHUDUI(bridge=self.bridge)
+            self._track_widget(hud_ui._win)
+            app.processEvents()
+            self.assertTrue(hud_ui._win._ready)
+            self.assertIsNone(hud_ui._setup_controller._overlay)
+            self.assertIsNotNone(hud_ui)
+            hud_ui.set_state("SPEAKING")
+            self.assertEqual(self.bridge.current_state, "SPEAKING")
+            hud_ui.set_audio_level(0.85)
 
 
 if __name__ == "__main__":

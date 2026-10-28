@@ -75,9 +75,14 @@ def _base_dir() -> Path:
         return Path(sys.executable).parent
     return Path(__file__).resolve().parent
 
-BASE_DIR   = _base_dir()
-CONFIG_DIR = BASE_DIR / "config"
-API_FILE   = CONFIG_DIR / "api_keys.json"
+BASE_DIR = _base_dir()
+# UI assets live beside this package, but credentials are shared with the live
+# assistant in JarvisAI/config/api_keys.json (or beside the frozen executable).
+if getattr(sys, "frozen", False):
+    CONFIG_DIR = Path(sys.executable).parent / "config"
+else:
+    CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
+API_FILE = CONFIG_DIR / "api_keys.json"
 _QUICK_GRAPHICS_API_REQUESTED = False
 
 

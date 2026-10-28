@@ -27,31 +27,40 @@ class TestLaunchersAndImports(unittest.TestCase):
             "hologram",
         )
 
-    def test_desktop_ui_keeps_first_run_setup_when_api_key_is_missing(self):
+    def test_desktop_ui_keeps_hologram_when_gemini_key_is_missing(self):
         import main as root_main
         self.assertEqual(
             root_main._select_desktop_ui_mode(
                 hud_available=True, api_configured=False, pin_enrolled=True
             ),
-            "setup",
+            "hologram",
         )
 
-    def test_desktop_ui_keeps_first_run_setup_when_owner_pin_is_missing(self):
+    def test_desktop_ui_keeps_hologram_when_owner_pin_is_missing(self):
         import main as root_main
         self.assertEqual(
             root_main._select_desktop_ui_mode(
                 hud_available=True, api_configured=True, pin_enrolled=False
             ),
-            "setup",
+            "hologram",
         )
 
-    def test_desktop_ui_falls_back_when_hologram_module_is_unavailable(self):
+    def test_desktop_ui_keeps_hologram_when_both_setup_steps_are_missing(self):
         import main as root_main
         self.assertEqual(
             root_main._select_desktop_ui_mode(
-                hud_available=False, api_configured=True, pin_enrolled=True
+                hud_available=True, api_configured=False, pin_enrolled=False
             ),
-            "setup",
+            "hologram",
+        )
+
+    def test_desktop_ui_fails_closed_instead_of_opening_legacy_ui_if_hud_is_unavailable(self):
+        import main as root_main
+        self.assertEqual(
+            root_main._select_desktop_ui_mode(
+                hud_available=False, api_configured=False, pin_enrolled=False
+            ),
+            "unavailable",
         )
 
     def test_import_voice_persona(self):

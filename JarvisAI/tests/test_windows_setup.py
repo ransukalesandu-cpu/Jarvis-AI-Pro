@@ -69,9 +69,9 @@ def project(tmp_path: Path) -> Path:
     return root
 
 
-def make_venv(root: Path, version: str = "3.12") -> Path:
+def make_venv(root: Path) -> Path:
     """Create the pieces of a venv that ``venv_problem`` inspects."""
-    python = root / ".venv" / ("Scripts/python.exe" if ws.os.name == "nt" else "bin/python")
+    python = ws.venv_python(root)          # Scripts/python.exe on Windows, bin/python elsewhere
     python.parent.mkdir(parents=True, exist_ok=True)
     python.write_text("#!/bin/sh\n", encoding="utf-8")
     return python
@@ -145,7 +145,9 @@ def test_select_interpreter_returns_none_for_unsupported_only():
     assert ws.select_interpreter([]) is None
 
 
-def test_find_interpreters_drops_versions_that_do_not_answer():
+def test_find_interpreters_drops_versions_that_do_not_answer(monkeypatch):
+    """A path the launcher lists but that no longer runs must not be offered."""
+    monkeypatch.setattr(ws, "_IS_WINDOWS", True)
     run = FakeRun([
         ("py -0p", completed(0, "-V:3.12 * C:\\Python312\\python.exe\n")),
         (lambda cmd: " -c " in cmd and "print('%d.%d'" in cmd, completed(1, "")),
@@ -153,8 +155,22 @@ def test_find_interpreters_drops_versions_that_do_not_answer():
     assert ws.find_interpreters(run) == []
 
 
-def test_find_interpreters_survives_a_missing_py_launcher():
+def test_find_interpreters_confirms_a_listed_path_before_offering_it(monkeypatch):
+    monkeypatch.setattr(ws, "_IS_WINDOWS", True)
+    run = FakeRun([
+        ("py -0p", completed(0, "-V:3.12 * C:\\Python312\\python.exe\n")),
+        # Only the path the launcher listed answers; nothing else may match.
+        (lambda cmd: cmd.startswith("C:\\Python312\\python.exe") and " -c " in cmd,
+         completed(0, "3.12")),
+    ])
+    found = ws.find_interpreters(run)
+    assert [item.command for item in found] == [[r"C:\Python312\python.exe"]]
+    assert found[0].version == (3, 12)
+
+
+def test_find_interpreters_survives_a_missing_py_launcher(monkeypatch):
     """A machine without the py launcher must still be usable via PATH."""
+    monkeypatch.setattr(ws, "_IS_WINDOWS", True)
 
     class LauncherMissing(FakeRun):
         def __call__(self, args, **kwargs):

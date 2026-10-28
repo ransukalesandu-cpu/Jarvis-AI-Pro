@@ -78,6 +78,10 @@ MAX_PY = (3, 13)          # highest version with a classifier and a CI job
 PREFERRED_PY = (3, 12)    # recommended by README + optional SpeechBrain packages
 SUPPORTED = "3.11–3.13"
 
+#: One flag for "this is Windows", so tests can exercise the Windows code paths
+#: (the ``py`` launcher, ``Scripts/python.exe``) on any OS.
+_IS_WINDOWS = os.name == "nt"
+
 ENTRY_SCRIPT = "main.py"
 ENTRY_ARGS = ("--hologram-hud",)
 SETUP_SCRIPT = "setup.py"
@@ -189,7 +193,7 @@ def venv_dir(project: Path | None = None) -> Path:
 def venv_python(project: Path | None = None) -> Path:
     """Path to the interpreter inside the project venv (Windows layout)."""
     base = venv_dir(project)
-    return base / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    return base / ("Scripts/python.exe" if _IS_WINDOWS else "bin/python")
 
 
 # ── interpreter discovery ────────────────────────────────────────────────────
@@ -261,11 +265,15 @@ def find_interpreters(run: Runner = _run) -> list[Interpreter]:
     """
     candidates: list[Interpreter] = []
 
-    if os.name == "nt":
+    if _IS_WINDOWS:
         try:
             listed = run(["py", "-0p"], timeout=20)
             for path, version in parse_py_launcher_list(getattr(listed, "stdout", "") or ""):
-                candidates.append(Interpreter([path], version))
+                # The launcher can list a path that no longer runs (uninstalled or
+                # moved Python), so every entry is confirmed before it is offered.
+                confirmed = _version_of([path], run)
+                if confirmed is not None:
+                    candidates.append(Interpreter([path], confirmed))
         except (OSError, subprocess.SubprocessError):
             pass
 

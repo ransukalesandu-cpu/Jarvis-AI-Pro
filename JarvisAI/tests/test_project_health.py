@@ -238,3 +238,96 @@ class TestInternalImportGraph:
                         f"`{node.module}` no longer defines `{alias.name}`"
                     )
         assert not problems, "Broken internal imports:\n" + "\n".join(problems)
+
+
+class TestFailSoftDiscipline:
+    """Silent handlers are how two panels broke without anyone noticing.
+
+    `ruff S110/S112` enforces the mechanical half of this in CI. These tests keep
+    the *recorder* itself honest: an approved handler must actually reach it, and
+    the module must stay dependency-free enough to be imported from anywhere.
+    """
+
+    def test_failsoft_imports_only_the_standard_library(self):
+        source = (REPO_ROOT / "JarvisAI" / "core" / "failsoft.py").read_text(
+            encoding="utf-8"
+        )
+        imported = set()
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module.split(".")[0])
+        assert imported <= {"__future__", "collections", "dataclasses", "logging", "os", "sys", "threading", "time"}, imported
+
+    def test_suppress_records_what_it_is_asked_to_swallow(self):
+        from core import failsoft
+
+        failsoft.reset()
+        try:
+            try:
+                raise OSError("no camera")
+            except OSError:
+                failsoft.suppress("tests:probe_camera")
+            rows = failsoft.summary()
+        finally:
+            failsoft.reset()
+
+        assert rows and rows[0]["feature"] == "tests:probe_camera"
+        assert rows[0]["exception_type"] == "OSError"
+
+    _BROAD = {"Exception", "BaseException", "ExceptionGroup", "BaseExceptionGroup"}
+
+    @classmethod
+    def _is_broad(cls, handler) -> bool:
+        """Mirror ruff S110/S112: only *broad* catches count as a silent handler.
+
+        `except FileNotFoundError: pass` is a deliberate, specific decision and
+        ruff leaves it alone; `except Exception: pass` is the pattern that hides
+        bugs, and that is what this test refuses to accept.
+        """
+        if handler.type is None:
+            return True  # bare `except:`
+
+        def names(node):
+            if isinstance(node, ast.Name):
+                return {node.id}
+            if isinstance(node, ast.Attribute):
+                return {node.attr}
+            if isinstance(node, ast.Tuple):
+                found = set()
+                for element in node.elts:
+                    found |= names(element)
+                return found
+            return set()
+
+        return bool(names(handler.type) & cls._BROAD)
+
+    def test_no_module_uses_a_silent_broad_handler(self):
+        """A local backstop for the lint rule, so the invariant is testable.
+
+        Comment-only removal is not allowed to reintroduce `except Exception:
+        pass`; the handler must route through core.failsoft.suppress().
+        """
+        offenders = []
+        for path in sorted((REPO_ROOT / "JarvisAI").rglob("*.py")):
+            if "tests" in path.parts or path.name == "failsoft.py":
+                continue
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+            except SyntaxError:  # pragma: no cover - compileall covers this
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ExceptHandler):
+                    continue
+                if not self._is_broad(node):
+                    continue
+                first = node.body[0] if node.body else None
+                if isinstance(first, (ast.Pass, ast.Continue)):
+                    offenders.append(
+                        f"{path.relative_to(REPO_ROOT)}:{first.lineno}"
+                    )
+        assert not offenders, (
+            "Use core.failsoft.suppress() instead of a silent broad handler:\n"
+            + "\n".join(offenders)
+        )

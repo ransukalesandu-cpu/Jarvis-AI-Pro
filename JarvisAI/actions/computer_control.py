@@ -15,6 +15,8 @@ import time
 import random
 from pathlib import Path
 
+from core import failsoft
+
 try:
     import pyautogui
     pyautogui.FAILSAFE = True
@@ -74,7 +76,7 @@ def _safe_screenshot_path(requested: str | None) -> Path:
                 p.parent.mkdir(parents=True, exist_ok=True)
                 return p
     except Exception:
-        pass
+        failsoft.suppress('actions.computer_control:_safe_screenshot_path')
     return fallback
 
 def _require_pyautogui():
@@ -153,7 +155,7 @@ def _user_profile() -> dict:
             identity = data.get("identity", {})
             return {k: v.get("value", "") for k, v in identity.items()}
     except Exception:
-        pass
+        failsoft.suppress('actions.computer_control:_user_profile')
     return {}
 
 def _type(text: str, interval: float = 0.03) -> str:

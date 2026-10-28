@@ -5,6 +5,8 @@ from collections.abc import Callable
 from threading import Event
 from typing import Any
 
+from core import failsoft
+
 
 def interrupt_playback(
     interrupt_event: Event,
@@ -29,5 +31,5 @@ def interrupt_playback(
             try:
                 on_error(type(exc).__name__)
             except Exception:
-                pass
+                failsoft.suppress('core.playback_interrupt:interrupt_playback')
         return False

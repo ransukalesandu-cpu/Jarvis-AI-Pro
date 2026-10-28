@@ -23,6 +23,8 @@ MAX_BUILD_ATTEMPTS = 3
 # forever whenever that one alias was unwell.
 from core import gemini
 
+from core import failsoft
+
 
 def _get_api_key() -> str:
     with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -515,7 +517,7 @@ Be specific and actionable. If you see an error message, quote it exactly."""
         try:
             screenshot_path.unlink()
         except Exception:
-            pass
+            failsoft.suppress('actions.code_helper:_screen_debug_action')
 
         if file_path and file_content:
 
@@ -534,7 +536,7 @@ Be specific and actionable. If you see an error message, quote it exactly."""
         try:
             screenshot_path.unlink()
         except Exception:
-            pass
+            failsoft.suppress('actions.code_helper:_screen_debug_action')
         return f"Screen analysis failed: {e}"
 
 

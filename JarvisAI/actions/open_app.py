@@ -4,6 +4,8 @@ import subprocess
 import platform
 import shutil
 
+from core import failsoft
+
 _SYSTEM = platform.system()
 
 _APP_ALIASES: dict[str, dict[str, str]] = {
@@ -130,7 +132,7 @@ def _launch_macos(app_name: str) -> bool:
             time.sleep(1.0)
             return True
     except Exception:
-        pass
+        failsoft.suppress('actions.open_app:_launch_macos')
 
     try:
         result = subprocess.run(
@@ -141,7 +143,7 @@ def _launch_macos(app_name: str) -> bool:
             time.sleep(1.0)
             return True
     except Exception:
-        pass
+        failsoft.suppress('actions.open_app:_launch_macos')
 
     binary = shutil.which(app_name) or shutil.which(app_name.lower())
     if binary:
@@ -154,7 +156,7 @@ def _launch_macos(app_name: str) -> bool:
             time.sleep(1.0)
             return True
         except Exception:
-            pass
+            failsoft.suppress('actions.open_app:_launch_macos')
 
     try:
         import pyautogui
@@ -187,6 +189,7 @@ def _launch_linux(app_name: str) -> bool:
                     time.sleep(1.0)
                     return True
                 except Exception:
+                    failsoft.suppress('actions.open_app:_launch_linux')
                     continue
 
     binary = (
@@ -205,7 +208,7 @@ def _launch_linux(app_name: str) -> bool:
             time.sleep(1.0)
             return True
         except Exception:
-            pass
+            failsoft.suppress('actions.open_app:_launch_linux')
 
     try:
         subprocess.run(
@@ -214,7 +217,7 @@ def _launch_linux(app_name: str) -> bool:
         )
         return True
     except Exception:
-        pass
+        failsoft.suppress('actions.open_app:_launch_linux')
 
     for desktop_name in [
         app_name.lower(),
@@ -229,7 +232,7 @@ def _launch_linux(app_name: str) -> bool:
             if result.returncode == 0:
                 return True
         except Exception:
-            pass
+            failsoft.suppress('actions.open_app:_launch_linux')
 
     return False
 

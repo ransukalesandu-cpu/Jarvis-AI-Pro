@@ -21,6 +21,8 @@ except ImportError:
 
 from core.host_env import is_windows, is_mac, is_linux
 
+from core import failsoft
+
 
 def _get_base_dir() -> Path:
     if getattr(sys, "frozen", False):
@@ -131,7 +133,7 @@ def _get_transcript(video_id: str) -> str | None:
         try:
             transcript = transcript_list.find_manually_created_transcript(lang_priority)
         except Exception:
-            pass
+            failsoft.suppress('actions.youtube_video:_get_transcript')
 
         if transcript is None:
             try:

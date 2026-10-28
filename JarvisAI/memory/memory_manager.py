@@ -11,6 +11,8 @@ from pathlib import Path
 import sys
 import uuid
 
+from core import failsoft
+
 
 def get_base_dir() -> Path:
     if getattr(sys, "frozen", False):
@@ -161,7 +163,7 @@ def _trim_to_limit(memory: dict) -> dict:
                 f"({', '.join(dropped[:3])}{'…' if len(dropped) > 3 else ''})"
             )
         except Exception:
-            pass
+            failsoft.suppress('memory.memory_manager:_trim_to_limit')
     return memory
 
 def save_memory(memory: dict) -> None:
@@ -1584,6 +1586,7 @@ def save_episode(data: dict) -> dict | None:
             age_hours = abs((datetime.fromisoformat(created) -
                              datetime.fromisoformat(str(old_episode.get("created", "")))).total_seconds()) / 3600
         except Exception:
+            failsoft.suppress('memory.memory_manager:save_episode')
             continue
         if age_hours > 12:
             continue

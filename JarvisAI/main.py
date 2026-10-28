@@ -32,13 +32,15 @@ for _p in [str(_ROOT_DIR), str(_ROOT_DIR / "JarvisAI"), str(_ROOT_DIR / "voice")
 
 import sys as _sys
 
+from core import failsoft
+
 for _stream in ("stdout", "stderr"):
     try:
         _s = getattr(_sys, _stream, None)
         if _s is not None and hasattr(_s, "reconfigure"):
             _s.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
-        pass          # pythonw / redirected pipes / anything exotic — never fatal
+        failsoft.suppress('main:<module>')
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -154,6 +156,7 @@ from core.clap_wake             import DoubleClapDetector
 from core.brain_engine import BrainEngine
 from core.brain_protocol import build_brain_protocol
 from core.live_session import select_live_api_version, select_live_model
+
 
 # How long the assistant stays awake with no user speech before it auto-sleeps
 # again after the configured idle interval.
@@ -292,6 +295,7 @@ def _describe_tools(declarations) -> str:
             desc = (d.get("description") if isinstance(d, dict)
                     else getattr(d, "description", "")) or ""
         except Exception:
+            failsoft.suppress('main:_describe_tools')
             continue
         if not name:
             continue
@@ -1463,7 +1467,7 @@ class JarvisLive:
             if self._dashboard is not None and self._loop is not None:
                 asyncio.run_coroutine_threadsafe(self._dashboard.broadcast(payload), self._loop)
         except Exception:
-            pass
+            failsoft.suppress('main:JarvisLive._queue_auth_state_broadcast')
 
     def _handle_privacy_lock_activated(self, message: str) -> None:
         """Thread-safe callback invoked by AuthManager after it persists the lock."""
@@ -1472,7 +1476,7 @@ class JarvisLive:
             try:
                 self.ui.write_log("SEC: Privacy Lock activated; private output is blocked.")
             except Exception:
-                pass
+                failsoft.suppress('main:JarvisLive._handle_privacy_lock_activated')
             return
         try:
             asyncio.run_coroutine_threadsafe(self._publish_privacy_lock(message), loop)
@@ -1486,7 +1490,7 @@ class JarvisLive:
         try:
             self._stop_playback_for_privacy_lock()
         except Exception:
-            pass
+            failsoft.suppress('main:JarvisLive._publish_privacy_lock')
         self._assistant_turn_pending = False
         try:
             from security.lockdown import teardown_audio_stream
@@ -1494,7 +1498,7 @@ class JarvisLive:
             if output_stream is not None:
                 teardown_audio_stream(output_stream)
         except Exception:
-            pass
+            failsoft.suppress('main:JarvisLive._publish_privacy_lock')
         phone_audio_queue = getattr(getattr(self, "_dashboard", None), "_phone_audio_queue", None)
         for queue in (getattr(self, "out_queue", None), getattr(self, "audio_in_queue", None), phone_audio_queue):
             if queue is not None:
@@ -1512,7 +1516,7 @@ class JarvisLive:
             self.ui.set_state("LOCKED")
             self.ui.write_log("SEC: Privacy Lock activated. Private audio and responses are suppressed.")
         except Exception:
-            pass
+            failsoft.suppress('main:JarvisLive._publish_privacy_lock')
         manager = security.get_auth_manager()
         duration = manager.cooldown_remaining()
         try:
@@ -1549,7 +1553,7 @@ class JarvisLive:
                         try:
                             await ws.close(code=4003, reason="Privacy Lock is active")
                         except Exception:
-                            pass
+                            failsoft.suppress('main:JarvisLive._publish_privacy_lock')
                     if hasattr(dashboard, "_clients"):
                         dashboard._clients.clear()
                     if getattr(dashboard, "_phone_audio_ws", None) is phone_socket:
@@ -1659,7 +1663,7 @@ class JarvisLive:
                         f"{type(exc).__name__}. Check provider keys or local Ollama."
                     )
                 except Exception:
-                    pass
+                    failsoft.suppress('main:JarvisLive._start_hybrid_text_fallback._work')
             finally:
                 try:
                     manager_now = security.get_auth_manager()
@@ -1667,7 +1671,7 @@ class JarvisLive:
                             or manager_now.needs_pin()):
                         self.ui.set_state("LISTENING")
                 except Exception:
-                    pass
+                    failsoft.suppress('main:JarvisLive._start_hybrid_text_fallback._work')
 
         threading.Thread(target=_work, name="jarvis-brain-engine-fallback", daemon=True).start()
 
@@ -1685,12 +1689,12 @@ class JarvisLive:
                 try:
                     self.ui.write_log("SEC: Owner credential verified.")
                 except Exception:
-                    pass
+                    failsoft.suppress('main:JarvisLive._on_text_command')
             elif not manager.is_privacy_lock_active():
                 try:
                     self.ui.write_log("SEC: Owner credential was not accepted.")
                 except Exception:
-                    pass
+                    failsoft.suppress('main:JarvisLive._on_text_command')
             return
         if manager.is_silent():
             return
@@ -1844,7 +1848,7 @@ class JarvisLive:
             try:
                 self._echo.set_tts_speaking(value)
             except Exception:
-                pass
+                failsoft.suppress('main:JarvisLive.set_speaking')
         if value:
             self._tail_until = 0.0
         else:
@@ -1887,7 +1891,7 @@ class JarvisLive:
                 + ("." if scope == "global"
                    else " (works while this window is focused)."))
         except Exception:
-            pass
+            failsoft.suppress('main:JarvisLive.set_push_to_talk')
         return scope
 
     def _on_ptt(self, held: bool) -> None:
@@ -1902,7 +1906,7 @@ class JarvisLive:
         try:
             self.ui.set_state("LISTENING" if held else "SLEEPING")
         except Exception:
-            pass
+            failsoft.suppress('main:JarvisLive._on_ptt')
 
     def interrupt(self) -> None:
         """Request a thread-safe stop of current speech and reopen the microphone."""
@@ -1947,7 +1951,7 @@ class JarvisLive:
             try:
                 self._echo.set_tts_speaking(False)
             except Exception:
-                pass
+                failsoft.suppress('main:JarvisLive._stop_playback_for_privacy_lock')
         self._tail_until = time.monotonic() + self._out_latency + _TAIL_MARGIN
         self._out_level = 0.0
 
@@ -2008,7 +2012,7 @@ class JarvisLive:
                     "mime_type": "audio/pcm;rate=16000",
                 })
             except Exception:
-                pass
+                failsoft.suppress('main:JarvisLive._interrupt_on_loop')
         q = self.audio_in_queue
         if q:
             drained = 0
@@ -2317,7 +2321,7 @@ class JarvisLive:
                 try:
                     self.ui.write_log(f"ERR: save_memory failed safely: {type(exc).__name__}: {detail[:240]}")
                 except Exception:
-                    pass
+                    failsoft.suppress('main:JarvisLive._execute_tool')
             if not self.ui.muted:
                 self.ui.set_state("LISTENING")
             return types.FunctionResponse(
@@ -2484,7 +2488,7 @@ class JarvisLive:
                                     self._turn_done_event.wait(), timeout=8.0
                                 )
                             except Exception:
-                                pass
+                                failsoft.suppress('main:JarvisLive._execute_tool._do_shutdown')
                     finally:
                         self._shutdown_in_progress = False
                         self.request_shutdown()
@@ -2623,6 +2627,7 @@ class JarvisLive:
                 if manager.is_silent() or manager.needs_pin():
                     continue
             except Exception:
+                failsoft.suppress('main:JarvisLive._send_realtime')
                 continue
             # Gemini 3.x Live rejects the old realtime_input.media_chunks field
             # (what `media=...` maps to) and closes the socket with a 1007. Send
@@ -2784,7 +2789,7 @@ class JarvisLive:
                         with self._wake_interrupt_lock:
                             self._wake_interrupt_audio.append(indata.tobytes())
                     except Exception:
-                        pass
+                        failsoft.suppress('main:JarvisLive._listen_audio._mic_callback_impl')
 
                     # EchoGuard needs a reference to PCM that has actually
                     # reached the playback path. Before the first output batch,
@@ -2896,7 +2901,7 @@ class JarvisLive:
                 try:
                     self.ui.set_audio_level(_pcm_level(indata))
                 except Exception:
-                    pass
+                    failsoft.suppress('main:JarvisLive._listen_audio._mic_callback_impl')
             else:
                 self._expire_voice_id_audio()
 
@@ -2918,7 +2923,7 @@ class JarvisLive:
                             f"ERR: Microphone callback failed: {type(exc).__name__}: {exc}"
                         )
                     except Exception:
-                        pass
+                        failsoft.suppress('main:JarvisLive._listen_audio.callback')
 
         try:
 
@@ -3035,6 +3040,7 @@ class JarvisLive:
                             self._stop_playback_for_privacy_lock()
                             continue
                     except Exception:
+                        failsoft.suppress('main:JarvisLive._receive_audio')
                         continue
                     live_events_received += 1
                     if live_events_received == 1:
@@ -3189,7 +3195,7 @@ class JarvisLive:
                                 try:
                                     self.ui.react_avatar_text(txt)
                                 except Exception:
-                                    pass
+                                    failsoft.suppress('main:JarvisLive._receive_audio')
 
                         if sc.input_transcription and sc.input_transcription.text:
                             txt = _clean_transcript(sc.input_transcription.text)
@@ -4839,7 +4845,7 @@ def main():
                     )
                     ui.set_state("ERROR")
                 except Exception:
-                    pass
+                    failsoft.suppress('main:main.launch_jarvis.runner')
             finally:
                 if jarvis._shutdown_requested:
                     ui.request_close()

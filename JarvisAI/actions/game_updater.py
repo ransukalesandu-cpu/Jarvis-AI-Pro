@@ -11,6 +11,8 @@ from datetime import datetime
 
 from core.host_env import is_windows, is_mac, is_linux
 
+from core import failsoft
+
 _CNW: dict = (
     {"creationflags": subprocess.CREATE_NO_WINDOW}
     if platform.system() == "Windows" else {}
@@ -81,6 +83,7 @@ def _find_steam_windows() -> Path | None:
                 if p.exists() and (p / "steam.exe").exists():
                     return p
             except Exception:
+                failsoft.suppress('actions.game_updater:_find_steam_windows')
                 continue
     except ImportError:
         pass
@@ -143,7 +146,7 @@ def _get_steam_libraries(steam_path: Path) -> list[Path]:
             if lib.exists() and lib not in libraries:
                 libraries.append(lib)
     except Exception:
-        pass
+        failsoft.suppress('actions.game_updater:_get_steam_libraries')
     return libraries
 
 
@@ -167,6 +170,7 @@ def _get_steam_games(steam_path: Path) -> list[dict]:
                         "acf":   str(acf),
                     })
             except Exception:
+                failsoft.suppress('actions.game_updater:_get_steam_games')
                 continue
     return games
 
@@ -189,7 +193,7 @@ def _get_steam_window_rect() -> tuple[int, int, int, int] | None:
             if "steam" in w.title.lower() and w.width > 200 and w.visible:
                 return w.left, w.top, w.width, w.height
     except Exception:
-        pass
+        failsoft.suppress('actions.game_updater:_get_steam_window_rect')
     return None
 
 
@@ -271,7 +275,7 @@ def _handle_steam_profile_selection() -> bool:
     except ImportError:
         pass
     except Exception:
-        pass
+        failsoft.suppress('actions.game_updater:_handle_steam_profile_selection')
 
     print("[GameUpdater] 👤 Profile selection detected — clicking the first profile")
     return _click_first_profile_by_screenshot()
@@ -287,6 +291,7 @@ def _find_best_drive() -> dict | None:
                 if free_gb > 0:
                     drives.append({"letter": letter, "path": drive_path, "free_gb": free_gb})
             except Exception:
+                failsoft.suppress('actions.game_updater:_find_best_drive')
                 continue
     return max(drives, key=lambda d: d["free_gb"]) if drives else None
 
@@ -301,6 +306,7 @@ def _select_drive_in_dialog(dialog, drive_letter: str) -> bool:
                     print(f"[GameUpdater] ✅ Drive selected ({control_type}): {ctrl.window_text()}")
                     return True
         except Exception:
+            failsoft.suppress('actions.game_updater:_select_drive_in_dialog')
             continue
     try:
         for combo in dialog.descendants(control_type="ComboBox"):
@@ -313,9 +319,10 @@ def _select_drive_in_dialog(dialog, drive_letter: str) -> bool:
                         return True
                 combo.collapse()
             except Exception:
+                failsoft.suppress('actions.game_updater:_select_drive_in_dialog')
                 continue
     except Exception:
-        pass
+        failsoft.suppress('actions.game_updater:_select_drive_in_dialog')
     try:
         for ctrl in dialog.descendants():
             txt = ctrl.window_text().upper()
@@ -323,7 +330,7 @@ def _select_drive_in_dialog(dialog, drive_letter: str) -> bool:
                 ctrl.click_input()
                 return True
     except Exception:
-        pass
+        failsoft.suppress('actions.game_updater:_select_drive_in_dialog')
     return False
 
 
@@ -336,9 +343,10 @@ def _click_button(window, keywords: list[str]) -> bool:
                     btn.click_input()
                     return True
             except Exception:
+                failsoft.suppress('actions.game_updater:_click_button')
                 continue
     except Exception:
-        pass
+        failsoft.suppress('actions.game_updater:_click_button')
     return False
 
 
@@ -371,7 +379,7 @@ def _handle_install_dialog_pyautogui(game_name: str, best_drive: dict) -> str:
         install_win.activate()
         time.sleep(0.4)
     except Exception:
-        pass
+        failsoft.suppress('actions.game_updater:_handle_install_dialog_pyautogui')
 
     wx, wy = install_win.left, install_win.top
     ww, wh = install_win.width, install_win.height
@@ -421,9 +429,10 @@ def _handle_install_dialog(game_name: str) -> str:
                                 dialog = win
                                 break
                     except Exception:
+                        failsoft.suppress('actions.game_updater:_handle_install_dialog')
                         continue
             except Exception:
-                pass
+                failsoft.suppress('actions.game_updater:_handle_install_dialog')
             if dialog:
                 break
 
@@ -690,6 +699,7 @@ def _find_epic_exe_windows() -> Path | None:
                 if exe.exists():
                     return exe
             except Exception:
+                failsoft.suppress('actions.game_updater:_find_epic_exe_windows')
                 continue
     except ImportError:
         pass
@@ -739,6 +749,7 @@ def _get_epic_games() -> list[dict]:
             if name:
                 games.append({"id": data.get("AppName", ""), "name": name})
         except Exception:
+            failsoft.suppress('actions.game_updater:_get_epic_games')
             continue
     return games
 

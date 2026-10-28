@@ -20,6 +20,7 @@ Two jobs:
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -57,6 +58,34 @@ _QT_TEST_MODULES = (
 
 if not QT_AVAILABLE:
     collect_ignore = list(_QT_TEST_MODULES)
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
+    """Print what fail-soft handlers swallowed, when asked to.
+
+    Set ``JARVIS_FAILSOFT_REPORT=1`` (the CI lint/test job does not, so a normal
+    run stays quiet). This is the cheapest way to answer "is any optional
+    feature quietly broken right now?" — two shipped bugs (a memory panel and a
+    scheduler panel calling APIs that never existed) were invisible for exactly
+    this reason.
+    """
+    if os.environ.get("JARVIS_FAILSOFT_REPORT", "").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return
+    try:
+        from core import failsoft
+
+        report = failsoft.report(limit=40)
+    except Exception:  # pragma: no cover - failsoft is best effort here too
+        return
+    if report:
+        terminalreporter.section("fail-soft suppressions")
+        for line in report.splitlines():
+            terminalreporter.write_line(line)
 
 
 def pytest_report_header(config) -> str:

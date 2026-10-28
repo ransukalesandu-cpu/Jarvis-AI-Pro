@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
+from core import failsoft
+
 T = TypeVar("T")
 
 _SECRET_PATTERNS = (
@@ -189,14 +191,14 @@ def install_global_exception_hooks() -> Callable[[], None]:
         try:
             record_error(exc, operation="runtime:uncaught_main_thread")
         except Exception:
-            pass
+            failsoft.suppress('core.self_repair:install_global_exception_hooks.main_hook')
         previous_sys_hook(exc_type, exc, tb)
 
     def thread_hook(args: Any) -> None:
         try:
             record_error(args.exc_value, operation=f"runtime:uncaught_thread:{args.thread.name if args.thread else 'unknown'}")
         except Exception:
-            pass
+            failsoft.suppress('core.self_repair:install_global_exception_hooks.thread_hook')
         if previous_thread_hook is not None:
             previous_thread_hook(args)
 

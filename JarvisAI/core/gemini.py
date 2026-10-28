@@ -44,6 +44,8 @@ import threading
 import time
 from pathlib import Path
 
+from core import failsoft
+
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -489,7 +491,7 @@ async def _live_turn(
                     None,
                 )
             except Exception:
-                pass
+                failsoft.suppress('core.gemini:_live_turn')
 
 
 # ---------------------------------------------------------------------------
@@ -1018,7 +1020,7 @@ def _extract_json(raw: str):
     try:
         return decoder.raw_decode(cleaned)[0]
     except Exception:
-        pass
+        failsoft.suppress('core.gemini:_extract_json')
 
     # Then search for the first valid JSON object/array.
     for index, char in enumerate(cleaned):
@@ -1031,6 +1033,7 @@ def _extract_json(raw: str):
             )
             return value
         except Exception:
+            failsoft.suppress('core.gemini:_extract_json')
             continue
 
     raise ValueError(

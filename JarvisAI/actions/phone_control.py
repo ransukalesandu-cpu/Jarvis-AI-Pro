@@ -13,6 +13,8 @@ from typing import Any
 
 from services.adb_bridge import find_adb, parse_adb_devices
 
+from core import failsoft
+
 _APP_PACKAGES = {
     "whatsapp": "com.whatsapp",
     "youtube": "com.google.android.youtube",
@@ -156,7 +158,7 @@ def phone_control(parameters: dict[str, Any] | None = None, player=None) -> str:
         try:
             player.write_log(f"[PHONE] {action} on Android device {serial}")
         except Exception:
-            pass
+            failsoft.suppress('actions.phone_control:phone_control')
     return messages[action]
 
 

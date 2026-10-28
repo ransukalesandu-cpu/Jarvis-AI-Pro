@@ -13,6 +13,8 @@ import datetime as _dt
 
 from plugins._google_core import get_service, is_authorized, test_connection
 
+from core import failsoft
+
 
 def _svc():
     return get_service("calendar", "v3")
@@ -79,7 +81,7 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
                     else:
                         player.show_content("CALENDAR — upcoming", "\n".join(lines))
                 except Exception:
-                    pass
+                    failsoft.suppress('plugins.calendar_google:run')
             return (f"You have {len(events)} upcoming event"
                      f"{'s' if len(events) != 1 else ''}: " + "; ".join(lines) + ".")
 

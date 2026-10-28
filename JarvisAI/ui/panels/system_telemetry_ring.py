@@ -14,6 +14,8 @@ from PyQt6.QtCore import Qt, QTimer, QRectF, pyqtSlot
 from PyQt6.QtGui import QFont, QColor, QPainter, QPen
 from PyQt6.QtWidgets import QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel
 
+from core import failsoft
+
 
 class TelemetryGaugeWidget(QWidget):
     """
@@ -132,4 +134,4 @@ class SystemTelemetryRing(QFrame):
             self._gauge_ram.set_value(ram_pct)
             self._gauge_bat.set_value(bat_pct)
         except Exception:
-            pass
+            failsoft.suppress('ui.panels.system_telemetry_ring:SystemTelemetryRing.update_metrics')

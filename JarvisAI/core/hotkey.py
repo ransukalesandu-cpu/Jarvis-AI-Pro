@@ -34,6 +34,8 @@ import threading
 import time
 from typing import Callable
 
+from core import failsoft
+
 _OS = platform.system()
 
 # The default chord. Ctrl+Space is free in most desktop environments and is the
@@ -143,7 +145,7 @@ class PushToTalk:
         try:
             self._on_change(held)
         except Exception:
-            pass          # a listener fault must never kill the watcher
+            failsoft.suppress('core.hotkey:PushToTalk._set_held')
 
     def _poll_loop(self) -> None:
         import ctypes

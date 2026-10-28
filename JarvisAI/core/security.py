@@ -62,6 +62,8 @@ from security.auth_manager import (
 )
 from core.dispatcher import ActionDispatcher
 
+from core import failsoft
+
 # The state machine lives for this process only. Its persisted file records
 # lockouts, never an owner-authenticated session.
 _auth_manager = AuthManager()
@@ -158,7 +160,7 @@ def _log(msg: str) -> None:
         try:
             _log_cb(f"SEC: {msg}")
         except Exception:
-            pass
+            failsoft.suppress('core.security:_log')
 
 
 def _prepare_audit_storage() -> None:

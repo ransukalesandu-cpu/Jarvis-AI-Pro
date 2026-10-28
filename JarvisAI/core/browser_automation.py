@@ -10,6 +10,8 @@ import re
 import socket
 from urllib.parse import quote_plus, urlparse, urljoin
 
+from core import failsoft
+
 
 class BrowserAutomationError(RuntimeError):
     pass
@@ -117,12 +119,12 @@ class BrowserAutomation:
             if self._browser is not None:
                 self._browser.close()
         except Exception:
-            pass
+            failsoft.suppress('core.browser_automation:BrowserAutomation.close')
         try:
             if self._playwright is not None:
                 self._playwright.stop()
         except Exception:
-            pass
+            failsoft.suppress('core.browser_automation:BrowserAutomation.close')
         self._page = self._browser = self._playwright = None
 
     def __enter__(self):

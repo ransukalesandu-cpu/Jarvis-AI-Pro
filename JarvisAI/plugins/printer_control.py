@@ -35,6 +35,8 @@ except ImportError:
 
 from memory.config_manager import get_plugin_config
 
+from core import failsoft
+
 _client_lock = threading.Lock()
 _client = None
 _connected_cfg: dict = {}
@@ -66,7 +68,7 @@ def _ensure_client(cfg: dict):
                 _client.loop_stop()
                 _client.disconnect()
             except Exception:
-                pass
+                failsoft.suppress('plugins.printer_control:_ensure_client')
             _client = None
 
         host = cfg.get("broker_host", "").strip()

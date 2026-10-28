@@ -9,6 +9,8 @@ import platform
 from pathlib import Path
 from datetime import datetime
 
+from core import failsoft
+
 try:
     import pyautogui
     _PYAUTOGUI = True
@@ -246,7 +248,7 @@ def set_wallpaper_from_url(url: str) -> str:
         try:
             tmp.unlink()
         except Exception:
-            pass
+            failsoft.suppress('actions.desktop:set_wallpaper_from_url')
         return result
     except Exception as e:
         return f"Could not download wallpaper: {e}"

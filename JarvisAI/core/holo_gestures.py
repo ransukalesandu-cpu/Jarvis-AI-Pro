@@ -15,6 +15,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, unquote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from core import failsoft
+
 
 _ASSET_ROOT = Path(__file__).resolve().parent.parent / "assets" / "holo"
 _SAMPLE_ROOT = _ASSET_ROOT / "sample-notes"
@@ -392,7 +394,7 @@ class HoloGestureServer:
                     if path == "/api/state" and event and owner._event_callback:
                         owner._event_callback(event, card)
                 except Exception:
-                    pass
+                    failsoft.suppress('core.holo_gestures:HoloGestureServer.__init__.Handler.do_POST')
                 self._send(200, b'{"ok":true}', "application/json; charset=utf-8")
 
         self._event_callback = event_callback

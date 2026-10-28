@@ -29,6 +29,8 @@ import re
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+from core import failsoft
+
 # A pending confirmation is abandoned after this long. Chosen to outlast a
 # normal "hang on, let me look at the screen" pause without leaving a live
 # shutdown button sitting on the HUD for the rest of the day.
@@ -82,7 +84,7 @@ def _log(msg: str) -> None:
         try:
             _log_cb(msg)
         except Exception:
-            pass
+            failsoft.suppress('core.confirm:_log')
 
 
 def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
@@ -157,7 +159,7 @@ def _finish(p: _Pending | None, accepted: bool, source: str) -> None:
         try:
             _hide_cb()
         except Exception:
-            pass
+            failsoft.suppress('core.confirm:_finish')
 
     if p is None:
         return

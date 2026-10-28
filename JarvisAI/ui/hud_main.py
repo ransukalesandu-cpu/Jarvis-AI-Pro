@@ -39,15 +39,19 @@ from ui.panels.system_telemetry_ring import SystemTelemetryRing
 from ui.panels.modern_dashboard import FloatingHolographicOrb, ModernDashboard
 from ui.panels.hud_surface import BentoPanelSurface
 
+from core import failsoft
+
 # The autonomous-task surface and the minimised status widget are optional: a
 # failure to import them costs the owner the panel, never the HUD.
 try:
     from ui.panels.autonomous_panel import AutonomousPanel
 except Exception:  # pragma: no cover - defensive
+    failsoft.suppress("ui.hud_main:import_autonomous_panel")
     AutonomousPanel = None
 try:
     from ui.dynamic_island import DynamicIslandController
 except Exception:  # pragma: no cover - defensive
+    failsoft.suppress("ui.hud_main:import_dynamic_island")
     DynamicIslandController = None
 
 try:
@@ -700,7 +704,7 @@ class HUDMainWindow(QMainWindow):
         try:
             lock_workstation()
         except Exception:
-            pass
+            failsoft.suppress('ui.hud_main:HUDMainWindow._handle_privacy_lock')
 
     def _clear_privacy_lock(self):
         """Restore normal HUD view."""
@@ -1065,7 +1069,7 @@ class HologramHUDUI:
         try:
             self.bridge.push_audio_energy(float(level))
         except Exception:
-            pass
+            failsoft.suppress('ui.hud_main:HologramHUDUI.set_audio_level')
 
     def push_visemes(self, frames, hop: float, at: float):
         try:
@@ -1146,4 +1150,4 @@ class HologramHUDUI:
         try:
             self._win.close()
         except Exception:
-            pass
+            failsoft.suppress('ui.hud_main:HologramHUDUI.request_close')

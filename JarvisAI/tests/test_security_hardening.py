@@ -417,12 +417,15 @@ class DevAgentTests(unittest.TestCase):
         from actions import dev_agent as da
         self.assertTrue(da._ALLOWED_RUNNERS.match("python3.12"))
         self.assertFalse(da._ALLOWED_RUNNERS.match("powershell"))
-        os.environ["GEMINI_API_KEY"] = "secret"
-        os.environ["TWILIO_AUTH_TOKEN"] = "secret"
-        env = da._clean_env()
-        self.assertNotIn("GEMINI_API_KEY", env)
-        self.assertNotIn("TWILIO_AUTH_TOKEN", env)
-        self.assertIn("PATH", env)
+        # Never leak test credentials into later tests in the same pytest process.
+        with mock.patch.dict(
+            os.environ,
+            {"GEMINI_API_KEY": "secret", "TWILIO_AUTH_TOKEN": "secret"},
+        ):
+            env = da._clean_env()
+            self.assertNotIn("GEMINI_API_KEY", env)
+            self.assertNotIn("TWILIO_AUTH_TOKEN", env)
+            self.assertIn("PATH", env)
 
     def test_run_project_refuses_non_runtime(self):
         from actions import dev_agent as da

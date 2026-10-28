@@ -21,8 +21,8 @@ import tempfile
 from unittest.mock import Mock, patch
 import numpy as np
 
-from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, Qt
-from PyQt6.QtWidgets import QApplication, QLineEdit
+from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt
+from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton
 from PyQt6.QtTest import QTest
 
 # Ensure QApplication exists before testing Qt widgets
@@ -501,6 +501,73 @@ class TestUIHologram(unittest.TestCase):
                 self.assertTrue(hud_ui._win._ready)
                 self.assertTrue(hud_ui._ready)
                 self.assertIsNone(hud_ui._setup_controller._overlay)
+
+    def test_hologram_first_run_requires_and_saves_owner_pin_before_starting(self):
+        """Gemini setup must flow into owner PIN enrollment on the same HUD."""
+        with tempfile.TemporaryDirectory() as directory:
+            config_dir = Path(directory) / "config"
+            config_path = config_dir / "api_keys.json"
+            auth = Mock()
+            auth.is_pin_enrolled.return_value = False
+
+            def save_master_pin(pin):
+                auth.is_pin_enrolled.return_value = True
+
+            auth.set_master_pin.side_effect = save_master_pin
+            with (
+                patch("memory.config_manager.CONFIG_DIR", config_dir),
+                patch("memory.config_manager.CONFIG_FILE", config_path),
+                patch("ui.API_FILE", config_path),
+                patch.dict(os.environ, {"GEMINI_API_KEY": ""}),
+                patch("ui.hud_main.get_auth_manager", return_value=auth),
+            ):
+                hud_ui = HologramHUDUI(bridge=self.bridge)
+                self._track_widget(hud_ui._win)
+                app.processEvents()
+                self.assertFalse(hud_ui._win._ready)
+
+                overlay = hud_ui._setup_controller._overlay
+                self.assertIsInstance(overlay, SetupOverlay)
+                overlay._key_field.setText("AIzaSyLongEnoughTestGeminiApiKey123")
+
+                attempts = [0]
+
+                def fill_owner_pin_dialog():
+                    attempts[0] += 1
+                    dialog = app.activeModalWidget()
+                    if dialog is None:
+                        if attempts[0] < 100:
+                            QTimer.singleShot(10, fill_owner_pin_dialog)
+                        return
+                    if not isinstance(dialog, QDialog):
+                        dialog.reject()
+                        return
+                    fields = dialog.findChildren(QLineEdit)
+                    save_button = next(
+                        (
+                            button for button in dialog.findChildren(QPushButton)
+                            if button.text() == "SAVE PIN & CONTINUE"
+                        ),
+                        None,
+                    )
+                    if len(fields) < 2 or save_button is None:
+                        dialog.reject()
+                        return
+                    fields[0].setText("test-owner-pin")
+                    fields[1].setText("test-owner-pin")
+                    save_button.click()
+
+                # The key callback schedules the modal PIN dialog on the Qt loop.
+                QTimer.singleShot(0, fill_owner_pin_dialog)
+                overlay._submit()
+                QTest.qWait(250)
+
+                auth.set_master_pin.assert_called_once_with("test-owner-pin")
+                self.assertTrue(hud_ui._win.isVisible())
+                self.assertTrue(hud_ui._win._ready)
+                self.assertTrue(hud_ui._ready)
+                self.assertIsNone(hud_ui._setup_controller._overlay)
+                self.assertGreater(attempts[0], 0)
 
     def test_hologram_api_reconfiguration_keeps_the_same_hud_window(self):
         """An invalid key opens the Gemini form on top of the current HUD."""

@@ -17,7 +17,7 @@ if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFOR
 import threading
 from typing import Optional, Callable
 
-from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal, QTimer, QSettings, QEvent, QPropertyAnimation, QEasingCurve
+from PyQt6.QtCore import Qt, QObject, pyqtSlot, pyqtSignal, QTimer, QSettings, QEvent, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QFont, QColor
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -56,12 +56,16 @@ class HUDMainWindow(QMainWindow):
     sig_viseme_schedule = pyqtSignal(object, float, float)
     sig_avatar_text = pyqtSignal(str)
     sig_hybrid_telemetry = pyqtSignal(str, float, str, str)
+    sig_setup_requested = pyqtSignal()
 
     def __init__(self, bridge: Optional[VisualizerBridge] = None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("JARVIS AI PRO — NEURAL WIREFRAME HUD")
         self.resize(1280, 800)
         self.setMinimumSize(1024, 680)
+        # The adapter clears this until Gemini and owner security setup finish.
+        # JarvisLive also checks it when an invalid API key requests reconfiguration.
+        self._ready = True
 
         # Dark cyberpunk theme style
         self.setStyleSheet("""
@@ -633,6 +637,253 @@ class _RootShim:
         pass
 
 
+class _HudSetupController(QObject):
+    """Keeps first-run credentials and owner-PIN enrollment inside the hologram HUD."""
+
+    def __init__(self, ui, window: HUDMainWindow):
+        super().__init__(window)
+        self._ui = ui
+        self._win = window
+        self._overlay = None
+        self._pending_voice_enrollment = False
+        self._win.sig_setup_requested.connect(self.show_gemini_setup)
+
+    def _api_configured(self) -> bool:
+        try:
+            from memory.config_manager import is_configured
+            return bool(is_configured())
+        except Exception:
+            return False
+
+    @pyqtSlot()
+    def start(self) -> None:
+        self._win._ready = False
+        self._ui._ready = False
+        if not self._api_configured():
+            self.show_gemini_setup()
+            return
+        self._show_owner_pin_setup_if_needed()
+
+    @pyqtSlot()
+    def show_gemini_setup(self) -> None:
+        """Place the Gemini-only setup card over the HUD instead of swapping windows."""
+        if self._overlay is not None:
+            try:
+                self._overlay.show()
+                self._overlay.raise_()
+                self._overlay._key_field.setFocus()
+                return
+            except RuntimeError:
+                self._overlay = None
+
+        try:
+            from ui import SetupOverlay
+            overlay = SetupOverlay(self._win.centralWidget())
+            central = self._win.centralWidget()
+            width, height = 480, 370
+            overlay.setGeometry(
+                max(12, (central.width() - width) // 2),
+                max(12, (central.height() - height) // 2),
+                min(width, max(300, central.width() - 24)),
+                min(height, max(300, central.height() - 24)),
+            )
+            overlay.done.connect(self._save_gemini_key)
+            self._overlay = overlay
+            self._win._ready = False
+            self._ui._ready = False
+            self._win._lbl_hud_status.setText("● SETUP REQUIRED — GEMINI API KEY")
+            self._win._lbl_hud_status.setStyleSheet("color: #d7bd7b;")
+            overlay.show()
+            overlay.raise_()
+            overlay._key_field.setFocus()
+        except Exception as exc:
+            self._win._lbl_hud_status.setText("● SETUP ERROR — GEMINI KEY WINDOW UNAVAILABLE")
+            self._win._lbl_hud_status.setStyleSheet("color: #e97869;")
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self._win,
+                "JARVIS Gemini setup",
+                "The Gemini API-key form could not be opened. The Hologram HUD will remain open; "
+                "the legacy UI will not be launched.\n\n"
+                f"Details: {type(exc).__name__}: {exc}",
+            )
+
+    @pyqtSlot(object)
+    def _save_gemini_key(self, payload: object) -> None:
+        key = str(payload.get("gemini_api_key", "") if isinstance(payload, dict) else "").strip()
+        if not key:
+            if self._overlay is not None:
+                self._overlay._error_label.setText("Enter a Gemini API key to continue.")
+                self._overlay._error_label.show()
+            return
+        try:
+            # Use the shared config manager so the key is written to the same
+            # config/api_keys.json that JarvisLive reads, preserving other settings.
+            from memory.config_manager import save_api_keys
+            save_api_keys(key)
+        except Exception as exc:
+            if self._overlay is not None:
+                self._overlay._error_label.setText(
+                    f"Could not save the API key ({type(exc).__name__}). Check file permissions and retry."
+                )
+                self._overlay._error_label.show()
+            return
+
+        if self._overlay is not None:
+            self._overlay.hide()
+            self._overlay.deleteLater()
+            self._overlay = None
+        self._win._lbl_hud_status.setText("● GEMINI KEY SAVED — CHECKING OWNER SECURITY")
+        self._win._lbl_hud_status.setStyleSheet("color: #71d4c2;")
+        QTimer.singleShot(0, self._show_owner_pin_setup_if_needed)
+
+    @pyqtSlot()
+    def _show_owner_pin_setup_if_needed(self) -> None:
+        if not self._api_configured():
+            self.show_gemini_setup()
+            return
+        try:
+            from core.security import get_auth_manager
+            auth = get_auth_manager()
+            if auth.is_pin_enrolled():
+                self._mark_ready()
+                return
+        except Exception as exc:
+            self._win._lbl_hud_status.setText("● SETUP ERROR — OWNER SECURITY UNAVAILABLE")
+            self._win._lbl_hud_status.setStyleSheet("color: #e97869;")
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self._win,
+                "JARVIS owner security",
+                "Owner security could not be initialized. JARVIS will not start without "
+                "the existing PIN setup. The Hologram HUD remains active.\n\n"
+                f"Details: {type(exc).__name__}: {exc}",
+            )
+            return
+        self._show_owner_pin_setup(auth)
+
+    def _show_owner_pin_setup(self, auth) -> None:
+        from PyQt6.QtWidgets import (
+            QDialog, QVBoxLayout, QFormLayout, QCheckBox, QMessageBox,
+            QLabel, QLineEdit, QPushButton,
+        )
+
+        dialog = QDialog(self._win)
+        dialog.setWindowTitle("JARVIS — Privacy & Owner Security")
+        dialog.setMinimumWidth(470)
+        dialog.setModal(True)
+        dialog.setStyleSheet("""
+            QDialog { background: #080e12; color: #c8d9d5; }
+            QLabel { color: #c8d9d5; }
+            QLineEdit { color: #edf3e8; background: #151f22; padding: 9px;
+                        border: 1px solid #34464a; border-radius: 5px; }
+            QPushButton { padding: 9px 14px; border-radius: 5px; }
+            QCheckBox { color: #9aafaa; spacing: 8px; }
+        """)
+        layout = QVBoxLayout(dialog)
+        heading = QLabel("PRIVACY & OWNER SECURITY")
+        heading.setStyleSheet("color: #71d4c2; font-size: 16px; font-weight: bold;")
+        layout.addWidget(heading)
+        explanation = QLabel(
+            "Create your owner PIN/password. It is hashed and stored locally, never sent "
+            "to Gemini. This step is required before JARVIS starts. The Hologram HUD stays open."
+        )
+        explanation.setWordWrap(True)
+        layout.addWidget(explanation)
+
+        form = QFormLayout()
+        pin_edit = QLineEdit(dialog)
+        pin_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        pin_edit.setPlaceholderText("4–64 characters")
+        confirm_edit = QLineEdit(dialog)
+        confirm_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        confirm_edit.setPlaceholderText("Repeat PIN/password")
+        form.addRow("Owner PIN / password", pin_edit)
+        form.addRow("Confirm PIN / password", confirm_edit)
+        layout.addLayout(form)
+
+        voice_check = QCheckBox("Enroll my voice after JARVIS starts (optional)", dialog)
+        voice_check.setToolTip("Voice ID enrollment begins after the live assistant is initialized.")
+        layout.addWidget(voice_check)
+
+        save_button = QPushButton("SAVE PIN & CONTINUE", dialog)
+        save_button.setStyleSheet("background: #71d4c2; color: #061018; font-weight: bold;")
+        layout.addWidget(save_button)
+
+        def save_pin() -> None:
+            pin = pin_edit.text()
+            confirm = confirm_edit.text()
+            if not 4 <= len(pin) <= 64:
+                QMessageBox.warning(dialog, "Invalid PIN", "Use 4–64 characters for the PIN/password.")
+                return
+            if pin != confirm:
+                QMessageBox.warning(dialog, "Does not match", "The two PIN/password entries do not match.")
+                return
+            try:
+                auth.set_master_pin(pin)
+            except Exception as exc:
+                QMessageBox.critical(
+                    dialog, "Setup failed",
+                    f"Owner PIN could not be saved: {type(exc).__name__}: {exc}",
+                )
+                return
+            pin_edit.clear()
+            confirm_edit.clear()
+            self._pending_voice_enrollment = voice_check.isChecked()
+            dialog.accept()
+
+        save_button.clicked.connect(save_pin)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._mark_ready()
+            if self._pending_voice_enrollment:
+                QTimer.singleShot(500, self._try_pending_voice_enrollment)
+        else:
+            self._win._lbl_hud_status.setText("● SETUP INCOMPLETE — OWNER PIN REQUIRED")
+            self._win._lbl_hud_status.setStyleSheet("color: #d7bd7b;")
+
+    def _mark_ready(self) -> None:
+        self._win._ready = True
+        self._ui._ready = True
+        self._win._lbl_hud_status.setText("● SYSTEM STANDBY")
+        self._win._lbl_hud_status.setStyleSheet("color: #00e5ff;")
+
+    def _try_pending_voice_enrollment(self, attempt: int = 0) -> None:
+        if not self._pending_voice_enrollment:
+            return
+        callback = getattr(self._ui, "on_voice_id_action", None)
+        if callable(callback):
+            self._pending_voice_enrollment = False
+            try:
+                result = callback("enroll_owner")
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.information(
+                    self._win,
+                    "Voice ID enrollment",
+                    str(result or "Voice ID enrollment started.")
+                    + "\n\nIf secure live-speaker verification is unavailable, "
+                      "JARVIS will fall back to your PIN/password.",
+                )
+            except Exception as exc:
+                self._win._lbl_hud_status.setText("● VOICE ID SETUP FAILED — PIN REMAINS ACTIVE")
+                self._win._lbl_hud_status.setStyleSheet("color: #d7bd7b;")
+                self.write_log(f"Voice ID enrollment could not start: {type(exc).__name__}")
+            return
+        if attempt < 40:
+            QTimer.singleShot(250, lambda: self._try_pending_voice_enrollment(attempt + 1))
+        else:
+            self._pending_voice_enrollment = False
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self._win,
+                "Voice ID enrollment",
+                "JARVIS is running with PIN protection. You can retry Voice ID enrollment "
+                "from the Security controls.",
+            )
+
+    def write_log(self, text: str) -> None:
+        print(f"[HUDSetup] {text}")
+
+
 class HologramHUDUI:
     """
     JARVIS UI Adapter launching the Neural Wireframe Hologram HUD window,
@@ -662,9 +913,13 @@ class HologramHUDUI:
         self.on_wake_toggle: Optional[Callable] = None
         self.on_wake_manual: Optional[Callable] = None
         self.wake_get_state: Optional[Callable] = None
+        self._ready = False
+        self._win._ready = False
+        self._setup_controller = _HudSetupController(self, self._win)
         self._win.sig_mode_changed.connect(
             lambda: self.on_voice_change() if callable(self.on_voice_change) else None
         )
+        QTimer.singleShot(0, self._setup_controller.start)
 
     @property
     def muted(self) -> bool:
@@ -743,10 +998,28 @@ class HologramHUDUI:
         return {}
 
     def wait_for_api_key(self, stop_event=None) -> bool:
-        return True
+        """Wait until the HUD's Gemini-key and owner-PIN setup is complete."""
+        while True:
+            if stop_event is not None and stop_event.is_set():
+                return False
+            try:
+                if self._win._ready:
+                    return True
+                if stop_event is not None:
+                    stop_event.wait(0.1)
+                else:
+                    time.sleep(0.1)
+            except RuntimeError:
+                return False
 
     def prompt_reconfig(self):
-        pass
+        """Request key re-entry inside the existing HUD, never by swapping UI."""
+        try:
+            self._win._ready = False
+            self._ready = False
+            self._win.sig_setup_requested.emit()
+        except RuntimeError:
+            pass
 
     def request_close(self):
         try:

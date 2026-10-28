@@ -677,22 +677,30 @@ class HUDMainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         """Keep floating menus inside the central workspace after window resizes."""
-        super().resizeEvent(event)
-        # Chrome adapts before the menu is positioned: the dropdown's width is
-        # one of the things that decides where it goes.
-        self._apply_responsive_chrome()
-        self._position_left_menu_trigger()
-        if hasattr(self, "_right_menu") and self._right_menu.isVisible():
-            self._position_right_menu()
-        self._apply_hologram_stage_spacing()
-        self._sync_task_blocked_rect()
-        if hasattr(self, "_toast") and self._toast.isVisible():
-            host = self.centralWidget()
-            if host is not None:
-                self._toast.move(
-                    max(12, (host.width() - self._toast.width()) // 2),
-                    max(12, host.height() - self._toast.height() - 18),
-                )
+        # Child resize events can fire from super().resizeEvent(). Defer task-region
+        # sync to the end of the outer resize so overlays never consume half-laid-out geometry.
+        self._window_resize_depth = getattr(self, "_window_resize_depth", 0) + 1
+        try:
+            super().resizeEvent(event)
+            # Chrome adapts before the menu is positioned: the dropdown's width is
+            # one of the things that decides where it goes.
+            self._apply_responsive_chrome()
+            self._position_left_menu_trigger()
+            if hasattr(self, "_right_menu") and self._right_menu.isVisible():
+                self._position_right_menu()
+            self._apply_hologram_stage_spacing()
+            self._sync_task_blocked_rect()
+            if hasattr(self, "_toast") and self._toast.isVisible():
+                host = self.centralWidget()
+                if host is not None:
+                    self._toast.move(
+                        max(12, (host.width() - self._toast.width()) // 2),
+                        max(12, host.height() - self._toast.height() - 18),
+                    )
+        finally:
+            self._window_resize_depth = max(
+                0, getattr(self, "_window_resize_depth", 1) - 1
+            )
 
     @_safe_slot("ui.hud_main:_on_island_energy")
     def _on_island_energy(self, energy: float) -> None:
@@ -1774,9 +1782,11 @@ class HUDMainWindow(QMainWindow):
             and event.type() == QEvent.Type.Resize
         ):
             self._apply_hologram_stage_spacing()
-            # Spacing can resize the face stack and move the orb. Refresh the
-            # stage-local chin and blocked-region bounds after that layout pass.
-            self._sync_task_blocked_rect()
+            # A parent-window resize syncs after all child layouts settle. A
+            # stage-only resize still needs its own refresh, but not a reentrant
+            # geometry update in the middle of the parent resize.
+            if getattr(self, "_window_resize_depth", 0) == 0:
+                self._sync_task_blocked_rect()
         if watched is self._left_menu_trigger or watched is self._left_rail or watched in self._left_icon_buttons:
             if event.type() == QEvent.Type.Enter:
                 if self._workspace_stack.currentWidget() is not self._dashboard:

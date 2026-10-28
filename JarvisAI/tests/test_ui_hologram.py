@@ -445,7 +445,7 @@ class TestUIHologram(unittest.TestCase):
             auth = Mock()
             auth.is_pin_enrolled.return_value = False
             with (
-                patch("memory.config_manager.is_configured", return_value=False),
+                patch("memory.config_manager.CONFIG_FILE", config_path),
                 patch("ui.API_FILE", config_path),
                 patch("ui.hud_main.get_auth_manager", return_value=auth),
             ):
@@ -495,8 +495,7 @@ class TestUIHologram(unittest.TestCase):
                     json.loads(config_path.read_text(encoding="utf-8"))["gemini_api_key"],
                     key,
                 )
-                from memory.config_manager import is_configured
-                self.assertTrue(is_configured())
+                self.assertTrue(hud_ui._setup_controller._api_configured())
                 # Allow the zero-delay Qt callback to finish the setup transition.
                 QTest.qWait(50)
                 self.assertTrue(hud_ui._win._ready)
@@ -512,7 +511,6 @@ class TestUIHologram(unittest.TestCase):
             auth.is_pin_enrolled.return_value = True
             with (
                 patch("memory.config_manager.CONFIG_FILE", config_path),
-                patch("memory.config_manager.is_configured", return_value=True),
                 patch("ui.API_FILE", config_path),
                 patch("ui.hud_main.get_auth_manager", return_value=auth),
             ):
@@ -550,21 +548,28 @@ class TestUIHologram(unittest.TestCase):
 
     def test_hologram_hud_ui_adapter(self):
         """The configured adapter starts the live core without opening setup."""
-        auth = Mock()
-        auth.is_pin_enrolled.return_value = True
-        with (
-            patch("memory.config_manager.is_configured", return_value=True),
-            patch("ui.hud_main.get_auth_manager", return_value=auth),
-        ):
-            hud_ui = HologramHUDUI(bridge=self.bridge)
-            self._track_widget(hud_ui._win)
-            app.processEvents()
-            self.assertTrue(hud_ui._win._ready)
-            self.assertIsNone(hud_ui._setup_controller._overlay)
-            self.assertIsNotNone(hud_ui)
-            hud_ui.set_state("SPEAKING")
-            self.assertEqual(self.bridge.current_state, "SPEAKING")
-            hud_ui.set_audio_level(0.85)
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "api_keys.json"
+            config_path.write_text(
+                '{"gemini_api_key":"AIzaSyLongEnoughTestGeminiApiKey123"}',
+                encoding="utf-8",
+            )
+            auth = Mock()
+            auth.is_pin_enrolled.return_value = True
+            with (
+                patch("memory.config_manager.CONFIG_FILE", config_path),
+                patch("ui.API_FILE", config_path),
+                patch("ui.hud_main.get_auth_manager", return_value=auth),
+            ):
+                hud_ui = HologramHUDUI(bridge=self.bridge)
+                self._track_widget(hud_ui._win)
+                app.processEvents()
+                self.assertTrue(hud_ui._win._ready)
+                self.assertIsNone(hud_ui._setup_controller._overlay)
+                self.assertIsNotNone(hud_ui)
+                hud_ui.set_state("SPEAKING")
+                self.assertEqual(self.bridge.current_state, "SPEAKING")
+                hud_ui.set_audio_level(0.85)
 
 
 if __name__ == "__main__":

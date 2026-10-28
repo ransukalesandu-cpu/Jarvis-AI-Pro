@@ -40,6 +40,10 @@ class TestPersonaChromaticHandoff(unittest.TestCase):
         self.host.resize(500, 500)
         self.effect = PersonaChromaticHandoff(self.host)
         self.effect.set_bounds_provider(lambda: QRectF(150.0, 120.0, 200.0, 260.0))
+        # QWidget.isVisible() is false while an ancestor is hidden; show the
+        # real parent so child-overlay visibility assertions test Qt correctly.
+        self.host.show()
+        app.processEvents()
 
     def tearDown(self):
         self.effect.shutdown()

@@ -42,9 +42,13 @@ from ui.panels.modern_dashboard import FloatingHolographicOrb, ModernDashboard
 from ui.panels.hud_surface import BentoPanelSurface
 from ui.dynamic_island import DynamicIsland
 from ui.health_strip import HudStatusStrip, HudToast
-from ui.task_panels import TaskPanelManager, TaskSpec, TaskState, kind_for_action
+from ui.task_panels import TaskKind, TaskPanelManager, TaskSpec, TaskState, kind_for_action
+from ui.panels.battery_settings import BatteryThresholdsDialog
 
-from core import failsoft
+from core import failsoft, hud_layout
+from core.battery_settings import load_thresholds, save_thresholds
+from core.media_transport import TransportController
+from core.task_sources import TaskSourceRegistry
 from core.hologram_theme import VisualPreferences, backdrop_css, palette_for_mode
 from core.subsystem_probes import SubsystemProber, default_probes
 from core.system_status import (
@@ -152,7 +156,9 @@ class HUDMainWindow(QMainWindow):
         super().__init__(parent)
         self.setWindowTitle("JARVIS AI PRO — NEURAL WIREFRAME HUD")
         self.resize(1280, 800)
-        self.setMinimumSize(1024, 680)
+        # The window may now shrink to a laptop-half width: the rail and the
+        # dropdown adapt below this size instead of being pinned to constants.
+        self.setMinimumSize(860, 620)
         # The adapter clears this until Gemini and owner security setup finish.
         # JarvisLive also checks it when an invalid API key requests reconfiguration.
         self._ready = True
@@ -324,6 +330,13 @@ class HUDMainWindow(QMainWindow):
         self._task_panels = TaskPanelManager(self._hologram_stage, self._palette)
         self._task_panels.sig_task_action.connect(self._on_task_action)
         self._task_panels.raise_()
+        # Music transport. The controller only exposes callbacks when this
+        # machine can actually deliver a media key, so the panel grows buttons
+        # only when pressing them would do something.
+        self._transport = TransportController(on_change=self._on_transport_state)
+        #: Set once the user dismisses the now-playing card, so a later command
+        #: can bring it back but a sync cannot.
+        self._now_playing_dismissed = False
         center_col.addWidget(self._hologram_stage, stretch=1)
 
         self._lbl_hud_status = QLabel("● SYSTEM STANDBY")
@@ -392,6 +405,20 @@ class HUDMainWindow(QMainWindow):
         self._bihansa_voice_reactive.setStyleSheet("QCheckBox { color: #ff9be8; spacing: 6px; padding: 4px; }")
         right_menu_layout.addWidget(self._bihansa_effects)
         right_menu_layout.addWidget(self._bihansa_voice_reactive)
+        self._battery_settings_btn = QPushButton("BATTERY THRESHOLDS")
+        self._battery_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._battery_settings_btn.setStyleSheet(
+            "QPushButton { color: #ffd7a8; background: #101923; border: 1px solid #4a6070;"
+            " padding: 8px 12px; border-radius: 8px; }"
+            "QPushButton:hover { color: #ffffff; border-color: #ffb066; }"
+        )
+        self._battery_settings_btn.setToolTip(
+            "Charge levels at which JARVIS warns you. Only fires when the machine "
+            "actually reports a battery."
+        )
+        self._battery_settings_btn.clicked.connect(self._open_battery_settings)
+        right_menu_layout.addWidget(self._battery_settings_btn)
+
         # Keep the popup lightweight; open real telemetry widgets on the dashboard.
         for label, panel_index in (
             ("OPEN BRAIN PANEL", 0),
@@ -499,9 +526,14 @@ class HUDMainWindow(QMainWindow):
         self._reduced_motion_box = QCheckBox("Reduce motion (accessibility)")
         self._battery_saver_box = QCheckBox("Battery saver visuals")
         self._charging_effects_box = QCheckBox("Charging effects")
-        for box in (self._reduced_motion_box, self._battery_saver_box, self._charging_effects_box):
+        # Inserted just above the action buttons rather than at a hard index, so
+        # adding a button later cannot scatter the preferences through the menu.
+        anchor_index = right_menu_layout.indexOf(self._battery_settings_btn)
+        for offset, box in enumerate(
+            (self._reduced_motion_box, self._battery_saver_box, self._charging_effects_box)
+        ):
             box.setStyleSheet("QCheckBox { color: #ffd7a8; spacing: 6px; padding: 4px; }")
-            right_menu_layout.insertWidget(right_menu_layout.count() - 5, box)
+            right_menu_layout.insertWidget(anchor_index + offset, box)
         self._charging_effects_box.setToolTip(
             "Only applies when the machine actually reports a battery."
         )
@@ -520,11 +552,16 @@ class HUDMainWindow(QMainWindow):
         self._toast.hide()
 
         self._apply_palette()
+        # First sizing pass, now that the rail and dropdown exist.
+        self._apply_responsive_chrome()
 
 
     def resizeEvent(self, event):
         """Keep floating menus inside the central workspace after window resizes."""
         super().resizeEvent(event)
+        # Chrome adapts before the menu is positioned: the dropdown's width is
+        # one of the things that decides where it goes.
+        self._apply_responsive_chrome()
         if hasattr(self, "_right_menu") and self._right_menu.isVisible():
             self._position_right_menu()
         self._sync_task_blocked_rect()
@@ -645,9 +682,44 @@ class HUDMainWindow(QMainWindow):
         host = self.centralWidget()
         if host is None:
             return
-        x = max(8, host.width() - self._right_menu.width() - 12)
-        self._right_menu.move(x, 50)
+        self._size_right_menu(host.width(), host.height())
+        x = hud_layout.dropdown_x(host.width(), self._right_menu.width())
+        self._right_menu.move(x, hud_layout.DROPDOWN_TOP)
         self._right_menu.raise_()
+
+    def _size_right_menu(self, window_width: int, window_height: int) -> None:
+        """Fit the dropdown to the window instead of pinning it to 300 x 650.
+
+        ``adjustSize`` is not optional here: the dropdown is a free-floating child
+        rather than a layout member, so nothing ever gives it a height. Without
+        this call it stayed at Qt's 30 px default and opened as a thin empty bar.
+        """
+        self._right_menu.setFixedWidth(hud_layout.dropdown_width(window_width))
+        self._right_menu.setMaximumHeight(hud_layout.dropdown_height(window_height))
+        layout = self._right_menu.layout()
+        if layout is not None:
+            layout.activate()
+        self._right_menu.adjustSize()
+
+    def _apply_responsive_chrome(self) -> None:
+        """Resize the rails to the window: fixed widths only look right at one size.
+
+        Called from ``resizeEvent`` and once after the UI is built, so the first
+        paint already matches the real window size instead of 1280 x 800.
+        """
+        width, height = self.width(), self.height()
+        if getattr(self, "_left_rail", None) is not None:
+            rail = hud_layout.rail_width(width)
+            if self._left_rail.width() != rail:
+                self._left_rail.setFixedWidth(rail)
+            size = hud_layout.rail_button_size(width)
+            for button in getattr(self, "_left_icon_buttons", ()):
+                if button.width() != size:
+                    button.setFixedSize(size, size)
+        if getattr(self, "_right_menu", None) is not None:
+            self._size_right_menu(width, height)
+            if self._right_menu.isVisible():
+                self._position_right_menu()
 
     def _toggle_right_dropdown(self):
         """Show a floating right dropdown without shrinking the hologram workspace."""
@@ -774,6 +846,33 @@ class HUDMainWindow(QMainWindow):
             if self._bihansa_toggle.isChecked() != desired:
                 self._bihansa_toggle.setChecked(desired)
 
+    # ── battery thresholds ──────────────────────────────────────────────────
+    def _open_battery_settings(self):
+        """Edit the four persisted warning bands; changes apply immediately."""
+        dialog = BatteryThresholdsDialog(self._battery.thresholds, self)
+        dialog.sig_saved.connect(self._apply_battery_thresholds)
+        dialog.exec()
+        return dialog
+
+    @_safe_slot("ui.hud_main:_apply_battery_thresholds")
+    def _apply_battery_thresholds(self, thresholds: BatteryThresholds) -> None:
+        """Persist new bands and push them into the live monitors.
+
+        The performance tiers follow the same numbers: if low now means 35 %,
+        the visual battery saver has to start at 35 % too, otherwise the warning
+        and the behaviour would disagree on screen.
+        """
+        clean = save_thresholds(self._settings, thresholds)
+        if hasattr(self, "_battery"):
+            self._battery.set_thresholds(clean)
+        if hasattr(self, "_performance"):
+            self._performance.saver_percent = int(clean.low)
+            self._performance.balanced_percent = max(int(clean.low) + 1, int(clean.fifty))
+        # Re-evaluate now so the user sees the new bands take effect rather than
+        # waiting up to five seconds for the next tick.
+        if hasattr(self, "_battery"):
+            self._poll_system_status()
+
     def _update_clock(self):
         self._lbl_clock.setText(time.strftime("%H:%M:%S"))
 
@@ -862,12 +961,9 @@ class HUDMainWindow(QMainWindow):
     # ── system status: battery, health, adaptive performance, notifications ──
     def _init_system_status(self):
         """Create the Qt-free status engines and the island, then start polling."""
-        thresholds = BatteryThresholds(
-            fifty=self._settings.value("battery/fifty", 50, type=int),
-            low=self._settings.value("battery/low", 25, type=int),
-            critical=self._settings.value("battery/critical", 10, type=int),
-            full=self._settings.value("battery/full", 100, type=int),
-        ).validated()
+        # One reader for the persisted bands, shared with the settings dialog so
+        # the HUD and the editor can never disagree about what was stored.
+        thresholds = load_thresholds(self._settings)
         self._battery = BatteryMonitor(thresholds=thresholds)
         self._prober = _shared_prober()
         self._health = HealthMonitor(
@@ -899,6 +995,12 @@ class HUDMainWindow(QMainWindow):
             DynamicIslandController(self, island=self._island)
             if DynamicIslandController is not None else None
         )
+
+        # Background producers: reminders and Steam downloads push their own
+        # panels. Polled on the same tick as the battery, but only every fourth
+        # tick (20 s) — these sources read files, they do not need 5 s freshness.
+        self._task_sources = TaskSourceRegistry()
+        self._source_tick = 0
 
         self._status_timer = QTimer(self)
         self._status_timer.timeout.connect(self._poll_system_status)
@@ -1049,6 +1151,72 @@ class HUDMainWindow(QMainWindow):
         self._refresh_health()
         self._refresh_render_budget(reading)
         self._drain_notifications()
+        self._source_tick += 1
+        if self._source_tick % 4 == 0:
+            self._sync_task_sources()
+
+    # ── background task producers ───────────────────────────────────────────
+    @_safe_slot("ui.hud_main:_sync_task_sources")
+    def _sync_task_sources(self) -> None:
+        """Let reminders/downloads own panels, exactly like a voice command does."""
+        registry = getattr(self, "_task_sources", None)
+        if registry is None:
+            return
+        try:
+            tasks = registry.scan()
+        except Exception:
+            failsoft.suppress("ui.hud_main:_sync_task_sources")
+            return
+        if registry.errors:
+            # A producer that failed is *unknown*, not empty. Say so in the log
+            # rather than silently pretending there is nothing to show.
+            print(f"[JARVIS HUD] task source unavailable: {registry.errors}")
+        self._task_panels.sync_sources(tasks)
+        self._sync_task_blocked_rect()
+
+    # ── music transport ─────────────────────────────────────────────────────
+    def _on_transport_state(self, playing: bool) -> None:
+        """Reflect a media key that was actually delivered."""
+        if not self._task_panels.has_task("media:now"):
+            return
+        self._task_panels.update_task("media:now", playing=bool(playing))
+
+    @_safe_slot("ui.hud_main:_dismiss_now_playing")
+    def _dismiss_now_playing(self) -> None:
+        self._now_playing_dismissed = True
+        self._task_panels.close_task("media:now", archive=False)
+
+    def _show_now_playing(self, action_name: str, result: str) -> None:
+        """Open the persistent music card for a command that really started playback.
+
+        The card never claims the track is *playing*: the OS media keys are
+        fire-and-forget, so there is no state to read. The play/pause glyph is a
+        control, and it only flips after a press actually succeeds.
+        """
+        self._now_playing_dismissed = False
+        title = " ".join(str(result or "").split()) or "Media playback"
+        fields = {
+            "kind": TaskKind.MUSIC,
+            "title": title[:80],
+            "subtitle": "MEDIA · SYSTEM MEDIA KEYS",
+            # Nothing is "running" here: this card is a control surface for
+            # playback someone else owns, so it must not sweep a progress bar.
+            "state": TaskState.WAITING,
+            "progress": None,
+            "playing": self._transport.playing,
+            "on_dismiss": self._dismiss_now_playing,
+        }
+        fields.update(self._transport.callbacks())
+        if self._task_panels.has_task("media:now"):
+            self._task_panels.update_task("media:now", **fields)
+        else:
+            self._task_panels.open_task(TaskSpec(task_id="media:now", **fields))
+        if not self._transport.available():
+            # Honest caption: no transport buttons exist on this machine.
+            self._task_panels.update_task(
+                "media:now", subtitle="MEDIA · CONTROLS UNAVAILABLE ON THIS SYSTEM"
+            )
+        self._sync_task_blocked_rect()
 
     @_safe_slot("ui.hud_main:_on_battery_update")
     def _on_battery_update(self, reading: BatteryReading, events) -> None:
@@ -1218,6 +1386,10 @@ class HUDMainWindow(QMainWindow):
                     PRIORITY_HIGH,
                 )
             )
+        if ok and kind_for_action(action_name) == TaskKind.MUSIC:
+            # Real playback was requested, so offer real transport controls for
+            # whatever the OS is now playing.
+            self._show_now_playing(str(action_name or ""), result)
         # Terminal panels shrink but stay dismissible, then archive themselves.
         # The timer is parented to this window, so a closed HUD cancels it
         # instead of firing into deleted widgets.

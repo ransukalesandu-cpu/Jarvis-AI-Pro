@@ -288,13 +288,30 @@ class GlassTaskPanel(QWidget):
         return self._spec.task_id
 
     def apply_spec(self, spec: TaskSpec, palette: ThemePalette | None = None) -> None:
-        changed_kind = spec.kind != self._spec.kind
+        previous = self._button_signature()
         self._spec = spec.normalised()
         if palette is not None:
             self._palette = palette
-        if changed_kind:
+        # Buttons are rebuilt whenever anything that decides *which* controls
+        # exist changes — the kind, the play/pause glyph, or a callback that
+        # arrived/disappeared. Without this an update that only flips `playing`
+        # would leave the old glyph on screen.
+        if self._button_signature() != previous:
             self._rebuild_buttons()
         self.update()
+
+    def _button_signature(self) -> tuple:
+        spec = self._spec
+        return (
+            spec.kind,
+            bool(spec.playing),
+            spec.on_previous is not None,
+            spec.on_play_pause is not None,
+            spec.on_next is not None,
+            spec.on_open is not None,
+            spec.on_expand is not None and spec.kind in (TaskKind.VIDEO, TaskKind.IMAGE),
+            spec.on_dismiss is not None or spec.is_terminal,
+        )
 
     def set_collapsed(self, collapsed: bool) -> None:
         self._collapsed = bool(collapsed)
@@ -568,6 +585,9 @@ class TaskPanelManager(QWidget):
         self._specs: dict[str, TaskSpec] = {}
         self._blocked = QRect()
         self._archived: list[TaskSpec] = []
+        #: Producer-owned ids the user dismissed; cleared when the producer
+        #: stops reporting the task, so the next occurrence is visible again.
+        self._dismissed_sources: set[str] = set()
         self.setGeometry(stage.rect())
         # Follow the stage itself: the overlay is not in a layout, so without
         # this it would keep its construction-time size and place nothing.
@@ -656,6 +676,76 @@ class TaskPanelManager(QWidget):
             del self._archived[:-20]
         self.reflow()
 
+    #: Panels owned by a background producer carry this id prefix. Voice-command
+    #: panels (`cmd:…`) are never touched by a source sync.
+    SOURCE_PREFIX = "source:"
+
+    def sync_sources(self, tasks: Iterable) -> list[str]:
+        """Reconcile producer-owned panels with what the subsystems report.
+
+        ``tasks`` is any iterable of :class:`core.task_sources.SourceTask`. The
+        manager owns the diff so every producer gets identical behaviour:
+
+        * a newly reported task opens a panel;
+        * a still-reported task is updated in place (same id ⇒ same card, no
+          flicker and no layout churn);
+        * a task that stopped being reported closes its panel;
+        * a task the *user* dismissed stays closed while the producer keeps
+          reporting it, and is forgotten as soon as the producer stops — so the
+          next real occurrence shows up again.
+
+        Returns the ids that are live afterwards.
+        """
+        wanted: dict[str, object] = {}
+        for task in tasks or ():
+            key = str(getattr(task, "key", "") or "")
+            if not key:
+                continue
+            if not key.startswith(self.SOURCE_PREFIX):
+                key = f"{self.SOURCE_PREFIX}{key}"
+            wanted[key] = task
+
+        # Forget dismissals for tasks the producers no longer report, otherwise
+        # a reminder that comes due again would stay silently hidden.
+        self._dismissed_sources &= set(wanted)
+
+        for task_id, task in wanted.items():
+            if task_id in self._dismissed_sources:
+                if self.has_task(task_id):
+                    self.close_task(task_id, archive=False)
+                continue
+            fields = {
+                "kind": str(getattr(task, "kind", TaskKind.GENERIC) or TaskKind.GENERIC),
+                "title": str(getattr(task, "title", "") or ""),
+                "subtitle": str(getattr(task, "subtitle", "") or ""),
+                "detail": str(getattr(task, "detail", "") or ""),
+                "progress": getattr(task, "progress", None),
+                "playing": bool(getattr(task, "playing", False)),
+                # Producers state their own phase; unknown values fall back to
+                # RUNNING inside TaskSpec.normalised().
+                "state": str(getattr(task, "state", TaskState.RUNNING) or TaskState.RUNNING),
+            }
+            if self.has_task(task_id):
+                self.update_task(task_id, **fields)
+            else:
+                self.open_task(TaskSpec(task_id=task_id, **fields))
+
+        for task_id in list(self._specs):
+            if not task_id.startswith(self.SOURCE_PREFIX):
+                continue
+            if task_id not in wanted and self.has_task(task_id):
+                self.close_task(task_id, archive=False)
+
+        return [task_id for task_id in wanted if self.has_task(task_id)]
+
+    def dismiss_source(self, task_id: str) -> bool:
+        """Hide a producer-owned panel until its producer stops reporting it."""
+        if not str(task_id).startswith(self.SOURCE_PREFIX):
+            return False
+        self._dismissed_sources.add(str(task_id))
+        self.close_task(str(task_id), archive=False)
+        return True
+
     def archive(self) -> list[TaskSpec]:
         """Recently finished tasks, newest last — the "reopen" list."""
         return list(self._archived)
@@ -706,10 +796,15 @@ class TaskPanelManager(QWidget):
         for task_id in list(self._panels):
             self.close_task(task_id, archive=False)
         self._archived.clear()
+        self._dismissed_sources.clear()
 
     # -- internals ----------------------------------------------------------
     def _on_dismiss(self, task_id: str) -> None:
         self.sig_task_action.emit(task_id, "dismiss")
+        if str(task_id).startswith(self.SOURCE_PREFIX):
+            # The producer still reports this fact on the next poll; remember
+            # the dismissal so the card does not spring back immediately.
+            self._dismissed_sources.add(str(task_id))
         self.close_task(task_id)
 
     #: Sizes used once a real thumbnail exists for a video/image task.

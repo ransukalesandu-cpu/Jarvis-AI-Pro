@@ -9,10 +9,10 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **HUD is clean by default**: the autonomous surfaces (dashboard card, `◉`
-  rail button, menu entries, minimised status widget) are opt-in via
-  `autonomous_ui_enabled` / `JARVIS_AUTONOMOUS_UI=1`. With the flag off the
-  HUD is exactly as it was, and `test_hud_stays_clean_while_the_ui_flag_is_off`
-  enforces it.
+  rail button, menu entries) are opt-in via `autonomous_ui_enabled` /
+  `JARVIS_AUTONOMOUS_UI=1`. With the flag off the HUD is exactly as it was, and
+  `test_hud_stays_clean_while_the_ui_flag_is_off` enforces it. The minimised
+  island is not gated: it also carries battery, health and hologram state.
 - **RAM profiler** (`JarvisAI/tools/profile_ram.py`, adopted from PR #143): samples
   the JARVIS process tree (RSS, USS, CPU, system-available RAM) into CSV with
   `--label`/`--append`, so idle / voice / screen / hologram runs can be compared on

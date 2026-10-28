@@ -256,7 +256,9 @@ class QtAgentUiTests(unittest.TestCase):
             hud = HUDMainWindow()
             self.addCleanup(hud.deleteLater)
             self.assertIsNone(hud._panel_agent)
-            self.assertIsNone(hud._island_controller)
+            # The minimised island is *not* ours to gate on this flag: on main it
+            # is a shared battery/health/hologram surface too.
+            self.assertIsNotNone(hud._island_controller)
             self.assertEqual(len(hud._left_icon_buttons), 2)
             self.assertEqual(len(hud._dashboard._cards), 5)
             self.assertIsNone(hud._dashboard._extra_card)

@@ -22,7 +22,7 @@ from PyQt6.QtCore import (
     Qt, QObject, QEvent, QRect, QTimer, QSettings, QPropertyAnimation, QEasingCurve,
     pyqtSignal, pyqtSlot,
 )
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QCursor
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QToolButton, QFrame, QGraphicsBlurEffect, QGraphicsOpacityEffect, QCheckBox, QStackedWidget
@@ -533,6 +533,28 @@ class HUDMainWindow(QMainWindow):
         main_layout.addLayout(body_layout, stretch=1)
         self._left_rail.hide()
 
+        # Small edge tab keeps the home view clean while making navigation
+        # discoverable on hover. The expanded rail is shown only while the
+        # pointer is over the tab/rail; the dashboard keeps its rail visible.
+        self._left_menu_trigger = QToolButton(central_widget)
+        self._left_menu_trigger.setObjectName("leftMegaMenuTrigger")
+        self._left_menu_trigger.setText("›")
+        self._left_menu_trigger.setToolTip("Hover to open navigation")
+        self._left_menu_trigger.setFixedSize(18, 58)
+        self._left_menu_trigger.setStyleSheet(
+            "QToolButton#leftMegaMenuTrigger { color: #ffbd7a; "
+            "background: rgba(10,18,28,175); border: 1px solid #69462e; "
+            "border-left: none; border-radius: 0 12px 12px 0; font-size: 22px; }"
+            "QToolButton#leftMegaMenuTrigger:hover { color: #fff; "
+            "background: rgba(70,40,25,220); border-color: #ffb066; }"
+        )
+        self._left_menu_trigger.installEventFilter(self)
+        self._left_rail.installEventFilter(self)
+        for _button in self._left_icon_buttons:
+            _button.installEventFilter(self)
+        self._position_left_menu_trigger()
+        self._left_menu_trigger.show()
+
         for index, button in enumerate(self._left_icon_buttons):
             if index >= 2 and self._panel_agent is not None:
                 button.clicked.connect(
@@ -585,6 +607,7 @@ class HUDMainWindow(QMainWindow):
         # Chrome adapts before the menu is positioned: the dropdown's width is
         # one of the things that decides where it goes.
         self._apply_responsive_chrome()
+        self._position_left_menu_trigger()
         if hasattr(self, "_right_menu") and self._right_menu.isVisible():
             self._position_right_menu()
         self._sync_task_blocked_rect()
@@ -620,6 +643,7 @@ class HUDMainWindow(QMainWindow):
         self._transition_target = "dashboard"
         self._right_menu.hide()
         self._left_rail.show()
+        self._left_menu_trigger.hide()
         self._dashboard_opacity_effect.setOpacity(0.0)
         self._workspace_stack.setCurrentWidget(self._dashboard)
         self._dashboard_button.setText("⌂")
@@ -646,6 +670,7 @@ class HUDMainWindow(QMainWindow):
         if target == "home":
             self._workspace_stack.setCurrentWidget(self._home_page)
             self._left_rail.hide()
+            self._left_menu_trigger.show()
             self._dashboard_opacity_effect.setOpacity(1.0)
             self._dashboard_button.setText("▦")
             self._dashboard_button.setToolTip("Open Bento dashboard")
@@ -1503,6 +1528,38 @@ class HUDMainWindow(QMainWindow):
                 island.hide()
         except Exception:
             failsoft.suppress("ui.hud_main:changeEvent")
+
+    def _position_left_menu_trigger(self) -> None:
+        """Keep the edge tab vertically centered in the central workspace."""
+        trigger = getattr(self, "_left_menu_trigger", None)
+        central = self.centralWidget()
+        if trigger is not None and central is not None:
+            trigger.move(0, max(24, (central.height() - trigger.height()) // 2))
+            trigger.raise_()
+
+    def _hide_left_rail_if_pointer_outside(self) -> None:
+        """Collapse after a short delay so pointer travel into the rail is safe."""
+        if self._workspace_stack.currentWidget() is self._dashboard:
+            return
+        widget = QApplication.widgetAt(QCursor.pos())
+        while widget is not None:
+            if widget is self._left_rail or widget is self._left_menu_trigger:
+                return
+            widget = widget.parentWidget()
+        self._left_rail.hide()
+
+    def eventFilter(self, watched, event):
+        """Expand the home navigation on hover without swallowing Qt input."""
+        if watched is self._left_menu_trigger or watched is self._left_rail or watched in self._left_icon_buttons:
+            if event.type() == QEvent.Type.Enter:
+                if self._workspace_stack.currentWidget() is not self._dashboard:
+                    self._left_rail.show()
+                    self._left_rail.raise_()
+                return False
+            if event.type() == QEvent.Type.Leave:
+                QTimer.singleShot(180, self._hide_left_rail_if_pointer_outside)
+                return False
+        return super().eventFilter(watched, event)
 
     def keyPressEvent(self, event):
         """Escape closes whatever overlay is open, innermost first."""

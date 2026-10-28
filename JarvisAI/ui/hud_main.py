@@ -921,11 +921,23 @@ class HUDMainWindow(QMainWindow):
             self._lbl_hud_status.setStyleSheet("color: #7c4dff;")
         elif st == "SPEAKING":
             self._lbl_hud_status.setText("● SPEAKING")
-            self._lbl_hud_status.setStyleSheet("color: #00e5ff;")
+            self._lbl_hud_status.setStyleSheet(f"color: {self._palette_chrome()};")
+        elif st in ("ERROR", "FAILED", "AUDIO_ERROR", "SESSION_ERROR"):
+            self._lbl_hud_status.setText("⚠ SYSTEM ERROR")
+            self._lbl_hud_status.setStyleSheet("color: #ff6b6b;")
+        elif st in ("DISCONNECTED", "OFFLINE", "CONNECTION_LOST"):
+            self._lbl_hud_status.setText("○ DISCONNECTED")
+            self._lbl_hud_status.setStyleSheet("color: #ffb066;")
         elif st in ("PRIVACY_LOCK", "LOCKDOWN"):
             self._handle_privacy_lock()
-        else:
+        elif st in ("IDLE", "READY", "STANDBY"):
             self._lbl_hud_status.setText("○ STANDBY")
+            self._lbl_hud_status.setStyleSheet(f"color: {self._palette_chrome()};")
+        else:
+            # Unknown states are shown explicitly instead of being mislabeled
+            # as standby; this keeps the UI honest when new states are added.
+            readable_state = st.replace("_", " ")[:32]
+            self._lbl_hud_status.setText(f"● {readable_state}")
             self._lbl_hud_status.setStyleSheet(f"color: {self._palette_chrome()};")
 
     @pyqtSlot(str)

@@ -206,6 +206,29 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(hud.bihansa_visualizer.get_state(), "SPEAKING")
         self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
 
+    def test_hud_status_label_does_not_report_errors_as_standby(self):
+        """Error and disconnected states must remain visible in the home status."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+
+        for state in ("ERROR", "FAILED", "AUDIO_ERROR", "SESSION_ERROR"):
+            with self.subTest(state=state):
+                hud._on_state_changed(state)
+                self.assertIn("ERROR", hud._lbl_hud_status.text())
+                self.assertNotIn("STANDBY", hud._lbl_hud_status.text())
+
+        for state in ("DISCONNECTED", "OFFLINE", "CONNECTION_LOST"):
+            with self.subTest(state=state):
+                hud._on_state_changed(state)
+                self.assertIn("DISCONNECTED", hud._lbl_hud_status.text())
+                self.assertNotIn("STANDBY", hud._lbl_hud_status.text())
+
+        hud._on_state_changed("CUSTOM_PROVIDER_STATE")
+        self.assertIn("CUSTOM PROVIDER STATE", hud._lbl_hud_status.text())
+        self.assertNotIn("STANDBY", hud._lbl_hud_status.text())
+
+        hud._on_state_changed("IDLE")
+        self.assertIn("STANDBY", hud._lbl_hud_status.text())
+
     def test_first_run_setup_asks_only_for_gemini_api_key(self):
         """The first-run credentials card must expose one Gemini key field only."""
         with tempfile.TemporaryDirectory() as directory:

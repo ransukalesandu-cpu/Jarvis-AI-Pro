@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import QWidget
 
 from core.hologram_theme import JARVIS_PALETTE, ThemePalette
 from .holo_scanline_overlay import HologramScanlineOverlay
+from .holo_rim_light import NeuralRimLight
 from .holographic_orb import HolographicOrb
 from .quantum_heart_reactor import QuantumHeartReactor
 from .wireframe_head import NeuralWireframeHead
@@ -57,6 +58,9 @@ class JarvisHologramPanel(QWidget):
         self.heart = QuantumHeartReactor(self)
         # Transparent child overlay: follows the head's geometry and palette.
         self.scanline = HologramScanlineOverlay(self.head)
+        self.rim_light = NeuralRimLight(self.head)
+        self.rim_light.set_bounds_provider(self.head.face_rect)
+        self.rim_light.set_colors(self._palette.primary, self._palette.accent)
 
         self.head.sig_state_changed.connect(self._on_state_changed)
 
@@ -98,12 +102,14 @@ class JarvisHologramPanel(QWidget):
         self.head.set_audio_energy(level)
         self.orb.set_audio_energy(level)
         self.heart.set_pulse_energy(level)
+        self.rim_light.set_audio_energy(level)
 
     @pyqtSlot(str)
     def set_state(self, state: str) -> None:
         self.head.set_state(state)
         self.orb.set_state(state)
         self.heart.set_state(state)
+        self.rim_light.set_state(state)
 
     def get_state(self) -> str:
         return self.head.get_state()
@@ -115,6 +121,7 @@ class JarvisHologramPanel(QWidget):
         self.head.set_palette(palette)
         self.orb.set_palette(palette)
         self.heart.set_palette(palette)
+        self.rim_light.set_colors(palette.primary, palette.accent)
         self.scanline.update()
         self.update()
 
@@ -130,6 +137,7 @@ class JarvisHologramPanel(QWidget):
         self.orb.set_reduced_motion(enabled)
         self.heart.set_reduced_motion(enabled)
         self.scanline.set_reduced_motion(enabled)
+        self.rim_light.set_reduced_motion(enabled)
 
     def set_performance_budget(self, frame_interval_ms: int, particle_scale: float, glow_scale: float) -> None:
         interval = max(16, min(200, int(frame_interval_ms)))
@@ -140,6 +148,7 @@ class JarvisHologramPanel(QWidget):
         self.orb.set_performance_budget(frame_interval_ms, particle_scale, glow_scale)
         self.heart.set_performance_budget(frame_interval_ms, particle_scale, glow_scale)
         self.scanline.set_performance_budget(frame_interval_ms, particle_scale, glow_scale)
+        self.rim_light.set_performance_budget(frame_interval_ms, particle_scale, glow_scale)
 
     def face_rect(self):
         """Bounding box of the face mesh, translated into panel coordinates."""
@@ -150,6 +159,7 @@ class JarvisHologramPanel(QWidget):
     # ── wiring ──────────────────────────────────────────────────────────────
     @pyqtSlot(str)
     def _on_state_changed(self, state: str) -> None:
+        self.rim_light.set_state(state)
         self.sig_state_changed.emit(state)
 
     def _draw_wire(self, painter: QPainter, p1: QPointF, p2: QPointF, colour: QColor, t: float, seed: float) -> None:

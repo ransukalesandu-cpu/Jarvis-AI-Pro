@@ -234,7 +234,7 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(overlay._key_field.echoMode(), QLineEdit.EchoMode.Normal)
         self.assertEqual(overlay._show_key_button.text(), "HIDE")
         overlay._show_key_button.setChecked(False)
-        self.assertEqual(overlay._key_field.echoMode(), overlay._key_field.EchoMode.Password)
+        self.assertEqual(overlay._key_field.echoMode(), QLineEdit.EchoMode.Password)
 
     def test_first_run_setup_can_keep_existing_gemini_key(self):
         """A reconfiguration with a stored key may leave the field blank."""

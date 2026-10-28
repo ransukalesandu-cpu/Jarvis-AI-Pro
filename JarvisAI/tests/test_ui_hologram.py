@@ -266,6 +266,30 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(payloads, [])
         self.assertFalse(overlay._error_label.isHidden())
 
+    def test_recovery_setup_requires_replacement_even_when_old_key_exists(self):
+        """An invalid stored key must not be accepted by the keep-existing shortcut."""
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "api_keys.json"
+            config_path.write_text(
+                '{"gemini_api_key":"known-invalid-old-key"}',
+                encoding="utf-8",
+            )
+            with patch("ui.API_FILE", config_path):
+                overlay = self._track_widget(
+                    SetupOverlay(allow_keep_existing=False)
+                )
+
+        payloads = []
+        overlay.done.connect(payloads.append)
+        overlay._submit()
+        self.assertEqual(payloads, [])
+        self.assertFalse(overlay._error_label.isHidden())
+
+        replacement = "AIzaSyNewReplacementKeyLongEnough"
+        overlay._key_field.setText(replacement)
+        overlay._submit()
+        self.assertEqual(payloads, [{"gemini_api_key": replacement}])
+
     def test_hologram_visualizers_use_transparent_backgrounds(self):
         """Both original hologram renderers must preserve transparent pixels."""
         for widget_type in (NeuralWireframeHead, BihansaHologramWidget):
@@ -462,7 +486,25 @@ class TestUIHologram(unittest.TestCase):
 
                 self.assertIs(hud_ui._win, original_window)
                 self.assertTrue(hud_ui._win.isVisible())
-                self.assertIsInstance(hud_ui._setup_controller._overlay, SetupOverlay)
+                overlay = hud_ui._setup_controller._overlay
+                self.assertIsInstance(overlay, SetupOverlay)
+                self.assertFalse(overlay._allow_keep_existing)
+                self.assertFalse(hud_ui._win._ready)
+
+                # Blank submit cannot silently recycle the rejected stored key.
+                payloads = []
+                overlay.done.connect(payloads.append)
+                overlay._submit()
+                self.assertEqual(payloads, [])
+                self.assertFalse(overlay._error_label.isHidden())
+
+                # A clearly malformed/short key is rejected before it is saved.
+                with patch("memory.config_manager.save_api_keys") as save_keys:
+                    hud_ui._setup_controller._save_gemini_key(
+                        {"gemini_api_key": "short"}
+                    )
+                    save_keys.assert_not_called()
+                self.assertTrue(overlay._error_label.isVisible())
                 self.assertFalse(hud_ui._win._ready)
 
     def test_hologram_hud_ui_adapter(self):

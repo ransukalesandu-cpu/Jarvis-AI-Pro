@@ -7,6 +7,7 @@ Binds to real application state (Voice Biometrics, AuthState, Memory, Scheduler,
 
 from __future__ import annotations
 
+import functools
 import os
 import sys
 import time
@@ -14,9 +15,13 @@ import time
 if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFORM" not in os.environ:
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
+from dataclasses import replace
 from typing import Optional, Callable
 
-from PyQt6.QtCore import Qt, QObject, pyqtSlot, pyqtSignal, QTimer, QSettings, QPropertyAnimation, QEasingCurve
+from PyQt6.QtCore import (
+    Qt, QObject, QEvent, QRect, QTimer, QSettings, QPropertyAnimation, QEasingCurve,
+    pyqtSignal, pyqtSlot,
+)
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -35,8 +40,26 @@ from ui.panels.scheduler_panel import SchedulerPanel
 from ui.panels.system_telemetry_ring import SystemTelemetryRing
 from ui.panels.modern_dashboard import FloatingHolographicOrb, ModernDashboard
 from ui.panels.hud_surface import BentoPanelSurface
+from ui.dynamic_island import DynamicIsland
+from ui.health_strip import HudStatusStrip, HudToast
+from ui.task_panels import TaskPanelManager, TaskSpec, TaskState, kind_for_action
 
 from core import failsoft
+from core.hologram_theme import VisualPreferences, backdrop_css, palette_for_mode
+from core.subsystem_probes import SubsystemProber, default_probes
+from core.system_status import (
+    AdaptivePerformance,
+    BatteryMonitor,
+    BatteryReading,
+    BatteryThresholds,
+    HealthMonitor,
+    Notification,
+    NotificationCenter,
+    PRIORITY_CRITICAL,
+    PRIORITY_HIGH,
+    PRIORITY_LOW,
+    PRIORITY_NORMAL,
+)
 
 try:
     from security.auth_manager import PRIVACY_LOCK, lock_workstation
@@ -45,6 +68,56 @@ except Exception:
     get_auth_manager = None
     lock_workstation = lambda: False
     PRIVACY_LOCK = "PRIVACY_LOCK"
+
+
+def _safe_slot(feature: str):
+    """Make a Qt slot exception-proof.
+
+    PyQt6 aborts the process when a Python exception escapes a slot invoked from
+    the event loop, so every timer/signal handler that touches widgets must
+    contain its own failures.
+    """
+
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception:
+                failsoft.suppress(feature)
+                return None
+
+        return wrapper
+
+    return decorator
+
+
+_SHARED_ISLAND = None
+_SHARED_PROBER = None
+
+
+def _shared_island(palette):
+    """One always-on-top pill per process.
+
+    There is exactly one HUD in the application, but tests (and any future
+    multi-window preview) would otherwise leave several stray top-level pills
+    behind. The pill holds no app state, so sharing it is safe.
+    """
+    global _SHARED_ISLAND
+    if _SHARED_ISLAND is None:
+        _SHARED_ISLAND = DynamicIsland(None, palette)
+    else:
+        _SHARED_ISLAND.set_palette(palette)
+    return _SHARED_ISLAND
+
+
+def _shared_prober():
+    """One background probe thread per process, started on first use."""
+    global _SHARED_PROBER
+    if _SHARED_PROBER is None:
+        _SHARED_PROBER = SubsystemProber(default_probes())
+        _SHARED_PROBER.start()
+    return _SHARED_PROBER
 
 
 class HUDMainWindow(QMainWindow):
@@ -58,6 +131,9 @@ class HUDMainWindow(QMainWindow):
     sig_avatar_text = pyqtSignal(str)
     sig_hybrid_telemetry = pyqtSignal(str, float, str, str)
     sig_setup_requested = pyqtSignal()
+    # Emitted from the live loop (any thread) around real tool execution.
+    sig_command_started = pyqtSignal(str, str)
+    sig_command_finished = pyqtSignal(str, str)
 
     def __init__(self, bridge: Optional[VisualizerBridge] = None, parent=None):
         super().__init__(parent)
@@ -68,23 +144,27 @@ class HUDMainWindow(QMainWindow):
         # JarvisLive also checks it when an invalid API key requests reconfiguration.
         self._ready = True
 
-        # Dark cyberpunk theme style
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #080b11;
-            }
-            QLabel {
-                color: #c8d9d5;
-            }
-        """)
+        # Dark cyberpunk theme style. The window paints the same backdrop the
+        # hologram clears to, so the face has no visible box around it.
+        self.setStyleSheet(
+            "QMainWindow, QWidget#JarvisCentral {"
+            f" background-color: {backdrop_css()};"
+            " }"
+            " QLabel { color: #c8d9d5; }"
+        )
 
         self._bridge = bridge or get_visualizer_bridge()
         self._auth_manager = get_auth_manager() if callable(get_auth_manager) else None
 
         self._privacy_locked = False
+        # Settings must exist before the UI builds, because the palette, reduced
+        # motion and battery-saver preferences are applied to every renderer.
+        self._settings = QSettings("JarvisAI", "JarvisAIPro")
+        self._prefs = VisualPreferences.from_settings(self._settings)
+        self._palette = self._prefs.scaled_palette()
+        self._budget_reason = ""
         self._init_ui()
         self._wire_signals()
-        self._settings = QSettings("JarvisAI", "JarvisAIPro")
         from memory.config_manager import get_assistant_mode, load_api_keys
         enabled = (get_assistant_mode() == "bihansa" if "assistant_mode" in load_api_keys()
                    else self._settings.value("bihansa/enabled", False, type=bool))
@@ -99,8 +179,12 @@ class HUDMainWindow(QMainWindow):
         self._poll_timer.timeout.connect(self._poll_real_states)
         self._poll_timer.start(1500)
 
+        self._init_system_status()
+
     def _init_ui(self):
         central_widget = QWidget(self)
+        central_widget.setObjectName("JarvisCentral")
+        central_widget.setAutoFillBackground(True)
         self.setCentralWidget(central_widget)
 
         main_layout = QVBoxLayout(central_widget)
@@ -109,6 +193,10 @@ class HUDMainWindow(QMainWindow):
 
         # Minimal top row: remove decorative title/clock; keep one compact menu control.
         top_row = QHBoxLayout()
+        # Live subsystem health (mic / speaker / network / AI session). Unavailable
+        # subsystems render as hollow rings — never a fabricated green dot.
+        self._status_strip = HudStatusStrip(self, self._palette)
+        top_row.addWidget(self._status_strip, 0, Qt.AlignmentFlag.AlignVCenter)
         top_row.addStretch()
         self._dashboard_button = QToolButton(self)
         self._dashboard_button.setText("▦")
@@ -180,11 +268,21 @@ class HUDMainWindow(QMainWindow):
         # Stage wrapper gives the heart/circuit graphics a transparent overlay layer.
         # The original hologram widget and its paint implementation are untouched.
         self._hologram_stage = QWidget(self)
+        # The stage must be see-through: the hologram floats on the HUD, it is
+        # not a video panel with a black background.
+        for _layer in (self._hologram_stage,):
+            _layer.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            _layer.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+            _layer.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+            _layer.setStyleSheet("background: transparent;")
         stage_layout = QVBoxLayout(self._hologram_stage)
         stage_layout.setContentsMargins(0, 0, 0, 0)
         stage_layout.setSpacing(0)
 
         self._visualizer_stack = QStackedWidget(self._hologram_stage)
+        self._visualizer_stack.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._visualizer_stack.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self._visualizer_stack.setStyleSheet("background: transparent;")
         self.wireframe_visualizer = NeuralWireframeHead(self)
         self.bihansa_visualizer = BihansaHologramWidget(self)
         self._visualizer_stack.addWidget(self.wireframe_visualizer)
@@ -195,12 +293,18 @@ class HUDMainWindow(QMainWindow):
 
         self._heart_reactor = NeuralHeartReactor(self._hologram_stage)
         self._heart_reactor.raise_()
+        # Context-aware task panels live on the same stage, above the conduits.
+        # The manager gets the hologram's own rectangle as the blocked region, so
+        # no panel can ever land on the face.
+        self._task_panels = TaskPanelManager(self._hologram_stage, self._palette)
+        self._task_panels.sig_task_action.connect(self._on_task_action)
+        self._task_panels.raise_()
         center_col.addWidget(self._hologram_stage, stretch=1)
 
         self._lbl_hud_status = QLabel("● SYSTEM STANDBY")
         self._lbl_hud_status.setFont(QFont("Courier New", 11, QFont.Weight.Bold))
         self._lbl_hud_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._lbl_hud_status.setStyleSheet("color: #00e5ff;")
+        self._lbl_hud_status.setStyleSheet(f"color: {self._palette_chrome()};")
         center_col.addWidget(self._lbl_hud_status)
 
         self._lbl_avatar_text = QLabel("")
@@ -336,12 +440,57 @@ class HUDMainWindow(QMainWindow):
         self._dashboard_button.clicked.connect(self._toggle_dashboard_page)
         self._right_menu_button.clicked.connect(self._toggle_right_dropdown)
 
+        # Personalisation controls that do something real. Each one persists.
+        self._reduced_motion_box = QCheckBox("Reduce motion (accessibility)")
+        self._battery_saver_box = QCheckBox("Battery saver visuals")
+        self._charging_effects_box = QCheckBox("Charging effects")
+        for box in (self._reduced_motion_box, self._battery_saver_box, self._charging_effects_box):
+            box.setStyleSheet("QCheckBox { color: #ffd7a8; spacing: 6px; padding: 4px; }")
+            right_menu_layout.insertWidget(right_menu_layout.count() - 5, box)
+        self._charging_effects_box.setToolTip(
+            "Only applies when the machine actually reports a battery."
+        )
+        # Seed the boxes from persisted preferences *before* connecting, so
+        # restoring a saved value does not re-enter the apply path mid-build.
+        self._reduced_motion_box.setChecked(self._prefs.reduced_motion)
+        self._battery_saver_box.setChecked(self._prefs.battery_saver)
+        self._charging_effects_box.setChecked(self._prefs.charging_effects)
+        self._reduced_motion_box.toggled.connect(self._on_reduced_motion_toggled)
+        self._battery_saver_box.toggled.connect(self._on_battery_saver_toggled)
+        self._charging_effects_box.toggled.connect(self._on_charging_effects_toggled)
+
+        # In-HUD toast for notifications while the hologram is on screen.
+        self._toast = HudToast(central_widget, self._palette)
+        self._toast.sig_activated.connect(self._on_toast_activated)
+        self._toast.hide()
+
+        self._apply_palette()
+
 
     def resizeEvent(self, event):
         """Keep floating menus inside the central workspace after window resizes."""
         super().resizeEvent(event)
         if hasattr(self, "_right_menu") and self._right_menu.isVisible():
             self._position_right_menu()
+        self._sync_task_blocked_rect()
+        if hasattr(self, "_toast") and self._toast.isVisible():
+            host = self.centralWidget()
+            if host is not None:
+                self._toast.move(
+                    max(12, (host.width() - self._toast.width()) // 2),
+                    max(12, host.height() - self._toast.height() - 18),
+                )
+
+    @_safe_slot("ui.hud_main:_on_island_energy")
+    def _on_island_energy(self, energy: float) -> None:
+        """Mirror real audio energy onto the minimised pill."""
+        if hasattr(self, "_island") and self._island.isVisible():
+            self._island.set_energy(energy)
+
+    def showEvent(self, event):
+        """The stage has real geometry only once shown; re-place the overlays."""
+        super().showEvent(event)
+        self._sync_task_blocked_rect()
 
     def _toggle_dashboard_page(self):
         """Switch between a clean hologram home and the separate Bento dashboard."""
@@ -440,6 +589,11 @@ class HUDMainWindow(QMainWindow):
         self._bridge.sig_state_changed.connect(self._on_state_changed)
         self._bridge.sig_auth_state_changed.connect(self._on_auth_state_changed)
         self._bridge.sig_audio_energy.connect(self.bihansa_visualizer.set_audio_energy)
+        self._bridge.sig_audio_energy.connect(self._heart_reactor.set_energy)
+        self._bridge.sig_audio_energy.connect(self._task_panels.set_energy)
+        self._bridge.sig_audio_energy.connect(self._on_island_energy)
+        self.sig_command_started.connect(self._on_command_started)
+        self.sig_command_finished.connect(self._on_command_finished)
         self.sig_viseme_schedule.connect(self._schedule_visemes)
         self.sig_avatar_text.connect(self._show_avatar_text)
         self.sig_hybrid_telemetry.connect(self._panel_brain.update_telemetry)
@@ -455,6 +609,13 @@ class HUDMainWindow(QMainWindow):
         )
         self._mini_orb.set_bihansa_mode(enabled)
         self._dashboard.set_bihansa_mode(enabled)
+        # Persona drives the shared palette: copper for JARVIS, rose for Bihansa.
+        # Voice/persona selection still happens through sig_mode_changed below, so
+        # this changes appearance only — it never bypasses auth or Privacy Lock.
+        self._prefs = replace(self._prefs, mode="bihansa" if enabled else "jarvis").validated()
+        self._palette = self._prefs.scaled_palette()
+        self._save_visual_prefs()
+        self._apply_palette()
         self._bihansa_toggle.setText("BIHANSA MODE: ON" if enabled else "BIHANSA MODE: OFF")
         # Keep BIHANSA-only controls out of the standard JARVIS view.
         self._bihansa_effects.setVisible(enabled)
@@ -464,7 +625,9 @@ class HUDMainWindow(QMainWindow):
         save_assistant_mode("bihansa" if enabled else "jarvis")
         self.sig_mode_changed.emit()
         self._lbl_hud_status.setText("✦ BIHANSA NEURAL MODE" if enabled else "● SYSTEM STANDBY")
-        self._lbl_hud_status.setStyleSheet("color: #ff75d4;" if enabled else "color: #00e5ff;")
+        self._lbl_hud_status.setStyleSheet(
+            "color: #ff75d4;" if enabled else f"color: {self._palette_chrome()};"
+        )
 
     @pyqtSlot(object, float, float)
     def _schedule_visemes(self, frames, hop: float, at: float):
@@ -548,12 +711,14 @@ class HUDMainWindow(QMainWindow):
         self._mini_orb.set_state(visual_state)
         self._dashboard.set_state(visual_state)
         self._heart_reactor.set_state(visual_state)
+        if hasattr(self, "_island"):
+            self._island.set_state(visual_state.lower())
         if self._privacy_locked:
             return
 
         if st == "LISTENING":
             self._lbl_hud_status.setText("● LISTENING")
-            self._lbl_hud_status.setStyleSheet("color: #00e676;")
+            self._lbl_hud_status.setStyleSheet("color: #8ce6b0;")
         elif st == "THINKING":
             self._lbl_hud_status.setText("◈ THINKING")
             self._lbl_hud_status.setStyleSheet("color: #7c4dff;")
@@ -564,7 +729,7 @@ class HUDMainWindow(QMainWindow):
             self._handle_privacy_lock()
         else:
             self._lbl_hud_status.setText("○ STANDBY")
-            self._lbl_hud_status.setStyleSheet("color: #00e5ff;")
+            self._lbl_hud_status.setStyleSheet(f"color: {self._palette_chrome()};")
 
     @pyqtSlot(str)
     def _on_auth_state_changed(self, auth_state: str):
@@ -587,6 +752,8 @@ class HUDMainWindow(QMainWindow):
         self._mini_orb.set_state("PRIVACY_LOCK")
         self._dashboard.set_state("PRIVACY_LOCK")
         self._heart_reactor.set_state("PRIVACY_LOCK")
+        if hasattr(self, "_island"):
+            self._island.set_state("privacy")
         self._lbl_hud_status.setText("⊘ PRIVACY LOCK ENGAGED")
         self._lbl_hud_status.setStyleSheet("color: #ff1744;")
         self._lock_banner.show()
@@ -616,6 +783,455 @@ class HUDMainWindow(QMainWindow):
             self._on_state_changed("IDLE" if state in ("PRIVACY_LOCK", "LOCKDOWN") else state)
         self._panel_memory.setGraphicsEffect(None)
         self._panel_scheduler.setGraphicsEffect(None)
+
+    # ── system status: battery, health, adaptive performance, notifications ──
+    def _init_system_status(self):
+        """Create the Qt-free status engines and the island, then start polling."""
+        thresholds = BatteryThresholds(
+            fifty=self._settings.value("battery/fifty", 50, type=int),
+            low=self._settings.value("battery/low", 25, type=int),
+            critical=self._settings.value("battery/critical", 10, type=int),
+            full=self._settings.value("battery/full", 100, type=int),
+        ).validated()
+        self._battery = BatteryMonitor(thresholds=thresholds)
+        self._prober = _shared_prober()
+        self._health = HealthMonitor(
+            {name: (lambda probe_name=name: self._prober.get(probe_name)) for name in default_probes()}
+        )
+        self._performance = AdaptivePerformance(
+            saver_percent=thresholds.low,
+            balanced_percent=thresholds.fifty,
+        )
+        self._notifications = NotificationCenter()
+        self._last_budget_tier = ""
+
+        # Minimised representation. A pure view: it never touches audio or sessions.
+        self._island = _shared_island(self._palette)
+        for signal, slot in (
+            (self._island.sig_restore_requested, self._restore_from_island),
+            (self._island.sig_activated, self._on_island_activated),
+        ):
+            try:
+                signal.connect(slot)
+            except TypeError:
+                # Already connected by an earlier window: the shared pill may be
+                # reused after this HUD (and its slot) was destroyed.
+                pass
+
+        self._status_timer = QTimer(self)
+        self._status_timer.timeout.connect(self._poll_system_status)
+        self._status_timer.start(5000)
+        # Probes run in the shared background thread, so this first poll only
+        # reads a snapshot — it never blocks or paints mid-frame.
+        self._poll_system_status()
+
+    def _palette_chrome(self) -> str:
+        """Accent colour for the status text, from the active persona palette."""
+        return "#%02x%02x%02x" % self._palette.accent
+
+    @property
+    def palette(self):
+        """The active persona palette (JARVIS copper / Bihansa pink)."""
+        return self._palette
+
+    def preferences(self) -> VisualPreferences:
+        return self._prefs
+
+    def _save_visual_prefs(self) -> None:
+        """Persist only the visual keys; everything else in settings is untouched."""
+        for key, value in (
+            ("visual/mode", self._prefs.mode),
+            ("visual/glow", self._prefs.glow),
+            ("visual/reduced_motion", self._prefs.reduced_motion),
+            ("visual/battery_saver", self._prefs.battery_saver),
+            ("visual/charging_effects", self._prefs.charging_effects),
+        ):
+            try:
+                self._settings.setValue(key, value)
+            except Exception:
+                failsoft.suppress("ui.hud_main:_save_visual_prefs")
+
+    def _apply_palette(self) -> None:
+        """Push the persona palette into every renderer and piece of chrome."""
+        palette = self._palette
+        # Each face keeps its own identity: the JARVIS wireframe stays copper and
+        # the Bihansa companion stays pink. Everything else (heart, orb, chrome,
+        # task panels, island) follows the active persona palette.
+        for name, mode in (("wireframe_visualizer", "jarvis"), ("bihansa_visualizer", "bihansa")):
+            widget = getattr(self, name, None)
+            if widget is not None and hasattr(widget, "set_palette"):
+                try:
+                    widget.set_palette(palette_for_mode(mode))
+                except Exception:
+                    failsoft.suppress("ui.hud_main:_apply_palette")
+        widgets = [
+            getattr(self, name, None)
+            for name in (
+                "_heart_reactor",
+                "_mini_orb",
+                "_dashboard",
+                "_status_strip",
+                "_toast",
+                "_task_panels",
+            )
+        ]
+        for widget in [w for w in widgets if w is not None]:
+            setter = getattr(widget, "set_palette", None)
+            if callable(setter):
+                try:
+                    setter(palette)
+                except Exception:
+                    failsoft.suppress("ui.hud_main:_apply_palette")
+        if getattr(self, "_island", None) is not None:
+            self._island.set_palette(palette)
+
+    @_safe_slot("ui.hud_main:_reload_preferences")
+    def _reload_preferences(self) -> None:
+        """Re-read persisted preferences and re-apply them everywhere."""
+        self._prefs = VisualPreferences.from_settings(
+            self._settings, fallback_mode="bihansa" if self._bihansa_toggle.isChecked() else "jarvis"
+        )
+        self._palette = self._prefs.scaled_palette()
+        for widget in (self.wireframe_visualizer, self.bihansa_visualizer, self._mini_orb):
+            setter = getattr(widget, "set_reduced_motion", None)
+            if callable(setter):
+                try:
+                    setter(self._prefs.reduced_motion)
+                except Exception:
+                    failsoft.suppress("ui.hud_main:_reload_preferences")
+        self._heart_reactor.set_reduced_motion(self._prefs.reduced_motion)
+        self._apply_palette()
+        if hasattr(self, "_battery"):
+            self._poll_system_status()
+
+    @_safe_slot("ui.hud_main:_on_reduced_motion_toggled")
+    def _on_reduced_motion_toggled(self, enabled: bool) -> None:
+        self._prefs = replace(self._prefs, reduced_motion=bool(enabled)).validated()
+        self._save_visual_prefs()
+        self._reload_preferences()
+
+    @_safe_slot("ui.hud_main:_on_battery_saver_toggled")
+    def _on_battery_saver_toggled(self, enabled: bool) -> None:
+        self._prefs = replace(self._prefs, battery_saver=bool(enabled)).validated()
+        self._save_visual_prefs()
+        self._reload_preferences()
+
+    @_safe_slot("ui.hud_main:_on_charging_effects_toggled")
+    def _on_charging_effects_toggled(self, enabled: bool) -> None:
+        self._prefs = replace(self._prefs, charging_effects=bool(enabled)).validated()
+        self._save_visual_prefs()
+        self._poll_system_status()
+
+    @_safe_slot("ui.hud_main:_sync_task_blocked_rect")
+    def _orb_dock_rect(self) -> QRect:
+        """Area occupied by the status orb and the reactor heart, in stage coords."""
+        try:
+            orb = self._mini_orb
+            top_left = orb.mapTo(self._hologram_stage, orb.rect().topLeft())
+            centre_x = self._hologram_stage.width() / 2.0
+            return QRect(
+                int(centre_x - 110),
+                int(top_left.y() - 12),
+                220,
+                int(self._hologram_stage.height() - top_left.y()) + 12,
+            )
+        except (AttributeError, RuntimeError):
+            return QRect()
+
+    def _sync_task_blocked_rect(self) -> None:
+        """Tell the task-panel overlay exactly where the hologram sits on the stage."""
+        if not hasattr(self, "_task_panels"):
+            return
+        try:
+            visual = self._visualizer_stack.currentWidget()
+            face = visual.face_rect() if hasattr(visual, "face_rect") else visual.geometry()
+            top_left = visual.mapTo(self._hologram_stage, face.topLeft())
+            # The heart's filament anchors on the chin of that same face box.
+            face_rect = QRect(top_left.x(), top_left.y(), face.width(), face.height())
+            self._heart_reactor.set_face_rect(face_rect)
+            # The orb + heart cluster is part of the hologram, so panels must not
+            # land on it either. Unioning it with the face keeps the centre
+            # column clear and pushes panels to the sides.
+            dock = self._orb_dock_rect()
+            self._task_panels.set_blocked_rect(face_rect.united(dock) if dock.isValid() else face_rect)
+        except Exception:
+            failsoft.suppress("ui.hud_main:_sync_task_blocked_rect")
+
+    # -- battery / performance / health polling ------------------------------
+    @_safe_slot("ui.hud_main:_poll_system_status")
+    def _poll_system_status(self) -> None:
+        """One 5 s tick: battery edges, health snapshot, render budget, alerts."""
+        events = self._battery.poll()
+        reading = self._battery.reading
+        self._on_battery_update(reading, events)
+        self._refresh_health()
+        self._refresh_render_budget(reading)
+        self._drain_notifications()
+
+    @_safe_slot("ui.hud_main:_on_battery_update")
+    def _on_battery_update(self, reading: BatteryReading, events) -> None:
+        """Feed the *real* battery sample to the visuals; never invent one."""
+        available = bool(reading.available and reading.percent is not None)
+        percent = reading.percent if available else None
+        plugged = bool(reading.plugged) if available else False
+        charging_effects = self._prefs.charging_effects
+        self._heart_reactor.set_battery(
+            available, percent, plugged and charging_effects,
+            low_threshold=float(self._battery.thresholds.low),
+        )
+        self._mini_orb.set_charging(plugged and charging_effects)
+        if available:
+            suffix = " ⚡" if plugged else ""
+            self._island.set_battery_text(f"{percent:.0f}%{suffix}")
+        else:
+            # No sensor → no number. The island shows nothing rather than a fake.
+            self._island.set_battery_text("")
+
+        for event in events or ():
+            title, body, priority = {
+                "charging": ("Charging", f"Battery {event.percent:.0f}% — charging", PRIORITY_NORMAL),
+                "unplugged": ("On battery", f"Battery {event.percent:.0f}% — charger removed", PRIORITY_NORMAL),
+                "full": ("Battery full", f"Charged to {event.percent:.0f}%", PRIORITY_LOW),
+            }.get(event.kind, (event.kind.title(), event.detail, PRIORITY_NORMAL))
+            if event.kind == "threshold":
+                priority = PRIORITY_CRITICAL if event.level == "critical" else PRIORITY_HIGH
+                title = f"Battery {event.level}"
+            self._notifications.push(
+                Notification(f"battery:{event.kind}:{event.level}", title, body, priority)
+            )
+
+    @_safe_slot("ui.hud_main:_refresh_render_budget")
+    def _refresh_render_budget(self, reading: BatteryReading) -> None:
+        """Scale particles/glow/frame rate from battery + real CPU load."""
+        budget = self._performance.decide(
+            reading,
+            reduced_motion=self._prefs.reduced_motion,
+            battery_saver_enabled=self._prefs.battery_saver,
+        )
+        glow = budget.glow_scale * max(0.2, self._prefs.glow)
+        self.wireframe_visualizer.set_performance_budget(
+            budget.frame_interval_ms, budget.particle_scale, budget.glow_scale
+        )
+        self._mini_orb.set_performance_budget(
+            budget.frame_interval_ms, budget.particle_scale, budget.glow_scale
+        )
+        self._heart_reactor.set_glow(glow)
+        self._island.set_reduced_motion(self._prefs.reduced_motion or budget.tier == "saver")
+        if budget.tier != self._last_budget_tier:
+            self._last_budget_tier = budget.tier
+            self._budget_reason = budget.reason
+
+    @_safe_slot("ui.hud_main:_refresh_health")
+    def _refresh_health(self) -> None:
+        """Apply a real health snapshot to the strip and queue honest alerts."""
+        try:
+            state, notes = self._health.poll()
+        except Exception:
+            failsoft.suppress("ui.hud_main:_refresh_health")
+            return
+        self._status_strip.apply_health(state)
+        for note in notes or ():
+            self._notifications.push(note)
+        # Audio-stream health feeds the island's state so a dead stream is visible.
+        stream = state.audio_stream
+        if stream.available and not stream.ok:
+            self._island.set_state("error")
+
+    @_safe_slot("ui.hud_main:_drain_notifications")
+    def _drain_notifications(self) -> None:
+        """Show at most one notification per tick, in the right surface."""
+        note = self._notifications.pop()
+        if note is None:
+            return
+        if self._island.isVisible():
+            self._island.show_notification(note)
+            return
+        self._toast.show_notification(note)
+        host = self.centralWidget()
+        if host is not None:
+            self._toast.move(
+                max(12, (host.width() - self._toast.width()) // 2),
+                max(12, host.height() - self._toast.height() - 18),
+            )
+
+    @_safe_slot("ui.hud_main:_on_toast_activated")
+    def _on_toast_activated(self, source: str) -> None:
+        """Clicking a notification goes somewhere real, or nowhere."""
+        if source == "battery":
+            self._open_dashboard_panel(4)
+        elif source in {"microphone", "speaker", "audio_stream"}:
+            self._open_dashboard_panel(4)
+        elif source == "network":
+            self._open_dashboard_panel(0)
+
+    @_safe_slot("ui.hud_main:_on_island_activated")
+    def _on_island_activated(self, reason: str) -> None:
+        if reason == "settings":
+            self._toggle_right_dropdown()
+        elif reason == "task":
+            self._open_dashboard_panel(3)
+
+    # ── task panels + voice-command feedback ────────────────────────────────
+    @_safe_slot("ui.hud_main:_on_task_action")
+    def _on_task_action(self, task_id: str, action: str) -> None:
+        """Dismiss/close requests coming from a panel's own controls."""
+        if action == "dismiss":
+            self._task_panels.close_task(task_id)
+
+    def begin_command(self, action_name: str, summary: str = "") -> None:
+        """Public, thread-safe: a real tool call has started.
+
+        Emitted from the live loop; Qt queues it onto the UI thread.
+        """
+        self.sig_command_started.emit(str(action_name or ""), str(summary or ""))
+
+    def finish_command(self, action_name: str, result: str = "") -> None:
+        """Public, thread-safe: the same tool call returned (success or failure)."""
+        self.sig_command_finished.emit(str(action_name or ""), str(result or ""))
+
+    @pyqtSlot(str, str)
+    @_safe_slot("ui.hud_main:_on_command_started")
+    def _on_command_started(self, action_name: str, summary: str) -> None:
+        action = action_name or "action"
+        task_id = f"cmd:{action}"
+        kind = kind_for_action(action)
+        title = summary.strip() or action.replace("_", " ").title()
+        if self._task_panels.has_task(task_id):
+            self._task_panels.update_task(
+                task_id, state=TaskState.RUNNING, title=title, progress=None, detail=""
+            )
+        else:
+            self._task_panels.open_task(
+                TaskSpec(
+                    task_id=task_id,
+                    kind=kind,
+                    title=title,
+                    subtitle="VOICE COMMAND",
+                    state=TaskState.RUNNING,
+                    progress=None,
+                )
+            )
+        self._task_panels.flash(task_id)
+        self._sync_task_blocked_rect()
+
+    @pyqtSlot(str, str)
+    @_safe_slot("ui.hud_main:_on_command_finished")
+    def _on_command_finished(self, action_name: str, result: str) -> None:
+        task_id = f"cmd:{action_name or 'action'}"
+        if not self._task_panels.has_task(task_id):
+            return
+        ok = self._result_ok(result)
+        self._task_panels.update_task(
+            task_id,
+            state=TaskState.COMPLETED if ok else TaskState.FAILED,
+            progress=1.0 if ok else None,
+            detail=result[:120],
+        )
+        if not ok:
+            self._notifications.push(
+                Notification(
+                    f"command:{action_name}",
+                    f"{str(action_name).replace('_', ' ').title()} did not complete",
+                    result[:120] or "The action reported no result.",
+                    PRIORITY_HIGH,
+                )
+            )
+        # Terminal panels shrink but stay dismissible, then archive themselves.
+        # The timer is parented to this window, so a closed HUD cancels it
+        # instead of firing into deleted widgets.
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda tid=task_id: self._archive_task(tid))
+        timer.start(9000)
+
+    def _archive_task(self, task_id: str) -> None:
+        """Retire a finished panel. Never raises: this runs from a Qt timer."""
+        try:
+            panel = self._task_panels.panel(task_id)
+            if panel is not None and panel.spec.is_terminal:
+                self._task_panels.close_task(task_id)
+        except (RuntimeError, AttributeError):
+            failsoft.suppress("ui.hud_main:_archive_task")
+
+    @staticmethod
+    def _result_ok(result: str) -> bool:
+        """Did the tool actually succeed? Derived from its own returned text.
+
+        Actions return a user-facing confirmation on success and an explanation
+        containing an error word on failure. Anything we cannot classify counts
+        as *not confirmed*, so the HUD never claims success it cannot verify.
+        """
+        text = str(result or "").strip().lower()
+        if not text:
+            return False
+        failures = (
+            "error", "failed", "failure", "could not", "cannot", "can't", "unable",
+            "denied", "blocked", "not available", "no permission", "timed out",
+            "not found", "invalid", "refused", "unsupported",
+        )
+        return not any(marker in text for marker in failures)
+
+    # ── window state: island minimise, escape, close ────────────────────────
+    def _enter_island_mode(self) -> None:
+        """Replace the minimised window with the Dynamic Island pill."""
+        self._island.set_palette(self._palette)
+        self._island.set_state(self._bridge.current_state.lower())
+        self._island.set_energy(self._bridge.current_energy)
+        live = self._task_panels.specs() if hasattr(self, "_task_panels") else []
+        running = [spec for spec in live if spec.state == TaskState.RUNNING]
+        if running:
+            self._island.set_task_summary(running[0].title)
+        else:
+            self._island.set_task_summary("")
+        self._island.move_to_default_position()
+        self._island.show()
+        self._island.raise_()
+        # Nothing is stopped: the poll timers, the bridge and the live session all
+        # keep running. Only the big window goes away.
+        self.hide()
+
+    @pyqtSlot()
+    @_safe_slot("ui.hud_main:_restore_from_island")
+    def _restore_from_island(self) -> None:
+        self._island.clear_notification()
+        self._island.hide()
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def changeEvent(self, event):
+        """Minimising swaps in the Dynamic Island; restoring swaps back."""
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange and hasattr(self, "_island"):
+            if self.isMinimized() and not self._island.isVisible():
+                self._enter_island_mode()
+            elif not self.isMinimized() and self._island.isVisible() and self.isVisible():
+                self._island.hide()
+
+    def keyPressEvent(self, event):
+        """Escape closes whatever overlay is open, innermost first."""
+        if event.key() == Qt.Key.Key_Escape:
+            if self._right_menu.isVisible():
+                self._right_menu.hide()
+                return
+            if self._toast.isVisible():
+                self._toast.dismiss()
+                return
+            if hasattr(self, "_island") and self._island.isVisible() and self._island._expanded:
+                self._island.collapse()
+                return
+        super().keyPressEvent(event)
+
+    def closeEvent(self, event):
+        """Stop this window's timers. The shared probe thread outlives the window."""
+        try:
+            self._status_timer.stop()
+            self._poll_timer.stop()
+            if hasattr(self, "_island"):
+                self._island.hide()
+        except Exception:
+            failsoft.suppress("ui.hud_main:HUDMainWindow.closeEvent")
+        super().closeEvent(event)
 
     def _poll_real_states(self):
         """Poll real backend state managers periodically."""
@@ -960,6 +1576,20 @@ class HologramHUDUI:
 
     def write_log(self, text: str):
         print(f"[HUDLog] {text}")
+
+    def begin_command(self, action_name: str, summary: str = ""):
+        """Live loop → HUD: a real tool call started (thread-safe via signals)."""
+        try:
+            self._win.begin_command(action_name, summary)
+        except RuntimeError:
+            pass
+
+    def finish_command(self, action_name: str, result: str = ""):
+        """Live loop → HUD: that tool call returned; shown truthfully."""
+        try:
+            self._win.finish_command(action_name, result)
+        except RuntimeError:
+            pass
 
     def set_state(self, state: str):
         st = str(state or "IDLE").upper()

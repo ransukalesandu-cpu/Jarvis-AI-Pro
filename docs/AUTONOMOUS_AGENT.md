@@ -73,10 +73,27 @@ variable where noted.
 | `autonomous_retry_budget` | `12` | Retries across a whole task. |
 | `autonomous_max_steps` | `12` | Plan size cap (3 – 16). |
 | `autonomous_voice_updates` | `true` | Spoken milestone announcements. |
+| `autonomous_ui_enabled` | `false` (`JARVIS_AUTONOMOUS_UI=1`) | Draw the autonomous HUD surfaces (card, rail button, menu entries). Off by default so the HUD keeps its clean composition. |
 | `vision_model` | `gemini-2.5-flash` (`JARVIS_VISION_MODEL`) | Gemini vision model id. |
 
 Task state is written to `JarvisAI/memory/agent/` (git-ignored). Override with
 `JARVIS_AGENT_DIR` — the test suite uses this to stay out of the checkout.
+
+### The HUD surfaces are opt-in
+
+The engine, the `autonomous_task` voice tool, the report and the CLI work with
+no UI at all. Drawing the extra surfaces — the dashboard card, the `◉` rail
+button and the two menu entries — changes the composition of a HUD that is
+deliberately clean, so it is off unless asked for:
+
+```
+JARVIS_AUTONOMOUS_UI=1 python main.py        # or autonomous_ui_enabled: true
+```
+
+With the flag off, `HUDMainWindow` has no extra card, keeps its two rail
+buttons and adds no menu entries; `test_hud_stays_clean_while_the_ui_flag_is_off`
+enforces exactly that. The minimised island is independent of this flag — it is
+a shared battery, health and hologram surface as well.
 
 ### API keys, network and paid usage
 

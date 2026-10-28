@@ -237,7 +237,8 @@ class QtAgentUiTests(unittest.TestCase):
     def test_hud_has_agent_panel_and_five_telemetry_cards(self):
         from ui.hud_main import HUDMainWindow
 
-        with patch("agent.integration.get_service", return_value=FakeService(None)):
+        with patch("ui.hud_main._agent_ui_enabled", return_value=True), \
+                patch("agent.integration.get_service", return_value=FakeService(None)):
             hud = HUDMainWindow()
             self.addCleanup(hud.deleteLater)
             self.assertIsNotNone(hud._panel_agent)
@@ -246,11 +247,30 @@ class QtAgentUiTests(unittest.TestCase):
             hud._open_agent_panel()
             self.assertIs(hud._workspace_stack.currentWidget(), hud._dashboard)
 
+    def test_hud_stays_clean_while_the_ui_flag_is_off(self):
+        """Default off: no extra card, no extra rail button, no menu entries."""
+        from ui.hud_main import HUDMainWindow
+
+        with patch("ui.hud_main._agent_ui_enabled", return_value=False), \
+                patch("agent.integration.get_service", return_value=FakeService(None)):
+            hud = HUDMainWindow()
+            self.addCleanup(hud.deleteLater)
+            self.assertIsNone(hud._panel_agent)
+            # The minimised island is *not* ours to gate on this flag: on main it
+            # is a shared battery/health/hologram surface too.
+            self.assertIsNotNone(hud._island_controller)
+            self.assertEqual(len(hud._left_icon_buttons), 2)
+            self.assertEqual(len(hud._dashboard._cards), 5)
+            self.assertIsNone(hud._dashboard._extra_card)
+            # The dashboard must not offer a scroll target that is not there.
+            self.assertFalse(hud._dashboard.open_extra())
+
     def test_hud_minimize_shows_island_and_restore_hides_it(self):
         from PyQt6.QtTest import QTest
         from ui.hud_main import HUDMainWindow
 
-        with patch("agent.integration.get_service", return_value=FakeService(_task())):
+        with patch("ui.hud_main._agent_ui_enabled", return_value=True), \
+                patch("agent.integration.get_service", return_value=FakeService(_task())):
             hud = HUDMainWindow()
             self.addCleanup(hud.deleteLater)
             hud.show()
@@ -271,7 +291,8 @@ class QtAgentUiTests(unittest.TestCase):
     def test_hud_change_event_uses_window_state(self):
         from ui.hud_main import HUDMainWindow
 
-        with patch("agent.integration.get_service", return_value=FakeService(_task())):
+        with patch("ui.hud_main._agent_ui_enabled", return_value=True), \
+                patch("agent.integration.get_service", return_value=FakeService(_task())):
             hud = HUDMainWindow()
             self.addCleanup(hud.deleteLater)
             hud._island_controller.sync(True)

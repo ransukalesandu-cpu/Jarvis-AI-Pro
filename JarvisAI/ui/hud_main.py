@@ -78,6 +78,24 @@ except Exception:  # pragma: no cover - defensive
     failsoft.suppress("ui.hud_main:import_dynamic_island")
     DynamicIslandController = None
 
+def _agent_ui_enabled() -> bool:
+    """Whether the autonomous HUD surfaces are switched on.
+
+    Default off. The dashboard card, the rail button and the menu entries change
+    the composition of a HUD that is deliberately clean; the engine, the
+    ``autonomous_task`` voice tool and the report work without any of them.
+    Enable with ``autonomous_ui_enabled`` in the config or
+    ``JARVIS_AUTONOMOUS_UI=1``.
+    """
+    try:
+        from agent.settings import AgentSettings
+
+        return bool(AgentSettings.load().ui_enabled)
+    except Exception:
+        failsoft.suppress("ui.hud_main:_agent_ui_enabled")
+        return False
+
+
 try:
     from security.auth_manager import PRIVACY_LOCK, lock_workstation
     from core.security import get_auth_manager
@@ -201,10 +219,15 @@ class HUDMainWindow(QMainWindow):
         self._init_system_status()
 
     def _init_ui(self):
-        # Built before anything that references it: the right-hand menu and the
-        # dashboard's extra card both need the autonomous panel, and referencing
-        # it before assignment is how this broke the first time.
-        self._panel_agent = AutonomousPanel(self) if AutonomousPanel is not None else None
+        # Assigned before anything that references it (the right-hand menu and
+        # the dashboard's extra card both need it), but only *built* when the
+        # opt-in HUD flag is on: the card, the rail button and the menu entries
+        # change the composition of a screen that is meant to stay clean.
+        self._panel_agent = (
+            AutonomousPanel(self)
+            if (AutonomousPanel is not None and _agent_ui_enabled())
+            else None
+        )
         self._agent_stop_button = None
 
         central_widget = QWidget(self)
@@ -275,7 +298,7 @@ class HUDMainWindow(QMainWindow):
             ("◈", "Neural / Hybrid Brain"),
             ("⛨", "Security / Host verification"),
         ]
-        if AutonomousPanel is not None:
+        if self._panel_agent is not None:
             left_rail_entries.append(("◉", "Autonomous task monitor"))
         for symbol, tooltip in left_rail_entries:
             button = QToolButton(left_rail)

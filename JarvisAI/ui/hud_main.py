@@ -24,7 +24,7 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import QFont, QCursor
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QApplication, QMainWindow, QWidget, QSizePolicy, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QToolButton, QFrame, QGraphicsBlurEffect, QGraphicsOpacityEffect, QCheckBox, QStackedWidget
 )
 
@@ -332,7 +332,11 @@ class HUDMainWindow(QMainWindow):
         # The original hologram widget and its paint implementation are untouched.
         self._hologram_stage = QWidget(self)
         # The stage must be see-through: the hologram floats on the HUD, it is
-        # not a video panel with a black background.
+        # not a video panel with a black background. Explicit expansion helps
+        # the existing face stack use the available center-column space.
+        self._hologram_stage.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         for _layer in (self._hologram_stage,):
             _layer.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
             _layer.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
@@ -340,12 +344,18 @@ class HUDMainWindow(QMainWindow):
             _layer.setStyleSheet("background: transparent;")
         stage_layout = QVBoxLayout(self._hologram_stage)
         stage_layout.setContentsMargins(0, 0, 0, 0)
-        stage_layout.setSpacing(0)
+        # A small responsive gap visually separates the face area from the orb.
+        # The existing stack remains stretch=1 and therefore dominant.
+        stage_layout.setSpacing(10)
+        self._stage_layout = stage_layout
 
         self._visualizer_stack = QStackedWidget(self._hologram_stage)
         self._visualizer_stack.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self._visualizer_stack.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self._visualizer_stack.setStyleSheet("background: transparent;")
+        self._visualizer_stack.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         self.wireframe_visualizer = NeuralWireframeHead(self)
         self.bihansa_visualizer = BihansaHologramWidget(self)
         # Keep the rim light attached to each existing face rather than
@@ -637,9 +647,29 @@ class HUDMainWindow(QMainWindow):
         self._toast.hide()
 
         self._apply_palette()
+        # Track actual stage resizes without a polling timer. The reactor itself
+        # intentionally remains stage-sized: it paints its heart and neural
+        # filaments in stage coordinates, so moving that overlay would misalign
+        # the wires and face anchor.
+        self._hologram_stage.installEventFilter(self)
+        self._apply_hologram_stage_spacing()
         # First sizing pass, now that the rail and dropdown exist.
         self._apply_responsive_chrome()
 
+
+    def _apply_hologram_stage_spacing(self) -> None:
+        """Keep a restrained face-to-orb gap proportional to the stage height."""
+        layout = getattr(self, "_stage_layout", None)
+        stage = getattr(self, "_hologram_stage", None)
+        if layout is None or stage is None:
+            return
+        stage_height = stage.height()
+        if stage_height <= 0:
+            return
+        spacing = max(10, min(26, stage_height // 40))
+        if layout.spacing() != spacing:
+            layout.setSpacing(spacing)
+            layout.activate()
 
     def resizeEvent(self, event):
         """Keep floating menus inside the central workspace after window resizes."""
@@ -650,6 +680,7 @@ class HUDMainWindow(QMainWindow):
         self._position_left_menu_trigger()
         if hasattr(self, "_right_menu") and self._right_menu.isVisible():
             self._position_right_menu()
+        self._apply_hologram_stage_spacing()
         self._sync_task_blocked_rect()
         if hasattr(self, "_toast") and self._toast.isVisible():
             host = self.centralWidget()
@@ -668,6 +699,7 @@ class HUDMainWindow(QMainWindow):
     def showEvent(self, event):
         """The stage has real geometry only once shown; re-place the overlays."""
         super().showEvent(event)
+        self._apply_hologram_stage_spacing()
         self._sync_task_blocked_rect()
 
     def _toggle_dashboard_page(self):
@@ -1723,7 +1755,12 @@ class HUDMainWindow(QMainWindow):
         self._left_rail.hide()
 
     def eventFilter(self, watched, event):
-        """Expand the home navigation on hover without swallowing Qt input."""
+        """Keep stage spacing responsive and expand home navigation on hover."""
+        if (
+            watched is getattr(self, "_hologram_stage", None)
+            and event.type() == QEvent.Type.Resize
+        ):
+            self._apply_hologram_stage_spacing()
         if watched is self._left_menu_trigger or watched is self._left_rail or watched in self._left_icon_buttons:
             if event.type() == QEvent.Type.Enter:
                 if self._workspace_stack.currentWidget() is not self._dashboard:

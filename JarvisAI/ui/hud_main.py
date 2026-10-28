@@ -19,7 +19,7 @@ from dataclasses import replace
 from typing import Optional, Callable
 
 from PyQt6.QtCore import (
-    Qt, QObject, QEvent, QRect, QTimer, QSettings, QPropertyAnimation, QEasingCurve,
+    Qt, QObject, QEvent, QRect, QRectF, QTimer, QSettings, QPropertyAnimation, QEasingCurve,
     pyqtSignal, pyqtSlot,
 )
 from PyQt6.QtGui import QFont, QCursor
@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
 
 from audio.visualizer_bridge import get_visualizer_bridge, VisualizerBridge
 from ui.hologram.wireframe_head import NeuralWireframeHead
+from ui.hologram.holo_rim_light import NeuralRimLight
 from ui.hologram.bihansa_hologram import BihansaHologramWidget
 from ui.hologram.neural_heart_reactor import NeuralHeartReactor
 from ui.hologram.bihansa_settings import BihansaModeSettings, BihansaSettingsDialog
@@ -339,6 +340,19 @@ class HUDMainWindow(QMainWindow):
         self._visualizer_stack.setStyleSheet("background: transparent;")
         self.wireframe_visualizer = NeuralWireframeHead(self)
         self.bihansa_visualizer = BihansaHologramWidget(self)
+        # Keep the rim light attached to each existing face rather than
+        # replacing the active visualizer or introducing a second face widget.
+        self._jarvis_rim_light = NeuralRimLight(self.wireframe_visualizer)
+        self._jarvis_rim_light.set_bounds_provider(self.wireframe_visualizer.face_rect)
+        self._bihansa_rim_light = NeuralRimLight(self.bihansa_visualizer)
+        self._bihansa_rim_light.set_bounds_provider(self._bihansa_face_bounds)
+        self._jarvis_rim_light.set_colors(
+            palette_for_mode("jarvis").primary, palette_for_mode("jarvis").accent
+        )
+        self._bihansa_rim_light.set_colors(
+            palette_for_mode("bihansa").primary, palette_for_mode("bihansa").accent
+        )
+        self._bihansa_rim_light.set_enabled_effect(False)
         self._visualizer_stack.addWidget(self.wireframe_visualizer)
         self._visualizer_stack.addWidget(self.bihansa_visualizer)
         self._visualizer_stack.setCurrentWidget(self.wireframe_visualizer)
@@ -485,7 +499,9 @@ class HUDMainWindow(QMainWindow):
         self._right_menu.hide()
 
         self._bihansa_effects.toggled.connect(self.bihansa_visualizer.set_effects_enabled)
+        self._bihansa_effects.toggled.connect(self._sync_bihansa_rim_enabled)
         self._bihansa_voice_reactive.toggled.connect(self.bihansa_visualizer.set_voice_reactive)
+        self._bihansa_voice_reactive.toggled.connect(self._on_bihansa_voice_reactive_toggled)
 
         # The home page stays clean and centered. Telemetry lives on a distinct page.
         self._home_page = QWidget()
@@ -776,6 +792,42 @@ class HUDMainWindow(QMainWindow):
             self._position_right_menu()
         self._right_menu.setVisible(should_show)
 
+    def _bihansa_face_bounds(self) -> QRectF:
+        """Approximate the procedural Bihansa face bounds in widget coordinates."""
+        widget = self.bihansa_visualizer
+        width, height = float(widget.width()), float(widget.height())
+        side = min(width, height)
+        if side <= 0.0:
+            return QRectF()
+        return QRectF(
+            width * 0.5 - side * 0.30,
+            height * 0.455 - side * 0.41,
+            side * 0.60,
+            side * 0.82,
+        )
+
+    def _sync_bihansa_rim_enabled(self, *_args) -> None:
+        """Run the Bihansa rim only while that persona and its effects are active."""
+        enabled = (
+            self._bihansa_toggle.isChecked()
+            and self._bihansa_effects.isChecked()
+        )
+        self._bihansa_rim_light.set_enabled_effect(enabled)
+
+    @pyqtSlot(float)
+    def _on_rim_audio_energy(self, level: float) -> None:
+        """Forward real bridge energy to both face overlays without changing audio."""
+        self._jarvis_rim_light.set_audio_energy(level)
+        self._bihansa_rim_light.set_audio_energy(
+            level if self._bihansa_voice_reactive.isChecked() else 0.0
+        )
+
+    @pyqtSlot(bool)
+    def _on_bihansa_voice_reactive_toggled(self, enabled: bool) -> None:
+        """Fade the Bihansa rim's audio-driven component when voice reactivity is off."""
+        if not enabled:
+            self._bihansa_rim_light.set_audio_energy(0.0)
+
     def _wire_signals(self):
         """Wire VisualizerBridge signals to UI components."""
         self._bridge.sig_audio_energy.connect(self.wireframe_visualizer.set_audio_energy)
@@ -787,6 +839,7 @@ class HUDMainWindow(QMainWindow):
         self._bridge.sig_audio_energy.connect(self._heart_reactor.set_energy)
         self._bridge.sig_audio_energy.connect(self._task_panels.set_energy)
         self._bridge.sig_audio_energy.connect(self._on_island_energy)
+        self._bridge.sig_audio_energy.connect(self._on_rim_audio_energy)
         self.sig_command_started.connect(self._on_command_started)
         self.sig_command_finished.connect(self._on_command_finished)
         self.sig_viseme_schedule.connect(self._schedule_visemes)
@@ -802,6 +855,8 @@ class HUDMainWindow(QMainWindow):
         self._visualizer_stack.setCurrentWidget(
             self.bihansa_visualizer if enabled else self.wireframe_visualizer
         )
+        self._jarvis_rim_light.set_enabled_effect(not enabled)
+        self._sync_bihansa_rim_enabled()
         self._mini_orb.set_bihansa_mode(enabled)
         self._dashboard.set_bihansa_mode(enabled)
         # Persona drives the shared palette: copper for JARVIS, rose for Bihansa.
@@ -889,6 +944,8 @@ class HUDMainWindow(QMainWindow):
         self.bihansa_visualizer.set_voice_reactive(
             self._bihansa_voice_reactive.isChecked() if hasattr(self, "_bihansa_voice_reactive") else True
         )
+        self._bihansa_rim_light.set_reduced_motion(prefs.reduced_motion)
+        self._sync_bihansa_rim_enabled()
         if hasattr(self, "_bihansa_toggle"):
             desired = prefs.assistant_mode == "bihansa"
             if self._bihansa_toggle.isChecked() != desired:
@@ -930,6 +987,8 @@ class HUDMainWindow(QMainWindow):
         visual_state = "PRIVACY_LOCK" if self._privacy_locked else st
         self.wireframe_visualizer.set_state(visual_state)
         self.bihansa_visualizer.set_state(visual_state)
+        self._jarvis_rim_light.set_state(visual_state)
+        self._bihansa_rim_light.set_state(visual_state)
         self._mini_orb.set_state(visual_state)
         self._dashboard.set_state(visual_state)
         self._heart_reactor.set_state(visual_state)
@@ -983,6 +1042,8 @@ class HUDMainWindow(QMainWindow):
         self._privacy_locked = True
         self.wireframe_visualizer.set_state("PRIVACY_LOCK")
         self.bihansa_visualizer.set_state("PRIVACY_LOCK")
+        self._jarvis_rim_light.set_state("PRIVACY_LOCK")
+        self._bihansa_rim_light.set_state("PRIVACY_LOCK")
         self._mini_orb.set_state("PRIVACY_LOCK")
         self._dashboard.set_state("PRIVACY_LOCK")
         self._heart_reactor.set_state("PRIVACY_LOCK")
@@ -1103,11 +1164,15 @@ class HUDMainWindow(QMainWindow):
         # task panels, island) follows the active persona palette.
         for name, mode in (("wireframe_visualizer", "jarvis"), ("bihansa_visualizer", "bihansa")):
             widget = getattr(self, name, None)
+            renderer_palette = palette_for_mode(mode)
             if widget is not None and hasattr(widget, "set_palette"):
                 try:
-                    widget.set_palette(palette_for_mode(mode))
+                    widget.set_palette(renderer_palette)
                 except Exception:
                     failsoft.suppress("ui.hud_main:_apply_palette")
+            rim = getattr(self, f"_{mode}_rim_light", None)
+            if rim is not None:
+                rim.set_colors(renderer_palette.primary, renderer_palette.accent)
         widgets = [
             getattr(self, name, None)
             for name in (
@@ -1136,7 +1201,10 @@ class HUDMainWindow(QMainWindow):
             self._settings, fallback_mode="bihansa" if self._bihansa_toggle.isChecked() else "jarvis"
         )
         self._palette = self._prefs.scaled_palette()
-        for widget in (self.wireframe_visualizer, self.bihansa_visualizer, self._mini_orb):
+        for widget in (
+            self.wireframe_visualizer, self.bihansa_visualizer, self._mini_orb,
+            self._jarvis_rim_light, self._bihansa_rim_light,
+        ):
             setter = getattr(widget, "set_reduced_motion", None)
             if callable(setter):
                 try:
@@ -1320,6 +1388,12 @@ class HUDMainWindow(QMainWindow):
         )
         glow = budget.glow_scale * max(0.2, self._prefs.glow)
         self.wireframe_visualizer.set_performance_budget(
+            budget.frame_interval_ms, budget.particle_scale, budget.glow_scale
+        )
+        self._jarvis_rim_light.set_performance_budget(
+            budget.frame_interval_ms, budget.particle_scale, budget.glow_scale
+        )
+        self._bihansa_rim_light.set_performance_budget(
             budget.frame_interval_ms, budget.particle_scale, budget.glow_scale
         )
         self._mini_orb.set_performance_budget(

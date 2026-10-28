@@ -127,6 +127,8 @@ _VIDEO_SUFFIXES = {".mp4", ".m4v", ".webm", ".mov", ".mkv", ".avi", ".ogv"}
 
 from core.holo_gestures import HoloGestureServer
 
+from core import failsoft
+
 
 if QWebEngineUrlRequestInterceptor is not None:
     class _HoloLocalOnlyInterceptor(QWebEngineUrlRequestInterceptor):
@@ -763,7 +765,7 @@ class HudWorkspace(QWidget):
                         QWebEnginePage.PermissionPolicy.PermissionGrantedByUser,
                     )
                 except Exception:
-                    pass
+                    failsoft.suppress('core.hud_workspace:HudWorkspace.show_holo_gestures')
             self.start_holo_camera()
 
     @staticmethod
@@ -1657,7 +1659,7 @@ class HudWorkspace(QWidget):
             if mime.startswith("image/") and 0 < len(data) <= 2_000_000:
                 self.thumbnail_loaded.emit(index, data)
         except Exception:
-            pass
+            failsoft.suppress('core.hud_workspace:HudWorkspace._fetch_thumbnail')
 
     def _on_thumbnail_loaded(self, index: int, data: bytes):
         if index < 0 or index >= len(self._gallery_buttons):

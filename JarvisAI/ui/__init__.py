@@ -59,6 +59,8 @@ from core.neural_viz import NeuralVizMixin
 from core.hud_workspace import HudWorkspace
 from core.jarvis_logo_overlay import JarvisLogoOverlay
 
+from core import failsoft
+
 try:
     # 3D human head avatar (measured geometry)
     from core.avatar import HoloAvatar
@@ -236,7 +238,7 @@ def retheme_all_widgets(old: dict[str, str], new: dict[str, str]) -> None:
                     w.setStyleSheet(s2)
             w.update()
         except Exception:
-            pass
+            failsoft.suppress('ui:retheme_all_widgets')
 
 
 def qcol(h: str, a: int = 255) -> QColor:
@@ -267,6 +269,7 @@ def _nvml_gpu_windows() -> float:
                     _nvml_lib = lib
                     break
                 except Exception:
+                    failsoft.suppress('ui:_nvml_gpu_windows')
                     continue
 
         if _nvml_lib is None:
@@ -316,7 +319,7 @@ class _SysMetrics:
             try:
                 self._update()
             except Exception:
-                pass
+                failsoft.suppress('ui:_SysMetrics._loop')
             time.sleep(2.0)
 
     def _update(self):
@@ -393,7 +396,7 @@ class _SysMetrics:
             nv.nvmlDeviceGetUtilizationRates(dev, ctypes.byref(u))
             return float(u.gpu)
         except Exception:
-            pass
+            failsoft.suppress('ui:_SysMetrics._get_gpu')
 
         return -1.0   # N/A — zero subprocess on all platforms
 
@@ -409,7 +412,7 @@ class _SysMetrics:
                 if entries:
                     return entries[0].current
         except Exception:
-            pass
+            failsoft.suppress('ui:_SysMetrics._get_temp')
 
         # Windows: wmi module (pure Python COM, zero subprocess). Reuse a single
         # connection — building a fresh wmi.WMI() on every poll spins up a COM
@@ -554,7 +557,7 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
             if self._avatar is not None:
                 self._avatar.glance(dx, dy, hold)
         except Exception:
-            pass
+            failsoft.suppress('ui:HudCanvas.glance')
 
     def react_avatar_text(self, text: str) -> None:
         """Drive facial acting from the latest assistant speech transcription."""
@@ -613,7 +616,7 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
             self._visemes = (new, at, hop)
             self._vis_i = None
         except Exception:
-            pass
+            failsoft.suppress('ui:HudCanvas.push_visemes')
 
     def set_audio_level(self, level: float) -> None:
         """Thread-safe entry point for the audio threads. Stores the louder of
@@ -4881,7 +4884,7 @@ class MainWindow(QMainWindow):
                 cfg = _j.loads((CONFIG_DIR / "api_keys.json").read_text())
                 cam_idx = int(cfg.get("camera_index", 0))
             except Exception:
-                pass
+                failsoft.suppress('ui:MainWindow._cam_loop')
             try:
                 backend = cv2.CAP_DSHOW if _OS == "Windows" else cv2.CAP_ANY
             except AttributeError:
@@ -5060,7 +5063,7 @@ class MainWindow(QMainWindow):
             try:
                 os.unlink(tmp)
             except Exception:
-                pass
+                failsoft.suppress('ui:MainWindow._create_lnk_windows')
 
     @staticmethod
     def _get_desktop_dir() -> Path:
@@ -5101,7 +5104,7 @@ class MainWindow(QMainWindow):
                     if p.is_dir():
                         return p
             except Exception:
-                pass
+                failsoft.suppress('ui:MainWindow._get_desktop_dir')
 
             # ── 2) Registry: User Shell Folders (may contain %VARS%) ──────
             try:
@@ -5115,7 +5118,7 @@ class MainWindow(QMainWindow):
                 if p.is_dir():
                     return p
             except Exception:
-                pass
+                failsoft.suppress('ui:MainWindow._get_desktop_dir')
 
         elif _os == "Linux":
             # ── xdg-user-dir honours localized names (~/Masaüstü, …) ──────
@@ -5126,7 +5129,7 @@ class MainWindow(QMainWindow):
                 if out.stdout.strip() and p != home and p.is_dir():
                     return p
             except Exception:
-                pass
+                failsoft.suppress('ui:MainWindow._get_desktop_dir')
             try:
                 cfg = home / ".config" / "user-dirs.dirs"
                 for line in cfg.read_text(encoding="utf-8").splitlines():
@@ -5137,7 +5140,7 @@ class MainWindow(QMainWindow):
                         if p != home and p.is_dir():
                             return p
             except Exception:
-                pass
+                failsoft.suppress('ui:MainWindow._get_desktop_dir')
 
         # macOS: ~/Desktop is always the real path (localization is
         # display-only). Everything else lands here as a last resort.
@@ -5229,7 +5232,7 @@ class MainWindow(QMainWindow):
                         )
                     )
                 except Exception:
-                    pass  # icon is optional
+                    failsoft.suppress('ui:MainWindow._create_desktop_shortcut')
 
             # ── Linux — .desktop file (Terminal=false, no console) ────────────
             else:
@@ -6826,7 +6829,7 @@ class MainWindow(QMainWindow):
                         "awake": bool(s.get("awake")),
                         "clap_ready": bool(s.get("clap_ready"))}
             except Exception:
-                pass
+                failsoft.suppress('ui:MainWindow._wake_state')
         # Before JarvisLive has wired its callback (drawer built at startup).
         ready, enabled = False, False
         try:
@@ -6834,7 +6837,7 @@ class MainWindow(QMainWindow):
             from memory.config_manager import get_wake_word_enabled
             ready, enabled = is_ready(), get_wake_word_enabled()
         except Exception:
-            pass
+            failsoft.suppress('ui:MainWindow._wake_state')
         return {"ready": ready, "enabled": enabled, "awake": True,
                 "clap_ready": False}
 
@@ -7030,7 +7033,7 @@ class MainWindow(QMainWindow):
             self._immersive_overlay.hud.hud_style = want
             self._immersive_overlay.hud.update()
         except Exception:
-            pass
+            failsoft.suppress('ui:MainWindow._on_hud_style_selected')
         if want in {"neural", "neural_orb"}:
             self._enter_immersive_view(want)
         else:
@@ -7107,7 +7110,7 @@ class MainWindow(QMainWindow):
             try:
                 cb(bool(held))
             except Exception:
-                pass
+                failsoft.suppress('ui:MainWindow._ptt_hold')
 
     def _toggle_wake_word(self):
         st = self._wake_state()
@@ -7126,7 +7129,7 @@ class MainWindow(QMainWindow):
                     try:
                         self.on_wake_toggle(True)   # auto-enable after a successful download
                     except Exception:
-                        pass
+                        failsoft.suppress('ui:MainWindow._toggle_wake_word._work')
                 self._wake_dl_sig.emit(ok, msg)
             threading.Thread(target=_work, daemon=True).start()
             return
@@ -7135,7 +7138,7 @@ class MainWindow(QMainWindow):
             try:
                 self.on_wake_toggle(not st["enabled"])
             except Exception:
-                pass
+                failsoft.suppress('ui:MainWindow._toggle_wake_word')
         self._refresh_wake_btns()
 
     def _on_wake_install_done(self, ok: bool, msg: str):
@@ -7147,7 +7150,7 @@ class MainWindow(QMainWindow):
             try:
                 self.on_wake_manual()
             except Exception:
-                pass
+                failsoft.suppress('ui:MainWindow._tap_wake_manual')
         self._refresh_wake_btns()
 
     def _toggle_voice_id(self):
@@ -7810,7 +7813,7 @@ class MainWindow(QMainWindow):
             if len(text) >= 10:
                 self._clipboard_sig.emit(text)
         except Exception:
-            pass
+            failsoft.suppress('ui:MainWindow._on_clipboard_changed')
 
     def _show_clipboard_panel(self, text: str):
         self._clipboard_panel.show_clipboard(text)
@@ -8109,15 +8112,15 @@ class MainWindow(QMainWindow):
         try:
             self._jarvis_logo_overlay.close()
         except Exception:
-            pass
+            failsoft.suppress('ui:MainWindow.closeEvent')
         try:
             self._workspace.shutdown_holo()
         except Exception:
-            pass
+            failsoft.suppress('ui:MainWindow.closeEvent')
         try:
             self._earth_panel.shutdown_web_engine()
         except Exception:
-            pass
+            failsoft.suppress('ui:MainWindow.closeEvent')
         super().closeEvent(event)
 
     def changeEvent(self, event):
@@ -8304,7 +8307,7 @@ class JarvisUI:
             if self._avatar is not None:
                 self._avatar.glance(dx, dy, hold)
         except Exception:
-            pass
+            failsoft.suppress('ui:JarvisUI.glance')
 
     def react_avatar_text(self, text: str) -> None:
         """Queue spoken-text facial cues safely onto the Qt UI thread."""

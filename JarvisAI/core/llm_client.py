@@ -26,6 +26,8 @@ from typing import Callable, Generator
 
 import requests
 
+from core import failsoft
+
 # Matches a sentence boundary: [.!?] followed by whitespace, or a blank line.
 # Avoids splitting on decimals (3.5) because those have no space after the dot.
 _SENT_END = re.compile(r'(?<=[.!?])\s+|(?<=\n)\s*\n')
@@ -313,7 +315,7 @@ def call_llm(
                     "tool_calls": msg.get("tool_calls") or [],
                 }
             except Exception:
-                pass
+                failsoft.suppress('core.llm_client:call_llm')
         raise RuntimeError(
             f"Cannot connect to Ollama at {url}. "
             "Make sure Ollama is installed and run: ollama serve"
@@ -360,7 +362,7 @@ def call_llm_text(
                 resp.raise_for_status()
                 return (resp.json().get("message", {}).get("content") or "").strip()
             except Exception:
-                pass
+                failsoft.suppress('core.llm_client:call_llm_text')
         raise RuntimeError(
             f"Cannot connect to Ollama at {url}. "
             "Make sure Ollama is installed and run: ollama serve"
@@ -460,7 +462,7 @@ def _stream_openai(
                 try:
                     args = json.loads(args)
                 except Exception:
-                    pass   # leave as raw string; _execute_tool handles it
+                    failsoft.suppress('core.llm_client:_stream_openai')
                 tool_calls.append({
                     "id":       frag["id"],
                     "function": {"name": frag["function"]["name"], "arguments": args},

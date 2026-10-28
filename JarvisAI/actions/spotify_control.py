@@ -23,6 +23,8 @@ import time
 import urllib.parse
 from pathlib import Path
 
+from core import failsoft
+
 try:
     import pyautogui
     _PYAUTOGUI_OK = True
@@ -54,7 +56,7 @@ def _find_spotify() -> Path | None:
             if path.exists():
                 return path
         except Exception:
-            pass
+            failsoft.suppress('actions.spotify_control:_find_spotify')
 
     return None
 
@@ -77,7 +79,7 @@ def _launch_spotify() -> bool:
             return True
 
     except Exception:
-        pass
+        failsoft.suppress('actions.spotify_control:_launch_spotify')
 
     # Fall back to executable paths.
     spotify = _find_spotify()

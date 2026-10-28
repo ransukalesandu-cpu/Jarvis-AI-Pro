@@ -11,6 +11,8 @@ from pathlib import Path
 
 import psutil
 
+from core import failsoft
+
 _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 
 DEFAULT_THRESHOLDS = {
@@ -98,6 +100,7 @@ def _nvml_gpu() -> float:
                     _nvml_lib = lib
                     break
                 except Exception:
+                    failsoft.suppress('actions.system_monitor:_nvml_gpu')
                     continue
 
         if _nvml_lib is None:
@@ -193,7 +196,7 @@ def _cpu_name() -> str:
             if value:
                 return " ".join(str(value).split())
         except Exception:
-            pass
+            failsoft.suppress('actions.system_monitor:_cpu_name')
     elif _OS == "Linux":
         try:
             for line in Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="ignore").splitlines():
@@ -201,7 +204,7 @@ def _cpu_name() -> str:
                 if sep and key.strip().lower() in {"model name", "hardware"} and value.strip():
                     return " ".join(value.split())
         except Exception:
-            pass
+            failsoft.suppress('actions.system_monitor:_cpu_name')
     elif _OS == "Darwin":
         # On macOS, ask the system's sysctl API directly instead of launching
         # `system_profiler` on each refresh. Intel Macs expose the brand string;
@@ -221,7 +224,7 @@ def _cpu_name() -> str:
                     if brand:
                         return brand
         except Exception:
-            pass
+            failsoft.suppress('actions.system_monitor:_cpu_name')
     name = platform.processor().strip()
     return name or platform.machine() or "CPU details unavailable"
 
@@ -249,7 +252,7 @@ def _gpu_name() -> str:
             if names:
                 return " / ".join(dict.fromkeys(names))
         except Exception:
-            pass
+            failsoft.suppress('actions.system_monitor:_gpu_name')
     if _OS == "Linux":
         try:
             devices = []
@@ -261,7 +264,7 @@ def _gpu_name() -> str:
             if devices:
                 return " / ".join(devices)
         except Exception:
-            pass
+            failsoft.suppress('actions.system_monitor:_gpu_name')
     return "GPU model unavailable from installed driver APIs"
 
 
@@ -277,7 +280,7 @@ def _get_cpu_temp() -> float:
             if entries:
                 return entries[0].current
     except Exception:
-        pass
+        failsoft.suppress('actions.system_monitor:_get_cpu_temp')
 
     # Windows: wmi module (pure Python COM, zero subprocess)
     global _wmi_temp_connection, _wmi_temp_ok

@@ -11,6 +11,8 @@ import time
 import logging
 from typing import Callable, Optional, Dict, Any
 
+from core import failsoft
+
 logger = logging.getLogger("Jarvis.SelfHealing")
 
 
@@ -92,7 +94,7 @@ class SelfHealingSentinel:
                 # Do not mark audio healthy/unhealthy when neither backend
                 # can query devices; the optional self-healing check must not
                 # crash the main assistant.
-                pass
+                failsoft.suppress('core.self_healing_v2:SelfHealingSentinel._check_audio_subsystem')
 
     def _request_approval(self, title: str, details: str) -> bool:
         if self.approval_callback:

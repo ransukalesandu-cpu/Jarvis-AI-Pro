@@ -10,6 +10,8 @@ import base64
 
 import numpy as np
 
+from core import failsoft
+
 
 CHANNELS = 1
 RECEIVE_SAMPLE_RATE = 24000
@@ -105,6 +107,7 @@ def _live_audio_chunks(response) -> list[bytes]:
             try:
                 data = base64.b64decode(data)
             except Exception:
+                failsoft.suppress('core.live_audio:_live_audio_chunks')
                 continue
         if isinstance(data, (bytes, bytearray)) and data:
             chunks.append(bytes(data))

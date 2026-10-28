@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QSettings
 
+from core import failsoft
+
 
 class BihansaModeSettings:
     """Persist Bihansa appearance preferences without touching other settings."""
@@ -42,7 +44,7 @@ class BihansaModeSettings:
             if cfg_val in {"jarvis", "bihansa"} and cfg_val != value:
                 value = cfg_val
         except Exception:
-            pass
+            failsoft.suppress('ui.hologram.bihansa_settings:BihansaModeSettings.assistant_mode')
         return value
 
     @assistant_mode.setter
@@ -55,7 +57,7 @@ class BihansaModeSettings:
             from memory.config_manager import save_assistant_mode
             save_assistant_mode(normalized)
         except Exception:
-            pass
+            failsoft.suppress('ui.hologram.bihansa_settings:BihansaModeSettings.assistant_mode')
 
     @property
     def bihansa_voice(self) -> str:
@@ -75,7 +77,7 @@ class BihansaModeSettings:
             from memory.config_manager import save_bihansa_voice
             save_bihansa_voice(valid)
         except Exception:
-            pass
+            failsoft.suppress('ui.hologram.bihansa_settings:BihansaModeSettings.bihansa_voice')
 
     @property
     def reduced_motion(self) -> bool:
@@ -135,7 +137,7 @@ class BihansaModeSettings:
             save_assistant_mode("jarvis")
             save_bihansa_voice("Kore")
         except Exception:
-            pass
+            failsoft.suppress('ui.hologram.bihansa_settings:BihansaModeSettings.restore_bihansa_defaults')
 
 
 try:

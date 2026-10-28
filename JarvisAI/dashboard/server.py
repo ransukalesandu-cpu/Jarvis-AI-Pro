@@ -20,6 +20,8 @@ import time
 from pathlib import Path
 from urllib.parse import quote, urlparse, urlsplit, urlunsplit
 
+from core import failsoft
+
 _DEPS_OK = False
 try:
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
@@ -35,7 +37,7 @@ try:
     from fastapi import UploadFile, File as FastAPIFile
     _UPLOAD_OK = True
 except Exception:
-    pass
+    failsoft.suppress('dashboard.server:<module>')
 
 BASE_DIR    = Path(__file__).resolve().parent.parent
 STATIC_DIR  = Path(__file__).parent / "static"
@@ -69,7 +71,7 @@ def _make_uploads_dir() -> Path:
             candidate.mkdir(parents=True, exist_ok=True)
             return candidate
         except Exception:
-            pass
+            failsoft.suppress('dashboard.server:_make_uploads_dir')
     return BASE_DIR / "uploads"
 
 
@@ -155,7 +157,7 @@ def _local_ip() -> str:
             if not ip.startswith("127."):
                 return ip
         except Exception:
-            pass
+            failsoft.suppress('dashboard.server:_local_ip')
 
     # Method 2: hostname resolution (works offline on most systems)
     try:
@@ -163,7 +165,7 @@ def _local_ip() -> str:
         if not ip.startswith("127."):
             return ip
     except Exception:
-        pass
+        failsoft.suppress('dashboard.server:_local_ip')
 
     # Method 3: enumerate all interfaces (fully offline, no external deps)
     try:
@@ -172,7 +174,7 @@ def _local_ip() -> str:
             if not ip.startswith("127.") and not ip.startswith("169.254."):
                 return ip
     except Exception:
-        pass
+        failsoft.suppress('dashboard.server:_local_ip')
 
     return "127.0.0.1"
 
@@ -243,7 +245,7 @@ def _ensure_certs() -> bool:
             if not lan.startswith("127."):
                 alt.append(x509.IPAddress(ipaddress.IPv4Address(lan)))
         except Exception:
-            pass          # no LAN address resolvable — localhost entries still work
+            failsoft.suppress('dashboard.server:_ensure_certs')
 
         # Timezone-aware UTC: datetime.utcnow() is deprecated from Python 3.12 on,
         # and the builder normalises aware values to UTC itself.
@@ -272,7 +274,7 @@ def _ensure_certs() -> bool:
             import os as _os
             _os.chmod(key_p, 0o600)   # best effort — largely a no-op on Windows
         except Exception:
-            pass
+            failsoft.suppress('dashboard.server:_ensure_certs')
 
         print(f"[Dashboard] Generated a self-signed certificate for this machine: {certs}")
         return True
@@ -724,7 +726,7 @@ class DashboardServer:
                 try:
                     await ws.close(code=4003)
                 except Exception:
-                    pass
+                    failsoft.suppress('dashboard.server:DashboardServer._build_app.revoke_devices')
             self._clients.clear()
             self._phone_audio_ws = None
             from core import security
@@ -783,7 +785,7 @@ class DashboardServer:
                 try:
                     await previous.close(code=4002, reason="Phone voice session replaced")
                 except Exception:
-                    pass
+                    failsoft.suppress('dashboard.server:DashboardServer._build_app.phone_audio_ws')
             self._phone_audio_ws = websocket
             asyncio.create_task(self.broadcast(
                 {"type": "sys", "text": "Phone automatic handoff armed."}
@@ -862,7 +864,7 @@ class DashboardServer:
                     try:
                         dest.unlink(missing_ok=True)
                     except Exception:
-                        pass
+                        failsoft.suppress('dashboard.server:DashboardServer._build_app.upload_file')
                     return JSONResponse({"error": str(exc)}, status_code=500)
 
                 # Run document parsing in a worker thread so large/slow uploads
@@ -924,7 +926,7 @@ class DashboardServer:
                 ):
                     files.append({"name": f.name, "size": f.stat().st_size})
             except Exception:
-                pass
+                failsoft.suppress('dashboard.server:DashboardServer._build_app.list_files')
             return JSONResponse({"files": files})
 
         @app.get("/uploads/{filename}")
@@ -1073,7 +1075,7 @@ class DashboardServer:
                 try:
                     await websocket.close(code=1011)
                 except Exception:
-                    pass
+                    failsoft.suppress('dashboard.server:DashboardServer._build_twilio_app.twilio_media_stream_ws')
 
         return app
 

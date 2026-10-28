@@ -11,6 +11,8 @@ import threading
 import time
 from typing import Callable
 
+from core import failsoft
+
 
 class DoubleClapDetector:
     """Detect two sharp sound transients separated by a human clap interval."""
@@ -64,7 +66,7 @@ class DoubleClapDetector:
         except (queue.Full, AttributeError, TypeError):
             pass
         except Exception:
-            pass
+            failsoft.suppress('core.clap_wake:DoubleClapDetector.feed')
 
     def _loop(self) -> None:
         import numpy as np

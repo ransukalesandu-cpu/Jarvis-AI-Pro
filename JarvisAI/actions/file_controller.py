@@ -12,6 +12,8 @@ except ImportError:
 
 from core.undo import push_undo
 
+from core import failsoft
+
 _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 
 # Undo keeps a file's previous contents in memory so `write` can be reversed.
@@ -515,6 +517,7 @@ def get_largest_files(path: str = "downloads", count: int = 10) -> str:
                 try:
                     files.append((item.stat().st_size, item))
                 except Exception:
+                    failsoft.suppress('actions.file_controller:get_largest_files')
                     continue
 
         files.sort(reverse=True)
@@ -613,7 +616,7 @@ def organize_desktop() -> str:
                         if folder.exists() and folder.is_dir() and not any(folder.iterdir()):
                             folder.rmdir()
                     except Exception:
-                        pass
+                        failsoft.suppress('actions.file_controller:organize_desktop._undo_organize')
                 return f"{restored} file(s) put back on the desktop."
             push_undo(f"organized the desktop ({len(journal)} files)", _undo_organize)
 

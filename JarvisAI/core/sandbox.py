@@ -31,6 +31,8 @@ import time
 import uuid
 from pathlib import Path
 
+from core import failsoft
+
 try:
     import psutil
     _PSUTIL_OK = True
@@ -110,13 +112,13 @@ def _kill_process_tree(proc: subprocess.Popen) -> None:
                 try:
                     child.kill()
                 except Exception:
-                    pass
+                    failsoft.suppress('core.sandbox:_kill_process_tree')
         except Exception:
-            pass
+            failsoft.suppress('core.sandbox:_kill_process_tree')
     try:
         proc.kill()
     except Exception:
-        pass
+        failsoft.suppress('core.sandbox:_kill_process_tree')
 
 
 def _watchdog(proc: subprocess.Popen, deadline: float, mem_limit_mb: int, flag: dict) -> None:

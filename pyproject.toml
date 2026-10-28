@@ -83,6 +83,8 @@ select = [
   "F823", # local variable referenced before assignment
   "F401", # unused import — dead weight and, often, a rename that was missed
   "F811", # redefinition of an unused name — usually a copy-paste slip
+  "S110", # try/except/pass — must go through core.failsoft.suppress() instead
+  "S112", # try/except/continue — same policy, see docs/DEVELOPMENT.md
 ]
 # No blanket ignores. If a finding appears here it is a real bug.
 
@@ -91,6 +93,10 @@ select = [
 "JarvisAI/tests/**" = ["F811"]
 # Re-export shims: the import *is* the public API.
 "JarvisAI/config/__init__.py" = ["F401"]
+# The fail-soft recorder itself must never raise while handling an error, so it
+# wraps its own bookkeeping in broad handlers. That is the one place where a
+# blind except is the whole point.
+"JarvisAI/core/failsoft.py" = ["BLE001"]
 
 # ── coverage ─────────────────────────────────────────────────────────────────
 # Run with:  pytest --cov  (needs requirements-dev.txt)

@@ -8,6 +8,11 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **HUD is clean by default**: the autonomous surfaces (dashboard card, `◉`
+  rail button, menu entries, minimised status widget) are opt-in via
+  `autonomous_ui_enabled` / `JARVIS_AUTONOMOUS_UI=1`. With the flag off the
+  HUD is exactly as it was, and `test_hud_stays_clean_while_the_ui_flag_is_off`
+  enforces it.
 - **Autonomous task engine** (`JarvisAI/agent/`): validated planning (model or
   deterministic), bounded execution with retries/backoff/deadlines/loop
   detection, resumable JSON persistence plus an fsynced journal, pause/resume/

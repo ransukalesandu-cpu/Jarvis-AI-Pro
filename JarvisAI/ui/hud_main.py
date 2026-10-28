@@ -54,6 +54,23 @@ except Exception:  # pragma: no cover - defensive
     failsoft.suppress("ui.hud_main:import_dynamic_island")
     DynamicIslandController = None
 
+def _agent_ui_enabled() -> bool:
+    """Whether the autonomous HUD surfaces are switched on.
+
+    Default off: the dashboard card, the rail button, the menu entries and the
+    minimised status widget all change the HUD's composition, and the engine
+    works without them. Enable with ``autonomous_ui_enabled`` in the config or
+    ``JARVIS_AUTONOMOUS_UI=1``.
+    """
+    try:
+        from agent.settings import AgentSettings
+
+        return bool(AgentSettings.load().ui_enabled)
+    except Exception:
+        failsoft.suppress("ui.hud_main:_agent_ui_enabled")
+        return False
+
+
 try:
     from security.auth_manager import PRIVACY_LOCK, lock_workstation
     from core.security import get_auth_manager
@@ -103,7 +120,9 @@ class HUDMainWindow(QMainWindow):
         # Minimising must not leave a large empty frame on the desktop: the
         # Dynamic Island takes over while the HUD is minimised.
         self._island_controller = (
-            DynamicIslandController(self) if DynamicIslandController is not None else None
+            DynamicIslandController(self)
+            if (DynamicIslandController is not None and self._panel_agent is not None)
+            else None
         )
         self._settings = QSettings("JarvisAI", "JarvisAIPro")
         from memory.config_manager import get_assistant_mode, load_api_keys
@@ -121,14 +140,17 @@ class HUDMainWindow(QMainWindow):
         self._poll_timer.start(1500)
 
     def _init_ui(self):
-        # Built before anything that references it: the right-hand menu and the
-        # dashboard's extra card both need the autonomous panel, and referencing
-        # it before assignment is how this broke the first time.
-        self._panel_agent = AutonomousPanel(self) if AutonomousPanel is not None else None
+        # Assigned first, because the right-hand menu and the dashboard read
+        # them; built only when the opt-in HUD flag is on, and only once the
+        # central widget exists (a panel parented to the bare window would be a
+        # stray, layout-less child).
+        self._panel_agent = None
         self._agent_stop_button = None
 
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
+        if _agent_ui_enabled() and AutonomousPanel is not None:
+            self._panel_agent = AutonomousPanel(central_widget)
 
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(10, 10, 10, 10)

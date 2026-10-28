@@ -53,6 +53,11 @@ class AgentSettings:
     max_steps: int = 12
     vision_model: str = ""
     autonomy_voice_updates: bool = True
+    # The HUD surfaces (dashboard card, rail button, menu entries, the minimised
+    # status widget) are opt-in: they change the composition of a HUD that is
+    # deliberately clean. The engine, the voice tool and the report work either
+    # way.
+    ui_enabled: bool = False
 
     @classmethod
     def load(cls, config: dict[str, Any] | None = None) -> "AgentSettings":
@@ -73,6 +78,8 @@ class AgentSettings:
             max_steps=int(_number(data.get("autonomous_max_steps"), 12, low=3, high=16)),
             vision_model=str(data.get("vision_model") or "").strip(),
             autonomy_voice_updates=_truthy(data.get("autonomous_voice_updates"), True),
+            ui_enabled=_truthy(env.get("JARVIS_AUTONOMOUS_UI")
+                               or data.get("autonomous_ui_enabled"), False),
         )
         return settings
 
@@ -93,6 +100,7 @@ class AgentSettings:
             "max_steps": self.max_steps,
             "vision_model": self.vision_model,
             "autonomy_voice_updates": self.autonomy_voice_updates,
+            "ui_enabled": self.ui_enabled,
         }
 
     def capability_notes(self) -> list[str]:
@@ -122,7 +130,7 @@ def save_settings(values: dict[str, Any]) -> None:
         "autonomous_enabled", "autonomous_allow_shell", "autonomous_allow_files",
         "autonomous_allow_desktop", "autonomous_dry_run", "autonomous_max_runtime_s",
         "autonomous_retry_budget", "autonomous_max_steps", "autonomous_screen_paused",
-        "autonomous_voice_updates", "vision_model",
+        "autonomous_voice_updates", "autonomous_ui_enabled", "vision_model",
     ):
         if key in values:
             data[key] = values[key]

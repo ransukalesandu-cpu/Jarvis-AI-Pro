@@ -494,6 +494,10 @@ class TestUIHologram(unittest.TestCase):
                     json.loads(config_path.read_text(encoding="utf-8"))["gemini_api_key"],
                     key,
                 )
+                from memory.config_manager import is_configured
+                self.assertTrue(is_configured())
+                # Allow the zero-delay Qt callback to finish the setup transition.
+                QTest.qWait(50)
                 self.assertTrue(hud_ui._win._ready)
                 self.assertTrue(hud_ui._ready)
                 self.assertIsNone(hud_ui._setup_controller._overlay)

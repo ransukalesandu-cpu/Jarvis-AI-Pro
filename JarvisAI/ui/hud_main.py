@@ -32,6 +32,7 @@ from audio.visualizer_bridge import get_visualizer_bridge, VisualizerBridge
 from ui.hologram.wireframe_head import NeuralWireframeHead
 from ui.hologram.holo_rim_light import NeuralRimLight
 from ui.hologram.holo_state_pulse import HologramStatePulse
+from ui.hologram.holo_persona_handoff import PersonaChromaticHandoff
 from ui.hologram.bihansa_hologram import BihansaHologramWidget
 from ui.hologram.neural_heart_reactor import NeuralHeartReactor
 from ui.hologram.bihansa_settings import BihansaModeSettings, BihansaSettingsDialog
@@ -196,6 +197,10 @@ class HUDMainWindow(QMainWindow):
         self._auth_manager = get_auth_manager() if callable(get_auth_manager) else None
 
         self._privacy_locked = False
+        # The initial persisted mode is applied without animating a handoff; only
+        # subsequent, explicit persona switches trigger the one-shot overlay.
+        self._active_persona_mode = "jarvis"
+        self._persona_handoff_ready = False
         # Settings must exist before the UI builds, because the palette, reduced
         # motion and battery-saver preferences are applied to every renderer.
         self._settings = QSettings("JarvisAI", "JarvisAIPro")
@@ -212,6 +217,8 @@ class HUDMainWindow(QMainWindow):
         self._bihansa_voice_reactive.setChecked(self._settings.value("bihansa/voice_reactive", True, type=bool))
         self._apply_bihansa_preferences()
         self._set_bihansa_enabled(self._bihansa_toggle.isChecked())
+        self._active_persona_mode = "bihansa" if self._bihansa_toggle.isChecked() else "jarvis"
+        self._persona_handoff_ready = True
 
         # Update timer for periodic state polling (memory/scheduler/auth)
         self._poll_timer = QTimer(self)
@@ -365,6 +372,11 @@ class HUDMainWindow(QMainWindow):
             palette_for_mode("bihansa").primary, palette_for_mode("bihansa").accent
         )
         self._bihansa_state_pulse.set_enabled_effect(False)
+        # One overlay hosted by the stable stack, not by either face widget.
+        # The active-face bounds provider below translates the selected face's
+        # local rectangle into the stack's coordinate space.
+        self._persona_handoff = PersonaChromaticHandoff(self._visualizer_stack)
+        self._persona_handoff.set_bounds_provider(self._active_persona_face_bounds)
         self._visualizer_stack.addWidget(self.wireframe_visualizer)
         self._visualizer_stack.addWidget(self.bihansa_visualizer)
         self._visualizer_stack.setCurrentWidget(self.wireframe_visualizer)
@@ -818,6 +830,34 @@ class HUDMainWindow(QMainWindow):
             side * 0.82,
         )
 
+    def _active_persona_face_bounds(self) -> QRectF:
+        """Return the current face bounds translated into stable stack coordinates."""
+        mode = getattr(self, "_active_persona_mode", "jarvis")
+        if mode == "bihansa":
+            widget = self.bihansa_visualizer
+            bounds = self._bihansa_face_bounds()
+        else:
+            widget = self.wireframe_visualizer
+            bounds = widget.face_rect()
+        origin = widget.mapTo(self._visualizer_stack, widget.rect().topLeft())
+        bounds = QRectF(bounds)
+        bounds.translate(float(origin.x()), float(origin.y()))
+        return bounds
+
+    def _persona_handoff_reduced_motion(self) -> bool:
+        """Respect the active persona's existing reduced-motion preference."""
+        if getattr(self, "_active_persona_mode", "jarvis") == "bihansa":
+            return bool(BihansaModeSettings(self._settings).reduced_motion)
+        return bool(self._prefs.reduced_motion)
+
+    def _sync_persona_handoff_preferences(self) -> None:
+        """Keep effect-only preferences synchronized without touching persona logic."""
+        effect = getattr(self, "_persona_handoff", None)
+        if effect is None:
+            return
+        effect.set_reduced_motion(self._persona_handoff_reduced_motion())
+        effect.set_privacy_lock_active(self._privacy_locked)
+
     def _sync_bihansa_rim_enabled(self, *_args) -> None:
         """Run the Bihansa rim only while that persona and its effects are active."""
         enabled = (
@@ -865,6 +905,8 @@ class HUDMainWindow(QMainWindow):
     def _set_bihansa_enabled(self, enabled: bool):
         """Switch only the central visualizer; normal JARVIS remains available."""
         enabled = bool(enabled)
+        old_mode = getattr(self, "_active_persona_mode", "jarvis")
+        new_mode = "bihansa" if enabled else "jarvis"
         self._visualizer_stack.setCurrentWidget(
             self.bihansa_visualizer if enabled else self.wireframe_visualizer
         )
@@ -880,6 +922,15 @@ class HUDMainWindow(QMainWindow):
         self._palette = self._prefs.scaled_palette()
         self._save_visual_prefs()
         self._apply_palette()
+        self._active_persona_mode = new_mode
+        self._sync_persona_handoff_preferences()
+        if self._persona_handoff_ready and old_mode != new_mode:
+            old_palette = palette_for_mode(old_mode)
+            new_palette = palette_for_mode(new_mode)
+            self._persona_handoff.trigger_handoff(
+                old_palette.primary, old_palette.accent,
+                new_palette.primary, new_palette.accent,
+            )
         self._bihansa_toggle.setText("BIHANSA MODE: ON" if enabled else "BIHANSA MODE: OFF")
         # Keep BIHANSA-only controls out of the standard JARVIS view.
         self._bihansa_effects.setVisible(enabled)
@@ -960,6 +1011,7 @@ class HUDMainWindow(QMainWindow):
         )
         self._bihansa_rim_light.set_reduced_motion(prefs.reduced_motion)
         self._sync_bihansa_rim_enabled()
+        self._sync_persona_handoff_preferences()
         if hasattr(self, "_bihansa_toggle"):
             desired = prefs.assistant_mode == "bihansa"
             if self._bihansa_toggle.isChecked() != desired:
@@ -1056,6 +1108,8 @@ class HUDMainWindow(QMainWindow):
     def _handle_privacy_lock(self):
         """Engage privacy lockdown profile on HUD and trigger LockWorkStation."""
         self._privacy_locked = True
+        if hasattr(self, "_persona_handoff"):
+            self._persona_handoff.set_privacy_lock_active(True)
         self.wireframe_visualizer.set_state("PRIVACY_LOCK")
         self.bihansa_visualizer.set_state("PRIVACY_LOCK")
         self._jarvis_rim_light.set_state("PRIVACY_LOCK")
@@ -1090,6 +1144,8 @@ class HUDMainWindow(QMainWindow):
         """Restore normal HUD view."""
         was_locked = self._privacy_locked
         self._privacy_locked = False
+        if hasattr(self, "_persona_handoff"):
+            self._persona_handoff.set_privacy_lock_active(False)
         self._lock_banner.hide()
         if was_locked:
             state = self._bridge.current_state
@@ -1222,6 +1278,7 @@ class HUDMainWindow(QMainWindow):
             self._settings, fallback_mode="bihansa" if self._bihansa_toggle.isChecked() else "jarvis"
         )
         self._palette = self._prefs.scaled_palette()
+        self._sync_persona_handoff_preferences()
         for widget in (
             self.wireframe_visualizer, self.bihansa_visualizer, self._mini_orb,
             self._jarvis_rim_light, self._bihansa_rim_light,
@@ -1422,6 +1479,9 @@ class HUDMainWindow(QMainWindow):
             budget.frame_interval_ms, budget.particle_scale, budget.glow_scale
         )
         self._bihansa_state_pulse.set_performance_budget(
+            budget.frame_interval_ms, budget.particle_scale, budget.glow_scale
+        )
+        self._persona_handoff.set_performance_budget(
             budget.frame_interval_ms, budget.particle_scale, budget.glow_scale
         )
         self._mini_orb.set_performance_budget(
@@ -1703,6 +1763,8 @@ class HUDMainWindow(QMainWindow):
         try:
             self._status_timer.stop()
             self._poll_timer.stop()
+            if hasattr(self, "_persona_handoff"):
+                self._persona_handoff.shutdown()
         except Exception:
             failsoft.suppress("ui.hud_main:HUDMainWindow.closeEvent")
         controller = getattr(self, "_island_controller", None)

@@ -198,7 +198,8 @@ class PersonaChromaticHandoff(QWidget):
             if not math.isfinite(scale):
                 scale = 1.0
             self._glow_scale = _clamp(scale, 0.0, 1.0)
-        self.update()
+        if self._state is not None:
+            self.update()
 
     def set_enabled_effect(self, enabled: bool) -> None:
         """Disable and clear the one-shot effect; idle overlays remain hidden."""
@@ -375,9 +376,12 @@ class PersonaChromaticHandoff(QWidget):
         return outer.subtracted(inner)
 
     @staticmethod
-    def _ring_radius(bounds: QRectF) -> float:
+    def _ring_rect(bounds: QRectF) -> QRectF:
+        """Ellipse halfway between the fixed face cutout and outer clip boundary."""
+        cx, cy = bounds.center().x(), bounds.center().y()
         rx, ry = bounds.width() / 2.0, bounds.height() / 2.0
-        return (rx + ry) * 0.5 * ((1.0 + GLOBAL_MARGIN) * 0.5)
+        scale = (1.0 + GLOBAL_MARGIN) * 0.5
+        return QRectF(cx - rx * scale, cy - ry * scale, 2.0 * rx * scale, 2.0 * ry * scale)
 
     def paintEvent(self, event) -> None:  # noqa: N802 (Qt override)
         del event
@@ -423,8 +427,7 @@ class PersonaChromaticHandoff(QWidget):
         alpha_ceiling: int,
         width_scale: float,
     ) -> None:
-        cx, cy = bounds.center().x(), bounds.center().y()
-        radius = self._ring_radius(bounds)
+        ring_rect = self._ring_rect(bounds)
         alpha = int(_clamp(alpha_ceiling * envelope * self._glow_scale, 0, alpha_ceiling))
         if alpha <= 0:
             return
@@ -432,7 +435,7 @@ class PersonaChromaticHandoff(QWidget):
         pen.setWidthF(max(1.0, min(bounds.width(), bounds.height()) * width_scale))
         painter.setPen(pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawEllipse(QRectF(cx - radius, cy - radius, radius * 2.0, radius * 2.0))
+        painter.drawEllipse(ring_rect)
 
     def _paint_sweeping_arcs(
         self,
@@ -442,13 +445,11 @@ class PersonaChromaticHandoff(QWidget):
         accent: RGB,
         envelope: float,
     ) -> None:
-        cx, cy = bounds.center().x(), bounds.center().y()
-        radius = self._ring_radius(bounds)
+        rect = self._ring_rect(bounds)
         rotation = self._current_rotation(time.monotonic())
         alpha = int(_clamp(PEAK_ALPHA_MAX * envelope * self._glow_scale, 0, PEAK_ALPHA_MAX))
         if alpha <= 0:
             return
-        rect = QRectF(cx - radius, cy - radius, radius * 2.0, radius * 2.0)
         width = max(1.0, min(bounds.width(), bounds.height()) * ARC_WIDTH_SCALE)
         for index in range(ARC_COUNT):
             rgb = primary if index % 2 == 0 else accent

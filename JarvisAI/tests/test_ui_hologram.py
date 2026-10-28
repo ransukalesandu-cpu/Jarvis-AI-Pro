@@ -206,6 +206,23 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(hud.bihansa_visualizer.get_state(), "SPEAKING")
         self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
 
+    def test_left_mega_menu_expands_on_hover_and_starts_collapsed(self):
+        """The home hologram stays clean until the left-edge trigger is hovered."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        self.assertTrue(hud._left_rail.isHidden())
+        self.assertFalse(hud._left_menu_trigger.isHidden())
+
+        enter = QEvent(QEvent.Type.Enter)
+        hud.eventFilter(hud._left_menu_trigger, enter)
+        self.assertFalse(hud._left_rail.isHidden())
+
+        # Leaving the tab schedules a delayed collapse so the pointer can move
+        # into the rail without the menu disappearing between widgets.
+        leave = QEvent(QEvent.Type.Leave)
+        hud.eventFilter(hud._left_menu_trigger, leave)
+        QTest.qWait(220)
+        self.assertTrue(hud._left_rail.isHidden())
+
     def test_first_run_setup_asks_only_for_gemini_api_key(self):
         """The first-run credentials card must expose one Gemini key field only."""
         with tempfile.TemporaryDirectory() as directory:

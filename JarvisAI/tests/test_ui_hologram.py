@@ -22,7 +22,7 @@ from unittest.mock import patch
 import numpy as np
 
 from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, Qt
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QLineEdit
 from PyQt6.QtTest import QTest
 
 # Ensure QApplication exists before testing Qt widgets
@@ -38,6 +38,7 @@ from ui.panels.memory_panel import MemoryPanel
 from ui.panels.scheduler_panel import SchedulerPanel
 from ui.panels.system_telemetry_ring import SystemTelemetryRing
 from ui.hud_main import HUDMainWindow, HologramHUDUI
+from ui import SetupOverlay
 from ui.panels.modern_dashboard import FloatingHolographicOrb, SkeletonLoader, ModernDashboard
 from ui.panels.hud_surface import BentoPanelSurface
 
@@ -204,6 +205,66 @@ class TestUIHologram(unittest.TestCase):
         self.assertTrue(hud._lock_banner.isHidden())
         self.assertEqual(hud.bihansa_visualizer.get_state(), "SPEAKING")
         self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
+
+    def test_first_run_setup_asks_only_for_gemini_api_key(self):
+        """The first-run credentials card must expose one Gemini key field only."""
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "api_keys.json"
+            config_path.write_text(
+                '{"groq_api_key":"keep-groq","openai_api_key":"keep-openai"}',
+                encoding="utf-8",
+            )
+            with patch("ui.API_FILE", config_path):
+                overlay = self._track_widget(SetupOverlay())
+
+        self.assertEqual(list(overlay._key_fields), ["gemini_api_key"])
+        self.assertIs(overlay._key_fields["gemini_api_key"], overlay._key_field)
+        self.assertEqual(overlay._key_field.echoMode(), QLineEdit.EchoMode.Password)
+
+        payloads = []
+        overlay.done.connect(payloads.append)
+        overlay._key_field.setText("  test-gemini-key  ")
+        overlay._submit()
+        self.assertEqual(payloads, [{"gemini_api_key": "test-gemini-key"}])
+        self.assertNotIn("groq_api_key", payloads[0])
+        self.assertNotIn("openai_api_key", payloads[0])
+        self.assertNotIn("anthropic_api_key", payloads[0])
+
+        overlay._show_key_button.setChecked(True)
+        self.assertEqual(overlay._key_field.echoMode(), QLineEdit.EchoMode.Normal)
+        self.assertEqual(overlay._show_key_button.text(), "HIDE")
+        overlay._show_key_button.setChecked(False)
+        self.assertEqual(overlay._key_field.echoMode(), QLineEdit.EchoMode.Password)
+
+    def test_first_run_setup_can_keep_existing_gemini_key(self):
+        """A reconfiguration with a stored key may leave the field blank."""
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "api_keys.json"
+            config_path.write_text(
+                '{"gemini_api_key":"existing-gemini-key","groq_api_key":"preserve-me"}',
+                encoding="utf-8",
+            )
+            with patch("ui.API_FILE", config_path):
+                overlay = self._track_widget(SetupOverlay())
+
+        payloads = []
+        overlay.done.connect(payloads.append)
+        overlay._submit()
+        self.assertEqual(payloads, [{"gemini_api_key": "existing-gemini-key"}])
+
+    def test_first_run_setup_rejects_empty_key_when_not_configured(self):
+        """A fresh setup cannot continue without the one required Gemini key."""
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "api_keys.json"
+            config_path.write_text("{}", encoding="utf-8")
+            with patch("ui.API_FILE", config_path):
+                overlay = self._track_widget(SetupOverlay())
+
+        payloads = []
+        overlay.done.connect(payloads.append)
+        overlay._submit()
+        self.assertEqual(payloads, [])
+        self.assertFalse(overlay._error_label.isHidden())
 
     def test_hologram_visualizers_use_transparent_backgrounds(self):
         """Both original hologram renderers must preserve transparent pixels."""

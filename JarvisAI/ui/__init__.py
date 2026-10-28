@@ -36,7 +36,7 @@ from PyQt6.QtWidgets import (
     QAbstractButton, QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QScrollArea,
     QSizePolicy, QSplitter, QStackedWidget, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
-    QProgressBar, QSlider,
+    QProgressBar, QSlider, QToolButton,
 )
 from core.voice_ui_control import (
     VoiceUICommand, is_high_impact_ui_label, normalize_label,
@@ -2099,104 +2099,158 @@ class ProviderTile(QPushButton):
 
 
 class SetupOverlay(QWidget):
-    """Compact first-run credentials panel for the JARVIS hybrid AI router."""
+    """Focused first-run setup panel: collect only the required Gemini Live API key."""
+
     done = pyqtSignal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("GeminiSetupOverlay")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
-            SetupOverlay {{
-                background: rgba(0, 6, 10, 248);
-                border: 1px solid {C.BORDER_B};
-                border-radius: 8px;
+            QWidget#GeminiSetupOverlay {{
+                background: rgba(6, 13, 19, 250);
+                border: 1px solid rgba(113, 212, 194, 150);
+                border-radius: 14px;
             }}
+            QLabel {{ background: transparent; }}
         """)
+
         config = _read_full_config()
-        try:
-            from core.provider_settings import get_provider_settings
-            provider_settings = get_provider_settings()
-        except Exception:
-            provider_settings = {}
+        self._existing_gemini_key = str(config.get("gemini_api_key", "") or "").strip()
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(22, 18, 22, 18)
-        layout.setSpacing(6)
+        layout.setContentsMargins(26, 23, 26, 22)
+        layout.setSpacing(10)
 
-        def _lbl(txt, size=8, bold=False, color=C.TEXT_DIM):
-            w = QLabel(txt)
-            w.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            w.setFont(QFont("Courier New", size,
-                            QFont.Weight.Bold if bold else QFont.Weight.Normal))
-            w.setStyleSheet(f"color: {color}; background: transparent;")
-            return w
+        eyebrow = QLabel("J.A.R.V.I.S  /  FIRST-RUN SETUP")
+        eyebrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        eyebrow.setStyleSheet(
+            "color: #71d4c2; background: transparent; font: 700 9pt 'Consolas'; "
+            "letter-spacing: 1px; border: none;"
+        )
+        layout.addWidget(eyebrow)
 
-        title = _lbl("J.A.R.V.I.S  /  CORE SETUP", 13, True, C.PRI)
+        title = QLabel("Connect Gemini Live")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setWordWrap(True)
+        title.setStyleSheet(
+            "color: #edf3e8; background: transparent; font: 700 19pt 'Aptos Display'; "
+            "border: none;"
+        )
         layout.addWidget(title)
-        subtitle = _lbl("Configure AI providers. Keys stay on this PC.", 8, False, C.TEXT_MED)
+
+        subtitle = QLabel("Add one API key to get JARVIS online.")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet(
+            "color: #9aafaa; background: transparent; font: 10pt 'Aptos'; border: none;"
+        )
         layout.addWidget(subtitle)
-        layout.addSpacing(5)
+        layout.addSpacing(7)
 
+        caption = QLabel("GEMINI API KEY  ·  REQUIRED")
+        caption.setStyleSheet(
+            "color: #9aafaa; background: transparent; font: 700 8pt 'Consolas'; border: none;"
+        )
+        layout.addWidget(caption)
+
+        key_row = QHBoxLayout()
+        key_row.setSpacing(7)
         self._key_fields = {}
-        fields = [
-            ("gemini_api_key", "GEMINI LIVE API KEY  ·  REQUIRED", config.get("gemini_api_key", ""), "AIza…"),
-            ("groq_api_key", "GROQ API KEY  ·  FAST FALLBACK", config.get("groq_api_key", ""), "gsk_… (optional)"),
-            ("openai_api_key", "OPENAI API KEY  ·  OPTIONAL", config.get("openai_api_key", ""), "sk-…"),
-            ("anthropic_api_key", "ANTHROPIC / CLAUDE KEY  ·  OPTIONAL", config.get("anthropic_api_key", ""), "sk-ant-…"),
-        ]
-        for key_name, caption, saved_value, placeholder in fields:
-            layout.addWidget(_lbl(caption, 8, True, C.TEXT_DIM))
-            field = QLineEdit()
-            field.setEchoMode(QLineEdit.EchoMode.Password)
-            field.setPlaceholderText("Saved locally · leave blank to keep" if saved_value else placeholder)
-            field.setFixedHeight(30)
-            field.setFont(QFont("Courier New", 9))
-            field.setStyleSheet(f"""
-                QLineEdit {{
-                    background: #000d12; color: {C.TEXT};
-                    border: 1px solid {C.BORDER}; border-radius: 4px; padding: 4px 8px;
-                }}
-                QLineEdit:focus {{ border: 1px solid {C.PRI}; }}
-            """)
-            layout.addWidget(field)
-            self._key_fields[key_name] = field
+        field = QLineEdit()
+        field.setObjectName("GeminiApiKeyField")
+        field.setEchoMode(QLineEdit.EchoMode.Password)
+        field.setPlaceholderText(
+            "Saved locally · leave blank to keep" if self._existing_gemini_key
+            else "Paste your Gemini API key"
+        )
+        field.setMinimumHeight(40)
+        field.setFont(QFont("Consolas", 10))
+        field.setStyleSheet("""
+            QLineEdit#GeminiApiKeyField {
+                background: #071017; color: #edf3e8;
+                border: 1px solid #34464a; border-radius: 7px; padding: 8px 10px;
+                selection-background-color: #397f78;
+            }
+            QLineEdit#GeminiApiKeyField:focus { border: 1px solid #71d4c2; }
+        """)
+        field.returnPressed.connect(self._submit)
+        key_row.addWidget(field, 1)
+        self._key_fields["gemini_api_key"] = field
+        self._key_field = field
 
-        note = _lbl("Gemini powers live voice. Groq is tried next for text fallback.", 8, False, C.ACC2)
+        self._show_key_button = QToolButton()
+        self._show_key_button.setText("SHOW")
+        self._show_key_button.setCheckable(True)
+        self._show_key_button.setMinimumHeight(40)
+        self._show_key_button.setToolTip("Show or hide the API key")
+        self._show_key_button.setStyleSheet("""
+            QToolButton {
+                color: #71d4c2; background: #10191d;
+                border: 1px solid #34464a; border-radius: 7px;
+                padding: 0 11px; font: 700 8pt 'Consolas';
+            }
+            QToolButton:hover { border-color: #71d4c2; background: #172d2c; }
+            QToolButton:checked { color: #edf3e8; border-color: #71d4c2; }
+        """)
+        self._show_key_button.toggled.connect(self._toggle_key_visibility)
+        key_row.addWidget(self._show_key_button)
+        layout.addLayout(key_row)
+
+        self._error_label = QLabel("Enter a Gemini API key to continue.")
+        self._error_label.setWordWrap(True)
+        self._error_label.setStyleSheet(
+            "color: #e97869; background: transparent; font: 9pt 'Aptos'; border: none;"
+        )
+        self._error_label.hide()
+        layout.addWidget(self._error_label)
+
+        note = QLabel("Your API key is saved locally on this computer. No other AI provider keys are required here.")
         note.setWordWrap(True)
-        layout.addSpacing(2)
+        note.setStyleSheet(
+            "color: #78908d; background: transparent; font: 9pt 'Aptos'; border: none;"
+        )
+        layout.addSpacing(3)
         layout.addWidget(note)
 
-        init_btn = QPushButton("INITIALISE J.A.R.V.I.S")
-        init_btn.setFont(QFont("Courier New", 10, QFont.Weight.Bold))
-        init_btn.setFixedHeight(34)
-        init_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        init_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: #001a22; color: {C.PRI};
-                border: 1px solid {C.PRI_DIM}; border-radius: 4px;
-            }}
-            QPushButton:hover {{
-                background: {C.PRI_GHO}; border: 1px solid {C.PRI};
-            }}
+        connect_btn = QPushButton("SAVE KEY  &  CONTINUE")
+        connect_btn.setObjectName("ConnectGeminiButton")
+        connect_btn.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
+        connect_btn.setMinimumHeight(42)
+        connect_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        connect_btn.setStyleSheet("""
+            QPushButton#ConnectGeminiButton {
+                background: #71d4c2; color: #061018;
+                border: 1px solid #71d4c2; border-radius: 7px;
+                padding: 9px 14px;
+            }
+            QPushButton#ConnectGeminiButton:hover { background: #9be8d9; border-color: #9be8d9; }
+            QPushButton#ConnectGeminiButton:pressed { background: #397f78; color: #ffffff; }
         """)
-        init_btn.clicked.connect(self._submit)
-        layout.addSpacing(4)
-        layout.addWidget(init_btn)
+        connect_btn.clicked.connect(self._submit)
+        layout.addSpacing(6)
+        layout.addWidget(connect_btn)
 
-    def _submit(self):
-        key = self._key_fields["gemini_api_key"].text().strip()
+    def _toggle_key_visibility(self, visible: bool) -> None:
+        self._key_field.setEchoMode(
+            QLineEdit.EchoMode.Normal if visible else QLineEdit.EchoMode.Password
+        )
+        self._show_key_button.setText("HIDE" if visible else "SHOW")
+
+    def _submit(self) -> None:
+        # An existing key can be kept by leaving the field blank; first-run still
+        # requires a non-empty value. Never emit optional provider credentials.
+        key = self._key_field.text().strip() or self._existing_gemini_key
         if not key:
-            field = self._key_fields["gemini_api_key"]
-            field.setStyleSheet(field.styleSheet() + f" QLineEdit {{ border: 1px solid {C.RED}; }}")
+            self._key_field.setStyleSheet(self._key_field.styleSheet() + """
+                QLineEdit#GeminiApiKeyField { border: 1px solid #e97869; }
+            """)
+            self._error_label.show()
+            self._key_field.setFocus()
             return
-        self.done.emit({
-            "gemini_api_key": key,
-            "groq_api_key": self._key_fields["groq_api_key"].text().strip(),
-            "openai_api_key": self._key_fields["openai_api_key"].text().strip(),
-            "anthropic_api_key": self._key_fields["anthropic_api_key"].text().strip(),
-        })
+        self._error_label.hide()
+        self.done.emit({"gemini_api_key": key})
 
 
 class HueWheel(QWidget):
@@ -7887,11 +7941,13 @@ class MainWindow(QMainWindow):
             self._leave_immersive_view()
         ov = SetupOverlay(self.centralWidget())
         cw = self.centralWidget()
-        ow, oh = 440, 490
+        # A compact, centered credential card: one required Gemini key, no provider list.
+        ow, oh = 480, 370
         ov.setGeometry(
-            (cw.width()  - ow) // 2,
-            (cw.height() - oh) // 2,
-            ow, oh,
+            max(12, (cw.width() - ow) // 2),
+            max(12, (cw.height() - oh) // 2),
+            min(ow, max(300, cw.width() - 24)),
+            min(oh, max(300, cw.height() - 24)),
         )
         ov.done.connect(self._on_setup_done)
         ov.show()

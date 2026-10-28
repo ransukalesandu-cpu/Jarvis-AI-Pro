@@ -1744,14 +1744,23 @@ class HUDMainWindow(QMainWindow):
             trigger.raise_()
 
     def _hide_left_rail_if_pointer_outside(self) -> None:
-        """Collapse after a short delay so pointer travel into the rail is safe."""
+        """Collapse the home rail unless the pointer is still over its hover region.
+
+        Avoid QApplication.widgetAt(): under Qt's offscreen platform it can abort
+        the test process while resolving widgets at a synthetic cursor position.
+        Global geometry is sufficient because the rail itself covers its icon children.
+        """
         if self._workspace_stack.currentWidget() is self._dashboard:
             return
-        widget = QApplication.widgetAt(QCursor.pos())
-        while widget is not None:
-            if widget is self._left_rail or widget is self._left_menu_trigger:
-                return
-            widget = widget.parentWidget()
+        global_pos = QCursor.pos()
+        for widget in (self._left_rail, self._left_menu_trigger):
+            try:
+                top_left = widget.mapToGlobal(widget.rect().topLeft())
+                if QRect(top_left, widget.size()).contains(global_pos):
+                    return
+            except RuntimeError:
+                # Widgets may be closing while a delayed collapse is queued.
+                continue
         self._left_rail.hide()
 
     def eventFilter(self, watched, event):

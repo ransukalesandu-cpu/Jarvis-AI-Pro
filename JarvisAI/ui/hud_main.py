@@ -609,7 +609,7 @@ class HUDMainWindow(QMainWindow):
         self._apply_responsive_chrome()
         self._position_left_menu_trigger()
         if hasattr(self, "_right_menu") and self._right_menu.isVisible():
-            self._position_right_menu()
+            self._position_right_menu(size=False)
         self._sync_task_blocked_rect()
         if hasattr(self, "_toast") and self._toast.isVisible():
             host = self.centralWidget()
@@ -725,12 +725,13 @@ class HUDMainWindow(QMainWindow):
             print(f"[JARVIS HUD] Telemetry refresh failed: {type(exc).__name__}: {exc}")
         self._dashboard.finish_loading()
 
-    def _position_right_menu(self):
-        """Size and anchor the floating dropdown in one pass."""
+    def _position_right_menu(self, *, size: bool = True) -> None:
+        """Anchor the floating dropdown; resize events can skip duplicate sizing."""
         host = self.centralWidget()
         if host is None:
             return
-        self._size_right_menu(host.width(), host.height())
+        if size:
+            self._size_right_menu(host.width(), host.height())
         x = hud_layout.dropdown_x(host.width(), self._right_menu.width())
         self._right_menu.move(x, hud_layout.DROPDOWN_TOP)
         self._right_menu.raise_()
@@ -764,6 +765,10 @@ class HUDMainWindow(QMainWindow):
             for button in getattr(self, "_left_icon_buttons", ()):
                 if button.width() != size:
                     button.setFixedSize(size, size)
+        if getattr(self, "_right_menu", None) is not None:
+            # Keep responsive sizing available to the HUD and tests. The
+            # resizeEvent positions this already-sized menu without sizing twice.
+            self._size_right_menu(width, height)
 
     def _toggle_right_dropdown(self):
         """Show a floating right dropdown without shrinking the hologram workspace."""

@@ -473,6 +473,7 @@ class TestUIHologram(unittest.TestCase):
                 patch("memory.config_manager.CONFIG_DIR", config_dir),
                 patch("memory.config_manager.CONFIG_FILE", config_path),
                 patch("ui.API_FILE", config_path),
+                patch.dict(os.environ, {"GEMINI_API_KEY": ""}),
                 patch("ui.hud_main.get_auth_manager", return_value=auth),
             ):
                 hud_ui = HologramHUDUI(bridge=self.bridge)

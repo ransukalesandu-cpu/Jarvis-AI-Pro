@@ -220,12 +220,18 @@ class TestUIHologram(unittest.TestCase):
         hud.eventFilter(hud._left_menu_trigger, enter)
         self.assertFalse(hud._left_rail.isHidden())
 
-        # Simulate leaving the hover region with a deterministic global cursor.
+        # Capture the delayed-collapse callback instead of running a real timer,
+        # which would also advance unrelated HUD timers in a full-suite test.
         leave = QEvent(QEvent.Type.Leave)
-        hud.eventFilter(hud._left_menu_trigger, leave)
+        with patch("ui.hud_main.QTimer") as timer_mock:
+            hud.eventFilter(hud._left_menu_trigger, leave)
+            timer_mock.singleShot.assert_called_once()
+            self.assertEqual(timer_mock.singleShot.call_args[0][0], 180)
+            collapse = timer_mock.singleShot.call_args[0][1]
+
         with patch("ui.hud_main.QCursor") as cursor:
             cursor.pos.return_value = QPoint(2000, 2000)
-            QTest.qWait(260)
+            collapse()
         self.assertTrue(hud._left_rail.isHidden())
 
     def test_hud_status_label_does_not_report_errors_as_standby(self):

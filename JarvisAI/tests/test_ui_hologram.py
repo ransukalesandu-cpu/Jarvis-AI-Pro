@@ -209,6 +209,10 @@ class TestUIHologram(unittest.TestCase):
     def test_left_mega_menu_expands_on_hover_and_starts_collapsed(self):
         """The home hologram stays clean until the left-edge trigger is hovered."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        # Real geometry/window handles are required before Qt global-coordinate
+        # APIs are exercised; hidden top-level widgets are unsafe in offscreen CI.
+        hud.show()
+        app.processEvents()
         self.assertTrue(hud._left_rail.isHidden())
         self.assertFalse(hud._left_menu_trigger.isHidden())
 
@@ -216,14 +220,18 @@ class TestUIHologram(unittest.TestCase):
         hud.eventFilter(hud._left_menu_trigger, enter)
         self.assertFalse(hud._left_rail.isHidden())
 
-        # Leaving the tab schedules a delayed collapse so the pointer can move
-        # into the rail without the menu disappearing between widgets.
+        # Capture the delayed-collapse callback instead of running a real timer,
+        # which would also advance unrelated HUD timers in a full-suite test.
         leave = QEvent(QEvent.Type.Leave)
-        hud.eventFilter(hud._left_menu_trigger, leave)
-        # Move the real Qt test cursor away too; the collapse callback checks
-        # widgetAt(QCursor.pos()) to avoid closing while crossing into the rail.
-        QTest.mouseMove(hud._home_page, QPoint(220, 180))
-        QTest.qWait(260)
+        with patch("ui.hud_main.QTimer") as timer_mock:
+            hud.eventFilter(hud._left_menu_trigger, leave)
+            timer_mock.singleShot.assert_called_once()
+            self.assertEqual(timer_mock.singleShot.call_args[0][0], 180)
+            collapse = timer_mock.singleShot.call_args[0][1]
+
+        with patch("ui.hud_main.QCursor") as cursor:
+            cursor.pos.return_value = QPoint(2000, 2000)
+            collapse()
         self.assertTrue(hud._left_rail.isHidden())
 
     def test_hud_status_label_does_not_report_errors_as_standby(self):

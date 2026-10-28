@@ -10,6 +10,8 @@ from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from core import failsoft
+
 
 def startup_video_path() -> Path:
     """Return the media path beside the source tree or frozen executable."""
@@ -98,7 +100,7 @@ class StartupVideoSplash(QWidget):
         try:
             self.player.stop()
         except Exception:
-            pass
+            failsoft.suppress('core.startup_video:StartupVideoSplash.finish')
         self.close()
         self.finished.emit()
 

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from core import gemini
 
+from core import failsoft
+
 _STATE: dict = {"questions": [], "index": 0, "correct": 0, "topic": ""}
 
 
@@ -86,7 +88,7 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
                     "\n".join(f"{i+1}. {q['question']}" for i, q in enumerate(questions)),
                 )
             except Exception:
-                pass
+                failsoft.suppress('plugins.quiz:run')
         first = _current()
         return f"Starting a {len(questions)}-question quiz on {topic}. Question 1: {_ask_text(first)}"
 

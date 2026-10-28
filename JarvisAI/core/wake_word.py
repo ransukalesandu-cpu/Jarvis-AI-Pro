@@ -25,6 +25,8 @@ import time
 from pathlib import Path
 from typing import Callable
 
+from core import failsoft
+
 # Pretrained openwakeword model that listens for "Hey Jarvis".
 WAKE_MODEL = "hey_jarvis"
 # Score in [0,1]; above this counts as a detection. Tunable per environment.
@@ -172,7 +174,7 @@ class WakeWordDetector:
         try:
             self._queue.put_nowait(None)
         except Exception:
-            pass
+            failsoft.suppress('core.wake_word:WakeWordDetector.stop')
         self._model = None
         self._ready = False
 
@@ -201,7 +203,7 @@ class WakeWordDetector:
         except queue.Full:
             pass
         except Exception:
-            pass
+            failsoft.suppress('core.wake_word:WakeWordDetector.feed')
 
     def _loop(self) -> None:
         import numpy as np
@@ -261,4 +263,4 @@ class WakeWordDetector:
             while True:
                 self._queue.get_nowait()
         except Exception:
-            pass
+            failsoft.suppress('core.wake_word:WakeWordDetector._drain')

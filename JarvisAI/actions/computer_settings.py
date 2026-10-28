@@ -24,6 +24,8 @@ except ImportError:
 from core import confirm
 from core.undo import push_undo
 
+from core import failsoft
+
 _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 
 if _OS == "Windows":
@@ -55,7 +57,7 @@ def _get_macos_wifi_interface() -> str:
                     if lines[j].startswith("Device:"):
                         return lines[j].split(":", 1)[1].strip()
     except Exception:
-        pass
+        failsoft.suppress('actions.computer_settings:_get_macos_wifi_interface')
     return "en0" 
 
 def _windows_volume_control():
@@ -174,7 +176,7 @@ def brightness_get() -> int | None:
                                      capture_output=True, text=True, timeout=5).stdout.strip())
             return max(0, min(100, round(cur * 100 / mx))) if mx else None
     except Exception:
-        pass
+        failsoft.suppress('actions.computer_settings:brightness_get')
     return None
 
 
@@ -305,14 +307,14 @@ def snap_left():
         try:
             subprocess.run(["open", "-a", "Rectangle"], capture_output=True, timeout=1)
         except Exception:
-            pass
+            failsoft.suppress('actions.computer_settings:snap_left')
         pyautogui.hotkey("ctrl", "option", "left")
     else:  # Linux
         try:
             subprocess.run(["wmctrl", "-r", ":ACTIVE:", "-e", "0,0,0,960,1080"],
                 capture_output=True)
         except Exception:
-            pass
+            failsoft.suppress('actions.computer_settings:snap_left')
 
 def snap_right():
     if _OS == "Windows":
@@ -321,14 +323,14 @@ def snap_right():
         try:
             subprocess.run(["open", "-a", "Rectangle"], capture_output=True, timeout=1)
         except Exception:
-            pass
+            failsoft.suppress('actions.computer_settings:snap_right')
         pyautogui.hotkey("ctrl", "option", "right")
     else:  # Linux
         try:
             subprocess.run(["wmctrl", "-r", ":ACTIVE:", "-e", "0,960,0,960,1080"],
                 capture_output=True)
         except Exception:
-            pass
+            failsoft.suppress('actions.computer_settings:snap_right')
 
 def switch_window():
     if _OS == "Darwin": pyautogui.hotkey("command", "tab")
@@ -379,7 +381,7 @@ def pause_video():
             pyautogui.press("playpause")
             return "Sent the Windows media play/pause key to the active browser."
         except Exception:
-            pass
+            failsoft.suppress('actions.computer_settings:pause_video')
     pyautogui.press("space")
     return "Sent the player pause shortcut."
 

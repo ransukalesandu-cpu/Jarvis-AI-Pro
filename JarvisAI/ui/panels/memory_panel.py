@@ -12,6 +12,8 @@ from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
 
+from core import failsoft
+
 
 class MemoryPanel(QFrame):
     """
@@ -92,4 +94,4 @@ class MemoryPanel(QFrame):
             latest_key = str(entries[0].get("key", "None")) if entries else "None"
             self.update_memory_stats(len(entries), latest_key, "ONLINE")
         except Exception:
-            pass
+            failsoft.suppress('ui.panels.memory_panel:MemoryPanel.fetch_real_memory_state')

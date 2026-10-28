@@ -8,6 +8,15 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`core/failsoft.py`** — the sanctioned way to fail soft without failing
+  silently. `failsoft.suppress("<module>:<operation>")` replaces a bare `pass` in
+  an `except` handler, records the failure in a bounded, thread-safe table
+  (identical failures are counted, not duplicated) and never raises.
+  `failsoft.report()` prints what is currently being swallowed, sorted by
+  frequency, with the `file:line` of each handler.
+  `JARVIS_FAILSOFT_REPORT=1` prints the summary after a pytest run, and
+  `JARVIS_FAILSOFT_LOG=1` emits a warning per suppression at runtime.
+
 - `docs/DEVELOPMENT.md` — setup, test, lint and CI workflow for contributors,
   including the current lint-debt table and a ratchet plan.
 - `requirements-dev.txt` — test/lint tooling separated from the runtime
@@ -36,6 +45,16 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   requirement files, and cancellation of superseded runs.
 
 ### Fixed
+
+- **Playback could lose barge-in protection.** In `core/audio_playback.py` the
+  viseme/HUD work and the echo-guard bookkeeping shared one `try` block, and the
+  level came from a bare `max()` over the viseme schedule. An empty schedule
+  raised `ValueError`, which skipped `echo.note_output()` — so the echo guard
+  never learned what JARVIS was playing, and JARVIS could hear its own reply and
+  interrupt itself. The level now comes from `viseme_peak_level()`, which
+  returns `None` for an empty schedule and falls back to the PCM level, and the
+  echo update has its own guard so it can no longer be skipped by cosmetic code.
+  Found by running the test suite with `JARVIS_FAILSOFT_REPORT=1`.
 
 - **Memory panel always showed zero facts.** `MemoryPanel.fetch_real_memory_state()`
   imported `get_memory_manager` and called `get_all_facts()` — neither exists in
@@ -69,6 +88,17 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   once OpenCV cannot load.
 
 ### Changed
+
+- Every silent `except: pass` / `except: continue` handler in the app now records
+  through `core.failsoft.suppress()`: **177 `pass` sites and 25 `continue` sites**
+  across 60 files, renamed to the subsystem they belong to (for example
+  `core.audio_playback:note_output`, `dashboard.server:<module>`).
+- The lint gate now also enforces `S110` (try-except-pass) and `S112`
+  (try-except-continue), so a new silent handler fails the build instead of
+  joining 950 invisible ones.
+- `docs/DEVELOPMENT.md` gained a "Failing soft without failing silently" section:
+  the decision table for when to swallow, when to log, and when to let the error
+  through, plus how to read the suppression report.
 
 - The lint gate now also enforces `F401` (unused import) and `F811` (shadowed
   redefinition) — zero findings across the codebase, with the three intentional

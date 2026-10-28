@@ -58,6 +58,8 @@ def _clean_env() -> dict:
 # Model choice, timeout and fallback ladder all live in core/gemini.py.
 from core import gemini
 
+from core import failsoft
+
 MODEL_PLANNER    = gemini.DEEP
 MODEL_WRITER     = gemini.DEEP
 
@@ -353,6 +355,7 @@ def _open_vscode(project_dir: Path) -> bool:
             print(f"[DevAgent] 💻 VSCode opened: {project_dir}")
             return True
         except Exception:
+            failsoft.suppress('actions.dev_agent:_open_vscode')
             continue
     return False
 

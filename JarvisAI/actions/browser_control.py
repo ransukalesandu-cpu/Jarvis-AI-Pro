@@ -20,7 +20,8 @@ from playwright.async_api import (
     Playwright,
     TimeoutError as PlaywrightTimeout,
 )
-from core import injection_guard
+from core import failsoft, injection_guard
+
 _OS = platform.system()   # "Windows" | "Darwin" | "Linux"
 
 def _normalize_url(url: str) -> str:
@@ -188,9 +189,10 @@ def _find_opera_windows() -> Optional[str]:
                         print(f"[Browser] Opera found via registry: {exe}")
                         return exe
                 except Exception:
+                    failsoft.suppress('actions.browser_control:_find_opera_windows')
                     continue
     except Exception:
-        pass
+        failsoft.suppress('actions.browser_control:_find_opera_windows')
 
     return shutil.which("opera") or None
 
@@ -211,9 +213,10 @@ def _find_exe_windows(prog_name: str) -> Optional[str]:
                     if exe and Path(exe).exists():
                         return exe
                 except Exception:
+                    failsoft.suppress('actions.browser_control:_find_exe_windows')
                     continue
     except Exception:
-        pass
+        failsoft.suppress('actions.browser_control:_find_exe_windows')
     return None
 
 _BROWSER_SPECS: dict[str, dict] = {
@@ -343,7 +346,7 @@ def _detect_default_browser() -> str:
                 if kw in out:
                     return kw
     except Exception:
-        pass
+        failsoft.suppress('actions.browser_control:_detect_default_browser')
     return "chrome"
 
 
@@ -439,7 +442,7 @@ def _open_native(url: str, browser_name: Optional[str]) -> str:
             if webbrowser.open(url):
                 return f"Opened in your default browser: {url}"
         except Exception:
-            pass
+            failsoft.suppress('actions.browser_control:_open_native')
         return f"Could not open a browser for: {url}"
 
 
@@ -548,12 +551,12 @@ class _BrowserSession:
             try:
                 await self._context.close()
             except Exception:
-                pass
+                failsoft.suppress('actions.browser_control:_BrowserSession._async_close')
         if self._pw:
             try:
                 await self._pw.stop()
             except Exception:
-                pass
+                failsoft.suppress('actions.browser_control:_BrowserSession._async_close')
         self._context = self._page = None
 
     async def _adopt_page(self) -> Page:
@@ -799,7 +802,7 @@ class _BrowserSession:
                     await loc.first.click(timeout=5_000)
                     return f"Clicked ({role}): '{description}'"
             except Exception:
-                pass
+                failsoft.suppress('actions.browser_control:_BrowserSession.smart_click')
         for attempt in (
             lambda: page.get_by_text(description, exact=False).first.click(timeout=5_000),
             lambda: page.get_by_placeholder(description, exact=False).first.click(timeout=5_000),
@@ -812,7 +815,7 @@ class _BrowserSession:
                 await attempt()
                 return f"Clicked: '{description}'"
             except Exception:
-                pass
+                failsoft.suppress('actions.browser_control:_BrowserSession.smart_click')
         return f"Could not find element: '{description}'"
 
     async def smart_type(self, description: str, text: str) -> str:
@@ -833,6 +836,7 @@ class _BrowserSession:
                 await el.type(text, delay=50)
                 return f"Typed into ({method}): '{description}'"
             except Exception:
+                failsoft.suppress('actions.browser_control:_BrowserSession.smart_type')
                 continue
         return f"Could not find input: '{description}'"
 
@@ -960,7 +964,7 @@ class _SessionRegistry:
             try:
                 s.close()
             except Exception:
-                pass
+                failsoft.suppress('actions.browser_control:_SessionRegistry.close_all')
         return "All browsers closed: " + (", ".join(names) if names else "none")
 
     def list_sessions(self) -> str:

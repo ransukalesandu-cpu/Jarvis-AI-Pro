@@ -12,6 +12,8 @@ from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
 
+from core import failsoft
+
 
 class SchedulerPanel(QFrame):
     """
@@ -99,4 +101,4 @@ class SchedulerPanel(QFrame):
             )
             self.update_scheduler_stats(next_title, False, "22:00 - 07:00")
         except Exception:
-            pass
+            failsoft.suppress('ui.panels.scheduler_panel:SchedulerPanel.fetch_real_scheduler_state')

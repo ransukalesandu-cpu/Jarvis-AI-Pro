@@ -16,6 +16,8 @@ if str(ROOT) not in sys.path:
 from memory import memory_manager as mm
 from memory.retrieval_engine import retrieve
 
+from core import failsoft
+
 EVAL = Path(__file__).resolve().parent
 CASES = [json.loads(line) for line in (EVAL / "cases.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
 
@@ -139,7 +141,7 @@ def main() -> int:
             from memory.memory_scoring import load_scoring_config
             margin = load_scoring_config()["baseline_regression_margin"]
         except Exception:
-            pass
+            failsoft.suppress('eval.run_eval:main')
         if result["recall_at_5"] < float(baseline.get("recall_at_5", 0)) - margin:
             print(f"FAIL recall@5 {result['recall_at_5']:.3f} is below baseline by more than {margin:.3f}")
             return 1

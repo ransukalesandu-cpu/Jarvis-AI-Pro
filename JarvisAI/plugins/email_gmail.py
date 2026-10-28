@@ -13,6 +13,9 @@ from email.mime.text import MIMEText
 
 from plugins._google_core import get_service, is_authorized, test_connection
 from core import injection_guard
+
+from core import failsoft
+
 """Newly added security layer to prevent prompt injection attacks. 
 It sanitizes and wraps untrusted content fetched from Gmail before it is sent back to the model's context."""
 
@@ -107,7 +110,7 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
                             "\n".join(lines),
                         )
                 except Exception:
-                    pass
+                    failsoft.suppress('plugins.email_gmail:run')
 
             spoken = " ".join(
                 f"{i + 1}: {m['subject']} from {m['from']}."

@@ -20,6 +20,8 @@ from core.live_audio import (
     _pcm_level,
 )
 
+from core import failsoft
+
 
 @dataclass(frozen=True)
 class OutputStreamOpenResult:
@@ -106,6 +108,26 @@ def stream_device_index(active_stream: Any, requested_device: Any) -> Any:
     except (TypeError, ValueError, RuntimeError):
         pass
     return requested_device
+
+
+def viseme_peak_level(visemes: Any) -> float | None:
+    """Loudest level in a viseme schedule, or None when there is nothing usable.
+
+    The playback loop feeds this to the echo guard so barge-in can subtract
+    JARVIS's own voice from the microphone. Returning None (instead of raising
+    on an empty schedule) lets the caller fall back to the raw PCM level and
+    keeps the echo bookkeeping alive — a bare ``max()`` on an empty sequence
+    used to abort that update and leave the guard deaf to our own output.
+    """
+    best = None
+    try:
+        for frame in visemes:
+            level = frame[0]
+            if best is None or level > best:
+                best = level
+    except (TypeError, IndexError, KeyError):
+        return best
+    return best
 
 
 async def open_verified_output_fallback(
@@ -223,7 +245,7 @@ async def run_audio_playback(
         print(f"[JARVIS] 🔊 Output latency {host._out_latency*1000:.0f} ms "
               f"→ echo tail {(host._out_latency + tail_margin)*1000:.0f} ms")
     except Exception:
-        pass
+        failsoft.suppress('core.audio_playback:run_audio_playback')
 
     pending_pcm = bytearray()
     playback_started = False
@@ -447,21 +469,45 @@ async def run_audio_playback(
                 # yielded frames, so a block too short to analyse cannot
                 # shift everything after it out of step with the audio.
                 host._play_cursor += pcm.size / RECEIVE_SAMPLE_RATE
-                if frames:
-                    frames = host._visemes.frames(frames, hop)
-                    host.ui.push_visemes(frames, hop, at)
-                    # Barge-in needs to know what we are playing, not just
-                    # how loud: the guard subtracts this from the microphone.
-                    host._out_level = max(f[0] for f in frames)
-                    host._echo.note_output(pcm, RECEIVE_SAMPLE_RATE,
-                                           host._out_level)
-                else:
-                    lvl = _pcm_level(pcm)
-                    host.ui.set_audio_level(lvl)
-                    host._out_level = lvl
-                    host._echo.note_output(pcm, RECEIVE_SAMPLE_RATE, lvl)
+
+                # Cosmetics first, in their own guard. The mouth cannot be
+                # allowed to take the echo bookkeeping down with it: the guard
+                # below subtracts our own output from the microphone, and
+                # losing that means JARVIS hears itself and barges in on its
+                # own reply.
+                level = None
+                try:
+                    if frames:
+                        visemes = host._visemes.frames(frames, hop)
+                        # `frames()` is expected to return one shape per input
+                        # frame, but a caller-supplied viseme source (or a
+                        # stand-in in a test) can return nothing. An empty
+                        # schedule is not an error; it just means "no mouth to
+                        # draw", and the level falls back to the PCM below.
+                        if visemes:
+                            host.ui.push_visemes(visemes, hop, at)
+                            level = viseme_peak_level(visemes)
+                except Exception:
+                    failsoft.suppress('core.audio_playback:push_visemes')
+
+                if level is None:
+                    level = _pcm_level(pcm)
+                    try:
+                        host.ui.set_audio_level(level)
+                    except Exception:
+                        failsoft.suppress('core.audio_playback:set_audio_level')
+
+                # Barge-in needs to know what we are playing, not just how loud:
+                # the guard subtracts this from the microphone.
+                host._out_level = level
+                try:
+                    host._echo.note_output(pcm, RECEIVE_SAMPLE_RATE, level)
+                except Exception:
+                    # Never let echo bookkeeping abort the rest of this batch
+                    # (phone routing, timing diagnostics, interruption checks).
+                    failsoft.suppress('core.audio_playback:note_output')
             except Exception:
-                pass
+                failsoft.suppress('core.audio_playback:run_audio_playback')
 
             # While the paired phone is streaming its microphone, route
             # JARVIS's reply audio to that same phone session. Never fall
@@ -548,11 +594,11 @@ async def run_audio_playback(
                                 try:
                                     old_stream.stop()
                                 except Exception:
-                                    pass
+                                    failsoft.suppress('core.audio_playback:run_audio_playback')
                                 try:
                                     old_stream.close()
                                 except Exception:
-                                    pass
+                                    failsoft.suppress('core.audio_playback:run_audio_playback')
                                 output_audio_seconds = 0.0
                                 output_write_wall_seconds = 0.0
                                 output_write_count = 0
@@ -626,11 +672,11 @@ async def run_audio_playback(
                             try:
                                 old_stream.stop()
                             except Exception:
-                                pass
+                                failsoft.suppress('core.audio_playback:run_audio_playback')
                             try:
                                 old_stream.close()
                             except Exception:
-                                pass
+                                failsoft.suppress('core.audio_playback:run_audio_playback')
                             print(
                                 "[AudioTrace 4/OUTPUT] Recovered from speaker write "
                                 "failure by switching to the system-default output; "
@@ -660,11 +706,11 @@ async def run_audio_playback(
                                 try:
                                     fallback_stream.stop()
                                 except Exception:
-                                    pass
+                                    failsoft.suppress('core.audio_playback:run_audio_playback')
                                 try:
                                     fallback_stream.close()
                                 except Exception:
-                                    pass
+                                    failsoft.suppress('core.audio_playback:run_audio_playback')
                             host._output_stream = None
                     raise
     except Exception as e:
@@ -681,8 +727,8 @@ async def run_audio_playback(
             try:
                 stream.stop()
             except Exception:
-                pass
+                failsoft.suppress('core.audio_playback:run_audio_playback')
             try:
                 stream.close()
             except Exception:
-                pass
+                failsoft.suppress('core.audio_playback:run_audio_playback')

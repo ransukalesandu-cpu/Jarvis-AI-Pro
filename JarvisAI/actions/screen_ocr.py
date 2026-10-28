@@ -12,6 +12,8 @@ from pathlib import Path
 
 from core import self_repair
 
+from core import failsoft
+
 
 def _record_ocr_error(exc: Exception, operation: str) -> None:
     """Record a redacted OCR incident without masking the original failure."""
@@ -19,7 +21,7 @@ def _record_ocr_error(exc: Exception, operation: str) -> None:
         self_repair.record_error(exc, operation=operation)
     except Exception:
         # Diagnostics must never stop OCR or replace its real error.
-        pass
+        failsoft.suppress('actions.screen_ocr:_record_ocr_error')
 
 
 def _normalise(value: str) -> str:

@@ -11,6 +11,8 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from core import failsoft
+
 _LOCK = threading.Lock()
 _LAST_REPORTED: dict[str, float] = {}
 
@@ -44,7 +46,7 @@ def guarded_audio_callback(
             try:
                 on_error(exc, key)
             except Exception:
-                pass
+                failsoft.suppress('core.audio_callback_guard:guarded_audio_callback')
         return False
 
 

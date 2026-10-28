@@ -107,15 +107,17 @@ kept at zero findings. Every rule in it has already paid for itself:
   called memory APIs that no longer exist (`get_memory_manager()`,
   `ProspectiveMemory()`) inside bare `try/except` blocks — so the memory and
   scheduler panels had been showing zeroes and "No upcoming tasks" for everyone.
+* `S110`/`S112` (silent `except: pass` / `except: continue`) forced every one of
+  the 202 swallowed-error sites through `core.failsoft.suppress()`, which is how
+  the playback loop's broken viseme path was found (see below).
 
 Wider families are not enabled yet. Current debt, for whoever picks up the next
 ratchet step:
 
 | Rule family | Findings | Why it is not on yet |
 | --- | --- | --- |
-| `BLE001` blind-except | ~770 | Deliberate: optional features fail soft by design. Enabling it needs a policy decision (log-and-continue vs. `noqa`), not a mass edit. |
+| `BLE001` blind-except | ~770 | Broad `except Exception` is *intentional* here — optional features must fail soft. The rule cannot tell "failed, did the right thing" from "failed and hid a bug", so the work is per-site review, not a mass edit. New code should still narrow to the exception it actually expects. |
 | `I001` import sorting | ~180 | Pure churn across 150+ files; do it as one isolated commit. |
-| `S110` try-except-pass | ~175 | Same reasoning as `BLE001`. |
 | `UP`, `RUF`, `SIM` | ~250 | Mostly cosmetic modernisation (`X | None`, `datetime.UTC`). Safe but noisy. |
 
 Turn on **one** family per pull request, fix or `noqa` it with a reason, and
@@ -180,6 +182,60 @@ Two rules that keep this layout honest:
   the filesystem outside the repo.** Tests import almost every module; a module
   that opens a device on import breaks the suite on a machine without it.
 
+### Failing soft without failing silently
+
+JARVIS must keep running when an optional dependency, device or network call
+fails. The old idiom was:
+
+```python
+try:
+    do_something_optional()
+except Exception:
+    pass          # ← nothing recorded, ever
+```
+
+Two shipped bugs hid behind exactly this: the memory and scheduler panels called
+APIs that did not exist, swallowed the error, and showed zeroes forever. The
+approved replacement is `core.failsoft.suppress()`:
+
+```python
+try:
+    do_something_optional()
+except Exception:
+    failsoft.suppress("core.audio_playback:probe_device")
+```
+
+It changes no control flow, can never raise, and records the failure in a bounded
+in-memory table (repeats are counted, not duplicated). Name the feature as
+`"<module>:<operation>"` using a **literal** string — it is the grouping key.
+
+Decide like this:
+
+| Situation | What to do |
+| --- | --- |
+| Expected and boring (device absent, file missing, optional package not installed) | `failsoft.suppress("...")` |
+| Feature still works degraded | log a warning, then `failsoft.suppress("...")` |
+| The user must know (auth failure, destructive action refused) | do not swallow; propagate or surface it in the UI |
+
+To see what is being swallowed right now:
+
+```bash
+JARVIS_FAILSOFT_REPORT=1 python -m pytest -q    # summary after the test run
+JARVIS_FAILSOFT_LOG=1 python main.py            # WARNING line per suppression
+```
+
+```python
+from core import failsoft
+print(failsoft.report())     # sorted by frequency, with file:line of the handler
+```
+
+A suppression that appears hundreds of times, or with an `AttributeError` /
+`ImportError` rather than an `OSError`, is usually a real bug — that is the
+signal that would have caught both panel bugs on day one.
+
+`ruff` enforces the idiom: `S110` and `S112` fail the build if a new bare
+`pass`/`continue` handler appears.
+
 ### The `config` naming trap
 
 `JarvisAI/config/` is a package *and* a data directory. Its name is also claimed
@@ -200,7 +256,9 @@ module starts importing the bare `config` package again.
 
 * **Fail soft, report loudly.** A missing optional dependency disables one
   feature and prints why; it never crashes the app. Keep new integrations inside
-  `try/except ImportError` at the point of use.
+  `try/except ImportError` at the point of use, and never leave a bare `pass` in
+  a handler — route it through `core.failsoft.suppress()` so the failure is
+  recorded (see § 5).
 * **Patch surfaces, not internals.** Tests should fake `sounddevice`,
   `cv2.VideoCapture`, `requests.post` and the provider clients rather than
   reaching into module globals.

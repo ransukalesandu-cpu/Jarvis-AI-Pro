@@ -28,6 +28,8 @@ from __future__ import annotations
 import threading
 import time
 
+from core import failsoft
+
 # The label shown for "let the OS decide", and the value stored in config for
 # it. Empty string, so an untouched install and a deliberately-default install
 # are the same thing — nothing changes for anyone who never opens the picker.
@@ -251,7 +253,7 @@ def _usable(idx: int, kind: str) -> bool:
             try:
                 st.stop(); st.close()
             except Exception:
-                pass
+                failsoft.suppress('core.audio_devices:_usable')
 
 # Aliases for "the default device" and internal routing endpoints. Matched
 # case-insensitively as substrings against the device name.

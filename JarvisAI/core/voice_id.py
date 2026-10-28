@@ -17,6 +17,8 @@ from pathlib import Path
 
 import numpy as np
 
+from core import failsoft
+
 BASE_DIR = (
     Path(sys.executable).resolve().parent
     if getattr(sys, "frozen", False)
@@ -158,7 +160,7 @@ def remove_profile(role: str | None = None) -> None:
                 os.replace(temp_path, PROFILE_FILE)
                 return
         except Exception:
-            pass
+            failsoft.suppress('core.voice_id:remove_profile')
 
     _set_enabled(False)
     try:
@@ -172,7 +174,7 @@ def remove_profile(role: str | None = None) -> None:
         except Exception:
             # The profile file is removed regardless; a stale random key in
             # the OS vault cannot decrypt a future enrollment.
-            pass
+            failsoft.suppress('core.voice_id:remove_profile')
 
 
 def _get_model():

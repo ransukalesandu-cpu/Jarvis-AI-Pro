@@ -12,6 +12,8 @@ import platform
 
 from core import confirm as confirm_gate
 
+from core import failsoft
+
 _HIGH_IMPACT = re.compile(
     r"\b(delete|remove|erase|purchase|buy|pay|send|submit|publish|post|"
     r"shutdown|restart|format|reset|uninstall|transfer|confirm|allow|grant)\b",
@@ -56,8 +58,10 @@ def _click_named_control(label: str) -> str:
                             if ctype in {"Button", "Hyperlink", "TabItem", "MenuItem", "CheckBox", "RadioButton"}:
                                 matches.append((window, control, ctype))
                     except Exception:
+                        failsoft.suppress('actions.ui_interaction:_click_named_control')
                         continue
             except Exception:
+                failsoft.suppress('actions.ui_interaction:_click_named_control')
                 continue
         if not matches:
             return f"No visible enabled button/control named '{label}' was found. Nothing was clicked."

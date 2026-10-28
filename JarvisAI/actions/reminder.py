@@ -8,6 +8,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from core import failsoft
+
 _CNW: dict = (
     {"creationflags": subprocess.CREATE_NO_WINDOW}
     if platform.system() == "Windows" else {}
@@ -189,7 +191,7 @@ def _schedule_windows(target_dt: datetime, task_name: str,
     try:
         xml_path.unlink(missing_ok=True)
     except Exception:
-        pass
+        failsoft.suppress('actions.reminder:_schedule_windows')
 
     if result.returncode != 0:
         script_path.unlink(missing_ok=True)

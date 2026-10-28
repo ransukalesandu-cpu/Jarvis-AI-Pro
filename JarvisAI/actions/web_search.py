@@ -9,6 +9,8 @@ from urllib.parse import urljoin, urlparse
 
 from core import injection_guard, self_repair
 
+from core import failsoft
+
 
 """
 Security layer to prevent prompt injection attacks.
@@ -1058,7 +1060,7 @@ def web_search(
                 f"{query or ', '.join(map(str, items))}"
             )
         except Exception:
-            pass
+            failsoft.suppress('actions.web_search:web_search')
 
     print(
         f"[WebSearch] 🔍 mode={mode!r} "

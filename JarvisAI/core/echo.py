@@ -53,6 +53,8 @@ import time
 
 import numpy as np
 
+from core import failsoft
+
 # Log-spaced edges across the range that carries speech. Coarse on purpose:
 # fine bins would track pitch, and pitch is exactly what differs between two
 # people saying the same word — we want the *timbre* that echo preserves.
@@ -201,7 +203,7 @@ class EchoGuard:
             if len(self._hist) > 8:
                 self._hist = [h for h in self._hist if h[0] >= cutoff]
         except Exception:
-            pass          # never let bookkeeping disturb playback
+            failsoft.suppress('core.echo:EchoGuard.note_output')
 
     def is_user_speech(self, pcm, sr: int, level: float,
                        when: float | None = None, *, fast: bool = False) -> bool:

@@ -19,6 +19,8 @@ from typing import Optional
 
 import numpy as np
 
+from core import failsoft
+
 BASE_DIR = (
     Path(sys.executable).resolve().parent
     if getattr(sys, "frozen", False)
@@ -96,9 +98,9 @@ def _get_profile_key(*, create: bool = True) -> bytes:
                 )
                 return key
             except Exception:
-                pass
+                failsoft.suppress('security.face_auth:_get_profile_key')
     except Exception:
-        pass
+        failsoft.suppress('security.face_auth:_get_profile_key')
 
     key_file = _fallback_key_file()
     if key_file.is_file():
@@ -108,7 +110,7 @@ def _get_profile_key(*, create: bool = True) -> bytes:
             if len(key) == 32:
                 return key
         except Exception:
-            pass
+            failsoft.suppress('security.face_auth:_get_profile_key')
 
     if not create:
         raise RuntimeError("Face ID key missing from OS credential store and fallback key file.")

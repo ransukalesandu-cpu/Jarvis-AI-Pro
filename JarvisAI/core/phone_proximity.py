@@ -7,6 +7,8 @@ import time
 import uuid
 from pathlib import Path
 
+from core import failsoft
+
 
 class PhoneProximityBeacon:
     """Advertise a stable, per-install BLE service UUID; never advertises user data."""
@@ -78,7 +80,7 @@ class PhoneProximityBeacon:
             try:
                 publisher.stop()
             except Exception:
-                pass
+                failsoft.suppress('core.phone_proximity:PhoneProximityBeacon.stop')
 
     @property
     def enabled(self) -> bool:

@@ -28,6 +28,8 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit, urlunsplit
 from xml.sax.saxutils import escape, quoteattr
 
+from core import failsoft
+
 try:
     from fastapi import WebSocket, WebSocketDisconnect
     _FASTAPI_OK = True
@@ -244,7 +246,7 @@ def _get_availability_locked() -> dict:
                 save_call_state(data)
                 expired = True
         except Exception:
-            pass
+            failsoft.suppress('plugins.phone_call:_get_availability_locked')
 
     if expired:
         notice = _missed_message_notice()
@@ -338,7 +340,7 @@ def get_twilio_config() -> dict:
                 "webhook_url": config.get("twilio_webhook_url", env_config["webhook_url"]),
             }
         except Exception:
-            pass
+            failsoft.suppress('plugins.phone_call:get_twilio_config')
 
     return env_config
 
@@ -825,13 +827,13 @@ Keep responses concise but friendly. The goal is to get the caller to leave a co
             try:
                 await self.session.close()
             except Exception:
-                pass
+                failsoft.suppress('plugins.phone_call:GeminiLiveSession.close')
             self.session = None
         if self._context:
             try:
                 await self._context.__aexit__(None, None, None)
             except Exception:
-                pass
+                failsoft.suppress('plugins.phone_call:GeminiLiveSession.close')
             self._context = None
 
 async def handle_media_stream(websocket: WebSocket, call_data: dict):
@@ -951,7 +953,7 @@ async def handle_media_stream(websocket: WebSocket, call_data: dict):
         try:
             await websocket.close()
         except Exception:
-            pass
+            failsoft.suppress('plugins.phone_call:handle_media_stream')
 
     except Exception as e:
         print(f"[PhoneCall] Media stream error: {e}")

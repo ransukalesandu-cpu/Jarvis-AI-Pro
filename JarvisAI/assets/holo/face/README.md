@@ -3,7 +3,8 @@
 An interactive hologram face built **entirely from geometry**. There is no
 photograph, no cut-out, no texture and no image file anywhere in this build: the
 face on screen *is* her measured face — 478 Face-Mesh landmarks with their real
-depth — drawn as a glowing neural lattice that turns in three dimensions.
+depth, subdivided into a dense lattice of ~2,500 points and ~7,300 synapses that
+fills the whole face and turns in three dimensions.
 
 Plain HTML + CSS + JS. No framework, no build step, no network calls.
 
@@ -12,8 +13,8 @@ face/
 ├── index.html                 the page
 ├── style.css                  projection, projector base, HUD chrome, scan layers
 ├── hologram.js                the 3D wireframe renderer + interaction + HUD
-├── face_data.js               generated: 478 landmarks (x, y, z), 1322 edges, feature loops
-├── hologram-standalone.html   generated: everything in one 85 KB file
+├── face_data.js               generated: subdivided landmark lattice, feature loops, depth
+├── hologram-standalone.html   generated: everything in one 200 KB file
 └── source/                    the photographs the landmarks were measured from (build input only)
 ```
 
@@ -57,7 +58,13 @@ MediaPipe Face Mesh over the frontal reference and exports the raw geometry:
    MediaPipe estimates from the photo — nose tip at −0.102, chin at +0.032,
    a 0.333 span. That depth is the whole trick: it is what makes the head read
    as a solid object when it rotates instead of a flat drawing skewing.
-2. **1322 unique edges** from the canonical face-mesh tessellation.
+2. **Subdivision.** The raw tessellation is only 1322 edges — a cage, not a
+   face. The faces are recovered from the edge graph (a 3-clique is a triangle),
+   then every triangle is split into four, recursively, until its area drops
+   below a fraction of the median. Each new point's depth is interpolated from
+   the triangle it belongs to, midpoints are shared between neighbours so the
+   lattice stays welded, and the outer boundary never moves — it is still her
+   measured jawline. Result: ~2,500 points, ~7,300 edges, uniform density.
 3. **Feature loops** walked in contour order — the face oval, both eyelids, the
    outer lip. (A plain index-sorted set is *not* a contour: it draws a chord
    across her face, which is exactly the bug that had to be fixed.)
@@ -70,12 +77,15 @@ Rendering, in `hologram.js`:
 * rotate (yaw → pitch) → perspective divide (`f / (f + z)`) → project;
 * every edge is drawn additively, brightness and colour interpolated from its
   real depth — deep magenta at the back of the jaw, near-white at the nose;
-* lines are grouped into ~14 brightness buckets and stroked once per bucket, so
-  the whole lattice costs about two dozen path calls a frame instead of 1322;
+* lines are grouped into 14 brightness buckets and stroked once per bucket, so
+  the whole lattice costs about two dozen path calls a frame instead of 7,300;
 * a quarter-resolution copy of the frame is blurred and added back for bloom;
 * three faint shells behind the oval give the head a back;
-* the hairline emits 150-ish filaments that leave the oval, fall under gravity
-  and float behind the jaw — geometry, animated by voice and time.
+* the hairline emits ~400 filaments: fine ones for the fuzzy crown, long ones
+  that leave the oval, fall under gravity and float behind the jaw — geometry,
+  animated by voice and time;
+* quality adapts: if a frame runs long, the bloom pass is dropped first, then
+  the landmark dots, so the rotation never stutters.
 
 ## One file, no server (`hologram-standalone.html`)
 
@@ -85,7 +95,7 @@ python JarvisAI/tools/bundle_holo_face.py \
     --out    JarvisAI/assets/holo/face/hologram-standalone.html
 ```
 
-The bundle is pure text — HTML, CSS and two scripts, ~85 KB — because there is
+The bundle is pure text — HTML, CSS and two scripts, ~200 KB — because there is
 no image to inline. Rebuild it after editing `style.css`, `hologram.js` or the
 geometry. The folder stays the source of truth.
 

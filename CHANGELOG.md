@@ -11,13 +11,15 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 - **Web hologram face** (`JarvisAI/assets/holo/face/`): an interactive HTML/CSS/JS
   projection of Bihansa's face drawn from **geometry only** — no photograph or
   texture ships in it. `JarvisAI/tools/build_holo_face.py` measures 478 Face Mesh
-  landmarks (x, y and the real MediaPipe depth) and the page renders them as an
-  additive neural lattice: 1322 depth-shaded synapses, walked feature loops for
-  the lids and lips, luminous iris points, three shells behind the head for
-  volume, and ~150 floating filaments growing out of the hairline. Her head yaws
+  landmarks (x, y and the real MediaPipe depth), subdivides the tessellation into
+  a dense lattice (~2.5k points / ~7.3k edges, depth interpolated, outer boundary
+  untouched) and renders it as additive depth-shaded synapses with her exact
+  brows, lids, inner and outer lip loops, luminous iris rings, three shells
+  behind the head for volume and ~400 floating filaments growing out of the
+  hairline. Her head yaws
   and pitches as a solid 3D object under the pointer, blinks, and reacts to voice
   input; a projector base, telemetry HUD and scan layers complete the scene.
-  Everything ships as one ~85 KB text file
+  Everything ships as one ~200 KB text file
   (`hologram-standalone.html`). See `JarvisAI/assets/holo/face/README.md`.
 
 - **HUD is clean by default**: the autonomous surfaces (dashboard card, `◉`

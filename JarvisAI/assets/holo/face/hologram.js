@@ -41,6 +41,7 @@
     blink: 0, nextBlink: 3.2,
     mesh: true, hair: true, mic: false,
     sparks: [], pulses: [],
+    frameAvg: 0.016, degraded: 0,
   };
 
   const live = $('live');
@@ -193,7 +194,7 @@
     const near = [255, 226, 252];   // near-white pink
     for (let i = 0; i < LEVELS; i++) {
       const k = i / (LEVELS - 1);
-      const a = 0.055 + 0.95 * Math.pow(k, 1.5);
+      const a = 0.030 + 0.92 * Math.pow(k, 2.05);
       const c = k < 0.5
         ? far.map((v, j) => Math.round(v + (mid[j] - v) * (k / 0.5)))
         : mid.map((v, j) => Math.round(v + (near[j] - v) * ((k - 0.5) / 0.5)));
@@ -294,7 +295,7 @@
     };
 
     const seeds = [];
-    const N = 132;
+    const N = 176;
     for (let i = 0; i < N; i++) {
       const t = i / N;
       // the hairline runs from one temple, over the crown, to the other.
@@ -332,22 +333,26 @@
         fine: false,
       });
 
-      // every other anchor also sprouts two short fine hairs: they soften the
-      // hard mesh boundary at the hairline and give the head a fuzzy crown
-      if ((i & 1) === 0) {
-        for (let k = 0; k < 2; k++) {
+      // every anchor sprouts short fine hairs: they soften the hard mesh
+      // boundary at the hairline and give the head a fuzzy crown. Anchor
+      // points on top of the head also grow longer, lifted hairs, which is
+      // what gives the silhouette the volume her hair actually has.
+      {
+        const extra = crown > 0.5 ? 4 : 2;
+        for (let k = 0; k < extra; k++) {
           const r2 = rnd();
+          const lifted = k >= 2;                    // the long, upwards hairs
           seeds.push({
             bx, by, bz,
-            ox: ox * 0.55 + sideSign * (0.25 + r2 * 0.6),
-            oy: oy * 0.9 - 0.18 * r2,
+            ox: ox * (lifted ? 0.75 : 0.55) + sideSign * (0.25 + r2 * 0.55),
+            oy: lifted ? oy * 1.0 - 0.55 * r2 : oy * 0.9 - 0.18 * r2,
             crown,
-            len: 0.05 + 0.075 * r2 + 0.03 * crown,
-            lift: 0.004 + 0.02 * r2,
-            drift: (r2 - 0.5) * 0.10,
+            len: lifted ? 0.10 + 0.11 * r2 : 0.05 + 0.075 * r2 + 0.03 * crown,
+            lift: lifted ? 0.05 + 0.07 * r2 : 0.004 + 0.02 * r2,
+            drift: (r2 - 0.5) * (lifted ? 0.18 : 0.10),
             ph: i * 1.7 + k * 2.1,
             speed: 0.85 + r2 * 0.7,
-            alpha: 0.34 + 0.30 * crown,
+            alpha: lifted ? 0.26 + 0.20 * r2 : 0.34 + 0.30 * crown,
             sway: 0.012 + 0.010 * r2,
             back: 0.02 + 0.06 * r2,
             fine: true,
@@ -406,10 +411,10 @@
 
     if (!MODEL) return;
 
-    const scale = (H * 0.62) / (MODEL.height || 1);
+    const scale = (H * 0.68) / (MODEL.height || 1);
     const ox = W * 0.5;
     const bob = REDUCED ? 0 : Math.sin(S.t * 0.9) * H * 0.006;
-    const oy = H * 0.44 + bob;
+    const oy = H * 0.45 + bob;
 
     // idle sway + pointer parallax, damped
     const idleYaw = REDUCED ? 0 : Math.sin(S.t * 0.31) * 0.10 + Math.sin(S.t * 0.77) * 0.028;
@@ -478,15 +483,35 @@
     // ── floating hair ─────────────────────────────────────────────────────
     if (S.hair) drawHair(sctx, cy, sy, cp, sp, scale, ox, oy, S.energy);
 
-    // ── the mesh itself: 1322 edges, brightness from real depth ───────────
+    // ── the volume behind the wires: a whisper of light inside her oval ───
+    if (S.mesh && oval.length) {
+      sctx.beginPath();
+      for (let i = 0; i < oval.length; i++) {
+        if (i === 0) sctx.moveTo(PX[oval[i]], PY[oval[i]]);
+        else sctx.lineTo(PX[oval[i]], PY[oval[i]]);
+      }
+      sctx.closePath();
+      const cheek = sctx.createRadialGradient(ox, oy + H * 0.03, 0, ox, oy + H * 0.03, H * 0.30);
+      cheek.addColorStop(0, `rgba(255, 60, 205, ${(0.085 + S.energy * 0.09).toFixed(3)})`);
+      cheek.addColorStop(0.55, 'rgba(210, 10, 165, 0.045)');
+      cheek.addColorStop(1, 'rgba(150, 0, 120, 0.012)');
+      sctx.fillStyle = cheek;
+      sctx.fill();
+    }
+
+    // ── the mesh itself: the whole lattice, brightness from real depth ────
     if (S.mesh) {
       const E = MODEL.edges;
-      const energyLift = S.energy * 0.18;
+      const energyLift = S.energy * 0.12;
       for (let e = 0; e < E.length; e += 2) {
         const a = E[e], b = E[e + 1];
+        // cull wires that both ends fall outside the canvas
+        const ax = PX[a], ay = PY[a], bx2 = PX[b], by2 = PY[b];
+        if ((ax < -40 && bx2 < -40) || (ax > W + 40 && bx2 > W + 40)
+         || (ay < -40 && by2 < -40) || (ay > H + 40 && by2 > H + 40)) continue;
         const dn = (AP[a] + AP[b]) * 0.5;
-        const lvl = lvlOf(Math.min(1, dn * 0.92 + energyLift));
-        line(lvl, PX[a], PY[a], PX[b], PY[b]);
+        const lvl = lvlOf(Math.min(1, dn * 0.95 + energyLift));
+        line(lvl, ax, ay, bx2, by2);
       }
     }
 
@@ -501,26 +526,29 @@
       const eyeA = 0.62 + S.energy * 0.3;
       ringPath(sctx, MODEL.leftEye, `rgba(255, 236, 253, ${eyeA.toFixed(2)})`, ringW, S.blink);
       ringPath(sctx, MODEL.rightEye, `rgba(255, 236, 253, ${eyeA.toFixed(2)})`, ringW, S.blink);
-      ringPath(sctx, MODEL.lips, `rgba(255, 138, 234, ${(0.55 + S.energy * 0.3).toFixed(2)})`, ringW, 0);
+      ringPath(sctx, MODEL.lips, `rgba(255, 132, 232, ${(0.62 + S.energy * 0.3).toFixed(2)})`, ringW * 1.4, 0);
+      if (MODEL.innerLips && MODEL.innerLips.length) {
+        ringPath(sctx, MODEL.innerLips, `rgba(255, 190, 246, ${(0.45 + S.energy * 0.25).toFixed(2)})`, ringW, 0);
+      }
 
       // brows: canonical brow chains, lifted over each eye
-      const brows = [
-        [107, 66, 105, 63, 70, 46],
-        [336, 296, 334, 293, 300, 276],
-      ];
-      sctx.strokeStyle = `rgba(255, 200, 248, ${(0.26 + S.energy * 0.2).toFixed(2)})`;
-      sctx.lineWidth = ringW * 1.6;
+      const brows = MODEL.brows || [];
+      sctx.strokeStyle = `rgba(255, 208, 250, ${(0.42 + S.energy * 0.22).toFixed(2)})`;
+      sctx.lineWidth = ringW * 2.1;
+      sctx.lineCap = 'round';
+      sctx.lineJoin = 'round';
       for (let b = 0; b < brows.length; b++) {
+        const chain = brows[b];
         sctx.beginPath();
-        for (let i = 0; i < brows[b].length; i++) {
-          const p = brows[b][i];
+        for (let i = 0; i < chain.length; i++) {
+          const p = chain[i];
           if (i === 0) sctx.moveTo(PX[p], PY[p]); else sctx.lineTo(PX[p], PY[p]);
         }
         sctx.stroke();
       }
 
       // ── nodes ───────────────────────────────────────────────────────────
-      const baseR = Math.max(0.55, Math.min(1.5, H / 760)) * (1 + S.energy * 0.35);
+      const baseR = Math.max(0.55, Math.min(1.5, H / 760)) * (1 + S.energy * 0.35) * (S.degraded === 2 ? 0.8 : 1);
       for (let i = 0; i < MODEL.n; i++) {
         const dn = AP[i];
         const hot = (i % 37) === 0;
@@ -544,6 +572,15 @@
         sctx.beginPath();
         sctx.arc(x, y, r, 0, Math.PI * 2);
         sctx.fill();
+
+        const rr = r * 0.46;
+        if (rr > 1.2) {
+          sctx.beginPath();
+          sctx.arc(x, y, rr, 0, Math.PI * 2);
+          sctx.strokeStyle = `rgba(255, 246, 255, ${(0.5 * irisOpen).toFixed(2)})`;
+          sctx.lineWidth = Math.max(0.8, ringW * 0.8);
+          sctx.stroke();
+        }
       }
     }
 
@@ -603,13 +640,14 @@
     const locks = $('kv-locks');
     if (locks) locks.textContent = HAIR.length + ' FILAMENTS';
     if (MODEL) {
-      const gp = $('gv-points'); if (gp) gp.textContent = String(MODEL.n);
+      const gp = $('gv-points'); if (gp) gp.textContent = String(F.landmarks || 478);
+      const gl = $('gv-lattice'); if (gl) gl.textContent = MODEL.n + ' PTS';
       const ge = $('gv-edges'); if (ge) ge.textContent = String(MODEL.edges.length / 2);
       const gd = $('gv-depth');
       if (gd && MODEL.stats && MODEL.stats.depth) gd.textContent = MODEL.stats.depth.toFixed(3);
     }
     const meshKv = $('kv-mesh');
-    if (meshKv && MODEL) meshKv.textContent = MODEL.n + ' PTS / ' + (MODEL.edges.length / 2) + ' EDGES';
+    if (meshKv && MODEL) meshKv.textContent = (F.landmarks || 478) + ' → ' + MODEL.n + ' PTS';
   }
 
   function tickClock() {
@@ -861,6 +899,12 @@
         S.blink = b >= 1 ? 0 : Math.sin(Math.min(1, b) * Math.PI);
       }
     }
+
+    // adaptive quality: the lattice is ~7k strokes, so on a slow machine give
+    // up the bloom pass (and then the landmark dots) rather than the frame rate
+    S.frameAvg += (Math.min(rawDt, 0.25) - S.frameAvg) * 0.06;
+    if (S.frameAvg > 0.030 && !S.degraded) { S.degraded = 1; supportFilter = false; }
+    else if (S.frameAvg > 0.055 && S.degraded === 1) { S.degraded = 2; }
 
     if (!S.paused) {
       drawScene();

@@ -99,7 +99,9 @@ jobs:
 
       - name: Run unit tests
         working-directory: JarvisAI
-        run: python -m pytest -q
+        env:
+          PYTHONFAULTHANDLER: "1"
+        run: python -m pytest -vv -s
 
       # A failing test run is only useful if the failure can be read: the raw
       # job log lives on a signed blob URL that is not always reachable. Re-run
@@ -130,6 +132,7 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
       PYTHONUTF8: "1"
+      PYTHONFAULTHANDLER: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

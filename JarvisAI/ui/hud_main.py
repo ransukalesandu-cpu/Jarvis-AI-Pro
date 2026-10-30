@@ -1809,7 +1809,10 @@ class HUDMainWindow(QMainWindow):
                     self._left_rail.raise_()
                 return False
             if event.type() == QEvent.Type.Leave:
-                QTimer.singleShot(180, self._hide_left_rail_if_pointer_outside)
+                # Keep the hover rail stable while its settings dropdown is open.
+                # Escape closes the dropdown first; the next Escape dismisses the rail.
+                if not self._right_menu.isVisible():
+                    QTimer.singleShot(180, self._hide_left_rail_if_pointer_outside)
                 return False
         return super().eventFilter(watched, event)
 

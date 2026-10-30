@@ -266,6 +266,7 @@ async function boot() {
       controls.minDistance = dist * 0.35;
       controls.maxDistance = dist * 3.2;
       scene.fog.density = 0.22 / dist;
+      controls.saveState();       // RESET VIEW goes back to the fitted framing
 
       let tris = 0;
       let verts = 0;

@@ -5,6 +5,10 @@ Verifies widget creation, state transitions, audio energy calculations, and sign
 
 import os
 import sys
+import faulthandler
+
+# Emit native crash stacks on Windows Qt/offscreen CI failures.
+faulthandler.enable(file=sys.stderr, all_threads=True)
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
@@ -588,13 +592,19 @@ class TestUIHologram(unittest.TestCase):
         """The floating settings menu must remain anchored inside the window."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
         hud.resize(1100, 760)
+        print("[windows-ui-diagnostic] dropdown: before show", flush=True)
         hud.show()
+        print("[windows-ui-diagnostic] dropdown: before first processEvents", flush=True)
         app.processEvents()
+        print("[windows-ui-diagnostic] dropdown: after first processEvents", flush=True)
         hud._toggle_right_dropdown()
+        print("[windows-ui-diagnostic] dropdown: after open", flush=True)
         self.assertTrue(hud._right_menu.isVisible())
 
         hud.resize(1024, 700)
+        print("[windows-ui-diagnostic] dropdown: before resize processEvents", flush=True)
         app.processEvents()
+        print("[windows-ui-diagnostic] dropdown: after resize processEvents", flush=True)
         expected_x = max(
             8, hud.centralWidget().width() - hud._right_menu.width() - 12
         )

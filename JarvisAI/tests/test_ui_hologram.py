@@ -108,6 +108,17 @@ class TestUIHologram(unittest.TestCase):
         head.set_audio_energy(0.75)
         self.assertEqual(head._target_energy, 0.75)
 
+    def test_neural_wireframe_face_has_high_definition_geometry(self):
+        """The JARVIS face keeps a dense shell and explicit crisp feature curves."""
+        head = NeuralWireframeHead()
+        self.assertGreaterEqual(head.RINGS, 28)
+        self.assertGreaterEqual(head.SECTORS, 44)
+        self.assertGreater(len(head._vertices), head.RINGS * head.SECTORS)
+        self.assertGreater(len(head._edges), head.RINGS * head.SECTORS * 2)
+        self.assertGreaterEqual(len(head._feature_edges), 150)
+        self.assertEqual(len(head._eyes), 2)
+        self.assertTrue(all(0 <= eye < len(head._vertices) for eye in head._eyes))
+
     def test_bihansa_hologram_widget(self):
         """Test Bihansa 3D Neural Face visualizer creation, states, energy, visemes, and effects."""
         bihansa = BihansaHologramWidget()

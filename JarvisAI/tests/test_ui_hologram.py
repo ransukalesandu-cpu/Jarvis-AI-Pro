@@ -22,7 +22,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt, QPoint
-from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton
+from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton, QSizePolicy
 from PyQt6.QtTest import QTest
 
 # Ensure QApplication exists before testing Qt widgets
@@ -427,6 +427,59 @@ class TestUIHologram(unittest.TestCase):
         self.assertTrue(hud._mini_orb._bihansa)
         hud._bihansa_toggle.setChecked(False)
         self.assertEqual(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
+
+    def test_main_hologram_composition_expands_and_tracks_resize(self):
+        """The main face owns the stage space; orb/heart geometry stays aligned."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.resize(980, 720)
+        hud.show()
+        app.processEvents()
+
+        self.assertEqual(
+            hud._hologram_stage.sizePolicy().horizontalPolicy(),
+            QSizePolicy.Policy.Expanding,
+        )
+        self.assertEqual(
+            hud._hologram_stage.sizePolicy().verticalPolicy(),
+            QSizePolicy.Policy.Expanding,
+        )
+        self.assertEqual(
+            hud._visualizer_stack.sizePolicy().horizontalPolicy(),
+            QSizePolicy.Policy.Expanding,
+        )
+        self.assertEqual(
+            hud._visualizer_stack.sizePolicy().verticalPolicy(),
+            QSizePolicy.Policy.Expanding,
+        )
+        self.assertIs(hud._stage_layout.itemAt(0).widget(), hud._visualizer_stack)
+        self.assertIs(hud._stage_layout.itemAt(1).widget(), hud._mini_orb)
+        self.assertEqual(
+            hud._stage_layout.spacing(),
+            max(10, min(26, hud._hologram_stage.height() // 40)),
+        )
+        # The reactor is a full-stage painter overlay. Moving the widget itself
+        # would break its stage-local chin, heart and orb connector coordinates.
+        self.assertEqual(hud._heart_reactor.geometry(), hud._hologram_stage.rect())
+
+        face = hud.wireframe_visualizer.face_rect()
+        self.assertGreater(face.width(), 0)
+        self.assertGreater(face.height(), 0)
+        self.assertGreaterEqual(face.left(), 0)
+        self.assertGreaterEqual(face.top(), 0)
+        self.assertLessEqual(face.right(), hud.wireframe_visualizer.width())
+        self.assertLessEqual(face.bottom(), hud.wireframe_visualizer.height())
+
+        hud.resize(900, 660)
+        app.processEvents()
+        app.processEvents()
+        self.assertEqual(hud._heart_reactor.geometry(), hud._hologram_stage.rect())
+        self.assertEqual(
+            hud._stage_layout.spacing(),
+            max(10, min(26, hud._hologram_stage.height() // 40)),
+        )
+        face = hud.wireframe_visualizer.face_rect()
+        self.assertLessEqual(face.right(), hud.wireframe_visualizer.width())
+        self.assertLessEqual(face.bottom(), hud.wireframe_visualizer.height())
 
     def test_hologram_home_is_clean_and_dashboard_is_a_separate_page(self):
         """The main page stays hologram-first; bento telemetry is opened separately."""

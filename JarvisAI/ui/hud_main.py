@@ -448,7 +448,8 @@ class HUDMainWindow(QMainWindow):
         # Right-side dropdown contains secondary telemetry and settings controls.
         self._right_menu = QFrame(central_widget)
         self._right_menu.setObjectName("rightDropdownMenu")
-        self._right_menu.setFixedWidth(300)
+        self._right_menu.setMinimumWidth(hud_layout.DROPDOWN_MIN)
+        self._right_menu.setMaximumWidth(hud_layout.DROPDOWN_WIDE)
         self._right_menu.setMaximumHeight(650)
         self._right_menu.setStyleSheet(
             "QFrame#rightDropdownMenu { background: rgba(9,17,27,248); border: 1px solid #17485a; border-radius: 14px; }"

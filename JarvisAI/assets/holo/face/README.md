@@ -15,6 +15,11 @@ face/
 ├── hologram.js                the 3D wireframe renderer + interaction + HUD
 ├── face_data.js               generated: subdivided landmark lattice, feature loops, depth
 ├── hologram-standalone.html   generated: everything in one 200 KB file
+├── model/                     generated: the same geometry as real 3-D files (see below)
+│   ├── face.glb               open shell — her face surface, y-up, metre scale
+│   ├── head.glb               closed solid — the same face with a back grown on it
+│   ├── face.obj / face.mtl    plain-text version for older tools
+│   └── preview-render.png     a render of the mesh (not a photograph)
 └── source/                    the photographs the landmarks were measured from (build input only)
 ```
 
@@ -86,6 +91,37 @@ Rendering, in `hologram.js`:
   animated by voice and time;
 * quality adapts: if a frame runs long, the bloom pass is dropped first, then
   the landmark dots, so the rotation never stutters.
+
+## The same face as a 3-D model (`model/`)
+
+The hologram's geometry *is* a 3-D surface, so it exports like one — no
+generation service, no export paywall:
+
+```bash
+python -m pip install numpy scipy pillow "mediapipe==0.10.14"
+python JarvisAI/tools/export_face_mesh.py \
+    --source JarvisAI/assets/holo/face/source/portrait_ref.jpg \
+    --outdir JarvisAI/assets/holo/face/model
+```
+
+| File | What it is |
+| --- | --- |
+| `model/face.glb` | Her face as a triangulated surface — 2,516 vertices / 4,519 triangles, y-up, centred on the origin, 22 cm tall, matte double-sided material. Opens in Blender, Windows 3D Viewer, macOS Quick Look, Unity, Unreal, Godot, Sketchfab, three.js |
+| `model/head.glb` | The same surface with a tapered back grown onto the jaw outline, so it is a closed solid — for viewers that cull back faces, and for printing |
+| `model/face.obj` + `.mtl` | The identical mesh in plain text for anything that only speaks OBJ |
+
+How it is built: the measured lattice is triangulated with the **real face-mesh
+topology** (the faces are the 3-cliques of the canonical edge graph — a Delaunay
+over the same points invents long triangles and melts her nose), the eye
+apertures are capped with a fan because a hole in a shaded surface renders as a
+black pit, normals come from a **local plane fit per vertex** so shading does
+not depend on triangle winding, and the back is grown from the single boundary
+loop (her jaw).
+
+This is an open face shell, not a full head: a 478-point face mesh measures the
+front of a face, and inventing ears, skull and hair would be a different — and
+much less honest — piece of work. For a game avatar it is the right starting
+point; for a print, load `head.glb`, thicken, and add your own backing.
 
 ## One file, no server (`hologram-standalone.html`)
 

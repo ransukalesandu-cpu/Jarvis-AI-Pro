@@ -19,6 +19,10 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   hairline. Her head yaws
   and pitches as a solid 3D object under the pointer, blinks, and reacts to voice
   input; a projector base, telemetry HUD and scan layers complete the scene.
+  The same geometry also exports as a real 3-D model
+  (`assets/holo/face/model/`: `face.glb` open shell, `head.glb` closed solid,
+  `face.obj`) via `JarvisAI/tools/export_face_mesh.py` — so no third-party
+  generation service is needed for a face mesh.
   Everything ships as one ~200 KB text file
   (`hologram-standalone.html`). See `JarvisAI/assets/holo/face/README.md`.
 

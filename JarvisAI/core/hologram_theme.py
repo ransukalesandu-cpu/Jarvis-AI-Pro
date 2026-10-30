@@ -13,7 +13,7 @@ Design rules
 * Colours are ``(r, g, b)`` tuples in 0-255. Renderers convert to whatever type
   they need.
 * Every palette ships a *neutral* fallback: if a value is unknown, the caller
-  gets JARVIS copper rather than a crash or an invisible black.
+  gets JARVIS cyan rather than a crash or an invisible black.
 
 The settings object (:class:`VisualPreferences`) is deliberately tolerant: it
 clamps out-of-range values and falls back to defaults, because it is fed

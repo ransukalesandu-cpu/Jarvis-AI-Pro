@@ -99,16 +99,15 @@ class ThemePalette:
         )
 
 
-# JARVIS: copper-orange, amber and warm gold. The old cyan palette is kept only
-# as the "deep" tone so the far side of the mesh still reads cool against the
-# warm front — that contrast is what gives the wireframe its depth.
+# JARVIS: restore the original electric-cyan human wireframe identity.
+# Bihansa remains a separate rose-pink persona; geometry and rendering are shared.
 JARVIS_PALETTE = ThemePalette(
     mode="jarvis",
-    primary=(255, 157, 77),      # copper
-    secondary=(255, 199, 115),   # amber
-    glow=(255, 138, 42),         # hot copper bloom
-    accent=(255, 176, 84),       # UI chrome
-    deep=(122, 63, 28),          # far-side depth
+    primary=(0, 229, 255),       # electric cyan
+    secondary=(128, 245, 255),   # bright cyan neural nodes
+    glow=(0, 170, 255),          # cool blue bloom
+    accent=(0, 229, 255),        # cyan UI chrome
+    deep=(0, 58, 88),            # far-side depth
     heart_red=(255, 56, 72),
     heart_pink=(255, 96, 158),
     heart_orange=(255, 140, 48),

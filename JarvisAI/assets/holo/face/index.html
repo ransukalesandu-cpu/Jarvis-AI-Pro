@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>BIHANSA — Neural Hologram</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ── SVG defs: the hair ripple filter + the reusable glow blurs ─────────── -->
+<svg class="defs" aria-hidden="true" focusable="false">
+  <defs>
+    <!-- Static turbulence displacement: it ripples the hair edges so the locks
+         don't read as flat cut-outs. Deliberately NOT animated — an animated
+         feTurbulence re-filters a 2.8 MP layer every frame, which the 4 GB
+         target machine cannot afford. The motion comes from the CSS sway and
+         the canvas filaments instead. -->
+    <filter id="hairFlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.007 0.013" numOctaves="2"
+                    seed="7" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="7"
+                         xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+
+    <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+</svg>
+
+<main class="stage" id="stage" data-boot="1">
+
+  <!-- ── depth layers ─────────────────────────────────────────────────────── -->
+  <canvas class="bg-canvas" id="bg" aria-hidden="true"></canvas>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-haze" aria-hidden="true"></div>
+
+  <div class="world" id="world">
+
+    <!-- reference captures: the sources this projection was built from -->
+    <aside class="rail rail-left hud-layer" aria-label="Reference captures">
+      <p class="rail-title">REFERENCE CAPTURES</p>
+      <figure class="ref-card" data-delay="0">
+        <img src="refs/ref_01.jpg" alt="Reference capture, three-quarter view" loading="lazy" decoding="async">
+        <figcaption><span>REF 01</span><em>THREE-QUARTER</em></figcaption>
+        <span class="ref-scan" aria-hidden="true"></span>
+      </figure>
+      <figure class="ref-card" data-delay="1">
+        <img src="refs/ref_03.jpg" alt="Reference capture, frontal" loading="lazy" decoding="async">
+        <figcaption><span>REF 02</span><em>FRONTAL</em></figcaption>
+        <span class="ref-scan" aria-hidden="true"></span>
+      </figure>
+    </aside>
+
+    <!-- the projection itself -->
+    <div class="figure-wrap">
+      <div class="hair-glow" aria-hidden="true"></div>
+      <div class="halo" aria-hidden="true"></div>
+
+      <div class="figure" id="figure">
+        <div class="figure-inner" id="figure-inner">
+
+          <img class="layer portrait" id="portrait" src="portrait.webp"
+               alt="Holographic projection of Bihansa" decoding="async" fetchpriority="high">
+
+          <!-- hair layers sway independently, over the intact portrait below -->
+          <img class="layer hair hair-left"  id="hair-left"  src="hair_left.webp"  alt="" aria-hidden="true" decoding="async">
+          <img class="layer hair hair-right" id="hair-right" src="hair_right.webp" alt="" aria-hidden="true" decoding="async">
+
+          <!-- 478 real face-mesh landmarks measured on the photo -->
+          <canvas class="layer mesh" id="mesh" aria-hidden="true"></canvas>
+          <canvas class="layer strands" id="strands" aria-hidden="true"></canvas>
+          <canvas class="layer fx" id="fx" aria-hidden="true"></canvas>
+
+          <div class="scanlines" aria-hidden="true"></div>
+          <div class="scan-sweep" aria-hidden="true"></div>
+          <div class="rimlight" aria-hidden="true"></div>
+        </div>
+      </div>
+
+      <!-- projection base -->
+      <div class="platform" aria-hidden="true">
+        <div class="beam"></div>
+        <div class="ring ring-1"></div>
+        <div class="ring ring-2"></div>
+        <div class="ring ring-3"></div>
+        <div class="ring ring-arc"></div>
+        <div class="ring ring-arc alt"></div>
+        <div class="ring glow-floor"></div>
+      </div>
+    </div>
+
+    <div class="vignette" aria-hidden="true"></div>
+
+    <!-- telemetry -->
+    <aside class="rail rail-right hud-layer" aria-label="Neural telemetry">
+      <p class="rail-title">NEURAL TELEMETRY</p>
+
+      <div class="panel">
+        <div class="stat"><span>NEURAL SYNC</span><b id="stat-sync">98.2%</b></div>
+        <div class="bar"><i id="bar-sync" style="--v:0.98"></i></div>
+
+        <div class="stat"><span>COHERENCE</span><b id="stat-coherence">94.6%</b></div>
+        <div class="bar"><i id="bar-coherence" style="--v:0.95"></i></div>
+
+        <div class="stat"><span>SIGNAL GAIN</span><b id="stat-gain">1.42×</b></div>
+        <div class="bar"><i id="bar-gain" style="--v:0.72"></i></div>
+      </div>
+
+      <div class="panel wave-panel">
+        <p class="panel-title">VOICE CARRIER</p>
+        <canvas id="wave" height="64" aria-hidden="true"></canvas>
+      </div>
+
+      <div class="panel grid-panel">
+        <p class="panel-title">PROFILE</p>
+        <dl class="kv">
+          <dt>IDENTITY</dt><dd>BIHANSA</dd>
+          <dt>MESH</dt><dd id="kv-mesh">478 PTS</dd>
+          <dt>HAIR LOCKS</dt><dd id="kv-locks">—</dd>
+          <dt>STATE</dt><dd id="kv-state" class="hot">IDLE / AMBIENT</dd>
+        </dl>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ── fixed chrome ─────────────────────────────────────────────────────── -->
+  <header class="topbar hud-layer">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div>
+        <h1>BIHANSA</h1>
+        <p>NEURAL HOLOGRAM <span class="dim">/ PROFILE 01</span></p>
+      </div>
+    </div>
+    <div class="chips">
+      <span class="chip" id="chip-link"><i></i>LINK STABLE</span>
+      <span class="chip dim" id="chip-mic"><i></i>VOICE OFF</span>
+      <span class="chip clock" id="clock">00:00:00</span>
+    </div>
+  </header>
+
+  <footer class="dock hud-layer">
+    <div class="dock-inner">
+      <button class="btn" id="btn-mic" type="button" aria-pressed="false">
+        <span class="dot"></span>VOICE LINK
+      </button>
+      <button class="btn" id="btn-mesh" type="button" aria-pressed="true">MESH</button>
+      <button class="btn" id="btn-hair" type="button" aria-pressed="true">HAIR</button>
+      <button class="btn" id="btn-pulse" type="button">PULSE</button>
+      <p class="hint">move the cursor · click her to pulse · <kbd>V</kbd> voice · <kbd>M</kbd> mesh · <kbd>H</kbd> hair</p>
+    </div>
+  </footer>
+
+  <!-- ── boot screen ──────────────────────────────────────────────────────── -->
+  <div class="boot" id="boot">
+    <div class="boot-mark" aria-hidden="true"></div>
+    <p class="boot-title">INITIALISING NEURAL PROJECTION</p>
+    <p class="boot-line" id="boot-line">mounting face mesh…</p>
+    <div class="boot-bar"><i id="boot-bar"></i></div>
+  </div>
+
+  <p class="sr-only" id="live" aria-live="polite"></p>
+</main>
+
+<script src="face_data.js"></script>
+<script src="hologram.js"></script>
+</body>
+</html>

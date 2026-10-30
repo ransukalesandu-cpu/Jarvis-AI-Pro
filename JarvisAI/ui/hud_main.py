@@ -871,11 +871,12 @@ class HUDMainWindow(QMainWindow):
                     button.setFixedSize(size, size)
         if (
             getattr(self, "_right_menu", None) is not None
-            and self._right_menu.isVisible()
+            and (self._right_menu.isVisible() or not self.isVisible())
         ):
-            # Hidden floating menus do not need geometry updates. Deferring
-            # sizing until the menu is opened avoids native Qt re-entrancy
-            # during the window's initial show/layout pass.
+            # Size the hidden menu during initial construction, while the HUD
+            # itself is not visible, so responsive-width callers stay correct.
+            # Once the HUD is on screen, avoid resizing a hidden native child
+            # during Qt's show/layout pass; it is sized when opened instead.
             self._size_right_menu(width, height)
 
     def _toggle_right_dropdown(self):

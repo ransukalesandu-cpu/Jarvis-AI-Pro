@@ -22,7 +22,7 @@ from PyQt6.QtCore import (
     Qt, QObject, QEvent, QRect, QTimer, QSettings, QPropertyAnimation, QEasingCurve,
     pyqtSignal, pyqtSlot,
 )
-from PyQt6.QtGui import QFont, QCursor
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QToolButton, QFrame, QGraphicsBlurEffect, QGraphicsOpacityEffect, QCheckBox, QStackedWidget
@@ -197,12 +197,6 @@ class HUDMainWindow(QMainWindow):
         # Settings must exist before the UI builds, because the palette, reduced
         # motion and battery-saver preferences are applied to every renderer.
         self._settings = QSettings("JarvisAI", "JarvisAIPro")
-        # Apply child geometry after Qt completes the top-level native resize.
-        # Resizing/raising floating children inside resizeEvent can re-enter
-        # Qt layout code and abort on offscreen Windows/Linux runners.
-        self._resize_layout_timer = QTimer(self)
-        self._resize_layout_timer.setSingleShot(True)
-        self._resize_layout_timer.timeout.connect(self._apply_deferred_resize_layout)
         self._prefs = VisualPreferences.from_settings(self._settings)
         self._palette = self._prefs.scaled_palette()
         self._budget_reason = ""
@@ -539,28 +533,6 @@ class HUDMainWindow(QMainWindow):
         main_layout.addLayout(body_layout, stretch=1)
         self._left_rail.hide()
 
-        # Small edge tab keeps the home view clean while making navigation
-        # discoverable on hover. The expanded rail is shown only while the
-        # pointer is over the tab/rail; the dashboard keeps its rail visible.
-        self._left_menu_trigger = QToolButton(central_widget)
-        self._left_menu_trigger.setObjectName("leftMegaMenuTrigger")
-        self._left_menu_trigger.setText("›")
-        self._left_menu_trigger.setToolTip("Hover to open navigation")
-        self._left_menu_trigger.setFixedSize(18, 58)
-        self._left_menu_trigger.setStyleSheet(
-            "QToolButton#leftMegaMenuTrigger { color: #ffbd7a; "
-            "background: rgba(10,18,28,175); border: 1px solid #69462e; "
-            "border-left: none; border-radius: 0 12px 12px 0; font-size: 22px; }"
-            "QToolButton#leftMegaMenuTrigger:hover { color: #fff; "
-            "background: rgba(70,40,25,220); border-color: #ffb066; }"
-        )
-        self._left_menu_trigger.installEventFilter(self)
-        self._left_rail.installEventFilter(self)
-        for _button in self._left_icon_buttons:
-            _button.installEventFilter(self)
-        self._position_left_menu_trigger()
-        self._left_menu_trigger.show()
-
         for index, button in enumerate(self._left_icon_buttons):
             if index >= 2 and self._panel_agent is not None:
                 button.clicked.connect(
@@ -607,38 +579,22 @@ class HUDMainWindow(QMainWindow):
         self._apply_responsive_chrome()
 
 
-    def _apply_deferred_resize_layout(self) -> None:
-        """Synchronize floating chrome after the native resize event returns."""
-        self._window_resize_depth = getattr(self, "_window_resize_depth", 0) + 1
-        try:
-            self._apply_responsive_chrome()
-            self._position_left_menu_trigger()
-            if hasattr(self, "_right_menu") and self._right_menu.isVisible():
-                # _apply_responsive_chrome already sized it; only position here.
-                self._position_right_menu(size=False)
-            spacing_callback = getattr(self, "_apply_hologram_stage_spacing", None)
-            if callable(spacing_callback):
-                spacing_callback()
-            self._sync_task_blocked_rect()
-            if hasattr(self, "_toast") and self._toast.isVisible():
-                host = self.centralWidget()
-                if host is not None:
-                    self._toast.move(
-                        max(12, (host.width() - self._toast.width()) // 2),
-                        max(12, host.height() - self._toast.height() - 18),
-                    )
-        finally:
-            self._window_resize_depth = max(
-                0, getattr(self, "_window_resize_depth", 1) - 1
-            )
-
     def resizeEvent(self, event):
-        """Schedule responsive child geometry after this native resize finishes."""
+        """Keep floating menus inside the central workspace after window resizes."""
         super().resizeEvent(event)
-        timer = getattr(self, "_resize_layout_timer", None)
-        if timer is not None:
-            # Single-shot timer coalesces rapid drag-resize events into one layout pass.
-            timer.start(0)
+        # Chrome adapts before the menu is positioned: the dropdown's width is
+        # one of the things that decides where it goes.
+        self._apply_responsive_chrome()
+        if hasattr(self, "_right_menu") and self._right_menu.isVisible():
+            self._position_right_menu()
+        self._sync_task_blocked_rect()
+        if hasattr(self, "_toast") and self._toast.isVisible():
+            host = self.centralWidget()
+            if host is not None:
+                self._toast.move(
+                    max(12, (host.width() - self._toast.width()) // 2),
+                    max(12, host.height() - self._toast.height() - 18),
+                )
 
     @_safe_slot("ui.hud_main:_on_island_energy")
     def _on_island_energy(self, energy: float) -> None:
@@ -664,7 +620,6 @@ class HUDMainWindow(QMainWindow):
         self._transition_target = "dashboard"
         self._right_menu.hide()
         self._left_rail.show()
-        self._left_menu_trigger.hide()
         self._dashboard_opacity_effect.setOpacity(0.0)
         self._workspace_stack.setCurrentWidget(self._dashboard)
         self._dashboard_button.setText("⌂")
@@ -691,7 +646,6 @@ class HUDMainWindow(QMainWindow):
         if target == "home":
             self._workspace_stack.setCurrentWidget(self._home_page)
             self._left_rail.hide()
-            self._left_menu_trigger.show()
             self._dashboard_opacity_effect.setOpacity(1.0)
             self._dashboard_button.setText("▦")
             self._dashboard_button.setToolTip("Open Bento dashboard")
@@ -746,13 +700,12 @@ class HUDMainWindow(QMainWindow):
             print(f"[JARVIS HUD] Telemetry refresh failed: {type(exc).__name__}: {exc}")
         self._dashboard.finish_loading()
 
-    def _position_right_menu(self, *, size: bool = True) -> None:
-        """Anchor the floating dropdown; resize events can skip duplicate sizing."""
+    def _position_right_menu(self):
+        """Anchor the dropdown to the right edge without clipping on narrow windows."""
         host = self.centralWidget()
         if host is None:
             return
-        if size:
-            self._size_right_menu(host.width(), host.height())
+        self._size_right_menu(host.width(), host.height())
         x = hud_layout.dropdown_x(host.width(), self._right_menu.width())
         self._right_menu.move(x, hud_layout.DROPDOWN_TOP)
         self._right_menu.raise_()
@@ -787,9 +740,9 @@ class HUDMainWindow(QMainWindow):
                 if button.width() != size:
                     button.setFixedSize(size, size)
         if getattr(self, "_right_menu", None) is not None:
-            # Keep responsive sizing available to the HUD and tests. The
-            # resizeEvent positions this already-sized menu without sizing twice.
             self._size_right_menu(width, height)
+            if self._right_menu.isVisible():
+                self._position_right_menu()
 
     def _toggle_right_dropdown(self):
         """Show a floating right dropdown without shrinking the hologram workspace."""
@@ -968,23 +921,11 @@ class HUDMainWindow(QMainWindow):
             self._lbl_hud_status.setStyleSheet("color: #7c4dff;")
         elif st == "SPEAKING":
             self._lbl_hud_status.setText("● SPEAKING")
-            self._lbl_hud_status.setStyleSheet(f"color: {self._palette_chrome()};")
-        elif st in ("ERROR", "FAILED", "AUDIO_ERROR", "SESSION_ERROR"):
-            self._lbl_hud_status.setText("⚠ SYSTEM ERROR")
-            self._lbl_hud_status.setStyleSheet("color: #ff6b6b;")
-        elif st in ("DISCONNECTED", "OFFLINE", "CONNECTION_LOST"):
-            self._lbl_hud_status.setText("○ DISCONNECTED")
-            self._lbl_hud_status.setStyleSheet("color: #ffb066;")
+            self._lbl_hud_status.setStyleSheet("color: #00e5ff;")
         elif st in ("PRIVACY_LOCK", "LOCKDOWN"):
             self._handle_privacy_lock()
-        elif st in ("IDLE", "READY", "STANDBY"):
-            self._lbl_hud_status.setText("○ STANDBY")
-            self._lbl_hud_status.setStyleSheet(f"color: {self._palette_chrome()};")
         else:
-            # Unknown states are shown explicitly instead of being mislabeled
-            # as standby; this keeps the UI honest when new states are added.
-            readable_state = st.replace("_", " ")[:32]
-            self._lbl_hud_status.setText(f"● {readable_state}")
+            self._lbl_hud_status.setText("○ STANDBY")
             self._lbl_hud_status.setStyleSheet(f"color: {self._palette_chrome()};")
 
     @pyqtSlot(str)
@@ -1340,7 +1281,15 @@ class HUDMainWindow(QMainWindow):
             reduced_motion=self._prefs.reduced_motion,
             battery_saver_enabled=self._prefs.battery_saver,
         )
-        glow = budget.glow_scale * max(0.2, self._prefs.glow)
+        # The owner's glow preference is the base every renderer scales from.
+        # It used to reach only the heart filament: the face and the orb ignored
+        # it, so the setting looked broken.
+        base_glow = max(0.2, min(1.6, float(self._prefs.glow)))
+        glow = budget.glow_scale * base_glow
+        for widget in (self.wireframe_visualizer, self._mini_orb):
+            setter = getattr(widget, "set_glow", None)
+            if callable(setter):
+                setter(base_glow)
         self.wireframe_visualizer.set_performance_budget(
             budget.frame_interval_ms, budget.particle_scale, budget.glow_scale
         )
@@ -1352,6 +1301,33 @@ class HUDMainWindow(QMainWindow):
         if budget.tier != self._last_budget_tier:
             self._last_budget_tier = budget.tier
             self._budget_reason = budget.reason
+            self._show_budget_reason(budget)
+
+    def _show_budget_reason(self, budget) -> None:
+        """Say out loud why the visuals just dimmed.
+
+        Without this the HUD quietly drops to 15 fps and 25 % particles and the
+        owner has no way to tell whether that is a setting, a flat battery or a
+        crash — which is exactly what "the effects stopped working" looks like.
+        """
+        if budget.tier == "full":
+            text = "Visual effects: full quality."
+        else:
+            text = (
+                f"Visual effects reduced to '{budget.tier}' "
+                f"({budget.reason}): {1000 // budget.frame_interval_ms} fps, "
+                f"{budget.particle_scale:.0%} particles, {budget.glow_scale:.0%} glow."
+            )
+        try:
+            self._battery_settings_btn.setToolTip(text)
+        except Exception:
+            failsoft.suppress("ui.hud_main:_show_budget_reason")
+        try:
+            self._notifications.push(
+                Notification("visual:budget", "Visual effects", text, PRIORITY_LOW)
+            )
+        except Exception:
+            failsoft.suppress("ui.hud_main:_show_budget_reason.notify")
 
     @_safe_slot("ui.hud_main:_refresh_health")
     def _refresh_health(self) -> None:
@@ -1562,47 +1538,6 @@ class HUDMainWindow(QMainWindow):
                 island.hide()
         except Exception:
             failsoft.suppress("ui.hud_main:changeEvent")
-
-    def _position_left_menu_trigger(self) -> None:
-        """Keep the edge tab vertically centered in the central workspace."""
-        trigger = getattr(self, "_left_menu_trigger", None)
-        central = self.centralWidget()
-        if trigger is not None and central is not None:
-            trigger.move(0, max(24, (central.height() - trigger.height()) // 2))
-            trigger.raise_()
-
-    def _hide_left_rail_if_pointer_outside(self) -> None:
-        """Collapse the home rail unless the pointer is still over its hover region.
-
-        Avoid QApplication.widgetAt(): under Qt's offscreen platform it can abort
-        the test process while resolving widgets at a synthetic cursor position.
-        Global geometry is sufficient because the rail itself covers its icon children.
-        """
-        if self._workspace_stack.currentWidget() is self._dashboard:
-            return
-        global_pos = QCursor.pos()
-        for widget in (self._left_rail, self._left_menu_trigger):
-            try:
-                top_left = widget.mapToGlobal(widget.rect().topLeft())
-                if QRect(top_left, widget.size()).contains(global_pos):
-                    return
-            except RuntimeError:
-                # Widgets may be closing while a delayed collapse is queued.
-                continue
-        self._left_rail.hide()
-
-    def eventFilter(self, watched, event):
-        """Expand the home navigation on hover without swallowing Qt input."""
-        if watched is self._left_menu_trigger or watched is self._left_rail or watched in self._left_icon_buttons:
-            if event.type() == QEvent.Type.Enter:
-                if self._workspace_stack.currentWidget() is not self._dashboard:
-                    self._left_rail.show()
-                    self._left_rail.raise_()
-                return False
-            if event.type() == QEvent.Type.Leave:
-                QTimer.singleShot(180, self._hide_left_rail_if_pointer_outside)
-                return False
-        return super().eventFilter(watched, event)
 
     def keyPressEvent(self, event):
         """Escape closes whatever overlay is open, innermost first."""

@@ -175,24 +175,15 @@ class NeuralWireframeHead(_BASE_CANVAS):
                 _gaussian(v, 0.06, 0.22) + 0.45 * _gaussian(v, -0.17, 0.07)
             )
             z += 0.30 * nose * front
-            # Feature curves use angular ``a`` coordinates, while the sculpting
-            # uses projected x units. Align the sculpting with the eye/brow/mouth
-            # curves; otherwise the details sit on a near-spherical shell and
-            # the face reads as a glowing ball at normal HUD size.
-            eye_x = math.sin(0.40 * math.pi / 2.0) * 0.86 * cls._radius_at(0.18)
-            brow_x = math.sin(0.25 * math.pi / 2.0) * 0.86 * cls._radius_at(0.33)
-            cheek_x = math.sin(0.62 * math.pi / 2.0) * 0.86 * cls._radius_at(-0.05)
-            # Brow ridge follows the actual brow wire rather than the sphere grid.
-            z += 0.075 * _gaussian(ax, brow_x, 0.15) * _gaussian(v, 0.33, 0.095) * front
-            # Deepen both eye sockets so the two eyes remain readable in motion.
-            z -= 0.125 * _gaussian(ax, eye_x, 0.14) * _gaussian(v, 0.18, 0.105) * front
-            # Cheekbones and the side planes of the face.
-            z += 0.085 * _gaussian(ax, cheek_x, 0.16) * _gaussian(v, -0.05, 0.16) * front
-            # Upper lip and mouth crease: wider than the nose, narrow at the chin.
-            z += 0.045 * _gaussian(ax, 0.0, 0.36) * _gaussian(v, -0.30, 0.055) * front
-            z -= 0.075 * _gaussian(ax, 0.0, 0.37) * _gaussian(v, -0.37, 0.045) * front
-            # Subtle cheek-to-mouth planes add definition without a heavy outline.
-            z -= 0.022 * _gaussian(ax, cheek_x * 0.78, 0.075) * _gaussian(v, -0.22, 0.12) * front
+            # Brow ridge.
+            z += 0.055 * _gaussian(ax, 0.30, 0.17) * _gaussian(v, 0.33, 0.09) * front
+            # Eye sockets recede under the brow.
+            z -= 0.095 * _gaussian(ax, 0.36, 0.13) * _gaussian(v, 0.17, 0.10) * front
+            # Cheekbones.
+            z += 0.060 * _gaussian(ax, 0.58, 0.15) * _gaussian(v, -0.05, 0.16) * front
+            # Upper lip bulge and the mouth crease under it.
+            z += 0.035 * _gaussian(ax, 0.0, 0.16) * _gaussian(v, -0.30, 0.055) * front
+            z -= 0.055 * _gaussian(ax, 0.0, 0.20) * _gaussian(v, -0.37, 0.045) * front
             # Chin.
             z += 0.045 * _gaussian(ax, 0.0, 0.16) * _gaussian(v, -0.66, 0.11) * front
             # Jaw: pull the lower sides back so the skull ends in a jaw, not a box.
@@ -247,11 +238,8 @@ class NeuralWireframeHead(_BASE_CANVAS):
                 (side * 0.40 + 0.155 * math.cos(t), 0.18 + 0.075 * math.sin(t))
                 for t in [i * math.pi / 4 for i in range(8)]
             ]
-            add_polyline(ring, closed=True)
-            # Highlight the centre of each socket; the first ring vertex is an
-            # outer corner and made the eyes look like stray dots.
-            self._eyes.append(len(vertices))
-            vertices.append(self._head_surface(side * 0.40, 0.18))
+            indices = add_polyline(ring, closed=True)
+            self._eyes.append(indices[0])
 
         # Brows: shallow arcs above the eyes.
         for side in (-1, 1):

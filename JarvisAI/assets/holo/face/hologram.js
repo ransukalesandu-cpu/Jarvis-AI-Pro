@@ -24,7 +24,8 @@
   const bgC = $('bg');
   const waveC = $('wave');
 
-  const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // matchMedia is missing in some embedded webviews; never let that break boot.
+  const REDUCED = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   /* ── state ─────────────────────────────────────────────────────────────── */
   const S = {
@@ -58,6 +59,7 @@
     const c = document.createElement('canvas');
     c.width = c.height = 32;
     const g = c.getContext('2d');
+    if (!g) return c;                       // no 2D context: sprite draws become no-ops
     const grad = g.createRadialGradient(16, 16, 0, 16, 16, 16);
     grad.addColorStop(0, 'rgba(255, 244, 253, 1)');
     grad.addColorStop(0.34, 'rgba(255, 122, 234, 0.55)');
@@ -338,6 +340,7 @@
   function drawWave() {
     if (!waveC || !waveC.getContext) return;
     const ctx = waveC.getContext('2d');
+    if (!ctx) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = waveC.clientWidth || 220;
     const h = 46;
@@ -635,12 +638,18 @@
   ];
 
   function preload() {
-    const urls = ['portrait.webp', 'hair_left.webp', 'hair_right.webp'];
-    return Promise.all(urls.map((u) => new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => resolve(true);
-      img.onerror = () => resolve(false);
-      img.src = u;
+    // Decode the <img> elements that are already in the DOM rather than
+    // fetching the same files a second time. Works for the served page, for
+    // the file:// page and for the bundler's data: URIs.
+    const els = [portraitImg].concat(hairEls).filter(Boolean);
+    return Promise.all(els.map((el) => new Promise((resolve) => {
+      const done = () => resolve(el.naturalWidth > 0 || el.complete);
+      if (el.complete) { done(); return; }
+      el.addEventListener('load', done, { once: true });
+      el.addEventListener('error', () => resolve(false), { once: true });
+      if (typeof el.decode === 'function') {
+        el.decode().then(done).catch(() => resolve(false));
+      }
     })));
   }
 

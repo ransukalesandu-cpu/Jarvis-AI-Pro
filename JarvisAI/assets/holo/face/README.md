@@ -61,6 +61,22 @@ measures the real photo and the page draws those measurements:
    its own phase and amplitude — the "floating hair" is the real hair moving, not
    an added effect floating nearby.
 
+## One file, no server (`hologram-standalone.html`)
+
+`hologram-standalone.html` is the whole thing — CSS, both scripts, the
+portrait, both hair layers and the reference captures — inlined into a single
+651 KB file. Double-click it; it needs no server, no network and no preview
+proxy:
+
+```bash
+python JarvisAI/tools/bundle_holo_face.py \
+    --source JarvisAI/assets/holo/face \
+    --out    JarvisAI/assets/holo/face/hologram-standalone.html
+```
+
+It is generated, so rebuild it after changing `style.css`, `hologram.js` or the
+assets. The folder version stays the source of truth.
+
 ## Rebuilding the assets
 
 ```bash

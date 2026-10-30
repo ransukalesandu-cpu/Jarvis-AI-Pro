@@ -869,9 +869,13 @@ class HUDMainWindow(QMainWindow):
             for button in getattr(self, "_left_icon_buttons", ()):
                 if button.width() != size:
                     button.setFixedSize(size, size)
-        if getattr(self, "_right_menu", None) is not None:
-            # Keep responsive sizing available to the HUD and tests. The
-            # resizeEvent positions this already-sized menu without sizing twice.
+        if (
+            getattr(self, "_right_menu", None) is not None
+            and self._right_menu.isVisible()
+        ):
+            # Hidden floating menus do not need geometry updates. Deferring
+            # sizing until the menu is opened avoids native Qt re-entrancy
+            # during the window's initial show/layout pass.
             self._size_right_menu(width, height)
 
     def _toggle_right_dropdown(self):

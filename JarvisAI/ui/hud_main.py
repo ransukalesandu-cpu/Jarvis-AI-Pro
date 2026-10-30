@@ -830,18 +830,19 @@ class HUDMainWindow(QMainWindow):
         self._right_menu.raise_()
 
     def _size_right_menu(self, window_width: int, window_height: int) -> None:
-        """Fit the dropdown to the window instead of pinning it to 300 x 650.
+        """Fit the floating dropdown without forcing a nested Qt layout pass.
 
-        ``adjustSize`` is not optional here: the dropdown is a free-floating child
-        rather than a layout member, so nothing ever gives it a height. Without
-        this call it stayed at Qt's 30 px default and opened as a thin empty bar.
+        The menu is not in the central layout. Its size hint already reflects its
+        child layout; applying a bounded size directly avoids calling
+        QLayout.activate()/QWidget.adjustSize() while the parent is processing a
+        resize. Those synchronous calls can re-enter native Qt geometry handling
+        on Windows and offscreen runners.
         """
-        self._right_menu.setFixedWidth(hud_layout.dropdown_width(window_width))
-        self._right_menu.setMaximumHeight(hud_layout.dropdown_height(window_height))
-        layout = self._right_menu.layout()
-        if layout is not None:
-            layout.activate()
-        self._right_menu.adjustSize()
+        width = hud_layout.dropdown_width(window_width)
+        max_height = hud_layout.dropdown_height(window_height)
+        size_hint = self._right_menu.sizeHint()
+        height = max(1, min(max_height, size_hint.height()))
+        self._right_menu.setFixedSize(width, height)
 
     def _apply_responsive_chrome(self) -> None:
         """Resize the rails to the window: fixed widths only look right at one size.

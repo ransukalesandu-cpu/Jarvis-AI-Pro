@@ -4,55 +4,43 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<title>BIHANSA — Neural Hologram</title>
+<title>BIHANSA — Neural Wireframe Hologram</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<!-- ── SVG defs: the hair ripple filter + the reusable glow blurs ─────────── -->
-<svg class="defs" aria-hidden="true" focusable="false">
-  <defs>
-    <!-- Static turbulence displacement: it ripples the hair edges so the locks
-         don't read as flat cut-outs. Deliberately NOT animated — an animated
-         feTurbulence re-filters a 2.8 MP layer every frame, which the 4 GB
-         target machine cannot afford. The motion comes from the CSS sway and
-         the canvas filaments instead. -->
-    <filter id="hairFlow" x="-20%" y="-20%" width="140%" height="140%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.007 0.013" numOctaves="2"
-                    seed="7" result="noise"/>
-      <feDisplacementMap in="SourceGraphic" in2="noise" scale="7"
-                         xChannelSelector="R" yChannelSelector="G"/>
-    </filter>
-
-    <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="6" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-  </defs>
-</svg>
-
 <main class="stage" id="stage" data-boot="1">
 
   <!-- ── depth layers ─────────────────────────────────────────────────────── -->
-  <canvas class="bg-canvas" id="bg" aria-hidden="true"></canvas>
   <div class="bg-grid" aria-hidden="true"></div>
   <div class="bg-haze" aria-hidden="true"></div>
 
   <div class="world" id="world">
 
-    <!-- reference captures: the sources this projection was built from -->
-    <aside class="rail rail-left hud-layer" aria-label="Reference captures">
-      <p class="rail-title">REFERENCE CAPTURES</p>
-      <figure class="ref-card" data-delay="0">
-        <img src="refs/ref_01.jpg" alt="Reference capture, three-quarter view" loading="lazy" decoding="async">
-        <figcaption><span>REF 01</span><em>THREE-QUARTER</em></figcaption>
-        <span class="ref-scan" aria-hidden="true"></span>
-      </figure>
-      <figure class="ref-card" data-delay="1">
-        <img src="refs/ref_03.jpg" alt="Reference capture, frontal" loading="lazy" decoding="async">
-        <figcaption><span>REF 02</span><em>FRONTAL</em></figcaption>
-        <span class="ref-scan" aria-hidden="true"></span>
-      </figure>
+    <!-- geometry read-out: no pictures anywhere in this build -->
+    <aside class="rail rail-left hud-layer" aria-label="Mesh geometry">
+      <p class="rail-title">MESH GEOMETRY</p>
+
+      <div class="panel">
+        <dl class="kv">
+          <dt>SOURCE</dt><dd>FACE MESH</dd>
+          <dt>LANDMARKS</dt><dd id="gv-points">478</dd>
+          <dt>SYNAPSES</dt><dd id="gv-edges">1322</dd>
+          <dt>DEPTH SPAN</dt><dd id="gv-depth">0.333</dd>
+        </dl>
+      </div>
+
+      <div class="panel">
+        <p class="panel-title">FEATURE LOOPS</p>
+        <ul class="loop-list">
+          <li><i class="sw sw-oval"></i>FACE OVAL <b>36</b></li>
+          <li><i class="sw sw-eye"></i>EYE LIDS <b>16 × 2</b></li>
+          <li><i class="sw sw-lip"></i>LIP CONTOUR <b>20</b></li>
+          <li><i class="sw sw-iris"></i>IRIS LOCKS <b>2</b></li>
+        </ul>
+      </div>
+
+      
     </aside>
 
     <!-- the projection itself -->
@@ -62,18 +50,10 @@
 
       <div class="figure" id="figure">
         <div class="figure-inner" id="figure-inner">
-
-          <img class="layer portrait" id="portrait" src="portrait.webp"
-               alt="Holographic projection of Bihansa" decoding="async" fetchpriority="high">
-
-          <!-- hair layers sway independently, over the intact portrait below -->
-          <img class="layer hair hair-left"  id="hair-left"  src="hair_left.webp"  alt="" aria-hidden="true" decoding="async">
-          <img class="layer hair hair-right" id="hair-right" src="hair_right.webp" alt="" aria-hidden="true" decoding="async">
-
-          <!-- 478 real face-mesh landmarks measured on the photo -->
-          <canvas class="layer mesh" id="mesh" aria-hidden="true"></canvas>
-          <canvas class="layer strands" id="strands" aria-hidden="true"></canvas>
-          <canvas class="layer fx" id="fx" aria-hidden="true"></canvas>
+          <!-- every pixel of her face is drawn here from the 478 landmarks -->
+          <canvas class="layer face" id="face"
+                  role="img"
+                  aria-label="Neural wireframe hologram: her face rebuilt from 478 real depth-mapped landmarks"></canvas>
 
           <div class="scanlines" aria-hidden="true"></div>
           <div class="scan-sweep" aria-hidden="true"></div>
@@ -112,7 +92,7 @@
 
       <div class="panel wave-panel">
         <p class="panel-title">VOICE CARRIER</p>
-        <canvas id="wave" height="64" aria-hidden="true"></canvas>
+        <canvas id="wave" aria-hidden="true"></canvas>
       </div>
 
       <div class="panel grid-panel">
@@ -120,7 +100,7 @@
         <dl class="kv">
           <dt>IDENTITY</dt><dd>BIHANSA</dd>
           <dt>MESH</dt><dd id="kv-mesh">478 PTS</dd>
-          <dt>HAIR LOCKS</dt><dd id="kv-locks">—</dd>
+          <dt>FILAMENTS</dt><dd id="kv-locks">—</dd>
           <dt>STATE</dt><dd id="kv-state" class="hot">IDLE / AMBIENT</dd>
         </dl>
       </div>
@@ -133,7 +113,7 @@
       <span class="mark" aria-hidden="true"></span>
       <div>
         <h1>BIHANSA</h1>
-        <p>NEURAL HOLOGRAM <span class="dim">/ PROFILE 01</span></p>
+        <p>NEURAL WIREFRAME <span class="dim">/ PROFILE 01</span></p>
       </div>
     </div>
     <div class="chips">
@@ -151,7 +131,9 @@
       <button class="btn" id="btn-mesh" type="button" aria-pressed="true">MESH</button>
       <button class="btn" id="btn-hair" type="button" aria-pressed="true">HAIR</button>
       <button class="btn" id="btn-pulse" type="button">PULSE</button>
-      <p class="hint">move the cursor · click her to pulse · <kbd>V</kbd> voice · <kbd>M</kbd> mesh · <kbd>H</kbd> hair</p>
+      <button class="btn" id="btn-spin" type="button">PAUSE</button>
+      <p class="hint">move the cursor to turn her head · click to pulse ·
+        <kbd>V</kbd> voice · <kbd>M</kbd> mesh · <kbd>H</kbd> hair · <kbd>R</kbd> recentre</p>
     </div>
   </footer>
 
@@ -159,7 +141,7 @@
   <div class="boot" id="boot">
     <div class="boot-mark" aria-hidden="true"></div>
     <p class="boot-title">INITIALISING NEURAL PROJECTION</p>
-    <p class="boot-line" id="boot-line">mounting face mesh…</p>
+    <p class="boot-line" id="boot-line">reading face mesh…</p>
     <div class="boot-bar"><i id="boot-bar"></i></div>
   </div>
 

@@ -12,7 +12,9 @@ This script fuses everything into a single ``hologram-standalone.html``:
 * ``style.css``      -> ``<style>``
 * ``face_data.js``   -> ``<script>``
 * ``hologram.js``    -> ``<script>``
-* every image        -> ``data:`` URI
+
+There are no images to inline: the face is drawn from landmark geometry, so the
+bundle is nothing but text — about 60 KB instead of the 650 KB photo build.
 
 The result opens by double-click, from a USB stick, or as an email attachment,
 with no server, no network access and no build step. It is a *build artefact*
@@ -27,16 +29,8 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import base64
-import mimetypes
 import re
 from pathlib import Path
-
-
-def data_uri(path: Path) -> str:
-    mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-    payload = base64.b64encode(path.read_bytes()).decode("ascii")
-    return f"data:{mime};base64,{payload}"
 
 
 def build(source: Path, out: Path) -> None:
@@ -62,22 +56,8 @@ def build(source: Path, out: Path) -> None:
         f"<script>\n{holo_js}\n</script>",
     )
 
-    # every local src="…" -> data URI
-    def inline_src(match: re.Match[str]) -> str:
-        attr, rel = match.group(1), match.group(2)
-        if rel.startswith(("data:", "http:", "https:", "#")):
-            return match.group(0)
-        target = (source / rel).resolve()
-        if not target.is_file():
-            raise SystemExit(f"missing asset referenced by the page: {rel}")
-        return f'{attr}="{data_uri(target)}"'
-
-    html = re.sub(r'(\bsrc)="([^"]+)"', inline_src, html)
-
-    leftover = [
-        m for m in re.findall(r'(?:src|href)="([^"]+)"', html)
-        if not m.startswith("data:")
-    ]
+    # nothing may point at another file: this build is geometry only
+    leftover = re.findall(r'(?:src|href)="([^"]+)"', html)
     if leftover:
         raise SystemExit(f"still referencing external files: {leftover}")
 

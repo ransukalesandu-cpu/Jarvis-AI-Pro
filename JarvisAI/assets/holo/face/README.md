@@ -1,22 +1,24 @@
-# Bihansa — neural hologram face (web)
+# Bihansa — neural wireframe hologram face
 
-An interactive, self-contained hologram built from the real portrait: her actual
-face, her actual hair, wrapped in a live 478-point face mesh, floating
-filaments, a projector base and a HUD. Plain HTML + CSS + JS — no framework, no
-build step, no network calls.
+An interactive hologram face built **entirely from geometry**. There is no
+photograph, no cut-out, no texture and no image file anywhere in this build: the
+face on screen *is* her measured face — 478 Face-Mesh landmarks with their real
+depth — drawn as a glowing neural lattice that turns in three dimensions.
+
+Plain HTML + CSS + JS. No framework, no build step, no network calls.
 
 ```
 face/
-├── index.html        the page
-├── style.css         projection, hair sway, HUD chrome
-├── hologram.js       mesh / filaments / eyes / telemetry / voice engine
-├── face_data.js      generated: 478 landmarks + 1322 edges + 236 hair seeds
-├── portrait.webp     generated: alpha cut-out, hologram-graded (104 KB)
-├── hair_left.webp    generated: left hair lock, sways on its own
-├── hair_right.webp   generated: right hair lock
-├── refs/             the three reference captures shown in the left rail
-└── source/           the original photographs the assets were built from
+├── index.html                 the page
+├── style.css                  projection, projector base, HUD chrome, scan layers
+├── hologram.js                the 3D wireframe renderer + interaction + HUD
+├── face_data.js               generated: 478 landmarks (x, y, z), 1322 edges, feature loops
+├── hologram-standalone.html   generated: everything in one 85 KB file
+└── source/                    the photographs the landmarks were measured from (build input only)
 ```
+
+Nothing in `face/` is displayed as a picture. `source/` exists so the mesh can be
+re-measured; it is not loaded by the page.
 
 ## Look at it
 
@@ -26,47 +28,56 @@ python -m http.server 8000 --bind 0.0.0.0 --directory JarvisAI/assets/holo/face
 # open http://localhost:8000
 ```
 
-Opening `index.html` directly from disk also works: the scripts are classic
-(non-module) scripts and the data is a `window.HOLO_FACE` global, so nothing is
-blocked by `file://` CORS rules.
+Or just double-click `hologram-standalone.html`. Both work offline:
+`hologram.js` is a classic script and the geometry is a `window.HOLO_FACE`
+global, so `file://` CORS rules never bite.
 
 ## What it does
 
 | Interaction | Effect |
 | --- | --- |
-| Move the cursor | The whole figure tilts in 3D; her eyes follow the pointer; the HUD rails drift against it |
-| Click anywhere on her | A resonance pulse expands through the body and the filaments spike |
-| `VOICE LINK` (or `V`) | Requests the microphone; the projection breathes, the filaments stretch and the carrier waveform follows your voice |
-| `MESH` (or `M`) | Toggles the face mesh |
-| `HAIR` (or `H`) | Toggles the floating hair |
-| `PULSE` (or `Space` / `P`) | Fires a pulse from the projector base |
+| Move the cursor | Her head turns — yaw and pitch on the actual mesh, perspective included. The far cheek dims, the near cheek brightens |
+| Click anywhere | A resonance wave rolls out through the lattice, then decays |
+| `VOICE LINK` (or `V`) | Microphone level drives the filaments, the iris glow and the carrier waveform |
+| `MESH` (or `M`) | Toggles the 1322 synapses and the feature loops |
+| `HAIR` (or `H`) | Toggles the floating filaments |
+| `PAUSE` | Freezes the rotation, so a frame can be studied |
+| `R` | Recentres the view |
+| `Space` / `P` | Fires a pulse |
 
-Everything degrades politely: without a microphone the hologram idles on a slow
-breath; with `prefers-reduced-motion` the parallax and sweeps are switched off.
+She blinks. When nothing is happening the head idles on a slow sway and a
+breath. With `prefers-reduced-motion` all of it settles to a still projection.
 
-## Why it looks like *her*
+## Why it looks like *her*, and not like a generic head
 
-The face is not generated procedurally. `JarvisAI/tools/build_holo_face.py`
-measures the real photo and the page draws those measurements:
+The mesh is measured, not invented. `JarvisAI/tools/build_holo_face.py` runs
+MediaPipe Face Mesh over the frontal reference and exports the raw geometry:
 
-1. **MediaPipe Face Mesh** finds 478 landmarks on the portrait. Their exact
-   positions drive the wireframe, the eye-tracking glows and the feature rings,
-   so the mesh sits on her eyes, nose and lips rather than approximating them.
-2. **Selfie segmentation + GrabCut + a dark-hair growth pass** produce the alpha
-   matte, which is what lets the plate sit on black with no rectangle behind it.
-3. The cut-out is **graded as a projection**: blacks deepened, a violet bias, a
-   thin rim light on the silhouette, and a high-pass filter over the hair that
-   turns its bright ridges into magenta filaments.
-4. Hair is **split at the parting** into two layers, so each side can sway with
-   its own phase and amplitude — the "floating hair" is the real hair moving, not
-   an added effect floating nearby.
+1. **478 landmarks**, each carrying `x`, `y` **and the real `z` depth** that
+   MediaPipe estimates from the photo — nose tip at −0.102, chin at +0.032,
+   a 0.333 span. That depth is the whole trick: it is what makes the head read
+   as a solid object when it rotates instead of a flat drawing skewing.
+2. **1322 unique edges** from the canonical face-mesh tessellation.
+3. **Feature loops** walked in contour order — the face oval, both eyelids, the
+   outer lip. (A plain index-sorted set is *not* a contour: it draws a chord
+   across her face, which is exactly the bug that had to be fixed.)
+4. The page then scales y by `1 / aspect` (MediaPipe normalises to the photo
+   rectangle, so undoing it keeps her proportions instead of stretching the
+   face), centres the model, and renders it.
+
+Rendering, in `hologram.js`:
+
+* rotate (yaw → pitch) → perspective divide (`f / (f + z)`) → project;
+* every edge is drawn additively, brightness and colour interpolated from its
+  real depth — deep magenta at the back of the jaw, near-white at the nose;
+* lines are grouped into ~14 brightness buckets and stroked once per bucket, so
+  the whole lattice costs about two dozen path calls a frame instead of 1322;
+* a quarter-resolution copy of the frame is blurred and added back for bloom;
+* three faint shells behind the oval give the head a back;
+* the hairline emits 150-ish filaments that leave the oval, fall under gravity
+  and float behind the jaw — geometry, animated by voice and time.
 
 ## One file, no server (`hologram-standalone.html`)
-
-`hologram-standalone.html` is the whole thing — CSS, both scripts, the
-portrait, both hair layers and the reference captures — inlined into a single
-651 KB file. Double-click it; it needs no server, no network and no preview
-proxy:
 
 ```bash
 python JarvisAI/tools/bundle_holo_face.py \
@@ -74,42 +85,42 @@ python JarvisAI/tools/bundle_holo_face.py \
     --out    JarvisAI/assets/holo/face/hologram-standalone.html
 ```
 
-It is generated, so rebuild it after changing `style.css`, `hologram.js` or the
-assets. The folder version stays the source of truth.
+The bundle is pure text — HTML, CSS and two scripts, ~85 KB — because there is
+no image to inline. Rebuild it after editing `style.css`, `hologram.js` or the
+geometry. The folder stays the source of truth.
 
-## Rebuilding the assets
+## Rebuilding the geometry
 
 ```bash
-python -m pip install "mediapipe==0.10.14" opencv-python-headless pillow numpy
+python -m pip install "mediapipe==0.10.14" numpy
 python JarvisAI/tools/build_holo_face.py \
     --source JarvisAI/assets/holo/face/source/portrait_ref.jpg \
-    --outdir JarvisAI/assets/holo/face
+    --out    JarvisAI/assets/holo/face/face_data.js
 ```
 
 `mediapipe==0.10.14` is pinned because later releases removed `mp.solutions`,
-which is where the bundled face-mesh and selfie-segmentation models live — the
-build therefore runs completely offline. The script writes only WebP (≈390 KB
-for all three layers); pass `--keep-png` if you want the lossless intermediates.
+which is where the bundled face-mesh model lives — so the build runs fully
+offline. It writes one file and prints the landmark, edge and depth statistics.
 
-To use a different portrait, drop it in `source/` and point `--source` at it.
-A frontal, evenly lit photo with the hair clear of the background works best.
+For a different face, drop a frontal, evenly lit photo into `source/`, point
+`--source` at it and rebuild. The renderer needs no changes: it reads whatever
+478 landmarks it is given.
 
 ## Status: standalone, deliberately not wired in
 
 This is **not connected to JARVIS**. Nothing in `main.py`, `ui/`, `core/`,
-`agent/` or `dashboard/` imports, loads or references the page — it is a
-self-contained artefact you open in a browser (or serve) on its own. The only
-project file that mentions it is the build script that generates its assets.
+`agent/` or `dashboard/` imports or references the page. The only project files
+that mention it are the two build scripts in `JarvisAI/tools/`.
 
-Keeping it detached is intentional for now: the hologram can be iterated on
-without touching the Qt HUD or the app's start-up path. If it is ever wired in,
-that would be a deliberate change to `ui/hud_main.py` (a `QWebEngineView`
-pointed at this folder), not something this folder does on its own.
+Keeping it detached is intentional for now — the hologram can be iterated on
+without touching the Qt HUD or the app's start-up path. Wiring it in later would
+be a deliberate `QWebEngineView` pointed at this folder, not something this
+folder does on its own.
 
 ## Notes
 
-* Assets are generated from photographs of a real person. Keep
-  `source/` alongside the derived files if you want to rebuild, and treat the
-  portrait as personal data when publishing a fork.
-* Tested paths: `hologram.js` is executed against a jsdom document with a mock
-  2D canvas (boot sequence, 240 animation frames, every control) with no errors.
+* The geometry is derived from photographs of a real person. Keep `source/`
+  only if you want to re-measure, and treat it as personal data in a fork.
+* Paths are exercised headlessly two ways: a jsdom run of the real scripts with
+  a mock canvas (boot, 240 frames, every control — 0 errors), and a Node run
+  against a real `@napi-rs/canvas` backend that rasterises the frame for review.

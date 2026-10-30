@@ -32,8 +32,6 @@ on:
       - ".github/workflows/python-checks.yml"
   workflow_dispatch:
 
-# A newer push to the same branch makes the previous run pointless; cancel it so
-# runners are not queued behind a result nobody will read.
 concurrency:
   group: python-checks-${{ github.ref }}
   cancel-in-progress: true
@@ -43,32 +41,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      # Lint needs no runtime dependencies: ruff is a standalone wheel and the
-      # rule set in pyproject.toml is static-analysis only. That keeps this job
-      # at a few seconds so a typo is reported long before the test matrix ends.
       - name: Install ruff
         run: python -m pip install --upgrade pip ruff
-
-      - name: Lint (undefined names, broken imports, syntax-level mistakes)
+      - name: Lint
         run: ruff check --output-format=github JarvisAI
 
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
@@ -76,50 +63,37 @@ jobs:
             requirements.txt
             JarvisAI/requirements.txt
             requirements-dev.txt
-
-      # PortAudio for the audio modules; libgl1/libegl1 so PyQt6 can load and
-      # the UI tests run here instead of being skipped by conftest.py.
       - name: Install audio and Qt system libraries
         run: sudo apt-get install -y libportaudio2 libgl1 libegl1
-
       - name: Install project and test dependencies
         working-directory: JarvisAI
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip install -r ../requirements-dev.txt
-
       - name: Compile Python files
         working-directory: JarvisAI
         run: python -m compileall -q .
-
       - name: Check runtime dependencies
         working-directory: JarvisAI
         run: JARVIS_DIAGNOSE_CI=1 python diagnose.py
-
       - name: Run unit tests
         working-directory: JarvisAI
-        run: python -m pytest -q
-
-      # A failing test run is only useful if the failure can be read: the raw
-      # job log lives on a signed blob URL that is not always reachable. Re-run
-      # through the wrapper so each failure becomes a check-run annotation
-      # (readable from the PR) plus a job summary.
+        env:
+          PYTHONFAULTHANDLER: "1"
+        run: python -m pytest -vv -s
       - name: Publish test failures as annotations
         if: failure()
         working-directory: JarvisAI
         run: python scripts/ci_pytest_annotate.py -q --tb=short
-
       - name: Set up Deno for Supabase personal-memory tests
         if: ${{ hashFiles('supabase/functions/jarvis-personal-memory/domain_test.ts') != '' }}
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-
       - name: Type-check Supabase personal-memory function
         if: ${{ hashFiles('supabase/functions/jarvis-personal-memory/domain_test.ts') != '' }}
         run: deno check supabase/functions/jarvis-personal-memory/index.ts supabase/functions/jarvis-personal-memory/domain_test.ts
-
       - name: Test Supabase personal-memory validators
         if: ${{ hashFiles('supabase/functions/jarvis-personal-memory/domain_test.ts') != '' }}
         run: deno test supabase/functions/jarvis-personal-memory/domain_test.ts
@@ -130,35 +104,30 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
       PYTHONUTF8: "1"
+      PYTHONFAULTHANDLER: "1"
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: |
             requirements.txt
             JarvisAI/requirements.txt
-
       - name: Install declared runtime dependencies
         working-directory: JarvisAI
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip install pytest
-
       - name: Compile project on Windows
         working-directory: JarvisAI
         run: python -m compileall -q .
-
       - name: Test Windows launch, Hologram setup, auth, and audio paths
         working-directory: JarvisAI
         shell: pwsh
         run: |
-          python -m pytest -vv `
+          python -m pytest -vv -s `
             tests/test_ui_hologram.py `
             tests/test_launchers.py `
             tests/test_live_api_key_config.py `
@@ -174,9 +143,6 @@ jobs:
             tests/test_project_health.py `
             tests/test_windows_setup.py 2>&1 | Tee-Object -FilePath pytest-windows.log
           exit $LASTEXITCODE
-
-      # The raw job log lives behind a signed blob URL that is not always
-      # readable; these annotations are. Only emitted when the run above failed.
       - name: Surface the end of the test log
         if: failure()
         working-directory: JarvisAI
@@ -186,24 +152,6 @@ jobs:
             Get-Content pytest-windows.log -Tail 40 | ForEach-Object { Write-Host "::error::$_" }
           }
           exit 0
-          tests/test_ui_hologram.py
-          tests/test_launchers.py
-          tests/test_live_api_key_config.py
-          tests/test_auth_flow.py
-          tests/test_owner_identity_security.py
-          tests/test_audio_capture.py
-          tests/test_audio_playback.py
-          tests/test_live_audio_helpers.py
-          tests/test_playback_interrupt.py
-          tests/test_ui_import_smoke.py
-          tests/test_lazy_ui_imports.py
-          tests/test_screen_capture_encoding.py
-          tests/test_project_health.py
-          tests/test_windows_setup.py
-
-      # The unit tests use a fake runner; this step exercises the real Windows
-      # API surface of the same module (the py launcher, PATH python, and the
-      # honest failure path when no .venv exists yet).
       - name: Check the installer CLI on Windows
         working-directory: JarvisAI
         shell: pwsh
@@ -216,14 +164,7 @@ jobs:
           if ($LASTEXITCODE -ne 1) { throw "status must report 1 when .venv is missing" }
           python tools/windows_setup.py verify
           if ($LASTEXITCODE -ne 1) { throw "verify must fail (exit 1) instead of claiming success without a .venv" }
-          # actions/runner ends a pwsh step with `exit $LASTEXITCODE`, so the
-          # expected non-zero codes above must be cleared explicitly.
           exit 0
-
-      # These are the only automated checks that execute the .bat files on
-      # Windows. They cover the two non-destructive paths: menu -> Exit, and a
-      # launch on a machine where nothing is installed yet (answer "n" to the
-      # install offer, which must exit 1 without touching anything).
       - name: Smoke the BAT files on Windows
         working-directory: JarvisAI
         shell: cmd
@@ -233,9 +174,6 @@ jobs:
           echo n| Run_Jarvis.bat
           if not errorlevel 1 exit /b 1
           exit /b 0
-
-      # See the Linux job: annotations are readable from the check run even when
-      # the raw log is not.
       - name: Publish test failures as annotations
         if: failure()
         working-directory: JarvisAI

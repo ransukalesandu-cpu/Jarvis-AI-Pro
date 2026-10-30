@@ -201,6 +201,8 @@ class HUDMainWindow(QMainWindow):
         # subsequent, explicit persona switches trigger the one-shot overlay.
         self._active_persona_mode = "jarvis"
         self._persona_handoff_ready = False
+        # Escape dismisses a visible settings dropdown first, then the home rail.
+        self._escape_dismiss_rail_armed = False
         # Settings must exist before the UI builds, because the palette, reduced
         # motion and battery-saver preferences are applied to every renderer.
         self._settings = QSettings("JarvisAI", "JarvisAIPro")
@@ -258,8 +260,9 @@ class HUDMainWindow(QMainWindow):
         top_row = QHBoxLayout()
         # Live subsystem health (mic / speaker / network / AI session). Unavailable
         # subsystems render as hollow rings — never a fabricated green dot.
+        # Keep live subsystem diagnostics out of the default hologram home view.
+        # They remain available from the right-side menu without losing real status.
         self._status_strip = HudStatusStrip(self, self._palette)
-        top_row.addWidget(self._status_strip, 0, Qt.AlignmentFlag.AlignVCenter)
         top_row.addStretch()
         self._dashboard_button = QToolButton(self)
         self._dashboard_button.setText("▦")
@@ -457,6 +460,9 @@ class HUDMainWindow(QMainWindow):
         right_menu_layout = QVBoxLayout(self._right_menu)
         right_menu_layout.setContentsMargins(10, 10, 10, 10)
         right_menu_layout.setSpacing(8)
+        # Telemetry is on demand: quick subsystem indicators live in this menu,
+        # not above the hologram where they compete with the main visual.
+        right_menu_layout.addWidget(self._status_strip)
 
         self._bihansa_toggle = QPushButton("BIHANSA MODE: OFF")
         self._bihansa_toggle.setCheckable(True)
@@ -863,15 +869,21 @@ class HUDMainWindow(QMainWindow):
             for button in getattr(self, "_left_icon_buttons", ()):
                 if button.width() != size:
                     button.setFixedSize(size, size)
-        if getattr(self, "_right_menu", None) is not None:
-            # Keep responsive sizing available to the HUD and tests. The
-            # resizeEvent positions this already-sized menu without sizing twice.
+        if (
+            getattr(self, "_right_menu", None) is not None
+            and (self._right_menu.isVisible() or not self.isVisible())
+        ):
+            # Size the hidden menu during initial construction, while the HUD
+            # itself is not visible, so responsive-width callers stay correct.
+            # Once the HUD is on screen, avoid resizing a hidden native child
+            # during Qt's show/layout pass; it is sized when opened instead.
             self._size_right_menu(width, height)
 
     def _toggle_right_dropdown(self):
         """Show a floating right dropdown without shrinking the hologram workspace."""
         should_show = not self._right_menu.isVisible()
         if should_show:
+            self._escape_dismiss_rail_armed = False
             self._position_right_menu()
         self._right_menu.setVisible(should_show)
 
@@ -1796,12 +1808,12 @@ class HUDMainWindow(QMainWindow):
             watched is getattr(self, "_hologram_stage", None)
             and event.type() == QEvent.Type.Resize
         ):
-            self._apply_hologram_stage_spacing()
-            # A parent-window resize syncs after all child layouts settle. A
-            # stage-only resize still needs its own refresh, but not a reentrant
-            # geometry update in the middle of the parent resize.
-            if getattr(self, "_window_resize_depth", 0) == 0:
-                self._sync_task_blocked_rect()
+            # Stage resize notifications can arrive while Qt is inside a parent
+            # layout pass. Defer spacing and overlay geometry until that pass
+            # returns; the single-shot timer coalesces stage/window resizes.
+            timer = getattr(self, "_resize_layout_timer", None)
+            if timer is not None and not timer.isActive():
+                timer.start(0)
         if watched is self._left_menu_trigger or watched is self._left_rail or watched in self._left_icon_buttons:
             if event.type() == QEvent.Type.Enter:
                 if self._workspace_stack.currentWidget() is not self._dashboard:
@@ -1809,7 +1821,10 @@ class HUDMainWindow(QMainWindow):
                     self._left_rail.raise_()
                 return False
             if event.type() == QEvent.Type.Leave:
-                QTimer.singleShot(180, self._hide_left_rail_if_pointer_outside)
+                # Keep the hover rail stable while its settings dropdown is open.
+                # Escape closes the dropdown first; the next Escape dismisses the rail.
+                if not self._right_menu.isVisible():
+                    QTimer.singleShot(180, self._hide_left_rail_if_pointer_outside)
                 return False
         return super().eventFilter(watched, event)
 
@@ -1817,13 +1832,32 @@ class HUDMainWindow(QMainWindow):
         """Escape closes whatever overlay is open, innermost first."""
         if event.key() == Qt.Key.Key_Escape:
             if self._right_menu.isVisible():
+                self._escape_dismiss_rail_armed = (
+                    self._workspace_stack.currentWidget() is self._home_page
+                    and not self._left_rail.isHidden()
+                )
                 self._right_menu.hide()
                 return
+            if self._escape_dismiss_rail_armed:
+                self._escape_dismiss_rail_armed = False
+                if not self._left_rail.isHidden():
+                    self._left_rail.hide()
+                    self._left_menu_trigger.show()
+                    return
             if self._toast.isVisible():
                 self._toast.dismiss()
                 return
             if hasattr(self, "_island") and self._island.isVisible() and self._island._expanded:
                 self._island.collapse()
+                return
+            # On the hologram home page, Escape also dismisses the hover rail.
+            # The dashboard rail stays visible because it is primary dashboard navigation.
+            if (
+                self._workspace_stack.currentWidget() is self._home_page
+                and not self._left_rail.isHidden()
+            ):
+                self._left_rail.hide()
+                self._left_menu_trigger.show()
                 return
         super().keyPressEvent(event)
 

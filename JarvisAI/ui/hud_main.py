@@ -201,6 +201,8 @@ class HUDMainWindow(QMainWindow):
         # subsequent, explicit persona switches trigger the one-shot overlay.
         self._active_persona_mode = "jarvis"
         self._persona_handoff_ready = False
+        # Escape dismisses a visible settings dropdown first, then the home rail.
+        self._escape_dismiss_rail_armed = False
         # Settings must exist before the UI builds, because the palette, reduced
         # motion and battery-saver preferences are applied to every renderer.
         self._settings = QSettings("JarvisAI", "JarvisAIPro")
@@ -846,7 +848,10 @@ class HUDMainWindow(QMainWindow):
         max_height = hud_layout.dropdown_height(window_height)
         size_hint = self._right_menu.sizeHint()
         height = max(1, min(max_height, size_hint.height()))
-        self._right_menu.setFixedSize(width, height)
+        # Resize the floating child without changing its min/max constraints.
+        # setFixedSize() mutates both constraints and geometry; doing that during
+        # rapid native resize notifications can trigger a Windows Qt DLL crash.
+        self._right_menu.resize(width, height)
 
     def _apply_responsive_chrome(self) -> None:
         """Resize the rails to the window: fixed widths only look right at one size.
@@ -872,6 +877,7 @@ class HUDMainWindow(QMainWindow):
         """Show a floating right dropdown without shrinking the hologram workspace."""
         should_show = not self._right_menu.isVisible()
         if should_show:
+            self._escape_dismiss_rail_armed = False
             self._position_right_menu()
         self._right_menu.setVisible(should_show)
 
@@ -1820,8 +1826,18 @@ class HUDMainWindow(QMainWindow):
         """Escape closes whatever overlay is open, innermost first."""
         if event.key() == Qt.Key.Key_Escape:
             if self._right_menu.isVisible():
+                self._escape_dismiss_rail_armed = (
+                    self._workspace_stack.currentWidget() is self._home_page
+                    and not self._left_rail.isHidden()
+                )
                 self._right_menu.hide()
                 return
+            if self._escape_dismiss_rail_armed:
+                self._escape_dismiss_rail_armed = False
+                if not self._left_rail.isHidden():
+                    self._left_rail.hide()
+                    self._left_menu_trigger.show()
+                    return
             if self._toast.isVisible():
                 self._toast.dismiss()
                 return

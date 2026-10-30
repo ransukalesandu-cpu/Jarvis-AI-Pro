@@ -1803,12 +1803,12 @@ class HUDMainWindow(QMainWindow):
             watched is getattr(self, "_hologram_stage", None)
             and event.type() == QEvent.Type.Resize
         ):
-            self._apply_hologram_stage_spacing()
-            # A parent-window resize syncs after all child layouts settle. A
-            # stage-only resize still needs its own refresh, but not a reentrant
-            # geometry update in the middle of the parent resize.
-            if getattr(self, "_window_resize_depth", 0) == 0:
-                self._sync_task_blocked_rect()
+            # Stage resize notifications can arrive while Qt is inside a parent
+            # layout pass. Defer spacing and overlay geometry until that pass
+            # returns; the single-shot timer coalesces stage/window resizes.
+            timer = getattr(self, "_resize_layout_timer", None)
+            if timer is not None and not timer.isActive():
+                timer.start(0)
         if watched is self._left_menu_trigger or watched is self._left_rail or watched in self._left_icon_buttons:
             if event.type() == QEvent.Type.Enter:
                 if self._workspace_stack.currentWidget() is not self._dashboard:

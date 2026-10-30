@@ -75,8 +75,10 @@ class NeuralWireframeHead(_BASE_CANVAS):
     COLOR_GREEN = QColor("#00e676")
     COLOR_AMBER = QColor("#ffab00")
 
-    RINGS = 22
-    SECTORS = 34
+    # A denser shell keeps the forehead, cheek and jaw contours crisp without
+    # introducing a heavyweight model or external rendering dependency.
+    RINGS = 28
+    SECTORS = 44
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -234,33 +236,70 @@ class NeuralWireframeHead(_BASE_CANVAS):
         # Eyes: closed rings, slightly wider than tall, sitting in the sockets.
         self._eyes = []
         for side in (-1, 1):
-            ring = [
+            # Smooth outer eyelid and a smaller inner contour give each eye a
+            # defined socket instead of a coarse octagonal loop.
+            outer_eye = [
                 (side * 0.40 + 0.155 * math.cos(t), 0.18 + 0.075 * math.sin(t))
-                for t in [i * math.pi / 4 for i in range(8)]
+                for t in [i * math.pi / 8 for i in range(16)]
             ]
-            indices = add_polyline(ring, closed=True)
-            self._eyes.append(indices[0])
+            add_polyline(outer_eye, closed=True)
+            inner_eye = [
+                (side * 0.40 + 0.105 * math.cos(t), 0.18 + 0.040 * math.sin(t))
+                for t in [i * math.pi / 8 for i in range(16)]
+            ]
+            add_polyline(inner_eye, closed=True)
+            self._eyes.append(len(vertices))
+            vertices.append(self._head_surface(side * 0.40, 0.18))
 
-        # Brows: shallow arcs above the eyes.
+        # Brows: denser, tapered arcs above the eyes.
         for side in (-1, 1):
             brow = [
-                (side * (0.20 + 0.105 * i),
-                 0.30 + 0.030 * math.sqrt(max(0.0, 1 - ((i - 2) / 2.2) ** 2)) - 0.012 * i)
-                for i in range(5)
+                (side * (0.20 + 0.0525 * i),
+                 0.30 + 0.030 * math.sqrt(max(0.0, 1 - ((i - 4) / 4.4) ** 2)) - 0.006 * i)
+                for i in range(9)
             ]
             add_polyline(brow)
 
-        # Nose: centre ridge from the bridge to the tip, plus the nostril flare.
-        add_polyline([(0.0, 0.28), (0.0, 0.18), (0.0, 0.07), (0.0, -0.04), (0.0, -0.11)])
+        # Nose: a continuous bridge, tip contour and clearly separated nostrils.
+        add_polyline([(0.0, 0.30 - 0.052 * i) for i in range(9)])
+        add_polyline([(-0.035, -0.105), (-0.020, -0.135), (0.0, -0.148),
+                      (0.020, -0.135), (0.035, -0.105)])
         for side in (-1, 1):
             add_polyline([
-                (side * 0.02, -0.13), (side * 0.08, -0.16),
-                (side * 0.11, -0.12), (side * 0.10, -0.06),
+                (side * 0.025, -0.135), (side * 0.055, -0.158),
+                (side * 0.085, -0.164), (side * 0.112, -0.145),
+                (side * 0.118, -0.118),
             ])
 
-        # Mouth: upper and lower lip curves.
-        add_polyline([(-0.30 + 0.15 * i, -0.34 + 0.028 * math.sin(math.pi * i / 4)) for i in range(5)])
-        add_polyline([(-0.25 + 0.125 * i, -0.41 + 0.020 * math.sin(math.pi * i / 4)) for i in range(5)])
+        # Cheekbone and jaw contours add definition to the face silhouette.
+        for side in (-1, 1):
+            add_polyline([
+                (side * (0.54 + 0.035 * i), 0.02 - 0.060 * i)
+                for i in range(7)
+            ])
+            add_polyline([
+                (side * (0.78 - 0.055 * i), -0.22 - 0.050 * i)
+                for i in range(7)
+            ])
+
+        # Philtrum and mouth: smooth cupid's-bow upper lip and lower lip.
+        add_polyline([(0.0, -0.17), (0.0, -0.22), (0.0, -0.27)])
+        add_polyline([
+            (-0.30 + 0.05 * i,
+             -0.345 + 0.032 * math.sin(math.pi * i / 12)
+             + 0.010 * math.sin(math.pi * i / 6))
+            for i in range(13)
+        ])
+        add_polyline([
+            (-0.25 + (0.50 / 12) * i,
+             -0.405 - 0.018 * math.sin(math.pi * i / 12))
+            for i in range(13)
+        ])
+        # A short, gently curved chin crease finishes the lower-face detail.
+        add_polyline([
+            (-0.16 + 0.04 * i, -0.56 - 0.018 * math.sin(math.pi * i / 8))
+            for i in range(9)
+        ])
 
         self._vertices = vertices
         self._edges = edges

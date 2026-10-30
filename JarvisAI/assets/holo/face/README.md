@@ -15,11 +15,7 @@ face/
 ├── hologram.js                the 3D wireframe renderer + interaction + HUD
 ├── face_data.js               generated: subdivided landmark lattice, feature loops, depth
 ├── hologram-standalone.html   generated: everything in one 200 KB file
-├── model/                     generated: the same geometry as real 3-D files (see below)
-│   ├── face.glb               open shell — her face surface, y-up, metre scale
-│   ├── head.glb               closed solid — the same face with a back grown on it
-│   ├── face.obj / face.mtl    plain-text version for older tools
-│   └── preview-render.png     a render of the mesh (not a photograph)
+├── model/                     the Tripo3D PBR face + a viewer for it (see below)
 └── source/                    the photographs the landmarks were measured from (build input only)
 ```
 
@@ -92,36 +88,37 @@ Rendering, in `hologram.js`:
 * quality adapts: if a frame runs long, the bloom pass is dropped first, then
   the landmark dots, so the rotation never stutters.
 
-## The same face as a 3-D model (`model/`)
+## The 3-D model (`model/`)
 
-The hologram's geometry *is* a 3-D surface, so it exports like one — no
-generation service, no export paywall:
-
-```bash
-python -m pip install numpy scipy pillow "mediapipe==0.10.14"
-python JarvisAI/tools/export_face_mesh.py \
-    --source JarvisAI/assets/holo/face/source/portrait_ref.jpg \
-    --outdir JarvisAI/assets/holo/face/model
-```
+`model/` holds the real 3-D face — a Tripo3D PBR export of her, not geometry
+we invented and not a render:
 
 | File | What it is |
 | --- | --- |
-| `model/face.glb` | Her face as a triangulated surface — 2,516 vertices / 4,519 triangles, y-up, centred on the origin, 22 cm tall, matte double-sided material. Opens in Blender, Windows 3D Viewer, macOS Quick Look, Unity, Unreal, Godot, Sketchfab, three.js |
-| `model/head.glb` | The same surface with a tapered back grown onto the jaw outline, so it is a closed solid — for viewers that cull back faces, and for printing |
-| `model/face.obj` + `.mtl` | The identical mesh in plain text for anything that only speaks OBJ |
+| `tripo_pbr_model_…_meshopt.glb` | 18 MB, 971k vertices / 1.84M triangles, PBR material with base-colour + normal maps. Compressed with `EXT_meshopt_compression` and `KHR_mesh_quantization`, so it needs a meshopt decoder to open |
+| `view.html` | A viewer for that exact file — three.js, orbit controls, auto-rotate, wireframe and studio-light toggles |
+| `vendor/` | three.js `r169` + `GLTFLoader` + `OrbitControls` + `BufferGeometryUtils` + `meshopt_decoder`, vendored so the viewer runs with no CDN and no network |
 
-How it is built: the measured lattice is triangulated with the **real face-mesh
-topology** (the faces are the 3-cliques of the canonical edge graph — a Delaunay
-over the same points invents long triangles and melts her nose), the eye
-apertures are capped with a fan because a hole in a shaded surface renders as a
-black pit, normals come from a **local plane fit per vertex** so shading does
-not depend on triangle winding, and the back is grown from the single boundary
-loop (her jaw).
+```bash
+# module scripts and fetch() do not work over file://, so serve the folder
+python -m http.server 8000 --bind 0.0.0.0 \
+    --directory JarvisAI/assets/holo/face/model
+# open http://localhost:8000/view.html
+```
 
-This is an open face shell, not a full head: a 478-point face mesh measures the
-front of a face, and inventing ears, skull and hair would be a different — and
-much less honest — piece of work. For a game avatar it is the right starting
-point; for a print, load `head.glb`, thicken, and add your own backing.
+The decoder is the whole reason that page exists: GitHub shows a `.glb` as a
+download, and most local viewers refuse a meshopt-compressed file. `view.html`
+loads the meshopt WASM module, streams the 18 MB file with a progress bar, and
+frames the model from its own bounding box (the export faces +X, so it is turned
+90° to face the camera).
+
+Heavy by design: 1.84M triangles is a desktop-GPU model. If you need it on a
+phone or in a game engine, decimate it first —
+
+```bash
+npx @gltf-transform/cli optimize \
+  tripo_pbr_model_*.glb face-lite.glb --simplify-ratio 0.15
+```
 
 ## One file, no server (`hologram-standalone.html`)
 

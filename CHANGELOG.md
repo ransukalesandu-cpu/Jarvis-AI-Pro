@@ -19,12 +19,14 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   hairline. Her head yaws
   and pitches as a solid 3D object under the pointer, blinks, and reacts to voice
   input; a projector base, telemetry HUD and scan layers complete the scene.
-  The same geometry also exports as a real 3-D model
-  (`assets/holo/face/model/`: `face.glb` open shell, `head.glb` closed solid,
-  `face.obj`) via `JarvisAI/tools/export_face_mesh.py` — so no third-party
-  generation service is needed for a face mesh.
   Everything ships as one ~200 KB text file
   (`hologram-standalone.html`). See `JarvisAI/assets/holo/face/README.md`.
+
+- **3-D face model + viewer** (`assets/holo/face/model/`): the Tripo3D PBR export
+  of her (971k vertices / 1.84M triangles, meshopt-compressed) ships with
+  `view.html` — a vendored three.js + `GLTFLoader` + `meshopt_decoder` page that
+  decodes the file, frames it from its own bounds and gives orbit / auto-rotate /
+  wireframe / studio-light controls. Serve the folder; `file://` cannot load it.
 
 - **HUD is clean by default**: the autonomous surfaces (dashboard card, `◉`
   rail button, menu entries) are opt-in via `autonomous_ui_enabled` /

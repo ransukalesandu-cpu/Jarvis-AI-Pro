@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>BIHANSA — 3D Model Viewer</title>
+<style>
+  :root {
+    --ink: #05010a;
+    --pink: #ff46d0;
+    --pink-hot: #ff8ee6;
+    --text: rgba(255, 214, 247, 0.86);
+    --dim: rgba(255, 190, 240, 0.45);
+    --mono: "SF Mono", "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: radial-gradient(60% 55% at 50% 42%, #1a0222 0%, var(--ink) 62%, #030008 100%);
+    color: var(--text);
+    font-family: var(--mono);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #stage { position: fixed; inset: 0; }
+  #stage canvas { display: block; touch-action: none; }
+
+  /* ── chrome ───────────────────────────────────────────────────────────── */
+  .bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px clamp(14px, 3vw, 34px);
+    pointer-events: none;
+  }
+
+  .bar.top { top: 0; justify-content: space-between; }
+  .bar.bottom { bottom: 0; justify-content: center; flex-wrap: wrap; }
+
+  .brand h1 {
+    margin: 0;
+    font-size: 13px;
+    letter-spacing: 0.42em;
+    font-weight: 500;
+    color: #fff;
+    text-shadow: 0 0 18px rgba(255, 70, 215, 0.85);
+  }
+
+  .brand p {
+    margin: 4px 0 0;
+    font-size: 9px;
+    letter-spacing: 0.28em;
+    color: var(--dim);
+  }
+
+  .meta {
+    text-align: right;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: var(--dim);
+    line-height: 1.9;
+  }
+
+  .meta b { color: var(--pink-hot); font-weight: 500; }
+
+  button {
+    pointer-events: auto;
+    font: inherit;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--text);
+    background: rgba(255, 70, 215, 0.06);
+    border: 1px solid rgba(255, 110, 226, 0.32);
+    border-radius: 2px;
+    padding: 9px 14px;
+    cursor: pointer;
+    transition: background 0.16s, box-shadow 0.16s, border-color 0.16s;
+  }
+
+  button:hover {
+    background: rgba(255, 70, 215, 0.14);
+    box-shadow: 0 0 18px rgba(255, 70, 215, 0.3);
+  }
+
+  button[aria-pressed="true"] {
+    background: rgba(255, 70, 215, 0.2);
+    border-color: rgba(255, 160, 240, 0.7);
+    color: #fff;
+  }
+
+  .hint {
+    width: 100%;
+    margin: 10px 0 0;
+    text-align: center;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: var(--dim);
+  }
+
+  /* ── loader ───────────────────────────────────────────────────────────── */
+  .loader {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-content: center;
+    gap: 14px;
+    text-align: center;
+    background: var(--ink);
+    transition: opacity 0.6s ease, visibility 0.6s;
+  }
+
+  .loader.done { opacity: 0; visibility: hidden; }
+
+  .loader p { margin: 0; font-size: 10px; letter-spacing: 0.26em; color: var(--dim); }
+  .loader .pct { font-size: 22px; letter-spacing: 0.12em; color: var(--pink-hot); }
+  .track { width: min(340px, 62vw); height: 2px; background: rgba(255, 110, 226, 0.2); }
+  .track i { display: block; height: 100%; width: 0; background: var(--pink); box-shadow: 0 0 14px var(--pink); transition: width 0.2s; }
+
+  .error { color: #ff8080; max-width: 46ch; line-height: 1.7; }
+  .error code { color: var(--pink-hot); }
+</style>
+</head>
+<body>
+
+<div id="stage"></div>
+
+<div class="bar top">
+  <div class="brand">
+    <h1>BIHANSA</h1>
+    <p>3D MODEL / TRIPO GLB</p>
+  </div>
+  <div class="meta">
+    <div>SOURCE <b>tripo_pbr_model</b></div>
+    <div id="stats">LOADING…</div>
+  </div>
+</div>
+
+<div class="bar bottom">
+  <button id="btn-spin" type="button" aria-pressed="true">AUTO-ROTATE</button>
+  <button id="btn-wire" type="button" aria-pressed="false">WIREFRAME</button>
+  <button id="btn-light" type="button" aria-pressed="false">STUDIO LIGHT</button>
+  <button id="btn-reset" type="button">RESET VIEW</button>
+  <p class="hint">drag to orbit · scroll to zoom · right-drag to pan</p>
+</div>
+
+<div class="loader" id="loader">
+  <p>DECODING MESHOPT STREAM</p>
+  <div class="pct" id="pct">0%</div>
+  <div class="track"><i id="bar"></i></div>
+  <p id="status">971k vertices / 1.84M triangles / 3 textures</p>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from './vendor/GLTFLoader.js';
+import { OrbitControls } from './vendor/OrbitControls.js';
+import { MeshoptDecoder } from './vendor/meshopt_decoder.module.js';
+
+/* The model is a Tripo3D export: EXT_meshopt_compression + KHR_mesh_quantization
+   on 971k vertices, so the loader needs the meshopt decoder before it can read
+   a single byte of the geometry. Textures are plain embedded JPEG/PNG. */
+const MODEL_URL = 'tripo_pbr_model_6ec38ba9-3443-4374-a9e1-0e1c17b5a1c4_meshopt.glb';
+
+// the export faces +X; turn it to face the camera
+const MODEL_YAW = -Math.PI / 2;
+
+const stage = document.getElementById('stage');
+const loaderEl = document.getElementById('loader');
+const pctEl = document.getElementById('pct');
+const barEl = document.getElementById('bar');
+const statusEl = document.getElementById('status');
+const statsEl = document.getElementById('stats');
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x05010a, 0.9);
+
+const camera = new THREE.PerspectiveCamera(34, window.innerWidth / window.innerHeight, 0.01, 60);
+camera.position.set(0, 0.06, 1.9);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.minDistance = 0.6;
+controls.maxDistance = 6;
+controls.target.set(0, 0.02, 0);
+
+/* ── light rig: a warm key, a magenta rim, a cool fill ─────────────────── */
+const key = new THREE.DirectionalLight(0xfff2f7, 2.4);
+key.position.set(1.2, 1.6, 2.2);
+
+const rimL = new THREE.DirectionalLight(0xff46d0, 3.2);
+rimL.position.set(-2.2, 0.6, -1.6);
+
+const rimR = new THREE.DirectionalLight(0x8a7bff, 1.9);
+rimR.position.set(2.4, -0.4, -1.2);
+
+const fill = new THREE.HemisphereLight(0xffd6f7, 0x140018, 1.15);
+scene.add(key, rimL, rimR, fill);
+
+/* studio mode: drops the coloured rims for a flat, honest lighting pass —
+   the one to use when you want to check the mesh rather than the mood */
+let studio = false;
+
+/* ── load ─────────────────────────────────────────────────────────────── */
+let model = null;
+let spin = true;
+let dragging = false;
+
+controls.addEventListener('start', () => { dragging = true; });
+controls.addEventListener('end', () => { dragging = false; });
+
+async function boot() {
+  await MeshoptDecoder.ready;
+
+  const loader = new GLTFLoader();
+  loader.setMeshoptDecoder(MeshoptDecoder);
+
+  loader.load(
+    MODEL_URL,
+    (gltf) => {
+      model = gltf.scene;
+      model.rotation.y = MODEL_YAW;
+      scene.add(model);
+
+      // frame the model from its own bounds instead of guessing
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      const centre = new THREE.Vector3();
+      box.getSize(size);
+      box.getCenter(centre);
+      model.position.sub(centre);
+      controls.target.set(0, 0, 0);
+
+      const radius = Math.max(size.x, size.y, size.z) * 0.5;
+      const dist = radius / Math.tan((camera.fov * Math.PI) / 360) * 1.35;
+      camera.position.set(0, 0, dist);
+      camera.near = dist / 100;
+      camera.far = dist * 20;
+      camera.updateProjectionMatrix();
+      controls.minDistance = dist * 0.35;
+      controls.maxDistance = dist * 3.2;
+      scene.fog.density = 0.22 / dist;
+
+      let tris = 0;
+      let verts = 0;
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        const g = o.geometry;
+        verts += g.attributes.position.count;
+        tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
+      });
+      statsEl.textContent = `${(verts / 1000).toFixed(0)}K VERTS / ${(tris / 1e6).toFixed(2)}M TRIS`;
+
+      loaderEl.classList.add('done');
+    },
+    (evt) => {
+      if (!evt.total) return;
+      const pct = Math.min(100, Math.round((evt.loaded / evt.total) * 100));
+      pctEl.textContent = pct + '%';
+      barEl.style.width = pct + '%';
+      statusEl.textContent = `${(evt.loaded / 1048576).toFixed(1)} / ${(evt.total / 1048576).toFixed(1)} MB`;
+    },
+    (err) => {
+      console.error(err);
+      loaderEl.innerHTML = `<p class="error">Could not load the model.<br>
+        <code>${MODEL_URL}</code><br><br>
+        Module scripts and <code>fetch()</code> do not work from <code>file://</code>,
+        so serve the folder:<br><br>
+        <code>python -m http.server 8000 --directory JarvisAI/assets/holo/face/model</code><br>
+        then open <code>http://localhost:8000/view.html</code></p>`;
+    },
+  );
+}
+
+/* ── controls ─────────────────────────────────────────────────────────── */
+const spinBtn = document.getElementById('btn-spin');
+spinBtn.addEventListener('click', () => {
+  spin = !spin;
+  spinBtn.setAttribute('aria-pressed', String(spin));
+});
+
+const wireBtn = document.getElementById('btn-wire');
+let wire = false;
+wireBtn.addEventListener('click', () => {
+  wire = !wire;
+  wireBtn.setAttribute('aria-pressed', String(wire));
+  if (model) {
+    model.traverse((o) => {
+      if (!o.isMesh) return;
+      o.material.wireframe = wire;
+      o.material.needsUpdate = true;
+    });
+  }
+});
+
+const lightBtn = document.getElementById('btn-light');
+lightBtn.addEventListener('click', () => {
+  studio = !studio;
+  lightBtn.setAttribute('aria-pressed', String(studio));
+  key.color.set(studio ? 0xffffff : 0xfff2f7);
+  key.intensity = studio ? 3.4 : 2.4;
+  rimL.intensity = studio ? 0.15 : 3.2;
+  rimR.intensity = studio ? 0.15 : 1.9;
+  fill.intensity = studio ? 2.1 : 1.15;
+  scene.fog.density = studio ? 0.02 : scene.fog.density;
+  renderer.setClearColor(studio ? 0x111014 : 0x000000, studio ? 1 : 0);
+  document.body.style.background = studio
+    ? 'radial-gradient(60% 55% at 50% 42%, #1b1a20 0%, #111014 65%, #0b0a0e 100%)'
+    : '';
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  controls.reset();
+  if (model) model.rotation.y = MODEL_YAW;
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* ── loop ─────────────────────────────────────────────────────────────── */
+const clock = new THREE.Clock();
+
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (model && spin && !dragging) model.rotation.y += dt * 0.35;
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+boot();
+</script>
+</body>
+</html>

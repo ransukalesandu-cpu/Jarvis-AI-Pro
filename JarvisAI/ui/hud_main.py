@@ -842,7 +842,10 @@ class HUDMainWindow(QMainWindow):
         max_height = hud_layout.dropdown_height(window_height)
         size_hint = self._right_menu.sizeHint()
         height = max(1, min(max_height, size_hint.height()))
-        self._right_menu.setFixedSize(width, height)
+        # Resize the floating child without changing its min/max constraints.
+        # setFixedSize() mutates both constraints and geometry; doing that during
+        # rapid native resize notifications can trigger a Windows Qt DLL crash.
+        self._right_menu.resize(width, height)
 
     def _apply_responsive_chrome(self) -> None:
         """Resize the rails to the window: fixed widths only look right at one size.

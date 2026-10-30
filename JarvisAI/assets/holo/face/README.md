@@ -78,12 +78,17 @@ for all three layers); pass `--keep-png` if you want the lossless intermediates.
 To use a different portrait, drop it in `source/` and point `--source` at it.
 A frontal, evenly lit photo with the hair clear of the background works best.
 
-## Using it inside JARVIS
+## Status: standalone, deliberately not wired in
 
-The page has no external dependencies, so it can be loaded straight into the
-Qt WebEngine HUD as the hologram surface, e.g. pointing a `QWebEngineView` at
-`QUrl.fromLocalFile(.../assets/holo/face/index.html)`. The microphone button is
-optional and can be removed if the HUD owns the audio session.
+This is **not connected to JARVIS**. Nothing in `main.py`, `ui/`, `core/`,
+`agent/` or `dashboard/` imports, loads or references the page — it is a
+self-contained artefact you open in a browser (or serve) on its own. The only
+project file that mentions it is the build script that generates its assets.
+
+Keeping it detached is intentional for now: the hologram can be iterated on
+without touching the Qt HUD or the app's start-up path. If it is ever wired in,
+that would be a deliberate change to `ui/hud_main.py` (a `QWebEngineView`
+pointed at this folder), not something this folder does on its own.
 
 ## Notes
 

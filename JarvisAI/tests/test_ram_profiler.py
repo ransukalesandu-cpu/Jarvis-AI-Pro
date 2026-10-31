@@ -133,7 +133,8 @@ class TestSamplingAccuracy(unittest.TestCase):
             "uss_mb": "", "cpu_percent_sum": 0.0,
             "system_available_mb": 4096.0,
         }
-        with tempfile.TemporaryDirectory() as tmp, (
+        with (
+            tempfile.TemporaryDirectory() as tmp,
             patch.object(profile_ram, "process_tree", return_value=[Mock(pid=10)]),
             patch.object(profile_ram, "memory_sample", return_value=empty_sample),
             patch.object(profile_ram.time, "monotonic", side_effect=[0.0, 2.0]),

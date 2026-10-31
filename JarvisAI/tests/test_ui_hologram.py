@@ -92,6 +92,37 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(self.bridge.current_state, "THINKING")
         self.assertIn("THINKING", received_states)
 
+    def test_hud_status_keeps_errors_and_disconnections_truthful(self):
+        """Provider failures must not be displayed as a healthy standby state."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        for state in ("ERROR", "FAILED", "AUDIO_ERROR", "SESSION_ERROR"):
+            with self.subTest(state=state):
+                hud._on_state_changed(state)
+                self.assertIn("ERROR", hud._lbl_hud_status.text())
+                self.assertNotIn("STANDBY", hud._lbl_hud_status.text())
+        for state in ("DISCONNECTED", "OFFLINE", "CONNECTION_LOST"):
+            with self.subTest(state=state):
+                hud._on_state_changed(state)
+                self.assertIn("DISCONNECTED", hud._lbl_hud_status.text())
+                self.assertNotIn("STANDBY", hud._lbl_hud_status.text())
+        hud._on_state_changed("CUSTOM_PROVIDER_STATE")
+        self.assertEqual(hud._lbl_hud_status.text(), "● CUSTOM PROVIDER STATE")
+        hud._on_state_changed("IDLE")
+        self.assertIn("STANDBY", hud._lbl_hud_status.text())
+
+    def test_persona_switch_does_not_hide_active_warning(self):
+        """Switching Bihansa mode preserves the current error/offline message."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        for state in ("ERROR", "DISCONNECTED"):
+            with self.subTest(state=state):
+                self.bridge.update_state(state)
+                before = hud._lbl_hud_status.text()
+                self.assertIn(state, before)
+                hud._set_bihansa_enabled(True)
+                self.assertEqual(hud._lbl_hud_status.text(), before)
+                hud._set_bihansa_enabled(False)
+                self.assertEqual(hud._lbl_hud_status.text(), before)
+
     def test_neural_wireframe_head_widget(self):
         """Test 3D Wireframe Visualizer creation, state switching, and audio energy updates."""
         head = NeuralWireframeHead()

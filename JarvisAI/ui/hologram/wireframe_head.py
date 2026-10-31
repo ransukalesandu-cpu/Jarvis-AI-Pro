@@ -522,21 +522,26 @@ class NeuralWireframeHead(_BASE_CANVAS):
                 size = particle["size"] * (1.4 if self._state == "THINKING" else 1.0)
                 painter.drawEllipse(QPointF(px, py), size, size)
 
-        # 3. Wireframe edges, back to front so depth reads correctly.
+        # 3. Wireframe edges. Quantized depth paths preserve back-to-front
+        # shading while replacing hundreds of per-edge QPen/QColor allocations.
         pen_width = 1.7 if self._state in ("LISTENING", "SPEAKING") else 1.15
-        ordered = sorted(self._edges, key=lambda pair: (projected[pair[0]][2] + projected[pair[1]][2]) / 2.0)
-        for idx1, idx2 in ordered:
+        edge_paths = [QPainterPath() for _ in range(8)]
+        for idx1, idx2 in self._edges:
             x1, y1, z1 = projected[idx1]
             x2, y2, z2 = projected[idx2]
-            avg_z = (z1 + z2) / 2.0
+            avg_z = (z1 + z2) * 0.5
             if avg_z < -0.02:
-                # Hidden surface: skip it. Drawing the far side of the mesh is
-                # what made the head look like a blob instead of a face.
                 continue
-            front = max(0.0, min(1.0, (avg_z + 1.0) / 2.0))
-            alpha = int(34 + 116 * front)
+            front = max(0.0, min(1.0, (avg_z + 1.0) * 0.5))
+            bucket = min(7, int(front * 7.999))
+            edge_paths[bucket].moveTo(x1, y1)
+            edge_paths[bucket].lineTo(x2, y2)
+        for bucket, path in enumerate(edge_paths):
+            if path.isEmpty():
+                continue
+            alpha = int(34 + 116 * (bucket / 7.0))
             painter.setPen(QPen(QColor(primary.red(), primary.green(), primary.blue(), alpha), pen_width))
-            painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+            painter.drawPath(path)
 
         # 4. Facial features: brighter curves so the mesh reads as a face.
         visible_features = [
@@ -564,15 +569,22 @@ class NeuralWireframeHead(_BASE_CANVAS):
                 continue
             painter.drawEllipse(QPointF(x1, y1), 3.2, 2.2)
 
-        # 5. Neural nodes at the vertices.
+        # 5. Neural nodes. Batch ellipses by depth to avoid a brush allocation
+        # and draw call for every mesh vertex.
         node_radius = 1.9 + (self._audio_energy * 3.4 if self._state in ("LISTENING", "SPEAKING") else 0.0)
-        painter.setPen(Qt.PenStyle.NoPen)
+        node_paths = [QPainterPath() for _ in range(8)]
         for px, py, z in projected:
             if z < 0.0:
                 continue
-            alpha = int(max(40, min(230, 130 + z * 90)))
+            bucket = min(7, max(0, int(max(0.0, min(1.0, (z + 1.0) * 0.5)) * 7.999)))
+            node_paths[bucket].addEllipse(QPointF(px, py), node_radius, node_radius)
+        painter.setPen(Qt.PenStyle.NoPen)
+        for bucket, path in enumerate(node_paths):
+            if path.isEmpty():
+                continue
+            alpha = int(40 + (230 - 40) * (bucket / 7.0))
             painter.setBrush(QColor(secondary.red(), secondary.green(), secondary.blue(), alpha))
-            painter.drawEllipse(QPointF(px, py), node_radius, node_radius)
+            painter.drawPath(path)
 
         # 6. Status chrome.
         if self._state == "PRIVACY_LOCK":

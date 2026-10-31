@@ -204,6 +204,10 @@ class HUDMainWindow(QMainWindow):
         # Settings must exist before the UI builds, because the palette, reduced
         # motion and battery-saver preferences are applied to every renderer.
         self._settings = QSettings("JarvisAI", "JarvisAIPro")
+        # Defer floating-child geometry until the native resize event completes.
+        self._resize_layout_timer = QTimer(self)
+        self._resize_layout_timer.setSingleShot(True)
+        self._resize_layout_timer.timeout.connect(self._apply_deferred_resize_layout)
         self._prefs = VisualPreferences.from_settings(self._settings)
         self._palette = self._prefs.scaled_palette()
         self._budget_reason = ""
@@ -641,15 +645,12 @@ class HUDMainWindow(QMainWindow):
         self._apply_responsive_chrome()
 
 
-    def resizeEvent(self, event):
-        """Keep floating menus inside the central workspace after window resizes."""
-        super().resizeEvent(event)
-        # Chrome adapts before the menu is positioned: the dropdown's width is
-        # one of the things that decides where it goes.
+    def _apply_deferred_resize_layout(self) -> None:
+        """Synchronize floating chrome after the native resize event returns."""
         self._apply_responsive_chrome()
         self._position_left_menu_trigger()
         if hasattr(self, "_right_menu") and self._right_menu.isVisible():
-            self._position_right_menu()
+            self._position_right_menu(size=False)
         self._sync_task_blocked_rect()
         if hasattr(self, "_toast") and self._toast.isVisible():
             host = self.centralWidget()
@@ -658,6 +659,13 @@ class HUDMainWindow(QMainWindow):
                     max(12, (host.width() - self._toast.width()) // 2),
                     max(12, host.height() - self._toast.height() - 18),
                 )
+
+    def resizeEvent(self, event):
+        """Schedule responsive child geometry after this native resize finishes."""
+        super().resizeEvent(event)
+        timer = getattr(self, "_resize_layout_timer", None)
+        if timer is not None:
+            timer.start(0)
 
     @_safe_slot("ui.hud_main:_on_island_energy")
     def _on_island_energy(self, energy: float) -> None:
@@ -765,29 +773,24 @@ class HUDMainWindow(QMainWindow):
             print(f"[JARVIS HUD] Telemetry refresh failed: {type(exc).__name__}: {exc}")
         self._dashboard.finish_loading()
 
-    def _position_right_menu(self):
-        """Anchor the dropdown to the right edge without clipping on narrow windows."""
+    def _position_right_menu(self, *, size: bool = True):
+        """Anchor the dropdown; deferred resize passes can skip duplicate sizing."""
         host = self.centralWidget()
         if host is None:
             return
-        self._size_right_menu(host.width(), host.height())
+        if size:
+            self._size_right_menu(host.width(), host.height())
         x = hud_layout.dropdown_x(host.width(), self._right_menu.width())
         self._right_menu.move(x, hud_layout.DROPDOWN_TOP)
         self._right_menu.raise_()
 
     def _size_right_menu(self, window_width: int, window_height: int) -> None:
-        """Fit the dropdown to the window instead of pinning it to 300 x 650.
-
-        ``adjustSize`` is not optional here: the dropdown is a free-floating child
-        rather than a layout member, so nothing ever gives it a height. Without
-        this call it stayed at Qt's 30 px default and opened as a thin empty bar.
-        """
-        self._right_menu.setFixedWidth(hud_layout.dropdown_width(window_width))
-        self._right_menu.setMaximumHeight(hud_layout.dropdown_height(window_height))
-        layout = self._right_menu.layout()
-        if layout is not None:
-            layout.activate()
-        self._right_menu.adjustSize()
+        """Fit the floating dropdown without a nested native Qt layout pass."""
+        width = hud_layout.dropdown_width(window_width)
+        max_height = hud_layout.dropdown_height(window_height)
+        size_hint = self._right_menu.sizeHint()
+        height = max(1, min(max_height, size_hint.height()))
+        self._right_menu.resize(width, height)
 
     def _apply_responsive_chrome(self) -> None:
         """Resize the rails to the window: fixed widths only look right at one size.
@@ -804,10 +807,11 @@ class HUDMainWindow(QMainWindow):
             for button in getattr(self, "_left_icon_buttons", ()):
                 if button.width() != size:
                     button.setFixedSize(size, size)
-        if getattr(self, "_right_menu", None) is not None:
+        if (
+            getattr(self, "_right_menu", None) is not None
+            and (self._right_menu.isVisible() or not self.isVisible())
+        ):
             self._size_right_menu(width, height)
-            if self._right_menu.isVisible():
-                self._position_right_menu()
 
     def _toggle_right_dropdown(self):
         """Show a floating right dropdown without shrinking the hologram workspace."""

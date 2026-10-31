@@ -41,8 +41,30 @@ def _process_tree(pid: int):
     return list(unique.values())
 
 
-def _memory_sample(pid: int) -> dict[str, float | int | str]:
-    processes = _process_tree(pid)
+def _memory_sample(
+    pid: int,
+    process_cache: dict[int, object] | None = None,
+    primed_cpu_pids: set[int] | None = None,
+) -> dict[str, float | int | str]:
+    """Collect one sample while retaining process handles between samples.
+
+    psutil reports 0.0 for the first cpu_percent(interval=None) call on a
+    Process instance. Retain handles and discard that priming reading so later
+    samples contain useful CPU measurements.
+    """
+    process_cache = process_cache if process_cache is not None else {}
+    primed_cpu_pids = primed_cpu_pids if primed_cpu_pids is not None else set()
+    discovered = _process_tree(pid)
+    processes = []
+    for candidate in discovered:
+        try:
+            cached = process_cache.get(candidate.pid)
+            if cached is None or cached.create_time() != candidate.create_time():
+                process_cache[candidate.pid] = candidate
+                primed_cpu_pids.discard(candidate.pid)
+            processes.append(process_cache[candidate.pid])
+        except (psutil.AccessDenied, psutil.NoSuchProcess):
+            continue
     rss_bytes = 0
     uss_bytes = 0
     uss_available = True
@@ -58,14 +80,19 @@ def _memory_sample(pid: int) -> dict[str, float | int | str]:
             except (AttributeError, NotImplementedError, psutil.AccessDenied, psutil.NoSuchProcess):
                 uss_available = False
             try:
-                cpu_percent += process.cpu_percent(interval=None)
+                reading = process.cpu_percent(interval=None)
+                if process.pid in primed_cpu_pids:
+                    cpu_percent += reading
+                else:
+                    # The first call only primes psutil's per-process counter.
+                    primed_cpu_pids.add(process.pid)
             except (psutil.AccessDenied, psutil.NoSuchProcess):
                 pass
         except (psutil.AccessDenied, psutil.NoSuchProcess):
             continue
     available = psutil.virtual_memory().available
     return {
-        "timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
         "process_count": alive,
         "rss_mb": round(rss_bytes / (1024 * 1024), 2),
         "uss_mb": round(uss_bytes / (1024 * 1024), 2) if uss_available else "",
@@ -95,22 +122,27 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(str(exc))
 
     samples = []
+    process_cache: dict[int, object] = {}
+    primed_cpu_pids: set[int] = set()
     deadline = time.monotonic() + args.duration
     print(f"Sampling PID {args.pid} and child processes for {args.duration:g}s.")
     print("Use JARVIS normally during the sample, including voice and screen-control tasks.")
     while True:
         try:
-            sample = _memory_sample(args.pid)
+            sample = _memory_sample(args.pid, process_cache, primed_cpu_pids)
         except ValueError:
             print("Target process exited; stopping the sample.")
             break
-        samples.append(sample)
-        print(
-            f"RSS {sample['rss_mb']:>8} MB | "
-            f"USS {sample['uss_mb'] if sample['uss_mb'] != '' else 'n/a':>8} MB | "
-            f"children included: {sample['process_count']} | "
-            f"system available: {sample['system_available_mb']} MB"
-        )
+        if sample["process_count"] == 0:
+            print("No readable process memory in this sample; skipping it.")
+        else:
+            samples.append(sample)
+            print(
+                f"RSS {sample['rss_mb']:>8} MB | "
+                f"USS {sample['uss_mb'] if sample['uss_mb'] != '' else 'n/a':>8} MB | "
+                f"children included: {sample['process_count']} | "
+                f"system available: {sample['system_available_mb']} MB"
+            )
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break

@@ -13,7 +13,7 @@ const jsonResponse = (body: unknown, status = 200) =>
 
 async function getUserId(req: Request, baseUrl: string, anonKey: string): Promise<string | null> {
   const authorization = req.headers.get("Authorization") || "";
-  if (!/^Bearer\\s+\\S+$/.test(authorization)) return null;
+  if (!/^Bearer\s+\S+$/.test(authorization)) return null;
   const response = await fetch(baseUrl + "/auth/v1/user", {
     headers: { apikey: anonKey, Authorization: authorization },
   });
@@ -45,19 +45,19 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
 
-  const baseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\\/$/, "");
+  const baseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   if (!baseUrl || !anonKey || !serviceKey) return jsonResponse({ error: "server_not_configured" }, 503);
 
-  // Both Owner Mode and Guest Mode use a valid, per-installation Supabase anonymous
-  // Auth session. This endpoint intentionally does not require the local owner signature.
+  // Owner and Guest modes both use a valid, per-installation anonymous Auth session.
+  // This endpoint intentionally does not require the local owner signature.
   const userId = await getUserId(req, baseUrl, anonKey).catch(() => null);
   if (!userId) return jsonResponse({ error: "authentication_required" }, 401);
 
   const nonce = req.headers.get("X-Jarvis-Host-Nonce") || "";
   const timestampHeader = req.headers.get("X-Jarvis-Host-Timestamp") || "";
-  if (!/^\\d{10}$/.test(timestampHeader) || nonce.length < 16 || nonce.length > 128) {
+  if (!/^\d{10}$/.test(timestampHeader) || nonce.length < 16 || nonce.length > 128) {
     return jsonResponse({ error: "request_nonce_required" }, 400);
   }
   const timestamp = Number(timestampHeader);

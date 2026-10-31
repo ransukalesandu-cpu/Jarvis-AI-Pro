@@ -753,6 +753,15 @@ class TestUIHologram(unittest.TestCase):
                 self.assertEqual(self.bridge.current_state, "SPEAKING")
                 hud_ui.set_audio_level(0.85)
 
+    def test_bihansa_render_quality_adapts_to_widget_size(self):
+        compact = BihansaHologramWidget._render_grid_dimensions(320, 320)
+        medium = BihansaHologramWidget._render_grid_dimensions(500, 500)
+        full = BihansaHologramWidget._render_grid_dimensions(900, 900)
+        self.assertLess(compact[0] * compact[1], medium[0] * medium[1])
+        self.assertLess(medium[0] * medium[1], full[0] * full[1])
+        self.assertLess(compact[2], medium[2])
+        self.assertLess(medium[2], full[2])
+
 
 if __name__ == "__main__":
     unittest.main()

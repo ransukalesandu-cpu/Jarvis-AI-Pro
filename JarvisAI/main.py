@@ -1798,20 +1798,43 @@ class JarvisLive:
         return "Sinhala"
 
     def _remember_spoken_language(self, text: str) -> None:
-        """Remember only clear Sinhala- or Latin-script utterances."""
-        sinhala_count = len(re.findall(r"[\u0D80-\u0DFF]", text or ""))
-        latin_count = len(re.findall(r"[A-Za-z]", text or ""))
-        if sinhala_count >= max(2, latin_count * 0.35):
-            language = "Sinhala"
-        elif latin_count >= max(3, sinhala_count * 1.5):
-            language = "English"
-        else:
+        """Persist a briefing-language preference only after an explicit request."""
+        spoken = str(text or "").strip()
+        if not spoken:
             return
+
+        # Ordinary Sinhala, Singlish, or English conversation must not silently
+        # change the user's saved briefing preference. Only an instruction that
+        # explicitly asks JARVIS to use a language is eligible for persistence.
+        explicit_request = bool(re.search(
+            r"\b(?:speak|talk|reply|answer|respond|use|switch|change|keep)\b"
+            r".{0,48}\b(?:in\s+)?(?:sinhala|english|singlish)\b",
+            spoken,
+            re.IGNORECASE,
+        )) or bool(re.search(
+            r"(?:සිංහලෙන්|ඉංග්‍රීසියෙන්).{0,48}(?:කතා කරන්න|පිළිතුරු දෙන්න|උත්තර දෙන්න|භාවිතා කරන්න)",
+            spoken,
+        ))
+        if not explicit_request:
+            return
+
+        if re.search(r"\bsinglish\b", spoken, re.IGNORECASE):
+            language = "Sinhala"
+        else:
+            sinhala_count = len(re.findall(r"[\u0D80-\u0DFF]", spoken))
+            latin_count = len(re.findall(r"[A-Za-z]", spoken))
+            if sinhala_count >= max(2, latin_count * 0.35):
+                language = "Sinhala"
+            elif latin_count >= max(3, sinhala_count * 1.5):
+                language = "English"
+            else:
+                return
+
         if language == self._last_spoken_language:
             return
         self._last_spoken_language = language
         update_memory({"preferences": {"last_spoken_language": {"value": language}}})
-        print(f"[Memory] Last spoken language saved: {language}")
+        print(f"[Memory] Explicit briefing language preference saved: {language}")
 
     def _route_holo_news_voice(self, text: str) -> bool:
         """Route explicit publisher/Holo open requests to the native Holo stage."""

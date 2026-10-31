@@ -1,15 +1,15 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info, x-jarvis-host-timestamp, x-jarvis-host-nonce",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } });
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } });
 
 async function getUserId(req: Request, baseUrl: string, anonKey: string): Promise<string | null> {
   const authorization = req.headers.get("Authorization") || "";
-  if (!/^Bearer\\s+\\S+$/.test(authorization)) return null;
+  if (!/^Bearer\s+\S+$/.test(authorization)) return null;
   const response = await fetch(baseUrl + "/auth/v1/user", { headers: { apikey: anonKey, Authorization: authorization } });
   if (!response.ok) return null;
   const user = await response.json().catch(() => null);
@@ -26,7 +26,7 @@ async function consumeRequest(baseUrl: string, serviceKey: string, userId: strin
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
-  const baseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\\/$/, "");
+  const baseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   if (!baseUrl || !anonKey || !serviceKey) return jsonResponse({ error: "server_not_configured" }, 503);
@@ -36,7 +36,7 @@ Deno.serve(async (req: Request) => {
   if (!userId) return jsonResponse({ error: "authentication_required" }, 401);
   const nonce = req.headers.get("X-Jarvis-Host-Nonce") || "";
   const timestampHeader = req.headers.get("X-Jarvis-Host-Timestamp") || "";
-  if (!/^\\d{10}$/.test(timestampHeader) || nonce.length < 16 || nonce.length > 128) return jsonResponse({ error: "request_nonce_required" }, 400);
+  if (!/^\d{10}$/.test(timestampHeader) || nonce.length < 16 || nonce.length > 128) return jsonResponse({ error: "request_nonce_required" }, 400);
   const timestamp = Number(timestampHeader);
   if (!Number.isSafeInteger(timestamp) || Math.abs(Date.now() / 1000 - timestamp) > 300) return jsonResponse({ error: "request_timestamp_invalid" }, 400);
   const usage = await consumeRequest(baseUrl, serviceKey, userId, nonce, timestamp);

@@ -116,6 +116,11 @@ class HUDMainWindow(QMainWindow):
 
         self._privacy_locked = False
         self._init_ui()
+        # Coalesce resize bursts so expensive hologram budgets are applied once.
+        self._stage_resize_timer = QTimer(self)
+        self._stage_resize_timer.setSingleShot(True)
+        self._stage_resize_timer.timeout.connect(self._apply_hologram_stage_budget)
+        self._stage_resize_timer.start(0)
         self._wire_signals()
         # Minimising must not leave a large empty frame on the desktop: the
         # Dynamic Island takes over while the HUD is minimised.
@@ -446,11 +451,43 @@ class HUDMainWindow(QMainWindow):
 
 
     def resizeEvent(self, event):
-        """Keep floating menus inside the central workspace after window resizes."""
+        """Keep floating menus and hologram rendering responsive after resizes."""
         super().resizeEvent(event)
         self._position_left_menu_trigger()
         if hasattr(self, "_right_menu") and self._right_menu.isVisible():
             self._position_right_menu()
+        timer = getattr(self, "_stage_resize_timer", None)
+        if timer is not None:
+            timer.start(50)
+
+    def _apply_hologram_stage_budget(self):
+        """Scale animation cost and orb footprint to the available stage area."""
+        stage = getattr(self, "_hologram_stage", None)
+        if stage is None:
+            return
+        width, height = stage.width(), stage.height()
+        if width <= 0 or height <= 0:
+            return
+
+        area = width * height
+        if width < 720 or height < 420 or area < 300_000:
+            frame_interval, particle_scale, glow_scale = 33, 0.62, 0.58
+        elif area < 520_000:
+            frame_interval, particle_scale, glow_scale = 24, 0.82, 0.78
+        else:
+            frame_interval, particle_scale, glow_scale = 16, 1.0, 1.0
+
+        self.wireframe_visualizer.set_performance_budget(
+            frame_interval, particle_scale, glow_scale
+        )
+        bihansa_budget = getattr(self.bihansa_visualizer, "set_performance_budget", None)
+        if callable(bihansa_budget):
+            bihansa_budget(frame_interval, particle_scale, glow_scale)
+
+        orb_size = 40 if width < 720 or height < 420 else 48
+        self._mini_orb.setFixedSize(orb_size, orb_size)
+        self._heart_reactor.setGeometry(stage.rect())
+        self._heart_reactor.raise_()
 
     def changeEvent(self, event):
         """Swap the full HUD for the compact status widget while minimised."""

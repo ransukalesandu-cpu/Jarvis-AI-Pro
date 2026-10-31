@@ -207,29 +207,29 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
 
     def test_left_mega_menu_expands_on_hover_and_starts_collapsed(self):
-        """The home hologram stays clean until the edge trigger is hovered."""
+        """Pointer travel into the rail cancels collapse; leaving both hides it."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
-        hud.show()
-        app.processEvents()
         self.assertTrue(hud._left_rail.isHidden())
         self.assertFalse(hud._left_menu_trigger.isHidden())
+        self.assertEqual(
+            hud._left_menu_trigger.focusPolicy(), Qt.FocusPolicy.StrongFocus
+        )
 
-        QTest.mouseMove(hud._left_menu_trigger)
-        app.processEvents()
+        hud.eventFilter(hud._left_menu_trigger, QEvent(QEvent.Type.Enter))
         self.assertFalse(hud._left_rail.isHidden())
+        hud.eventFilter(hud._left_menu_trigger, QEvent(QEvent.Type.Leave))
+        self.assertTrue(hud._left_rail_hide_timer.isActive())
 
-        # Crossing into the rail must restart/cancel the hide delay rather than
-        # allowing the trigger's earlier Leave event to collapse it mid-flight.
-        QTest.mouseMove(hud._left_icon_buttons[0])
-        QTest.qWait(220)
-        self.assertFalse(hud._left_rail.isHidden())
-
-        QTest.mouseMove(hud._home_page, QPoint(220, 180))
-        for _ in range(50):
-            app.processEvents()
-            if hud._left_rail.isHidden():
-                break
-            QTest.qWait(20)
+        # Entering the rail cancels the trigger's pending hide timer.
+        hud.eventFilter(hud._left_rail, QEvent(QEvent.Type.Enter))
+        self.assertFalse(hud._left_rail_hide_timer.isActive())
+        rail_pos = hud._left_rail.mapToGlobal(hud._left_rail.rect().center())
+        with patch("ui.hud_main.QCursor") as cursor:
+            cursor.pos.return_value = rail_pos
+            hud._hide_left_rail_if_pointer_outside()
+            self.assertFalse(hud._left_rail.isHidden())
+            cursor.pos.return_value = QPoint(2000, 2000)
+            hud._hide_left_rail_if_pointer_outside()
         self.assertTrue(hud._left_rail.isHidden())
 
     def test_first_run_setup_asks_only_for_gemini_api_key(self):

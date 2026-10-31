@@ -356,6 +356,14 @@ class HUDMainWindow(QMainWindow):
             )
             self._agent_stop_button.clicked.connect(self._stop_agent_task)
             right_menu_layout.addWidget(self._agent_stop_button)
+        self._right_menu_opacity = QGraphicsOpacityEffect(self._right_menu)
+        self._right_menu_opacity.setOpacity(1.0)
+        self._right_menu.setGraphicsEffect(self._right_menu_opacity)
+        self._right_menu_animation = QPropertyAnimation(self._right_menu_opacity, b"opacity", self)
+        self._right_menu_animation.setDuration(150)
+        self._right_menu_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._right_menu_animation.finished.connect(self._finish_right_menu_transition)
+        self._right_menu_hide_after_fade = False
         self._right_menu.hide()
 
         self._bihansa_effects.toggled.connect(self.bihansa_visualizer.set_effects_enabled)
@@ -550,7 +558,7 @@ class HUDMainWindow(QMainWindow):
         """Reveal the telemetry dashboard without applying effects to the OpenGL hologram."""
         self._workspace_animation.stop()
         self._transition_target = "dashboard"
-        self._right_menu.hide()
+        self._hide_right_menu()
         self._left_rail.show()
         self._left_menu_trigger.hide()
         self._dashboard_opacity_effect.setOpacity(0.0)
@@ -568,7 +576,7 @@ class HUDMainWindow(QMainWindow):
             self._finish_workspace_transition()
             return
         self._transition_target = "home"
-        self._right_menu.hide()
+        self._hide_right_menu()
         self._workspace_animation.setStartValue(self._dashboard_opacity_effect.opacity())
         self._workspace_animation.setEndValue(0.0)
         self._workspace_animation.start()
@@ -643,12 +651,38 @@ class HUDMainWindow(QMainWindow):
         self._right_menu.move(x, 50)
         self._right_menu.raise_()
 
+    def _finish_right_menu_transition(self):
+        if self._right_menu_hide_after_fade:
+            self._right_menu.hide()
+            self._right_menu_opacity.setOpacity(1.0)
+            self._right_menu_hide_after_fade = False
+
+    def _show_right_menu(self):
+        self._right_menu_animation.stop()
+        self._right_menu_hide_after_fade = False
+        self._position_right_menu()
+        self._right_menu_opacity.setOpacity(0.0)
+        self._right_menu.show()
+        self._right_menu.raise_()
+        self._right_menu_animation.setStartValue(0.0)
+        self._right_menu_animation.setEndValue(1.0)
+        self._right_menu_animation.start()
+
+    def _hide_right_menu(self):
+        if not self._right_menu.isVisible():
+            return
+        self._right_menu_animation.stop()
+        self._right_menu_hide_after_fade = True
+        self._right_menu_animation.setStartValue(self._right_menu_opacity.opacity())
+        self._right_menu_animation.setEndValue(0.0)
+        self._right_menu_animation.start()
+
     def _toggle_right_dropdown(self):
-        """Show a floating right dropdown without shrinking the hologram workspace."""
-        should_show = not self._right_menu.isVisible()
-        if should_show:
-            self._position_right_menu()
-        self._right_menu.setVisible(should_show)
+        """Fade the floating dropdown without affecting the live hologram canvas."""
+        if self._right_menu.isVisible():
+            self._hide_right_menu()
+        else:
+            self._show_right_menu()
 
     def _wire_signals(self):
         """Wire VisualizerBridge signals to UI components."""

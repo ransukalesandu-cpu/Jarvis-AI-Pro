@@ -14,6 +14,8 @@ from PyQt6.QtCore import Qt, QTimer, QPointF, QRectF, pyqtSlot, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import QWidget
 
+from ui.hologram.animation_engine import smooth_damp
+
 
 class BihansaHologramWidget(QWidget):
     """Procedurally generated pink neural face with audio-reactive mouth motion."""
@@ -38,6 +40,7 @@ class BihansaHologramWidget(QWidget):
         self._breath_scale = 1.0
         self._scan = 0.0
         self._start_time = time.monotonic()
+        self._last_frame_at = self._start_time
         self._blink = 0.0
         self._next_blink = 2.7
         self._viseme_weights: Dict[str, float] = {
@@ -103,15 +106,22 @@ class BihansaHologramWidget(QWidget):
             self.update()
 
     def _tick(self):
-        elapsed = time.monotonic() - self._start_time
+        now = time.monotonic()
+        elapsed = now - self._start_time
+        delta = max(0.0, min(0.1, now - self._last_frame_at))
+        self._last_frame_at = now
         t = 0.0 if self._reduced_motion else elapsed * self._animation_speed
-        self._audio_energy += (self._target_energy - self._audio_energy) * 0.24
+        self._audio_energy = smooth_damp(self._audio_energy, self._target_energy, delta, 9.0)
         if self._state == "THINKING":
             self._yaw, self._pitch, self._roll = math.sin(t * 1.4) * .16, math.cos(t * 1.1) * .08, math.sin(t * .8) * .035
         elif self._state == "SPEAKING":
             self._yaw, self._pitch, self._roll = math.sin(t * .9) * .08, math.sin(t * 1.7) * .045, math.cos(t * .65) * .025
         else:
             self._yaw, self._pitch, self._roll = math.sin(t * .42) * .055, math.cos(t * .37) * .035, math.sin(t * .25) * .015
+        self._yaw = smooth_damp(getattr(self, '_display_yaw', self._yaw), self._yaw, delta, 7.0)
+        self._pitch = smooth_damp(getattr(self, '_display_pitch', self._pitch), self._pitch, delta, 7.0)
+        self._roll = smooth_damp(getattr(self, '_display_roll', self._roll), self._roll, delta, 7.0)
+        self._display_yaw, self._display_pitch, self._display_roll = self._yaw, self._pitch, self._roll
         self._breath_scale = 1.0 if self._reduced_motion else 1.0 + .012 * math.sin(t * 1.3) + self._audio_energy * .018
         if not self._reduced_motion and elapsed > self._next_blink:
             self._blink = max(0.0, 1.0 - (elapsed - self._next_blink) / .16)

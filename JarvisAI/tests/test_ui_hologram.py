@@ -753,6 +753,18 @@ class TestUIHologram(unittest.TestCase):
                 self.assertEqual(self.bridge.current_state, "SPEAKING")
                 hud_ui.set_audio_level(0.85)
 
+    def test_neural_heart_reactor_tracks_clamped_audio_energy(self):
+        from ui.hologram.neural_heart_reactor import NeuralHeartReactor
+
+        reactor = NeuralHeartReactor(QWidget())
+        self._track_widget(reactor)
+        reactor.set_audio_energy(0.75)
+        self.assertAlmostEqual(reactor._audio_energy, 0.75)
+        reactor.set_audio_energy(5.0)
+        self.assertEqual(reactor._audio_energy, 1.0)
+        reactor.set_audio_energy(float("nan"))
+        self.assertEqual(reactor._audio_energy, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

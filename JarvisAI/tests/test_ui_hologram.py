@@ -519,10 +519,11 @@ class TestUIHologram(unittest.TestCase):
     def test_resize_event_defers_floating_child_geometry(self):
         """Resize handling schedules one post-event pass instead of moving children inline."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.show()
         with patch.object(hud._resize_layout_timer, "start") as start:
-            event = QEvent(QEvent.Type.Resize)
-            hud.resizeEvent(event)
-        start.assert_called_once_with(0)
+            hud.resize(1260, 780)
+            app.processEvents()
+        start.assert_called_with(0)
 
         with (
             patch.object(hud, "_position_left_menu_trigger") as left,

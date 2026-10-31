@@ -753,6 +753,20 @@ class TestUIHologram(unittest.TestCase):
                 self.assertEqual(self.bridge.current_state, "SPEAKING")
                 hud_ui.set_audio_level(0.85)
 
+    def test_hud_compact_layout_adapts_to_narrow_windows(self):
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.resize(390, 620)
+        app.processEvents()
+        self.assertTrue(hud._dashboard_button.isHidden())
+        self.assertEqual(hud._right_menu.width(), 300 if hud.width() > 328 else hud.width() - 28)
+        self.assertEqual(hud._mini_orb.width(), 40)
+        self.assertTrue(hud._left_rail.isHidden())
+
+        hud.resize(900, 700)
+        app.processEvents()
+        self.assertFalse(hud._dashboard_button.isHidden())
+        self.assertEqual(hud._mini_orb.width(), 48)
+
 
 if __name__ == "__main__":
     unittest.main()

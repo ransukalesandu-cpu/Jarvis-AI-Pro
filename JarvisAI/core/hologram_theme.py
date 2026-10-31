@@ -13,7 +13,7 @@ Design rules
 * Colours are ``(r, g, b)`` tuples in 0-255. Renderers convert to whatever type
   they need.
 * Every palette ships a *neutral* fallback: if a value is unknown, the caller
-  gets JARVIS cyan rather than a crash or an invisible black.
+  gets the JARVIS copper palette rather than a crash or an invisible black.
 
 The settings object (:class:`VisualPreferences`) is deliberately tolerant: it
 clamps out-of-range values and falls back to defaults, because it is fed
@@ -99,7 +99,7 @@ class ThemePalette:
         )
 
 
-# JARVIS: restore the original electric-cyan human wireframe identity.
+# JARVIS: copper-orange neural identity; Bihansa remains rose-pink.
 # Bihansa remains a separate rose-pink persona; geometry and rendering are shared.
 JARVIS_PALETTE = ThemePalette(
     mode="jarvis",
@@ -150,7 +150,7 @@ def palette_for_mode(mode: str | None) -> ThemePalette:
 
 # Per-state accents used for rings, dust and status chrome. Values are offsets
 # applied *on top of* the persona palette so Bihansa stays pink while speaking
-# instead of turning JARVIS-cyan.
+# instead of turning JARVIS-copper.
 STATE_ACCENTS: dict[str, float] = {
     "IDLE": 0.0,
     "LISTENING": 0.35,

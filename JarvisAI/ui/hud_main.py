@@ -548,6 +548,11 @@ class HUDMainWindow(QMainWindow):
             "QToolButton#leftMegaMenuTrigger:hover { color: #fff; "
             "background: rgba(70,40,25,220); border-color: #ffb066; }"
         )
+        self._left_menu_trigger.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._left_menu_trigger.clicked.connect(self._show_left_rail)
+        self._left_rail_hide_timer = QTimer(self)
+        self._left_rail_hide_timer.setSingleShot(True)
+        self._left_rail_hide_timer.timeout.connect(self._hide_left_rail_if_pointer_outside)
         self._left_menu_trigger.installEventFilter(self)
         self._left_rail.installEventFilter(self)
         for _button in self._left_icon_buttons:
@@ -1537,10 +1542,23 @@ class HUDMainWindow(QMainWindow):
             trigger.move(0, max(24, (central.height() - trigger.height()) // 2))
             trigger.raise_()
 
-    def _hide_left_rail_if_pointer_outside(self) -> None:
-        """Collapse after a short delay so pointer travel into the rail is safe."""
+    def _show_left_rail(self) -> None:
+        """Reveal navigation when the edge trigger is activated by mouse or keyboard."""
         if self._workspace_stack.currentWidget() is self._dashboard:
             return
+        self._left_rail_hide_timer.stop()
+        self._left_rail.show()
+        self._left_rail.raise_()
+
+    def _hide_left_rail_if_pointer_outside(self) -> None:
+        """Collapse only when neither the pointer nor keyboard focus uses navigation."""
+        if self._workspace_stack.currentWidget() is self._dashboard:
+            return
+        focus = QApplication.focusWidget()
+        while focus is not None:
+            if focus is self._left_menu_trigger or focus is self._left_rail:
+                return
+            focus = focus.parentWidget()
         widget = QApplication.widgetAt(QCursor.pos())
         while widget is not None:
             if widget is self._left_rail or widget is self._left_menu_trigger:
@@ -1552,12 +1570,13 @@ class HUDMainWindow(QMainWindow):
         """Expand the home navigation on hover without swallowing Qt input."""
         if watched is self._left_menu_trigger or watched is self._left_rail or watched in self._left_icon_buttons:
             if event.type() == QEvent.Type.Enter:
+                self._left_rail_hide_timer.stop()
                 if self._workspace_stack.currentWidget() is not self._dashboard:
                     self._left_rail.show()
                     self._left_rail.raise_()
                 return False
             if event.type() == QEvent.Type.Leave:
-                QTimer.singleShot(180, self._hide_left_rail_if_pointer_outside)
+                self._left_rail_hide_timer.start(180)
                 return False
         return super().eventFilter(watched, event)
 

@@ -72,9 +72,34 @@ def process_tree(pid: int) -> list:
     return list(unique.values())
 
 
-def memory_sample(pid: int) -> dict[str, object]:
-    """One sample of the process tree plus system-wide available memory."""
-    processes = process_tree(pid)
+def memory_sample(
+    pid: int,
+    process_cache: dict[int, object] | None = None,
+    primed_cpu_pids: set[int] | None = None,
+) -> dict[str, object]:
+    """One sample, retaining psutil handles so CPU readings remain meaningful.
+
+    psutil's first cpu_percent(interval=None) call on a Process only primes its
+    counter and returns 0.0. Keep each Process object between samples and discard
+    that first reading for every newly discovered process.
+    """
+    process_cache = process_cache if process_cache is not None else {}
+    primed_cpu_pids = primed_cpu_pids if primed_cpu_pids is not None else set()
+    discovered = process_tree(pid)
+    processes = []
+    for candidate in discovered:
+        cached = process_cache.get(candidate.pid)
+        if cached is not None:
+            try:
+                same_process = cached.create_time() == candidate.create_time()
+            except _DEAD:
+                same_process = False
+        else:
+            same_process = False
+        if not same_process:
+            process_cache[candidate.pid] = candidate
+            primed_cpu_pids.discard(candidate.pid)
+        processes.append(process_cache[candidate.pid])
     rss_bytes = 0
     uss_bytes = 0
     uss_available = True
@@ -90,14 +115,19 @@ def memory_sample(pid: int) -> dict[str, object]:
             except _USS_UNAVAILABLE:
                 uss_available = False
             try:
-                cpu_percent += process.cpu_percent(interval=None)
+                reading = process.cpu_percent(interval=None)
+                if process.pid in primed_cpu_pids:
+                    cpu_percent += reading
+                else:
+                    # First call primes psutil's counter; do not report it.
+                    primed_cpu_pids.add(process.pid)
             except _DEAD:
                 continue
         except _DEAD:
             continue
 
     return {
-        "timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
         "process_count": alive,
         "rss_mb": round(rss_bytes / (1024 * 1024), 2),
         "uss_mb": round(uss_bytes / (1024 * 1024), 2) if uss_available else "",
@@ -157,6 +187,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(str(exc))
 
     samples: list[dict] = []
+    process_cache: dict[int, object] = {}
+    primed_cpu_pids: set[int] = set()
     deadline = time.monotonic() + args.duration
     label = args.label.strip() or "unspecified"
     print(f"Sampling PID {args.pid} and its children for {args.duration:g}s ({label}).")
@@ -164,18 +196,21 @@ def main(argv: list[str] | None = None) -> int:
 
     while True:
         try:
-            sample = memory_sample(args.pid)
+            sample = memory_sample(args.pid, process_cache, primed_cpu_pids)
         except ValueError:
             print("Target process exited; stopping the sample.")
             break
-        sample["label"] = label
-        samples.append(sample)
-        print(
-            f"[{label}] RSS {sample['rss_mb']:>8} MB | USS "
-            f"{(sample['uss_mb'] if sample['uss_mb'] != '' else 'n/a'):>8} MB | "
-            f"processes {sample['process_count']:>2} | system available "
-            f"{sample['system_available_mb']} MB"
-        )
+        if sample["process_count"] == 0:
+            print("No readable process memory in this sample; skipping it.")
+        else:
+            sample["label"] = label
+            samples.append(sample)
+            print(
+                f"[{label}] RSS {sample['rss_mb']:>8} MB | USS "
+                f"{(sample['uss_mb'] if sample['uss_mb'] != '' else 'n/a'):>8} MB | "
+                f"processes {sample['process_count']:>2} | system available "
+                f"{sample['system_available_mb']} MB"
+            )
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break

@@ -755,6 +755,8 @@ class TestUIHologram(unittest.TestCase):
 
     def test_hud_compact_layout_adapts_to_narrow_windows(self):
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.setMinimumSize(0, 0)
+        hud.show()
         hud.resize(390, 620)
         app.processEvents()
         self.assertTrue(hud._dashboard_button.isHidden())

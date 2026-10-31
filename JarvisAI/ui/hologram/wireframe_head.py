@@ -147,7 +147,9 @@ class NeuralWireframeHead(_BASE_CANVAS):
         return profile[-1][1]
 
     @classmethod
-    def _head_surface(cls, a: float, v: float) -> Tuple[float, float, float]:
+    def _head_surface(
+        cls, a: float, v: float, *, sculpt: bool = True
+    ) -> Tuple[float, float, float]:
         """Point on the head shell.
 
         ``a`` is the horizontal angle in quadrant units: ``a = 0`` is the centre
@@ -168,7 +170,7 @@ class NeuralWireframeHead(_BASE_CANVAS):
         y = v * 1.10 - 0.02
 
         front = max(0.0, cos_t)
-        if front > 0.0:
+        if front > 0.0 and sculpt:
             ax = abs(x)
             # Nose bridge + tip: a narrow ridge down the centre line.
             nose = _gaussian(ax, 0.0, 0.085) * (

@@ -392,7 +392,7 @@ def _load_system_prompt() -> str:
         from core.personal_cloud_memory import get_default_owner_memory_context
         owner_context = get_default_owner_memory_context()
         if owner_context:
-            prompt = prompt.rstrip() + "\\n\\n" + owner_context
+            prompt = prompt.rstrip() + "\n\n" + owner_context
     except Exception as exc:
         logger.warning("Default owner profile prompt injection skipped (%s)", type(exc).__name__)
     return prompt

@@ -27,6 +27,8 @@ if sys.platform != "win32" and not os.environ.get("DISPLAY") and "QT_QPA_PLATFOR
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 import unittest
+from types import ModuleType
+from unittest.mock import patch
 
 #: Modules that must not be imported (or even attempted) by a HUD-only start.
 _DEFERRED_PREFIXES = (
@@ -161,6 +163,8 @@ class TestCameraLazyImport(unittest.TestCase):
 
 
 class TestWebEngineHelper(unittest.TestCase):
+    """Test the lazy helper with mocked modules; never load Chromium in-process."""
+
     def setUp(self):
         from core import qt_webengine
 
@@ -170,29 +174,59 @@ class TestWebEngineHelper(unittest.TestCase):
     def tearDown(self):
         self.helper.reset_for_tests()
 
-    def test_ensure_is_truthful_about_availability(self):
-        available = self.helper.ensure()
-        self.assertIsInstance(available, bool)
-        self.assertEqual(self.helper.available(), available)
-        loaded = self.helper.classes()
+    @staticmethod
+    def _fake_modules(available=True):
+        core = ModuleType("PyQt6.QtWebEngineCore")
+        widgets = ModuleType("PyQt6.QtWebEngineWidgets")
         if available:
+            for name in (
+                "QWebEnginePage",
+                "QWebEngineProfile",
+                "QWebEngineSettings",
+                "QWebEngineUrlRequestInterceptor",
+            ):
+                setattr(core, name, type(name, (), {}))
+            widgets.QWebEngineView = type("QWebEngineView", (), {})
+        return {
+            "PyQt6.QtWebEngineCore": core,
+            "PyQt6.QtWebEngineWidgets": widgets,
+        }
+
+    def test_ensure_is_truthful_about_availability(self):
+        with patch.dict(sys.modules, self._fake_modules(available=True)):
+            self.assertIs(self.helper.ensure(), True)
+            self.assertIs(self.helper.available(), True)
             self.assertEqual(
-                set(loaded),
-                {"QWebEnginePage", "QWebEngineProfile", "QWebEngineSettings",
-                 "QWebEngineUrlRequestInterceptor", "QWebEngineView"},
+                set(self.helper.classes()),
+                {
+                    "QWebEnginePage",
+                    "QWebEngineProfile",
+                    "QWebEngineSettings",
+                    "QWebEngineUrlRequestInterceptor",
+                    "QWebEngineView",
+                },
             )
-        else:
-            self.assertEqual(loaded, {})
+        self.helper.reset_for_tests()
+        with patch.dict(sys.modules, self._fake_modules(available=False)):
+            self.assertIs(self.helper.ensure(), False)
+            self.assertEqual(self.helper.classes(), {})
 
     def test_ensure_is_idempotent_and_cached(self):
-        first = self.helper.ensure()
-        self.assertEqual(self.helper.ensure(), first)
-        self.assertEqual(self.helper.load(), self.helper.classes())
+        fake = self._fake_modules(available=True)
+        with patch.dict(sys.modules, fake):
+            first = self.helper.ensure()
+            self.assertTrue(first)
+            cached = self.helper.classes()
+            with patch.dict(sys.modules, self._fake_modules(available=False)):
+                self.assertEqual(self.helper.ensure(), first)
+                self.assertEqual(self.helper.load(), cached)
 
     def test_reset_for_tests_clears_the_cache(self):
-        before = self.helper.ensure()
-        self.helper.reset_for_tests()
-        self.assertEqual(self.helper.ensure(), before)
+        with patch.dict(sys.modules, self._fake_modules(available=True)):
+            self.assertTrue(self.helper.ensure())
+            self.helper.reset_for_tests()
+            self.assertFalse(self.helper._tried)
+            self.assertEqual(self.helper._classes, {})
 
 
 class TestUIModuleStillWorks(unittest.TestCase):

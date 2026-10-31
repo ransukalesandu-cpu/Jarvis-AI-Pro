@@ -10,6 +10,8 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 JARVIS_DIR = ROOT_DIR / "JarvisAI"
@@ -59,6 +61,90 @@ class TestMemorySample(unittest.TestCase):
         child.wait(timeout=30)
         with self.assertRaises(ValueError):
             profile_ram.memory_sample(child.pid)
+
+
+class TestSamplingAccuracy(unittest.TestCase):
+    def test_cpu_counter_is_primed_once_and_process_handle_is_reused(self):
+        process = Mock()
+        process.pid = 42
+        process.create_time.return_value = 123.0
+        process.memory_info.return_value = SimpleNamespace(rss=2048)
+        process.memory_full_info.return_value = SimpleNamespace(uss=1024)
+        process.cpu_percent.side_effect = [8.25, 17.5]
+        replacement = Mock()
+        replacement.pid = 42
+        replacement.create_time.return_value = 123.0
+        cache = {}
+        primed = set()
+
+        with (
+            patch.object(profile_ram, "process_tree", side_effect=[[process], [replacement]]),
+            patch.object(
+                profile_ram.psutil, "virtual_memory",
+                return_value=SimpleNamespace(available=4096),
+            ),
+        ):
+            first = profile_ram.memory_sample(42, cache, primed)
+            second = profile_ram.memory_sample(42, cache, primed)
+
+        self.assertEqual(first["cpu_percent_sum"], 0.0)
+        self.assertEqual(second["cpu_percent_sum"], 17.5)
+        self.assertIs(cache[42], process)
+        self.assertEqual(process.cpu_percent.call_count, 2)
+
+    def test_timestamp_preserves_millisecond_precision(self):
+        process = Mock()
+        process.pid = 7
+        process.create_time.return_value = 1.0
+        process.memory_info.return_value = SimpleNamespace(rss=1024)
+        process.memory_full_info.return_value = SimpleNamespace(uss=512)
+        process.cpu_percent.return_value = 0.0
+        with (
+            patch.object(profile_ram, "process_tree", return_value=[process]),
+            patch.object(
+                profile_ram.psutil, "virtual_memory",
+                return_value=SimpleNamespace(available=4096),
+            ),
+        ):
+            sample = profile_ram.memory_sample(7, {}, set())
+        self.assertRegex(sample["timestamp_utc"], r"\.\d{3}\+00:00$")
+
+    def test_process_with_unreadable_memory_is_not_counted(self):
+        process = Mock()
+        process.pid = 9
+        process.create_time.return_value = 2.0
+        process.memory_info.side_effect = profile_ram.psutil.AccessDenied(pid=9)
+        with (
+            patch.object(profile_ram, "process_tree", return_value=[process]),
+            patch.object(
+                profile_ram.psutil, "virtual_memory",
+                return_value=SimpleNamespace(available=4096),
+            ),
+        ):
+            sample = profile_ram.memory_sample(9, {}, set())
+        self.assertEqual(sample["process_count"], 0)
+        self.assertEqual(sample["rss_mb"], 0.0)
+
+    def test_command_skips_empty_samples_and_returns_no_data(self):
+        import tempfile
+
+        empty_sample = {
+            "timestamp_utc": "t", "process_count": 0, "rss_mb": 0.0,
+            "uss_mb": "", "cpu_percent_sum": 0.0,
+            "system_available_mb": 4096.0,
+        }
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(profile_ram, "process_tree", return_value=[Mock(pid=10)]),
+            patch.object(profile_ram, "memory_sample", return_value=empty_sample),
+            patch.object(profile_ram.time, "monotonic", side_effect=[0.0, 2.0]),
+        ):
+            output = Path(tmp) / "empty.csv"
+            result = profile_ram.main([
+                "--pid", "10", "--duration", "1", "--output", str(output),
+            ])
+        self.assertEqual(result, 2)
+        self.assertFalse(output.exists())
 
 
 class TestSummarise(unittest.TestCase):

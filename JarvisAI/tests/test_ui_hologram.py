@@ -271,6 +271,24 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(hud.bihansa_visualizer.get_state(), "SPEAKING")
         self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
 
+    def test_responsive_hologram_stage_scales_rendering_budget(self):
+        """Compact stages reduce rendering cost; large stages restore full quality."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+
+        hud._hologram_stage.resize(640, 380)
+        hud._apply_hologram_stage_budget()
+        self.assertEqual(hud.wireframe_visualizer._frame_interval, 33)
+        self.assertEqual(hud.bihansa_visualizer._frame_interval, 33)
+        self.assertEqual(hud._mini_orb.size().width(), 40)
+        self.assertEqual(hud._heart_reactor.geometry(), hud._hologram_stage.rect())
+
+        hud._hologram_stage.resize(900, 650)
+        hud._apply_hologram_stage_budget()
+        self.assertEqual(hud.wireframe_visualizer._frame_interval, 16)
+        self.assertEqual(hud.bihansa_visualizer._frame_interval, 16)
+        self.assertEqual(hud._mini_orb.size().width(), 48)
+        self.assertEqual(hud._heart_reactor.geometry(), hud._hologram_stage.rect())
+
     def test_left_mega_menu_is_accessible_and_pointer_safe(self):
         """The edge trigger opens the rail; pointer and focus guards prevent flicker."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))

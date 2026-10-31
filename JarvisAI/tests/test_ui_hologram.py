@@ -755,6 +755,8 @@ class TestUIHologram(unittest.TestCase):
 
     def test_right_dropdown_uses_fade_transition(self):
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.show()
+        app.processEvents()
         hud._right_menu_animation.setDuration(20)
         hud._toggle_right_dropdown()
         self.assertTrue(hud._right_menu.isVisible())

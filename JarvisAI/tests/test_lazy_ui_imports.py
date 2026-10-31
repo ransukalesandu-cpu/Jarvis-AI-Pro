@@ -94,11 +94,49 @@ class TestUIPackageIsLazy(unittest.TestCase):
         self.assertEqual(attempts, [])
 
     def test_the_lazy_axes_are_still_reachable(self):
-        """The deferral must not remove the feature, only delay it."""
-        from ui import _earth_panel_class, _workspace_class
+        """The deferral must not remove the feature, only delay it.
 
-        self.assertEqual(_earth_panel_class().__name__, "EarthGlobePanel")
-        self.assertEqual(_workspace_class().__name__, "HudWorkspace")
+        Load WebEngine-backed classes in a clean child interpreter. Other UI tests
+        can have OpenCV/Qt GUI DLLs mapped in-process, and importing Chromium there
+        can trigger native Windows loader failures during process shutdown. The
+        subprocess still asserts the real deferred imports succeed; it isolates
+        their optional native libraries from the rest of the test runner.
+        """
+        source = textwrap.dedent(
+            """
+            import os
+            import sys
+            from ui import _earth_panel_class
+            earth_panel = _earth_panel_class()
+            assert earth_panel.__name__ == "EarthGlobePanel"
+            print("EARTH_PANEL=" + earth_panel.__name__, flush=True)
+
+            from ui import _workspace_class
+            workspace = _workspace_class()
+            assert workspace.__name__ == "HudWorkspace"
+            print("WORKSPACE=" + workspace.__name__, flush=True)
+
+            # Qt WebEngine may fault during DLL teardown on Windows runners.
+            # Import success is already verified; exit without native cleanup.
+            sys.stdout.flush()
+            os._exit(0)
+            """
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", source],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            cwd=str(JARVIS_DIR),
+            env=dict(os.environ),
+        )
+        self.assertEqual(
+            proc.returncode, 0,
+            f"lazy WebEngine-backed imports failed in an isolated process:\n"
+            f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}",
+        )
+        self.assertIn("EARTH_PANEL=EarthGlobePanel", proc.stdout)
+        self.assertIn("WORKSPACE=HudWorkspace", proc.stdout)
 
 
 class TestCameraLazyImport(unittest.TestCase):

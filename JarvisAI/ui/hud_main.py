@@ -681,8 +681,17 @@ class HUDMainWindow(QMainWindow):
         from memory.config_manager import save_assistant_mode
         save_assistant_mode("bihansa" if enabled else "jarvis")
         self.sig_mode_changed.emit()
-        self._lbl_hud_status.setText("✦ BIHANSA NEURAL MODE" if enabled else "● SYSTEM STANDBY")
-        self._lbl_hud_status.setStyleSheet("color: #ff75d4;" if enabled else "color: #00e5ff;")
+        current_state = str(self._bridge.current_state or "IDLE").strip().upper()
+        if current_state in ("IDLE", "READY", "STANDBY"):
+            self._lbl_hud_status.setText(
+                "✦ BIHANSA NEURAL MODE" if enabled else "● SYSTEM STANDBY"
+            )
+            self._lbl_hud_status.setStyleSheet(
+                "color: #ff75d4;" if enabled else "color: #00e5ff;"
+            )
+        else:
+            # Palette/persona changes must not erase a live warning or state.
+            self._on_state_changed(current_state)
 
     @pyqtSlot(object, float, float)
     def _schedule_visemes(self, frames, hop: float, at: float):
@@ -778,10 +787,20 @@ class HUDMainWindow(QMainWindow):
         elif st == "SPEAKING":
             self._lbl_hud_status.setText("● SPEAKING")
             self._lbl_hud_status.setStyleSheet("color: #00e5ff;")
+        elif st in ("ERROR", "FAILED", "AUDIO_ERROR", "SESSION_ERROR"):
+            self._lbl_hud_status.setText("⚠ SYSTEM ERROR")
+            self._lbl_hud_status.setStyleSheet("color: #ff6b6b;")
+        elif st in ("DISCONNECTED", "OFFLINE", "CONNECTION_LOST"):
+            self._lbl_hud_status.setText("○ DISCONNECTED")
+            self._lbl_hud_status.setStyleSheet("color: #ffb066;")
         elif st in ("PRIVACY_LOCK", "LOCKDOWN"):
             self._handle_privacy_lock()
-        else:
+        elif st in ("IDLE", "READY", "STANDBY"):
             self._lbl_hud_status.setText("○ STANDBY")
+            self._lbl_hud_status.setStyleSheet("color: #00e5ff;")
+        else:
+            readable_state = st.replace("_", " ")[:32]
+            self._lbl_hud_status.setText(f"● {readable_state}")
             self._lbl_hud_status.setStyleSheet("color: #00e5ff;")
 
     @pyqtSlot(str)

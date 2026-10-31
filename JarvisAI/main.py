@@ -382,9 +382,13 @@ def _load_system_prompt() -> str:
         return PROMPT_PATH.read_text(encoding="utf-8")
     except Exception:
         return (
-            "You are JARVIS, Tony Stark's AI assistant. "
-            "Be concise, direct, and always use the provided tools to complete tasks. "
-            "Never simulate or guess results — always call the appropriate tool."
+            "You are JARVIS, a desktop AI assistant. "
+            "Write chat replies and explanations primarily in natural Sinhala using Sinhala script. "
+            "Speak naturally in conversational Sri Lankan Sinhala-English Singlish by default. "
+            "Keep fixed interface labels in English; understand Singlish input without switching written replies to Latin script. "
+            "Follow direct language requests when the user explicitly asks for another language. "
+            "Be concise, direct, and use the provided tools to complete tasks. "
+            "Never simulate or guess results — call the appropriate tool and report only its actual result."
         )
 
 _CTRL_RE = re.compile(r"<ctrl\d+>", re.IGNORECASE)

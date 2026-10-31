@@ -161,38 +161,70 @@ class TestCameraLazyImport(unittest.TestCase):
 
 
 class TestWebEngineHelper(unittest.TestCase):
-    def setUp(self):
-        from core import qt_webengine
+    """Exercise QtWebEngine loading in a child process to avoid native DLL teardown."""
 
-        self.helper = qt_webengine
-        self.helper.reset_for_tests()
-
-    def tearDown(self):
-        self.helper.reset_for_tests()
+    def _run_isolated_helper(self, body: str) -> None:
+        source = textwrap.dedent(
+            f"""
+            import os
+            from core import qt_webengine
+            qt_webengine.reset_for_tests()
+            {body}
+            print("WEBENGINE_HELPER_OK", flush=True)
+            # QtWebEngine's native DLLs can abort during interpreter finalization on
+            # Windows CI; all assertions have completed, so exit without DLL teardown.
+            os._exit(0)
+            """
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", source],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            cwd=str(JARVIS_DIR),
+            env=dict(os.environ),
+        )
+        self.assertEqual(
+            proc.returncode,
+            0,
+            f"QtWebEngine helper probe failed:\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}",
+        )
+        self.assertIn("WEBENGINE_HELPER_OK", proc.stdout)
 
     def test_ensure_is_truthful_about_availability(self):
-        available = self.helper.ensure()
-        self.assertIsInstance(available, bool)
-        self.assertEqual(self.helper.available(), available)
-        loaded = self.helper.classes()
-        if available:
-            self.assertEqual(
-                set(loaded),
-                {"QWebEnginePage", "QWebEngineProfile", "QWebEngineSettings",
-                 "QWebEngineUrlRequestInterceptor", "QWebEngineView"},
-            )
-        else:
-            self.assertEqual(loaded, {})
+        self._run_isolated_helper(
+            """
+            available = qt_webengine.ensure()
+            assert isinstance(available, bool)
+            assert qt_webengine.available() == available
+            loaded = qt_webengine.classes()
+            if available:
+                assert set(loaded) == {
+                    "QWebEnginePage", "QWebEngineProfile", "QWebEngineSettings",
+                    "QWebEngineUrlRequestInterceptor", "QWebEngineView",
+                }
+            else:
+                assert loaded == {}
+            """
+        )
 
     def test_ensure_is_idempotent_and_cached(self):
-        first = self.helper.ensure()
-        self.assertEqual(self.helper.ensure(), first)
-        self.assertEqual(self.helper.load(), self.helper.classes())
+        self._run_isolated_helper(
+            """
+            first = qt_webengine.ensure()
+            assert qt_webengine.ensure() == first
+            assert qt_webengine.load() == qt_webengine.classes()
+            """
+        )
 
     def test_reset_for_tests_clears_the_cache(self):
-        before = self.helper.ensure()
-        self.helper.reset_for_tests()
-        self.assertEqual(self.helper.ensure(), before)
+        self._run_isolated_helper(
+            """
+            before = qt_webengine.ensure()
+            qt_webengine.reset_for_tests()
+            assert qt_webengine.ensure() == before
+            """
+        )
 
 
 class TestUIModuleStillWorks(unittest.TestCase):

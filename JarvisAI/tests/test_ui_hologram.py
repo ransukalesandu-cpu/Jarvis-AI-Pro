@@ -129,8 +129,19 @@ class TestUIHologram(unittest.TestCase):
         brow = NeuralWireframeHead._head_surface(0.40, 0.33)[2]
         upper_lip = NeuralWireframeHead._head_surface(0.0, -0.30)[2]
         mouth_crease = NeuralWireframeHead._head_surface(0.0, -0.37)[2]
+        baseline_upper_lip = NeuralWireframeHead._head_surface(
+            0.0, -0.30, sculpt=False
+        )[2]
+        baseline_mouth_crease = NeuralWireframeHead._head_surface(
+            0.0, -0.37, sculpt=False
+        )[2]
         self.assertLess(eye_socket, brow)
         self.assertLess(mouth_crease, upper_lip)
+        self.assertGreater(
+            upper_lip - mouth_crease,
+            baseline_upper_lip - baseline_mouth_crease,
+            "mouth sculpting must deepen the lip-to-crease profile beyond the shell baseline",
+        )
 
         crown = NeuralWireframeHead._head_surface(0.0, 1.0)
         chin = NeuralWireframeHead._head_surface(0.0, -1.0)

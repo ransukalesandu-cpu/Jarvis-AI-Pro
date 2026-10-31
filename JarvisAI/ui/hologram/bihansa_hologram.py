@@ -49,9 +49,24 @@ class BihansaHologramWidget(QWidget):
              rng.uniform(0.7, 2.2), rng.uniform(0.2, 1.0), rng.random() * math.tau)
             for _ in range(74)
         ]
+        self._frame_interval = 33
+        self._particle_budget = 1.0
+        self._performance_glow_scale = 1.0
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
-        self._timer.start(33)
+        self._timer.start(self._frame_interval)
+
+    def set_performance_budget(
+        self, frame_interval_ms: int, particle_scale: float, glow_scale: float
+    ) -> None:
+        """Adapt animation cadence and visual effects to the available HUD space."""
+        interval = max(16, min(200, int(frame_interval_ms)))
+        if interval != self._frame_interval:
+            self._frame_interval = interval
+            self._timer.setInterval(interval)
+        self._particle_budget = max(0.0, min(1.0, float(particle_scale)))
+        self._performance_glow_scale = max(0.2, min(1.0, float(glow_scale)))
+        self.update()
 
     def set_reduced_motion(self, enabled: bool):
         self._reduced_motion = bool(enabled)
@@ -229,7 +244,7 @@ class BihansaHologramWidget(QWidget):
             grid.append(row)
 
         if self._effects_enabled:
-            p.setPen(QPen(QColor(255, 79, 200, int(30 + 32 * self._glow_intensity)), .65))
+            p.setPen(QPen(QColor(255, 79, 200, int(30 + 32 * self._glow_intensity * self._performance_glow_scale)), .65))
             for j in range(rows):
                 for i in range(cols - 1):
                     p.drawLine(grid[j][i], grid[j][i + 1])

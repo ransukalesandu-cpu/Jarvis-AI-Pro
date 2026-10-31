@@ -14,8 +14,6 @@ from PyQt6.QtWidgets import (
     QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
-from core.hologram_theme import budget_glow
-
 
 class FloatingHolographicOrb(QWidget):
     """A small painter-based holographic orb with audio-reactive breathing."""
@@ -31,46 +29,12 @@ class FloatingHolographicOrb(QWidget):
         self._energy = 0.0
         self._phase = 0.0
         self._bihansa = False
-        self._palette = None          # ThemePalette | None → built-in cyan
-        self._reduced_motion = False
-        self._glow = 1.0
-        self._base_glow = 1.0        # what set_glow()/the palette asked for
-        self._charging = False
-        self._charge_phase = 0.0
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._timer.start(32)
 
     def set_state(self, state: str) -> None:
         self._state = str(state or "IDLE").upper()
-        self.update()
-
-    def set_palette(self, palette) -> None:
-        """Adopt the persona palette (JARVIS copper / Bihansa pink)."""
-        self._palette = palette
-        self.update()
-
-    def set_reduced_motion(self, enabled: bool) -> None:
-        self._reduced_motion = bool(enabled)
-        self._timer.setInterval(90 if self._reduced_motion else 32)
-        self.update()
-
-    def set_glow(self, intensity: float) -> None:
-        try:
-            self._base_glow = max(0.2, min(1.6, float(intensity)))
-        except (TypeError, ValueError):
-            self._base_glow = 1.0
-        self._glow = self._base_glow
-
-    def set_charging(self, charging: bool) -> None:
-        """Real charger state; extends the orbit rings while plugged in."""
-        self._charging = bool(charging)
-        self.update()
-
-    def set_performance_budget(self, frame_interval_ms: int, particle_scale: float, glow_scale: float) -> None:
-        self._timer.setInterval(max(16, min(200, int(frame_interval_ms))) if not self._reduced_motion else 120)
-        # From the base, never from the current value: see budget_glow().
-        self._glow = budget_glow(self._base_glow, glow_scale)
         self.update()
 
     def set_audio_energy(self, energy: float) -> None:
@@ -84,28 +48,13 @@ class FloatingHolographicOrb(QWidget):
         self.update()
 
     def _tick(self) -> None:
-        if not self._reduced_motion:
-            self._phase = (self._phase + (1.8 + self._energy * 3.5)) % 360.0
+        self._phase = (self._phase + (1.8 + self._energy * 3.5)) % 360.0
         self._energy *= 0.91
-        if self._charging:
-            self._charge_phase = (self._charge_phase + 3.2) % 360.0
         self.update()
 
     def _accent(self) -> QColor:
         if self._state in {"PRIVACY_LOCK", "LOCKDOWN"}:
             return QColor("#ff456b")
-        if self._state in {"ERROR", "DISCONNECTED"}:
-            return QColor("#ff8f5a")
-        if self._palette is not None:
-            # Persona palette governs the orb, with a small state shift so
-            # listening/thinking/speaking still read differently.
-            base = QColor(*self._palette.primary)
-            shift = {"LISTENING": 22, "THINKING": -10, "SPEAKING": 12}.get(self._state, 0)
-            return QColor(
-                min(255, max(0, base.red() + shift)),
-                min(255, max(0, base.green() + shift // 2)),
-                min(255, max(0, base.blue() + shift)),
-            )
         if self._bihansa:
             return QColor("#ff78d2")
         if self._state == "LISTENING":
@@ -161,13 +110,6 @@ class FloatingHolographicOrb(QWidget):
         painter.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 220), 1.0))
         painter.setBrush(core)
         painter.drawEllipse(QRectF(cx - radius, cy - radius, radius * 2, radius * 2))
-
-        # Charging: one extra expanding ring, driven by real charger state.
-        if self._charging:
-            painter.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 120), 1.0))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            ring_r = radius * (1.35 + 0.12 * math.sin(math.radians(self._charge_phase)))
-            painter.drawEllipse(QRectF(cx - ring_r, cy - ring_r * 0.98, ring_r * 2, ring_r * 1.96))
 
         # A bright specular point and subtle ring around the core.
         painter.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 180), 1.0))

@@ -52,11 +52,7 @@ QT_AVAILABLE = _qt_is_importable()
 _QT_TEST_MODULES = (
     "tests/test_avatar.py",
     "tests/test_bihansa_integration.py",
-    "tests/test_dynamic_island.py",
-    "tests/test_hud_hologram_upgrade.py",
-    "tests/test_hud_task_wiring.py",
     "tests/test_pr68_fixes.py",
-    "tests/test_task_panels.py",
     "tests/test_ui_hologram.py",
 )
 

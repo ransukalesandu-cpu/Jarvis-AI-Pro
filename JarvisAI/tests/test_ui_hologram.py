@@ -137,6 +137,7 @@ class TestUIHologram(unittest.TestCase):
         )[2]
         self.assertLess(eye_socket, brow)
         self.assertLess(mouth_crease, upper_lip)
+        self.assertLess(mouth_crease, baseline_mouth_crease)
         self.assertGreater(
             upper_lip - mouth_crease,
             baseline_upper_lip - baseline_mouth_crease,

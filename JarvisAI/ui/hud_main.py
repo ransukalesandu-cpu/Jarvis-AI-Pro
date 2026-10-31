@@ -153,6 +153,7 @@ class HUDMainWindow(QMainWindow):
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(6)
+        self._main_layout = main_layout
 
         # Minimal top row: remove decorative title/clock; keep one compact menu control.
         top_row = QHBoxLayout()
@@ -357,6 +358,7 @@ class HUDMainWindow(QMainWindow):
             self._agent_stop_button.clicked.connect(self._stop_agent_task)
             right_menu_layout.addWidget(self._agent_stop_button)
         self._right_menu.hide()
+        self._apply_compact_layout()
 
         self._bihansa_effects.toggled.connect(self.bihansa_visualizer.set_effects_enabled)
         self._bihansa_voice_reactive.toggled.connect(self.bihansa_visualizer.set_voice_reactive)
@@ -445,12 +447,32 @@ class HUDMainWindow(QMainWindow):
         self._right_menu_button.clicked.connect(self._toggle_right_dropdown)
 
 
+    def _apply_compact_layout(self):
+        """Adapt navigation and spacing to narrow HUD windows without shrinking the face."""
+        width = max(1, self.width())
+        compact = width <= 560
+        ultra_compact = width <= 420
+        margins = 5 if ultra_compact else (7 if compact else 10)
+        self._main_layout.setContentsMargins(margins, margins, margins, margins)
+        self._main_layout.setSpacing(4 if compact else 6)
+        self._dashboard_button.setVisible(not ultra_compact)
+        self._right_menu.setFixedWidth(min(300, max(220, width - 28)))
+        self._right_menu.setMaximumHeight(max(240, self.height() - 76))
+        if compact:
+            self._left_rail.hide()
+            self._left_menu_trigger.setFixedSize(14, 48)
+        else:
+            self._left_menu_trigger.setFixedSize(18, 58)
+        self._hologram_stage.setMinimumHeight(170 if ultra_compact else 210 if compact else 0)
+        self._mini_orb.setFixedSize(40 if compact else 48, 40 if compact else 48)
+        self._position_left_menu_trigger()
+        if self._right_menu.isVisible():
+            self._position_right_menu()
+
     def resizeEvent(self, event):
         """Keep floating menus inside the central workspace after window resizes."""
         super().resizeEvent(event)
-        self._position_left_menu_trigger()
-        if hasattr(self, "_right_menu") and self._right_menu.isVisible():
-            self._position_right_menu()
+        self._apply_compact_layout()
 
     def changeEvent(self, event):
         """Swap the full HUD for the compact status widget while minimised."""

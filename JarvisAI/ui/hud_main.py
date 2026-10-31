@@ -20,7 +20,7 @@ from PyQt6.QtCore import (
     Qt, QObject, QEvent, pyqtSlot, pyqtSignal, QTimer, QSettings,
     QPropertyAnimation, QEasingCurve,
 )
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QCursor
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QToolButton, QFrame, QGraphicsBlurEffect, QGraphicsOpacityEffect, QCheckBox, QStackedWidget
@@ -407,6 +407,31 @@ class HUDMainWindow(QMainWindow):
         main_layout.addLayout(body_layout, stretch=1)
         self._left_rail.hide()
 
+        # Keep the home page clean while exposing a keyboard- and pointer-accessible edge trigger.
+        self._left_menu_trigger = QToolButton(central_widget)
+        self._left_menu_trigger.setObjectName("leftMegaMenuTrigger")
+        self._left_menu_trigger.setText("›")
+        self._left_menu_trigger.setToolTip("Hover or activate to open navigation")
+        self._left_menu_trigger.setFixedSize(18, 58)
+        self._left_menu_trigger.setStyleSheet(
+            "QToolButton#leftMegaMenuTrigger { color: #ffbd7a; "
+            "background: rgba(10,18,28,175); border: 1px solid #69462e; "
+            "border-left: none; border-radius: 0 12px 12px 0; font-size: 22px; }"
+            "QToolButton#leftMegaMenuTrigger:hover { color: #fff; "
+            "background: rgba(70,40,25,220); border-color: #ffb066; }"
+        )
+        self._left_menu_trigger.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._left_menu_trigger.clicked.connect(self._show_left_rail)
+        self._left_rail_hide_timer = QTimer(self)
+        self._left_rail_hide_timer.setSingleShot(True)
+        self._left_rail_hide_timer.timeout.connect(self._hide_left_rail_if_pointer_outside)
+        self._left_menu_trigger.installEventFilter(self)
+        self._left_rail.installEventFilter(self)
+        for _button in self._left_icon_buttons:
+            _button.installEventFilter(self)
+        self._position_left_menu_trigger()
+        self._left_menu_trigger.show()
+
         for index, button in enumerate(self._left_icon_buttons):
             if index >= 2 and self._panel_agent is not None:
                 button.clicked.connect(
@@ -423,6 +448,7 @@ class HUDMainWindow(QMainWindow):
     def resizeEvent(self, event):
         """Keep floating menus inside the central workspace after window resizes."""
         super().resizeEvent(event)
+        self._position_left_menu_trigger()
         if hasattr(self, "_right_menu") and self._right_menu.isVisible():
             self._position_right_menu()
 
@@ -448,6 +474,71 @@ class HUDMainWindow(QMainWindow):
                 failsoft.suppress("ui.hud_main:closeEvent")
         super().closeEvent(event)
 
+    def _position_left_menu_trigger(self) -> None:
+        """Keep the edge trigger vertically centred in the central workspace."""
+        trigger = getattr(self, "_left_menu_trigger", None)
+        central = self.centralWidget()
+        if trigger is not None and central is not None:
+            trigger.move(0, max(24, (central.height() - trigger.height()) // 2))
+            trigger.raise_()
+
+    def _show_left_rail(self) -> None:
+        """Reveal navigation when the edge trigger is activated."""
+        if self._workspace_stack.currentWidget() is self._dashboard:
+            return
+        self._left_rail_hide_timer.stop()
+        self._left_rail.show()
+        self._left_rail.raise_()
+
+    def _hide_left_rail_if_pointer_outside(self) -> None:
+        """Collapse only when neither pointer nor keyboard focus uses navigation."""
+        if self._workspace_stack.currentWidget() is self._dashboard:
+            return
+        focus = QApplication.focusWidget()
+        while focus is not None:
+            if focus is self._left_menu_trigger or focus is self._left_rail:
+                return
+            if any(focus is button for button in self._left_icon_buttons):
+                return
+            focus = focus.parentWidget()
+        global_pos = QCursor.pos()
+        if QApplication.platformName().lower() != "offscreen":
+            widget = QApplication.widgetAt(global_pos)
+            while widget is not None:
+                if widget is self._left_rail or widget is self._left_menu_trigger:
+                    return
+                widget = widget.parentWidget()
+        else:
+            for candidate in (self._left_rail, self._left_menu_trigger):
+                try:
+                    if candidate.rect().contains(candidate.mapFromGlobal(global_pos)):
+                        return
+                except RuntimeError:
+                    continue
+        self._left_rail.hide()
+
+    def eventFilter(self, watched, event):
+        """Expand the home navigation on hover and dismiss it after pointer/focus exit."""
+        navigation_widgets = (
+            watched is self._left_menu_trigger
+            or watched is self._left_rail
+            or any(watched is button for button in self._left_icon_buttons)
+        )
+        if navigation_widgets:
+            if event.type() in (QEvent.Type.Enter, QEvent.Type.FocusIn):
+                self._left_rail_hide_timer.stop()
+                if (
+                    event.type() == QEvent.Type.Enter
+                    and self._workspace_stack.currentWidget() is not self._dashboard
+                ):
+                    self._left_rail.show()
+                    self._left_rail.raise_()
+                return False
+            if event.type() in (QEvent.Type.Leave, QEvent.Type.FocusOut):
+                self._left_rail_hide_timer.start(180)
+                return False
+        return super().eventFilter(watched, event)
+
     def _toggle_dashboard_page(self):
         """Switch between a clean hologram home and the separate Bento dashboard."""
         if self._workspace_stack.currentWidget() is self._home_page:
@@ -461,6 +552,7 @@ class HUDMainWindow(QMainWindow):
         self._transition_target = "dashboard"
         self._right_menu.hide()
         self._left_rail.show()
+        self._left_menu_trigger.hide()
         self._dashboard_opacity_effect.setOpacity(0.0)
         self._workspace_stack.setCurrentWidget(self._dashboard)
         self._dashboard_button.setText("⌂")
@@ -487,6 +579,7 @@ class HUDMainWindow(QMainWindow):
         if target == "home":
             self._workspace_stack.setCurrentWidget(self._home_page)
             self._left_rail.hide()
+            self._left_menu_trigger.show()
             self._dashboard_opacity_effect.setOpacity(1.0)
             self._dashboard_button.setText("▦")
             self._dashboard_button.setToolTip("Open Bento dashboard")

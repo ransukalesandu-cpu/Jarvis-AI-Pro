@@ -226,9 +226,7 @@ class TestWebEngineHelper(unittest.TestCase):
             self.assertTrue(self.helper.ensure())
             self.helper.reset_for_tests()
             self.assertFalse(self.helper._tried)
-            self.assertEqual(self.helper.classes(), {
-                "QWebEnginePage": self.helper.classes().get("QWebEnginePage")
-            } if False else {})
+            self.assertEqual(self.helper._classes, {})
 
 
 class TestUIModuleStillWorks(unittest.TestCase):

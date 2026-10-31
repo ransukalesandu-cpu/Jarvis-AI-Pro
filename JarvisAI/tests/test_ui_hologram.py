@@ -753,6 +753,20 @@ class TestUIHologram(unittest.TestCase):
                 self.assertEqual(self.bridge.current_state, "SPEAKING")
                 hud_ui.set_audio_level(0.85)
 
+    def test_animation_engine_is_frame_rate_independent_and_finite(self):
+        from ui.hologram.animation_engine import pulse, smooth_damp
+
+        one_frame = smooth_damp(0.0, 1.0, 1 / 60, 8.0)
+        two_half_frames = smooth_damp(
+            smooth_damp(0.0, 1.0, 1 / 120, 8.0), 1.0, 1 / 120, 8.0
+        )
+        self.assertAlmostEqual(one_frame, two_half_frames, places=5)
+        self.assertEqual(smooth_damp(0.25, 1.0, 0.0), 0.25)
+        self.assertEqual(smooth_damp(float('nan'), 1.0, 0.02), 0.0)
+        self.assertEqual(pulse(10.0, 1.0, reduced_motion=True), 0.5)
+        self.assertGreaterEqual(pulse(0.0, 1.0), 0.0)
+        self.assertLessEqual(pulse(0.0, 1.0), 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()

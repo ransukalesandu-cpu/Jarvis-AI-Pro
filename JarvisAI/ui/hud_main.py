@@ -899,6 +899,22 @@ class HUDMainWindow(QMainWindow):
     def _update_clock(self):
         self._lbl_clock.setText(time.strftime("%H:%M:%S"))
 
+    @staticmethod
+    def _canonical_island_state(state: str) -> str:
+        """Map known HUD aliases to the Dynamic Island's supported states."""
+        st = str(state or "IDLE").strip().upper()
+        return {
+            "ERROR": "error",
+            "FAILED": "error",
+            "AUDIO_ERROR": "error",
+            "SESSION_ERROR": "error",
+            "DISCONNECTED": "disconnected",
+            "OFFLINE": "disconnected",
+            "CONNECTION_LOST": "disconnected",
+            "PRIVACY_LOCK": "privacy",
+            "LOCKDOWN": "privacy",
+        }.get(st, st.lower())
+
     @pyqtSlot(str)
     def _on_state_changed(self, state: str):
         st = str(state or "IDLE").upper()
@@ -909,7 +925,7 @@ class HUDMainWindow(QMainWindow):
         self._dashboard.set_state(visual_state)
         self._heart_reactor.set_state(visual_state)
         if hasattr(self, "_island"):
-            self._island.set_state(visual_state.lower())
+            self._island.set_state(self._canonical_island_state(visual_state))
         if self._privacy_locked:
             return
 
@@ -1464,7 +1480,8 @@ class HUDMainWindow(QMainWindow):
     def _enter_island_mode(self) -> None:
         """Replace the minimised window with the Dynamic Island pill."""
         self._island.set_palette(self._palette)
-        self._island.set_state(self._bridge.current_state.lower())
+        state = "PRIVACY_LOCK" if self._privacy_locked else self._bridge.current_state
+        self._island.set_state(self._canonical_island_state(state))
         self._island.set_energy(self._bridge.current_energy)
         live = self._task_panels.specs() if hasattr(self, "_task_panels") else []
         running = [spec for spec in live if spec.state == TaskState.RUNNING]

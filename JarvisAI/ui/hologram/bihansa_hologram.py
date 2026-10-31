@@ -56,6 +56,10 @@ class BihansaHologramWidget(QWidget):
         self._timer.timeout.connect(self._tick)
         self._timer.start(self._frame_interval)
 
+    def _visible_particle_count(self) -> int:
+        """Return the particle count allowed by the current responsive budget."""
+        return max(0, min(len(self._particles), int(round(len(self._particles) * self._particle_budget))))
+
     def set_performance_budget(
         self, frame_interval_ms: int, particle_scale: float, glow_scale: float
     ) -> None:
@@ -305,7 +309,7 @@ class BihansaHologramWidget(QWidget):
                     continue
                 pt = grid[j][i]
                 pulse = .5 + .5 * math.sin(t * 2.1 + i * .71 + j * .37)
-                radius = 1.0 + pulse * (1.3 + self._audio_energy * 2.2)
+                radius = (1.0 + pulse * (1.3 + self._audio_energy * 2.2)) * self._performance_glow_scale
                 p.setBrush(QColor(255, 190, 244, int(105 + pulse * 145)))
                 p.drawEllipse(pt, radius, radius)
                 if self._effects_enabled and pulse > .86:
@@ -314,7 +318,7 @@ class BihansaHologramWidget(QWidget):
 
         # Floating particles and scanning beam.
         if self._effects_enabled:
-            for x, y, radius, speed, phase in self._particles:
+            for x, y, radius, speed, phase in self._particles[:self._visible_particle_count()]:
                 px = (x * .5 + .5) * w + math.sin(t * speed + phase) * 8
                 py = (y * .5 + .5) * h + math.cos(t * speed + phase) * 6
                 alpha = int(45 + 130 * (.5 + .5 * math.sin(t * 1.8 + phase)))

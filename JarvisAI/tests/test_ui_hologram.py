@@ -207,23 +207,29 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
 
     def test_left_mega_menu_expands_on_hover_and_starts_collapsed(self):
-        """The home hologram stays clean until the left-edge trigger is hovered."""
+        """The home hologram stays clean until the edge trigger is hovered."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.show()
+        app.processEvents()
         self.assertTrue(hud._left_rail.isHidden())
         self.assertFalse(hud._left_menu_trigger.isHidden())
 
-        enter = QEvent(QEvent.Type.Enter)
-        hud.eventFilter(hud._left_menu_trigger, enter)
+        QTest.mouseMove(hud._left_menu_trigger)
+        app.processEvents()
         self.assertFalse(hud._left_rail.isHidden())
 
-        # Leaving the tab schedules a delayed collapse so the pointer can move
-        # into the rail without the menu disappearing between widgets.
-        leave = QEvent(QEvent.Type.Leave)
-        hud.eventFilter(hud._left_menu_trigger, leave)
-        # Move the real Qt test cursor away too; the collapse callback checks
-        # widgetAt(QCursor.pos()) to avoid closing while crossing into the rail.
+        # Crossing into the rail must restart/cancel the hide delay rather than
+        # allowing the trigger's earlier Leave event to collapse it mid-flight.
+        QTest.mouseMove(hud._left_icon_buttons[0])
+        QTest.qWait(220)
+        self.assertFalse(hud._left_rail.isHidden())
+
         QTest.mouseMove(hud._home_page, QPoint(220, 180))
-        QTest.qWait(260)
+        for _ in range(50):
+            app.processEvents()
+            if hud._left_rail.isHidden():
+                break
+            QTest.qWait(20)
         self.assertTrue(hud._left_rail.isHidden())
 
     def test_first_run_setup_asks_only_for_gemini_api_key(self):

@@ -21,7 +21,6 @@ UI_DIR = JARVIS_DIR / "ui"
 
 #: Modules that only existed for the command-centre upgrade.
 _REMOVED_MODULES = (
-    "core.hologram_theme",
     "core.system_status",
     "core.subsystem_probes",
     "core.hud_layout",
@@ -34,7 +33,6 @@ _REMOVED_MODULES = (
 )
 
 _REMOVED_FILES = (
-    "core/hologram_theme.py",
     "core/system_status.py",
     "core/subsystem_probes.py",
     "core/hud_layout.py",
@@ -80,6 +78,17 @@ def test_no_ui_module_imports_a_removed_module():
         if stale:
             offenders[str(path.relative_to(JARVIS_DIR))] = stale
     assert offenders == {}, f"the HUD still imports reverted modules: {offenders}"
+
+
+def test_hologram_theme_is_lightweight_and_qt_free():
+    """The face palette may return, but it must remain pure Python."""
+    theme = JARVIS_DIR / "core" / "hologram_theme.py"
+    assert theme.exists()
+    imported = _imports(theme)
+    assert not any(
+        name.startswith(("PyQt", "PySide", "ui.", "core.system_status"))
+        for name in imported
+    )
 
 
 def test_the_hud_still_has_its_original_hologram_stack():

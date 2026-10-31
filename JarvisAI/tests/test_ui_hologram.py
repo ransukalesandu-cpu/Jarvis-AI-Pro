@@ -771,6 +771,18 @@ class TestUIHologram(unittest.TestCase):
                 self.assertEqual(self.bridge.current_state, "SPEAKING")
                 hud_ui.set_audio_level(0.85)
 
+    def test_bihansa_performance_budget_limits_particle_rendering(self):
+        widget = self._track_widget(BihansaHologramWidget())
+        self.assertEqual(widget._visible_particle_count(), len(widget._particles))
+        widget.set_performance_budget(33, 0.5, 0.6)
+        self.assertEqual(widget._visible_particle_count(), len(widget._particles) // 2)
+        self.assertEqual(widget._frame_interval, 33)
+        self.assertAlmostEqual(widget._performance_glow_scale, 0.6)
+        widget.set_performance_budget(5, 2.0, 4.0)
+        self.assertEqual(widget._frame_interval, 16)
+        self.assertEqual(widget._visible_particle_count(), len(widget._particles))
+        self.assertEqual(widget._performance_glow_scale, 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()

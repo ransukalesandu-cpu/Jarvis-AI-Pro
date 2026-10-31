@@ -394,7 +394,7 @@ def _load_system_prompt() -> str:
         if owner_context:
             prompt = prompt.rstrip() + "\n\n" + owner_context
     except Exception as exc:
-        logger.warning("Default owner profile prompt injection skipped (%s)", type(exc).__name__)
+        print(f"[JARVIS] Default owner profile prompt injection skipped ({type(exc).__name__})")
     return prompt
 
 _CTRL_RE = re.compile(r"<ctrl\d+>", re.IGNORECASE)

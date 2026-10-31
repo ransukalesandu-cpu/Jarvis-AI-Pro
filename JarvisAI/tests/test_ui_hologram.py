@@ -753,6 +753,17 @@ class TestUIHologram(unittest.TestCase):
                 self.assertEqual(self.bridge.current_state, "SPEAKING")
                 hud_ui.set_audio_level(0.85)
 
+    def test_right_dropdown_uses_fade_transition(self):
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud._right_menu_animation.setDuration(20)
+        hud._toggle_right_dropdown()
+        self.assertTrue(hud._right_menu.isVisible())
+        QTest.qWait(35)
+        self.assertAlmostEqual(hud._right_menu_opacity.opacity(), 1.0, places=2)
+        hud._toggle_right_dropdown()
+        QTest.qWait(35)
+        self.assertFalse(hud._right_menu.isVisible())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -523,7 +523,7 @@ class TestUIHologram(unittest.TestCase):
         with patch.object(hud._resize_layout_timer, "start") as start:
             hud.resize(1260, 780)
             app.processEvents()
-        start.assert_called_with(0)
+        start.assert_called_with(10)
 
         with (
             patch.object(hud, "_position_left_menu_trigger") as left,
@@ -544,7 +544,8 @@ class TestUIHologram(unittest.TestCase):
         self.assertTrue(hud._right_menu.isVisible())
 
         hud.resize(1024, 700)
-        app.processEvents()
+        # Allow the single-shot post-resize callback to run on Windows Qt.
+        QTest.qWait(30)
         expected_x = max(
             8, hud.centralWidget().width() - hud._right_menu.width() - 12
         )

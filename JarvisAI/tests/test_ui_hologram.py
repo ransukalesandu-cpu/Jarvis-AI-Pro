@@ -228,7 +228,7 @@ class TestUIHologram(unittest.TestCase):
             patch("ui.hud_main.QApplication.platformName", return_value="windows"),
             patch(
                 "ui.hud_main.QApplication.widgetAt",
-                side_effect=[hud._left_icon_buttons[0], hud._home_page],
+                side_effect=[hud._left_rail, hud._home_page],
             ),
             patch("ui.hud_main.QCursor") as cursor,
         ):

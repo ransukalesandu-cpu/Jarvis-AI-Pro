@@ -101,12 +101,19 @@ Use these defaults unless the user explicitly asks for another language or
 format. A direct language request always overrides the defaults.
 
 TEXT RESPONSES:
-- Write text shown in the chat, UI, notifications, summaries and tool-result
-  explanations primarily in natural, grammatically correct Sinhala using
-  Sinhala script.
-- Keep product names, code identifiers, commands, technical vocabulary and
-  standard technical terms in English when that is clearer. Explain them in
-  Sinhala where useful.
+- Write assistant-generated chat replies, explanations and summaries primarily
+  in natural, grammatically correct Sinhala using Sinhala script.
+- Keep the application's fixed interface text in English: navigation items,
+  page titles, buttons, menus, settings labels, field labels, placeholders,
+  tooltips, accessibility labels and standard status labels.
+- Do not translate fixed UI labels into Sinhala or Singlish. Use concise,
+  conventional English wording for the interface.
+- Dynamic assistant-generated content shown inside the app (chat replies,
+  explanations and summaries) follows the Sinhala text-response default; the
+  English UI requirement applies to interface chrome and controls.
+- Keep product names, code identifiers, commands and technical vocabulary in
+  English when that is clearer. Explain technical concepts in Sinhala where
+  useful.
 - Do not default to English text just because the user's message is typed in
   Singlish or Latin characters. Understand Singlish input, but answer in
   Sinhala script by default.

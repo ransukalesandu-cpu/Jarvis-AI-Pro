@@ -21,7 +21,7 @@ import tempfile
 from unittest.mock import Mock, patch
 import numpy as np
 
-from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt
+from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt, QPoint
 from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton
 from PyQt6.QtTest import QTest
 
@@ -205,6 +205,40 @@ class TestUIHologram(unittest.TestCase):
         self.assertTrue(hud._lock_banner.isHidden())
         self.assertEqual(hud.bihansa_visualizer.get_state(), "SPEAKING")
         self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
+
+    def test_left_mega_menu_is_accessible_and_pointer_safe(self):
+        """The edge trigger opens the rail; pointer and focus guards prevent flicker."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        self.assertTrue(hud._left_rail.isHidden())
+        self.assertFalse(hud._left_menu_trigger.isHidden())
+        self.assertEqual(
+            hud._left_menu_trigger.focusPolicy(), Qt.FocusPolicy.StrongFocus
+        )
+
+        hud.eventFilter(hud._left_menu_trigger, QEvent(QEvent.Type.Enter))
+        self.assertFalse(hud._left_rail.isHidden())
+        hud.eventFilter(hud._left_menu_trigger, QEvent(QEvent.Type.Leave))
+        self.assertTrue(hud._left_rail_hide_timer.isActive())
+        hud.eventFilter(hud._left_rail, QEvent(QEvent.Type.Enter))
+        self.assertFalse(hud._left_rail_hide_timer.isActive())
+
+        with (
+            patch("ui.hud_main.QApplication.focusWidget", return_value=None),
+            patch("ui.hud_main.QApplication.platformName", return_value="windows"),
+            patch(
+                "ui.hud_main.QApplication.widgetAt",
+                side_effect=[hud._left_rail, hud._home_page],
+            ),
+            patch("ui.hud_main.QCursor") as cursor,
+        ):
+            cursor.pos.return_value = QPoint(100, 100)
+            hud._hide_left_rail_if_pointer_outside()
+            self.assertFalse(hud._left_rail.isHidden())
+            hud._hide_left_rail_if_pointer_outside()
+        self.assertTrue(hud._left_rail.isHidden())
+
+        hud._left_menu_trigger.click()
+        self.assertFalse(hud._left_rail.isHidden())
 
     def test_first_run_setup_asks_only_for_gemini_api_key(self):
         """The first-run credentials card must expose one Gemini key field only."""

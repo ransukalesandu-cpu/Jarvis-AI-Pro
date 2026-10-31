@@ -229,6 +229,30 @@ class TestUIHologram(unittest.TestCase):
         hud._on_state_changed("IDLE")
         self.assertIn("STANDBY", hud._lbl_hud_status.text())
 
+    def test_dynamic_island_receives_canonical_state_aliases_on_both_paths(self):
+        """Known error, offline, and privacy aliases survive minimising the HUD."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        cases = {
+            "ERROR": "error",
+            "FAILED": "error",
+            "AUDIO_ERROR": "error",
+            "SESSION_ERROR": "error",
+            "DISCONNECTED": "disconnected",
+            "OFFLINE": "disconnected",
+            "CONNECTION_LOST": "disconnected",
+            "PRIVACY_LOCK": "privacy",
+            "LOCKDOWN": "privacy",
+        }
+
+        for source, expected in cases.items():
+            with self.subTest(state=source):
+                self.bridge.update_state(source)
+                self.assertEqual(hud._island.state, expected)
+                hud._enter_island_mode()
+                self.assertEqual(hud._island.state, expected)
+                if hud._privacy_locked:
+                    hud._clear_privacy_lock()
+
     def test_first_run_setup_asks_only_for_gemini_api_key(self):
         """The first-run credentials card must expose one Gemini key field only."""
         with tempfile.TemporaryDirectory() as directory:

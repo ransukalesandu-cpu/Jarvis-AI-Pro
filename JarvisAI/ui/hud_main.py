@@ -460,7 +460,7 @@ class HUDMainWindow(QMainWindow):
         super().resizeEvent(event)
         timer = getattr(self, "_resize_layout_timer", None)
         if timer is not None:
-            timer.start(0)
+            timer.start(10)
 
     def changeEvent(self, event):
         """Swap the full HUD for the compact status widget while minimised."""

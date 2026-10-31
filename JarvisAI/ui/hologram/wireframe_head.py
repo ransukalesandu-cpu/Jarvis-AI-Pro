@@ -11,8 +11,8 @@ What changed in the holographic-UI upgrade
   generator deforms the sphere into a human head: narrower chin and jaw, flatter
   cranium at the back, brow ridge, cheekbones, eye sockets and a nose bridge,
   with the features also drawn as brighter accent curves.
-* **Copper/amber identity.** Colours come from ``core.hologram_theme`` so JARVIS
-  (copper) and Bihansa (pink) share one geometry and only swap palettes.
+* **Persona colours.** Colours come from ``core.hologram_theme``: JARVIS uses
+  the restored electric-cyan identity while Bihansa remains rose-pink.
 * **Truthful states.** IDLE / LISTENING / THINKING / SPEAKING / ERROR /
   DISCONNECTED / PRIVACY_LOCK, each with a distinct but restrained treatment.
   SPEAKING is driven by real output energy; there is no fake lip-sync claim.

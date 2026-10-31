@@ -211,25 +211,31 @@ class TestUIHologram(unittest.TestCase):
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
         self.assertTrue(hud._left_rail.isHidden())
         self.assertFalse(hud._left_menu_trigger.isHidden())
+        self.assertEqual(
+            hud._left_menu_trigger.focusPolicy(), Qt.FocusPolicy.StrongFocus
+        )
 
         hud.eventFilter(hud._left_menu_trigger, QEvent(QEvent.Type.Enter))
         self.assertFalse(hud._left_rail.isHidden())
+        hud.eventFilter(hud._left_menu_trigger, QEvent(QEvent.Type.Leave))
+        self.assertTrue(hud._left_rail_hide_timer.isActive())
+        hud.eventFilter(hud._left_rail, QEvent(QEvent.Type.Enter))
+        self.assertFalse(hud._left_rail_hide_timer.isActive())
 
-        # Capture the delayed callback and place a synthetic cursor over the
-        # rail; this tests the transition without relying on a native window.
-        with patch("ui.hud_main.QTimer") as timer_mock:
-            hud.eventFilter(hud._left_menu_trigger, QEvent(QEvent.Type.Leave))
-            timer_mock.singleShot.assert_called_once()
-            self.assertEqual(timer_mock.singleShot.call_args[0][0], 180)
-            collapse = timer_mock.singleShot.call_args[0][1]
-
-        rail_pos = hud._left_rail.mapToGlobal(hud._left_rail.rect().center())
-        with patch("ui.hud_main.QCursor") as cursor:
-            cursor.pos.return_value = rail_pos
-            collapse()
+        # Simulate the actual widget under the pointer without invoking Qt's
+        # native widgetAt implementation on an offscreen CI display.
+        with (
+            patch("ui.hud_main.QApplication.platformName", return_value="windows"),
+            patch(
+                "ui.hud_main.QApplication.widgetAt",
+                side_effect=[hud._left_icon_buttons[0], hud._home_page],
+            ),
+            patch("ui.hud_main.QCursor") as cursor,
+        ):
+            cursor.pos.return_value = QPoint(100, 100)
+            hud._hide_left_rail_if_pointer_outside()
             self.assertFalse(hud._left_rail.isHidden())
-            cursor.pos.return_value = QPoint(2000, 2000)
-            collapse()
+            hud._hide_left_rail_if_pointer_outside()
         self.assertTrue(hud._left_rail.isHidden())
 
     def test_hud_status_label_does_not_report_errors_as_standby(self):

@@ -600,7 +600,7 @@ class HUDMainWindow(QMainWindow):
         """Open the separate dashboard and scroll to one existing live telemetry panel."""
         if panel_index < 0 or panel_index >= len(self._dashboard._cards):
             return
-        self._right_menu.hide()
+        self._hide_right_menu()
         if self._workspace_stack.currentWidget() is not self._dashboard:
             self._show_dashboard_page()
         QTimer.singleShot(280, lambda index=panel_index: self._focus_dashboard_panel(index))

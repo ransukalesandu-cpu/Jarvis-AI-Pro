@@ -244,14 +244,31 @@ class TestUIHologram(unittest.TestCase):
             "LOCKDOWN": "privacy",
         }
 
-        for source, expected in cases.items():
-            with self.subTest(state=source):
-                self.bridge.update_state(source)
-                self.assertEqual(hud._island.state, expected)
-                hud._enter_island_mode()
-                self.assertEqual(hud._island.state, expected)
-                if hud._privacy_locked:
-                    hud._clear_privacy_lock()
+        with patch("ui.hud_main.lock_workstation"):
+            for source, expected in cases.items():
+                with self.subTest(state=source):
+                    self.bridge.update_state(source)
+                    self.assertEqual(hud._island.state, expected)
+                    hud._enter_island_mode()
+                    self.assertEqual(hud._island.state, expected)
+                    if hud._privacy_locked:
+                        hud._clear_privacy_lock()
+
+    def test_persona_switch_preserves_error_and_disconnected_status(self):
+        """Changing the visual persona must not hide a live system warning."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        for state, expected in (
+            ("ERROR", "ERROR"),
+            ("DISCONNECTED", "DISCONNECTED"),
+        ):
+            with self.subTest(state=state):
+                self.bridge.update_state(state)
+                before = hud._lbl_hud_status.text()
+                self.assertIn(expected, before)
+                hud._set_bihansa_enabled(True)
+                self.assertEqual(hud._lbl_hud_status.text(), before)
+                hud._set_bihansa_enabled(False)
+                self.assertEqual(hud._lbl_hud_status.text(), before)
 
     def test_first_run_setup_asks_only_for_gemini_api_key(self):
         """The first-run credentials card must expose one Gemini key field only."""

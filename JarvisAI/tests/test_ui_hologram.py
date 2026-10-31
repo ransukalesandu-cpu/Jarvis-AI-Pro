@@ -119,6 +119,35 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(len(head._eyes), 2)
         self.assertTrue(all(0 <= eye < len(head._vertices) for eye in head._eyes))
 
+    def test_neural_face_landmarks_are_aligned_and_not_spherical(self):
+        """The dense mesh keeps its landmarks aligned with the sculpted face."""
+        head = self._track_widget(NeuralWireframeHead())
+        self.assertEqual(len(head._eyes), 2)
+        left_eye = head._vertices[head._eyes[0]]
+        right_eye = head._vertices[head._eyes[1]]
+        self.assertLess(left_eye[0], 0.0)
+        self.assertGreater(right_eye[0], 0.0)
+        self.assertAlmostEqual(left_eye[0], -right_eye[0], delta=1e-6)
+        self.assertAlmostEqual(left_eye[1], right_eye[1], delta=1e-6)
+        self.assertAlmostEqual(left_eye[2], right_eye[2], delta=1e-6)
+
+        eye_socket = NeuralWireframeHead._head_surface(0.40, 0.18)[2]
+        brow = NeuralWireframeHead._head_surface(0.40, 0.33)[2]
+        upper_lip = NeuralWireframeHead._head_surface(0.0, -0.30)[2]
+        mouth_crease = NeuralWireframeHead._head_surface(0.0, -0.37)[2]
+        baseline_upper_lip = NeuralWireframeHead._head_surface(
+            0.0, -0.30, sculpt=False
+        )[2]
+        baseline_mouth_crease = NeuralWireframeHead._head_surface(
+            0.0, -0.37, sculpt=False
+        )[2]
+        self.assertLess(eye_socket, brow)
+        self.assertLess(mouth_crease, upper_lip)
+        self.assertGreater(
+            upper_lip - mouth_crease,
+            baseline_upper_lip - baseline_mouth_crease,
+        )
+
     def test_bihansa_hologram_widget(self):
         """Test Bihansa 3D Neural Face visualizer creation, states, energy, visemes, and effects."""
         bihansa = BihansaHologramWidget()

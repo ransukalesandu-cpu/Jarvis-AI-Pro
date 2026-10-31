@@ -358,7 +358,6 @@ class HUDMainWindow(QMainWindow):
             self._agent_stop_button.clicked.connect(self._stop_agent_task)
             right_menu_layout.addWidget(self._agent_stop_button)
         self._right_menu.hide()
-        self._apply_compact_layout()
 
         self._bihansa_effects.toggled.connect(self.bihansa_visualizer.set_effects_enabled)
         self._bihansa_voice_reactive.toggled.connect(self.bihansa_visualizer.set_voice_reactive)
@@ -433,6 +432,7 @@ class HUDMainWindow(QMainWindow):
             _button.installEventFilter(self)
         self._position_left_menu_trigger()
         self._left_menu_trigger.show()
+        self._apply_compact_layout()
 
         for index, button in enumerate(self._left_icon_buttons):
             if index >= 2 and self._panel_agent is not None:

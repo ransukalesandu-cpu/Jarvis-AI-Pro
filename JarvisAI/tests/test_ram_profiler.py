@@ -70,7 +70,7 @@ class TestSamplingAccuracy(unittest.TestCase):
         process.create_time.return_value = 123.0
         process.memory_info.return_value = SimpleNamespace(rss=2048)
         process.memory_full_info.return_value = SimpleNamespace(uss=1024)
-        process.cpu_percent.side_effect = [0.0, 17.5]
+        process.cpu_percent.side_effect = [8.25, 17.5]
         replacement = Mock()
         replacement.pid = 42
         replacement.create_time.return_value = 123.0

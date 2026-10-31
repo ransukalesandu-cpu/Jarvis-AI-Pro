@@ -207,31 +207,27 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
 
     def test_left_mega_menu_expands_on_hover_and_starts_collapsed(self):
-        """The home hologram stays clean until the left-edge trigger is hovered."""
+        """The edge trigger opens the rail and pointer travel keeps it expanded."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
-        # Real geometry/window handles are required before Qt global-coordinate
-        # APIs are exercised; hidden top-level widgets are unsafe in offscreen CI.
         hud.show()
         app.processEvents()
         self.assertTrue(hud._left_rail.isHidden())
         self.assertFalse(hud._left_menu_trigger.isHidden())
 
-        enter = QEvent(QEvent.Type.Enter)
-        hud.eventFilter(hud._left_menu_trigger, enter)
+        QTest.mouseMove(hud._left_menu_trigger)
+        app.processEvents()
         self.assertFalse(hud._left_rail.isHidden())
 
-        # Capture the delayed-collapse callback instead of running a real timer,
-        # which would also advance unrelated HUD timers in a full-suite test.
-        leave = QEvent(QEvent.Type.Leave)
-        with patch("ui.hud_main.QTimer") as timer_mock:
-            hud.eventFilter(hud._left_menu_trigger, leave)
-            timer_mock.singleShot.assert_called_once()
-            self.assertEqual(timer_mock.singleShot.call_args[0][0], 180)
-            collapse = timer_mock.singleShot.call_args[0][1]
+        QTest.mouseMove(hud._left_icon_buttons[0])
+        QTest.qWait(260)
+        self.assertFalse(hud._left_rail.isHidden())
 
-        with patch("ui.hud_main.QCursor") as cursor:
-            cursor.pos.return_value = QPoint(2000, 2000)
-            collapse()
+        QTest.mouseMove(hud._home_page, QPoint(220, 180))
+        for _ in range(50):
+            app.processEvents()
+            if hud._left_rail.isHidden():
+                break
+            QTest.qWait(20)
         self.assertTrue(hud._left_rail.isHidden())
 
     def test_hud_status_label_does_not_report_errors_as_standby(self):

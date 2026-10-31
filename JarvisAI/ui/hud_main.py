@@ -794,10 +794,17 @@ class HUDMainWindow(QMainWindow):
         from memory.config_manager import save_assistant_mode
         save_assistant_mode("bihansa" if enabled else "jarvis")
         self.sig_mode_changed.emit()
-        self._lbl_hud_status.setText("✦ BIHANSA NEURAL MODE" if enabled else "● SYSTEM STANDBY")
-        self._lbl_hud_status.setStyleSheet(
-            "color: #ff75d4;" if enabled else f"color: {self._palette_chrome()};"
-        )
+        current_state = str(self._bridge.current_state or "IDLE").strip().upper()
+        if current_state in ("IDLE", "READY", "STANDBY"):
+            self._lbl_hud_status.setText(
+                "✦ BIHANSA NEURAL MODE" if enabled else "● SYSTEM STANDBY"
+            )
+            self._lbl_hud_status.setStyleSheet(
+                "color: #ff75d4;" if enabled else f"color: {self._palette_chrome()};"
+            )
+        else:
+            # Palette changes must not erase an active error or offline warning.
+            self._on_state_changed(current_state)
 
     @pyqtSlot(object, float, float)
     def _schedule_visemes(self, frames, hop: float, at: float):

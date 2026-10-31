@@ -181,6 +181,16 @@ class BihansaHologramWidget(QWidget):
         scale = min(w, h) * .43 * self._breath_scale * perspective
         return QPointF(w * .5 + xr * scale, h * .455 - yr * scale)
 
+    @staticmethod
+    def _render_grid_dimensions(width: int, height: int) -> Tuple[int, int, int]:
+        """Choose face mesh detail from the actual drawable size."""
+        side = max(0, min(int(width), int(height)))
+        if side < 360:
+            return 17, 21, 28
+        if side < 620:
+            return 21, 27, 48
+        return 25, 31, 74
+
     def paintEvent(self, _event):
         p = QPainter(self)
         if not p.isActive():
@@ -217,8 +227,9 @@ class BihansaHologramWidget(QWidget):
             p.drawArc(arc.adjusted(8, 8, -8, -8), int((-t * 31 % 360) * 16), 76 * 16)
 
         mouth = self._mouth_open()
-        # Grid mesh is generated from the procedural face surface on every frame.
-        cols, rows = 25, 31
+        # Adaptive mesh density keeps the silhouette detailed on large stages
+        # while reducing trigonometry and painter work on compact windows.
+        cols, rows, particle_count = self._render_grid_dimensions(int(w), int(h))
         grid: List[List[QPointF]] = []
         for j in range(rows):
             v = -0.98 + 1.96 * j / (rows - 1)
@@ -236,14 +247,15 @@ class BihansaHologramWidget(QWidget):
             for j in range(rows - 1):
                 for i in range(cols):
                     p.drawLine(grid[j][i], grid[j + 1][i])
-            # Diagonal links add the triangulated neural-mesh look.
-            p.setPen(QPen(QColor(255, 135, 225, 48), .55))
-            for j in range(rows - 1):
-                for i in range(cols - 1):
-                    if (i + j) % 2 == 0:
-                        p.drawLine(grid[j][i], grid[j + 1][i + 1])
-                    else:
-                        p.drawLine(grid[j][i + 1], grid[j + 1][i])
+            # Diagonal links are reserved for medium/high detail levels.
+            if cols >= 21:
+                p.setPen(QPen(QColor(255, 135, 225, 48), .55))
+                for j in range(rows - 1):
+                    for i in range(cols - 1):
+                        if (i + j) % 2 == 0:
+                            p.drawLine(grid[j][i], grid[j + 1][i + 1])
+                        else:
+                            p.drawLine(grid[j][i + 1], grid[j + 1][i])
 
         # Feature contours: eyes, brows, nose, mouth and chin.
         def curve(points, color, width=1.3, close=False):
@@ -299,7 +311,7 @@ class BihansaHologramWidget(QWidget):
 
         # Floating particles and scanning beam.
         if self._effects_enabled:
-            for x, y, radius, speed, phase in self._particles:
+            for x, y, radius, speed, phase in self._particles[:particle_count]:
                 px = (x * .5 + .5) * w + math.sin(t * speed + phase) * 8
                 py = (y * .5 + .5) * h + math.cos(t * speed + phase) * 6
                 alpha = int(45 + 130 * (.5 + .5 * math.sin(t * 1.8 + phase)))

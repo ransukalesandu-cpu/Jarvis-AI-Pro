@@ -1572,23 +1572,28 @@ class HUDMainWindow(QMainWindow):
             trigger.raise_()
 
     def _hide_left_rail_if_pointer_outside(self) -> None:
-        """Collapse the home rail unless the pointer is still over its hover region.
-
-        Avoid QApplication.widgetAt(): under Qt's offscreen platform it can abort
-        the test process while resolving widgets at a synthetic cursor position.
-        Global geometry is sufficient because the rail itself covers its icon children.
-        """
+        """Collapse only when the real pointer has left both navigation widgets."""
         if self._workspace_stack.currentWidget() is self._dashboard:
             return
         global_pos = QCursor.pos()
-        for widget in (self._left_rail, self._left_menu_trigger):
-            try:
-                top_left = widget.mapToGlobal(widget.rect().topLeft())
-                if QRect(top_left, widget.size()).contains(global_pos):
+        if QApplication.platformName().lower() != "offscreen":
+            # On a real desktop, inspect the actual widget under the cursor so
+            # overlapping child windows cannot keep the rail open by geometry.
+            widget = QApplication.widgetAt(global_pos)
+            while widget is not None:
+                if widget is self._left_rail or widget is self._left_menu_trigger:
                     return
-            except RuntimeError:
-                # Widgets may be closing while a delayed collapse is queued.
-                continue
+                widget = widget.parentWidget()
+        else:
+            # widgetAt() is unsafe with synthetic cursor positions on Qt's
+            # offscreen plugin; map the cursor into each widget instead.
+            for widget in (self._left_rail, self._left_menu_trigger):
+                try:
+                    if widget.rect().contains(widget.mapFromGlobal(global_pos)):
+                        return
+                except RuntimeError:
+                    # Widgets may be closing while a delayed collapse is queued.
+                    continue
         self._left_rail.hide()
 
     def eventFilter(self, watched, event):

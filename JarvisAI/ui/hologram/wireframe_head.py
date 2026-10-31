@@ -149,7 +149,9 @@ class NeuralWireframeHead(_BASE_CANVAS):
         return profile[-1][1]
 
     @classmethod
-    def _head_surface(cls, a: float, v: float) -> Tuple[float, float, float]:
+    def _head_surface(
+        cls, a: float, v: float, *, sculpt: bool = True
+    ) -> Tuple[float, float, float]:
         """Point on the head shell.
 
         ``a`` is the horizontal angle in quadrant units: ``a = 0`` is the centre
@@ -170,23 +172,24 @@ class NeuralWireframeHead(_BASE_CANVAS):
         y = v * 1.10 - 0.02
 
         front = max(0.0, cos_t)
-        if front > 0.0:
+        if front > 0.0 and sculpt:
             ax = abs(x)
             # Nose bridge + tip: a narrow ridge down the centre line.
             nose = _gaussian(ax, 0.0, 0.085) * (
                 _gaussian(v, 0.06, 0.22) + 0.45 * _gaussian(v, -0.17, 0.07)
             )
             z += 0.30 * nose * front
-            # Brow ridge.
-            z += 0.055 * _gaussian(ax, 0.30, 0.17) * _gaussian(v, 0.33, 0.09) * front
-            # Eye sockets recede under the brow.
-            z -= 0.095 * _gaussian(ax, 0.36, 0.13) * _gaussian(v, 0.17, 0.10) * front
-            # Cheekbones.
-            z += 0.060 * _gaussian(ax, 0.58, 0.15) * _gaussian(v, -0.05, 0.16) * front
-            # Upper lip bulge and the mouth crease under it.
-            z += 0.035 * _gaussian(ax, 0.0, 0.16) * _gaussian(v, -0.30, 0.055) * front
-            z -= 0.055 * _gaussian(ax, 0.0, 0.20) * _gaussian(v, -0.37, 0.045) * front
-            # Chin.
+            # Feature curves use angular coordinates; sculpting follows their
+            # projected x positions so the face reads clearly at HUD scale.
+            eye_x = math.sin(0.40 * math.pi / 2.0) * 0.86 * cls._radius_at(0.18)
+            brow_x = math.sin(0.25 * math.pi / 2.0) * 0.86 * cls._radius_at(0.33)
+            cheek_x = math.sin(0.62 * math.pi / 2.0) * 0.86 * cls._radius_at(-0.05)
+            z += 0.075 * _gaussian(ax, brow_x, 0.15) * _gaussian(v, 0.33, 0.095) * front
+            z -= 0.125 * _gaussian(ax, eye_x, 0.14) * _gaussian(v, 0.18, 0.105) * front
+            z += 0.085 * _gaussian(ax, cheek_x, 0.16) * _gaussian(v, -0.05, 0.16) * front
+            z += 0.045 * _gaussian(ax, 0.0, 0.36) * _gaussian(v, -0.30, 0.055) * front
+            z -= 0.075 * _gaussian(ax, 0.0, 0.37) * _gaussian(v, -0.37, 0.045) * front
+            z -= 0.022 * _gaussian(ax, cheek_x * 0.78, 0.075) * _gaussian(v, -0.22, 0.12) * front
             z += 0.045 * _gaussian(ax, 0.0, 0.16) * _gaussian(v, -0.66, 0.11) * front
             # Jaw: pull the lower sides back so the skull ends in a jaw, not a box.
             if v < -0.35:

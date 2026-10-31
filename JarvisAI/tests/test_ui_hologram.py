@@ -544,8 +544,11 @@ class TestUIHologram(unittest.TestCase):
         self.assertTrue(hud._right_menu.isVisible())
 
         hud.resize(1024, 700)
-        # Allow the single-shot post-resize callback to run on Windows Qt.
-        QTest.qWait(30)
+        # Exercise the deferred geometry pass deterministically. The scheduling
+        # contract is covered separately by test_resize_event_defers_floating_child_geometry;
+        # waiting on a native Qt timer here can terminate the Windows offscreen
+        # platform process before pytest has a chance to report an assertion.
+        hud._apply_deferred_resize_layout()
         expected_x = max(
             8, hud.centralWidget().width() - hud._right_menu.width() - 12
         )

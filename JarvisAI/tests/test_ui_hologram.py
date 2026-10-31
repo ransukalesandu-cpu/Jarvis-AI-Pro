@@ -207,27 +207,29 @@ class TestUIHologram(unittest.TestCase):
         self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
 
     def test_left_mega_menu_expands_on_hover_and_starts_collapsed(self):
-        """The edge trigger opens the rail and pointer travel keeps it expanded."""
+        """Pointer travel into the rail prevents the delayed collapse."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
-        hud.show()
-        app.processEvents()
         self.assertTrue(hud._left_rail.isHidden())
         self.assertFalse(hud._left_menu_trigger.isHidden())
 
-        QTest.mouseMove(hud._left_menu_trigger)
-        app.processEvents()
+        hud.eventFilter(hud._left_menu_trigger, QEvent(QEvent.Type.Enter))
         self.assertFalse(hud._left_rail.isHidden())
 
-        QTest.mouseMove(hud._left_icon_buttons[0])
-        QTest.qWait(260)
-        self.assertFalse(hud._left_rail.isHidden())
+        # Capture the delayed callback and place a synthetic cursor over the
+        # rail; this tests the transition without relying on a native window.
+        with patch("ui.hud_main.QTimer") as timer_mock:
+            hud.eventFilter(hud._left_menu_trigger, QEvent(QEvent.Type.Leave))
+            timer_mock.singleShot.assert_called_once()
+            self.assertEqual(timer_mock.singleShot.call_args[0][0], 180)
+            collapse = timer_mock.singleShot.call_args[0][1]
 
-        QTest.mouseMove(hud._home_page, QPoint(220, 180))
-        for _ in range(50):
-            app.processEvents()
-            if hud._left_rail.isHidden():
-                break
-            QTest.qWait(20)
+        rail_pos = hud._left_rail.mapToGlobal(hud._left_rail.rect().center())
+        with patch("ui.hud_main.QCursor") as cursor:
+            cursor.pos.return_value = rail_pos
+            collapse()
+            self.assertFalse(hud._left_rail.isHidden())
+            cursor.pos.return_value = QPoint(2000, 2000)
+            collapse()
         self.assertTrue(hud._left_rail.isHidden())
 
     def test_hud_status_label_does_not_report_errors_as_standby(self):

@@ -379,13 +379,23 @@ def _get_api_key() -> str:
 
 def _load_system_prompt() -> str:
     try:
-        return PROMPT_PATH.read_text(encoding="utf-8")
+        prompt = PROMPT_PATH.read_text(encoding="utf-8")
     except Exception:
-        return (
+        prompt = (
             "You are JARVIS, Tony Stark's AI assistant. "
             "Be concise, direct, and always use the provided tools to complete tasks. "
             "Never simulate or guess results — always call the appropriate tool."
         )
+    # The default owner profile is shared with Guest Mode; sensitive actions
+    # continue to use the existing PIN / Voice ID / owner-verification gates.
+    try:
+        from core.personal_cloud_memory import get_default_owner_memory_context
+        owner_context = get_default_owner_memory_context()
+        if owner_context:
+            prompt = prompt.rstrip() + "\n\n" + owner_context
+    except Exception as exc:
+        print(f"[JARVIS] Default owner profile prompt injection skipped ({type(exc).__name__})")
+    return prompt
 
 _CTRL_RE = re.compile(r"<ctrl\d+>", re.IGNORECASE)
 

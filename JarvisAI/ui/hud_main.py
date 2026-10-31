@@ -24,7 +24,7 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import QFont, QCursor
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QApplication, QMainWindow, QWidget, QSizePolicy, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QToolButton, QFrame, QGraphicsBlurEffect, QGraphicsOpacityEffect, QCheckBox, QStackedWidget
 )
 
@@ -201,9 +201,17 @@ class HUDMainWindow(QMainWindow):
         # subsequent, explicit persona switches trigger the one-shot overlay.
         self._active_persona_mode = "jarvis"
         self._persona_handoff_ready = False
+        # Escape dismisses a visible settings dropdown first, then the home rail.
+        self._escape_dismiss_rail_armed = False
         # Settings must exist before the UI builds, because the palette, reduced
         # motion and battery-saver preferences are applied to every renderer.
         self._settings = QSettings("JarvisAI", "JarvisAIPro")
+        # Apply child geometry after Qt completes the top-level native resize.
+        # Resizing/raising floating children inside resizeEvent can re-enter
+        # Qt layout code and abort on offscreen Windows/Linux runners.
+        self._resize_layout_timer = QTimer(self)
+        self._resize_layout_timer.setSingleShot(True)
+        self._resize_layout_timer.timeout.connect(self._apply_deferred_resize_layout)
         self._prefs = VisualPreferences.from_settings(self._settings)
         self._palette = self._prefs.scaled_palette()
         self._budget_reason = ""
@@ -252,8 +260,9 @@ class HUDMainWindow(QMainWindow):
         top_row = QHBoxLayout()
         # Live subsystem health (mic / speaker / network / AI session). Unavailable
         # subsystems render as hollow rings — never a fabricated green dot.
+        # Keep live subsystem diagnostics out of the default hologram home view.
+        # They remain available from the right-side menu without losing real status.
         self._status_strip = HudStatusStrip(self, self._palette)
-        top_row.addWidget(self._status_strip, 0, Qt.AlignmentFlag.AlignVCenter)
         top_row.addStretch()
         self._dashboard_button = QToolButton(self)
         self._dashboard_button.setText("▦")
@@ -332,7 +341,11 @@ class HUDMainWindow(QMainWindow):
         # The original hologram widget and its paint implementation are untouched.
         self._hologram_stage = QWidget(self)
         # The stage must be see-through: the hologram floats on the HUD, it is
-        # not a video panel with a black background.
+        # not a video panel with a black background. Explicit expansion helps
+        # the existing face stack use the available center-column space.
+        self._hologram_stage.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         for _layer in (self._hologram_stage,):
             _layer.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
             _layer.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
@@ -340,12 +353,18 @@ class HUDMainWindow(QMainWindow):
             _layer.setStyleSheet("background: transparent;")
         stage_layout = QVBoxLayout(self._hologram_stage)
         stage_layout.setContentsMargins(0, 0, 0, 0)
-        stage_layout.setSpacing(0)
+        # A small responsive gap visually separates the face area from the orb.
+        # The existing stack remains stretch=1 and therefore dominant.
+        stage_layout.setSpacing(10)
+        self._stage_layout = stage_layout
 
         self._visualizer_stack = QStackedWidget(self._hologram_stage)
         self._visualizer_stack.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self._visualizer_stack.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self._visualizer_stack.setStyleSheet("background: transparent;")
+        self._visualizer_stack.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         self.wireframe_visualizer = NeuralWireframeHead(self)
         self.bihansa_visualizer = BihansaHologramWidget(self)
         # Keep the rim light attached to each existing face rather than
@@ -432,7 +451,8 @@ class HUDMainWindow(QMainWindow):
         # Right-side dropdown contains secondary telemetry and settings controls.
         self._right_menu = QFrame(central_widget)
         self._right_menu.setObjectName("rightDropdownMenu")
-        self._right_menu.setFixedWidth(300)
+        self._right_menu.setMinimumWidth(hud_layout.DROPDOWN_MIN)
+        self._right_menu.setMaximumWidth(hud_layout.DROPDOWN_WIDE)
         self._right_menu.setMaximumHeight(650)
         self._right_menu.setStyleSheet(
             "QFrame#rightDropdownMenu { background: rgba(9,17,27,248); border: 1px solid #17485a; border-radius: 14px; }"
@@ -440,6 +460,9 @@ class HUDMainWindow(QMainWindow):
         right_menu_layout = QVBoxLayout(self._right_menu)
         right_menu_layout.setContentsMargins(10, 10, 10, 10)
         right_menu_layout.setSpacing(8)
+        # Telemetry is on demand: quick subsystem indicators live in this menu,
+        # not above the hologram where they compete with the main visual.
+        right_menu_layout.addWidget(self._status_strip)
 
         self._bihansa_toggle = QPushButton("BIHANSA MODE: OFF")
         self._bihansa_toggle.setCheckable(True)
@@ -637,27 +660,63 @@ class HUDMainWindow(QMainWindow):
         self._toast.hide()
 
         self._apply_palette()
+        # Track actual stage resizes without a polling timer. The reactor itself
+        # intentionally remains stage-sized: it paints its heart and neural
+        # filaments in stage coordinates, so moving that overlay would misalign
+        # the wires and face anchor.
+        self._hologram_stage.installEventFilter(self)
+        self._apply_hologram_stage_spacing()
         # First sizing pass, now that the rail and dropdown exist.
         self._apply_responsive_chrome()
 
 
+    def _apply_hologram_stage_spacing(self) -> None:
+        """Keep a restrained face-to-orb gap proportional to the stage height."""
+        layout = getattr(self, "_stage_layout", None)
+        stage = getattr(self, "_hologram_stage", None)
+        if layout is None or stage is None:
+            return
+        stage_height = stage.height()
+        if stage_height <= 0:
+            return
+        spacing = max(10, min(26, stage_height // 40))
+        if layout.spacing() != spacing:
+            # Let Qt's current resize/layout pass apply the spacing; explicitly
+            # activating the layout from a resize event can re-enter native sizing.
+            layout.setSpacing(spacing)
+
+    def _apply_deferred_resize_layout(self) -> None:
+        """Synchronize floating chrome after the native resize event returns."""
+        self._window_resize_depth = getattr(self, "_window_resize_depth", 0) + 1
+        try:
+            self._apply_responsive_chrome()
+            self._position_left_menu_trigger()
+            if hasattr(self, "_right_menu") and self._right_menu.isVisible():
+                # _apply_responsive_chrome already sized it; only position here.
+                self._position_right_menu(size=False)
+            spacing_callback = getattr(self, "_apply_hologram_stage_spacing", None)
+            if callable(spacing_callback):
+                spacing_callback()
+            self._sync_task_blocked_rect()
+            if hasattr(self, "_toast") and self._toast.isVisible():
+                host = self.centralWidget()
+                if host is not None:
+                    self._toast.move(
+                        max(12, (host.width() - self._toast.width()) // 2),
+                        max(12, host.height() - self._toast.height() - 18),
+                    )
+        finally:
+            self._window_resize_depth = max(
+                0, getattr(self, "_window_resize_depth", 1) - 1
+            )
+
     def resizeEvent(self, event):
-        """Keep floating menus inside the central workspace after window resizes."""
+        """Schedule responsive child geometry after this native resize finishes."""
         super().resizeEvent(event)
-        # Chrome adapts before the menu is positioned: the dropdown's width is
-        # one of the things that decides where it goes.
-        self._apply_responsive_chrome()
-        self._position_left_menu_trigger()
-        if hasattr(self, "_right_menu") and self._right_menu.isVisible():
-            self._position_right_menu()
-        self._sync_task_blocked_rect()
-        if hasattr(self, "_toast") and self._toast.isVisible():
-            host = self.centralWidget()
-            if host is not None:
-                self._toast.move(
-                    max(12, (host.width() - self._toast.width()) // 2),
-                    max(12, host.height() - self._toast.height() - 18),
-                )
+        timer = getattr(self, "_resize_layout_timer", None)
+        if timer is not None:
+            # Single-shot timer coalesces rapid drag-resize events into one layout pass.
+            timer.start(0)
 
     @_safe_slot("ui.hud_main:_on_island_energy")
     def _on_island_energy(self, energy: float) -> None:
@@ -668,6 +727,7 @@ class HUDMainWindow(QMainWindow):
     def showEvent(self, event):
         """The stage has real geometry only once shown; re-place the overlays."""
         super().showEvent(event)
+        self._apply_hologram_stage_spacing()
         self._sync_task_blocked_rect()
 
     def _toggle_dashboard_page(self):
@@ -765,29 +825,34 @@ class HUDMainWindow(QMainWindow):
             print(f"[JARVIS HUD] Telemetry refresh failed: {type(exc).__name__}: {exc}")
         self._dashboard.finish_loading()
 
-    def _position_right_menu(self):
-        """Anchor the dropdown to the right edge without clipping on narrow windows."""
+    def _position_right_menu(self, *, size: bool = True) -> None:
+        """Anchor the floating dropdown; resize events can skip duplicate sizing."""
         host = self.centralWidget()
         if host is None:
             return
-        self._size_right_menu(host.width(), host.height())
+        if size:
+            self._size_right_menu(host.width(), host.height())
         x = hud_layout.dropdown_x(host.width(), self._right_menu.width())
         self._right_menu.move(x, hud_layout.DROPDOWN_TOP)
         self._right_menu.raise_()
 
     def _size_right_menu(self, window_width: int, window_height: int) -> None:
-        """Fit the dropdown to the window instead of pinning it to 300 x 650.
+        """Fit the floating dropdown without forcing a nested Qt layout pass.
 
-        ``adjustSize`` is not optional here: the dropdown is a free-floating child
-        rather than a layout member, so nothing ever gives it a height. Without
-        this call it stayed at Qt's 30 px default and opened as a thin empty bar.
+        The menu is not in the central layout. Its size hint already reflects its
+        child layout; applying a bounded size directly avoids calling
+        QLayout.activate()/QWidget.adjustSize() while the parent is processing a
+        resize. Those synchronous calls can re-enter native Qt geometry handling
+        on Windows and offscreen runners.
         """
-        self._right_menu.setFixedWidth(hud_layout.dropdown_width(window_width))
-        self._right_menu.setMaximumHeight(hud_layout.dropdown_height(window_height))
-        layout = self._right_menu.layout()
-        if layout is not None:
-            layout.activate()
-        self._right_menu.adjustSize()
+        width = hud_layout.dropdown_width(window_width)
+        max_height = hud_layout.dropdown_height(window_height)
+        size_hint = self._right_menu.sizeHint()
+        height = max(1, min(max_height, size_hint.height()))
+        # Resize the floating child without changing its min/max constraints.
+        # setFixedSize() mutates both constraints and geometry; doing that during
+        # rapid native resize notifications can trigger a Windows Qt DLL crash.
+        self._right_menu.resize(width, height)
 
     def _apply_responsive_chrome(self) -> None:
         """Resize the rails to the window: fixed widths only look right at one size.
@@ -804,15 +869,21 @@ class HUDMainWindow(QMainWindow):
             for button in getattr(self, "_left_icon_buttons", ()):
                 if button.width() != size:
                     button.setFixedSize(size, size)
-        if getattr(self, "_right_menu", None) is not None:
+        if (
+            getattr(self, "_right_menu", None) is not None
+            and (self._right_menu.isVisible() or not self.isVisible())
+        ):
+            # Size the hidden menu during initial construction, while the HUD
+            # itself is not visible, so responsive-width callers stay correct.
+            # Once the HUD is on screen, avoid resizing a hidden native child
+            # during Qt's show/layout pass; it is sized when opened instead.
             self._size_right_menu(width, height)
-            if self._right_menu.isVisible():
-                self._position_right_menu()
 
     def _toggle_right_dropdown(self):
         """Show a floating right dropdown without shrinking the hologram workspace."""
         should_show = not self._right_menu.isVisible()
         if should_show:
+            self._escape_dismiss_rail_armed = False
             self._position_right_menu()
         self._right_menu.setVisible(should_show)
 
@@ -1732,7 +1803,17 @@ class HUDMainWindow(QMainWindow):
         self._left_rail.hide()
 
     def eventFilter(self, watched, event):
-        """Expand the home navigation on hover without swallowing Qt input."""
+        """Keep stage spacing responsive and expand home navigation on hover."""
+        if (
+            watched is getattr(self, "_hologram_stage", None)
+            and event.type() == QEvent.Type.Resize
+        ):
+            # Stage resize notifications can arrive while Qt is inside a parent
+            # layout pass. Defer spacing and overlay geometry until that pass
+            # returns; the single-shot timer coalesces stage/window resizes.
+            timer = getattr(self, "_resize_layout_timer", None)
+            if timer is not None and not timer.isActive():
+                timer.start(0)
         if watched is self._left_menu_trigger or watched is self._left_rail or watched in self._left_icon_buttons:
             if event.type() == QEvent.Type.Enter:
                 if self._workspace_stack.currentWidget() is not self._dashboard:
@@ -1740,7 +1821,10 @@ class HUDMainWindow(QMainWindow):
                     self._left_rail.raise_()
                 return False
             if event.type() == QEvent.Type.Leave:
-                QTimer.singleShot(180, self._hide_left_rail_if_pointer_outside)
+                # Keep the hover rail stable while its settings dropdown is open.
+                # Escape closes the dropdown first; the next Escape dismisses the rail.
+                if not self._right_menu.isVisible():
+                    QTimer.singleShot(180, self._hide_left_rail_if_pointer_outside)
                 return False
         return super().eventFilter(watched, event)
 
@@ -1748,13 +1832,32 @@ class HUDMainWindow(QMainWindow):
         """Escape closes whatever overlay is open, innermost first."""
         if event.key() == Qt.Key.Key_Escape:
             if self._right_menu.isVisible():
+                self._escape_dismiss_rail_armed = (
+                    self._workspace_stack.currentWidget() is self._home_page
+                    and not self._left_rail.isHidden()
+                )
                 self._right_menu.hide()
                 return
+            if self._escape_dismiss_rail_armed:
+                self._escape_dismiss_rail_armed = False
+                if not self._left_rail.isHidden():
+                    self._left_rail.hide()
+                    self._left_menu_trigger.show()
+                    return
             if self._toast.isVisible():
                 self._toast.dismiss()
                 return
             if hasattr(self, "_island") and self._island.isVisible() and self._island._expanded:
                 self._island.collapse()
+                return
+            # On the hologram home page, Escape also dismisses the hover rail.
+            # The dashboard rail stays visible because it is primary dashboard navigation.
+            if (
+                self._workspace_stack.currentWidget() is self._home_page
+                and not self._left_rail.isHidden()
+            ):
+                self._left_rail.hide()
+                self._left_menu_trigger.show()
                 return
         super().keyPressEvent(event)
 

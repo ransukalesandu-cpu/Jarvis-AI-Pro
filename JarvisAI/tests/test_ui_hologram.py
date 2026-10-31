@@ -5,6 +5,10 @@ Verifies widget creation, state transitions, audio energy calculations, and sign
 
 import os
 import sys
+import faulthandler
+
+# Emit native crash stacks on Windows Qt/offscreen CI failures.
+faulthandler.enable(file=sys.stderr, all_threads=True)
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
@@ -22,7 +26,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt, QPoint
-from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton
+from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton, QSizePolicy
 from PyQt6.QtTest import QTest
 
 # Ensure QApplication exists before testing Qt widgets
@@ -234,6 +238,41 @@ class TestUIHologram(unittest.TestCase):
             collapse()
         self.assertTrue(hud._left_rail.isHidden())
 
+    def test_home_status_strip_is_only_visible_from_right_menu(self):
+        """Subsystem telemetry stays out of the default hologram home view."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.show()
+        app.processEvents()
+
+        self.assertIs(hud._status_strip.parentWidget(), hud._right_menu)
+        self.assertGreaterEqual(hud._right_menu.layout().indexOf(hud._status_strip), 0)
+        self.assertIs(hud._workspace_stack.currentWidget(), hud._home_page)
+        self.assertFalse(hud._status_strip.isVisible())
+
+        hud._toggle_right_dropdown()
+        app.processEvents()
+        self.assertTrue(hud._right_menu.isVisible())
+        self.assertTrue(hud._status_strip.isVisible())
+
+    def test_escape_closes_right_menu_then_home_hover_rail(self):
+        """Escape dismisses overlays in order without hiding dashboard navigation."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.show()
+        app.processEvents()
+        hud._left_rail.show()
+        hud._toggle_right_dropdown()
+        app.processEvents()
+
+        QTest.keyClick(hud, Qt.Key.Key_Escape)
+        app.processEvents()
+        self.assertTrue(hud._right_menu.isHidden())
+        self.assertFalse(hud._left_rail.isHidden())
+
+        QTest.keyClick(hud, Qt.Key.Key_Escape)
+        app.processEvents()
+        self.assertTrue(hud._left_rail.isHidden())
+        self.assertFalse(hud._left_menu_trigger.isHidden())
+
     def test_hud_status_label_does_not_report_errors_as_standby(self):
         """Error and disconnected states must remain visible in the home status."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
@@ -428,6 +467,59 @@ class TestUIHologram(unittest.TestCase):
         hud._bihansa_toggle.setChecked(False)
         self.assertEqual(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
 
+    def test_main_hologram_composition_expands_and_tracks_resize(self):
+        """The main face owns the stage space; orb/heart geometry stays aligned."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.resize(980, 720)
+        hud.show()
+        app.processEvents()
+
+        self.assertEqual(
+            hud._hologram_stage.sizePolicy().horizontalPolicy(),
+            QSizePolicy.Policy.Expanding,
+        )
+        self.assertEqual(
+            hud._hologram_stage.sizePolicy().verticalPolicy(),
+            QSizePolicy.Policy.Expanding,
+        )
+        self.assertEqual(
+            hud._visualizer_stack.sizePolicy().horizontalPolicy(),
+            QSizePolicy.Policy.Expanding,
+        )
+        self.assertEqual(
+            hud._visualizer_stack.sizePolicy().verticalPolicy(),
+            QSizePolicy.Policy.Expanding,
+        )
+        self.assertIs(hud._stage_layout.itemAt(0).widget(), hud._visualizer_stack)
+        self.assertIs(hud._stage_layout.itemAt(1).widget(), hud._mini_orb)
+        self.assertEqual(
+            hud._stage_layout.spacing(),
+            max(10, min(26, hud._hologram_stage.height() // 40)),
+        )
+        # The reactor is a full-stage painter overlay. Moving the widget itself
+        # would break its stage-local chin, heart and orb connector coordinates.
+        self.assertEqual(hud._heart_reactor.geometry(), hud._hologram_stage.rect())
+
+        face = hud.wireframe_visualizer.face_rect()
+        self.assertGreater(face.width(), 0)
+        self.assertGreater(face.height(), 0)
+        self.assertGreaterEqual(face.left(), 0)
+        self.assertGreaterEqual(face.top(), 0)
+        self.assertLessEqual(face.right(), hud.wireframe_visualizer.width())
+        self.assertLessEqual(face.bottom(), hud.wireframe_visualizer.height())
+
+        hud.resize(900, 660)
+        app.processEvents()
+        app.processEvents()
+        self.assertEqual(hud._heart_reactor.geometry(), hud._hologram_stage.rect())
+        self.assertEqual(
+            hud._stage_layout.spacing(),
+            max(10, min(26, hud._hologram_stage.height() // 40)),
+        )
+        face = hud.wireframe_visualizer.face_rect()
+        self.assertLessEqual(face.right(), hud.wireframe_visualizer.width())
+        self.assertLessEqual(face.bottom(), hud.wireframe_visualizer.height())
+
     def test_hologram_home_is_clean_and_dashboard_is_a_separate_page(self):
         """The main page stays hologram-first; bento telemetry is opened separately."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
@@ -497,16 +589,21 @@ class TestUIHologram(unittest.TestCase):
         self.assertIs(hud._dashboard._cards[1].findChild(BentoPanelSurface), hud._surface_security)
 
     def test_right_dropdown_repositions_after_resize(self):
-        """The floating settings menu must remain anchored inside the window."""
+        """The floating settings menu remains anchored without a native show pass."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
-        hud.resize(1100, 760)
-        hud.show()
-        app.processEvents()
-        hud._toggle_right_dropdown()
-        self.assertTrue(hud._right_menu.isVisible())
+        # This is a pure child-geometry contract. Do not show the full OpenGL HUD
+        # or pump its unrelated timers just to verify the dropdown's coordinates.
+        hud._resize_layout_timer.stop()
+        hud.centralWidget().resize(1100, 760)
+        hud._position_right_menu()
+        self.assertEqual(
+            hud._right_menu.x(),
+            max(8, hud.centralWidget().width() - hud._right_menu.width() - 12),
+        )
 
-        hud.resize(1024, 700)
-        app.processEvents()
+        hud._resize_layout_timer.stop()
+        hud.centralWidget().resize(1024, 700)
+        hud._position_right_menu()
         expected_x = max(
             8, hud.centralWidget().width() - hud._right_menu.width() - 12
         )

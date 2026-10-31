@@ -520,10 +520,14 @@ class TestUIHologram(unittest.TestCase):
         """Resize handling schedules one post-event pass instead of moving children inline."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
         hud.show()
-        with patch.object(hud._resize_layout_timer, "start") as start:
-            hud.resize(1260, 780)
-            app.processEvents()
-        start.assert_called_with(10)
+        # Replace the native QTimer with a plain mock before resizing. Patching
+        # the bound QTimer.start method can terminate PyQt Windows offscreen
+        # without a Python traceback.
+        timer = Mock()
+        hud._resize_layout_timer = timer
+        hud.resize(1260, 780)
+        app.processEvents()
+        timer.start.assert_called_with(10)
 
         with (
             patch.object(hud, "_position_left_menu_trigger") as left,

@@ -104,9 +104,22 @@ class TestUIPackageIsLazy(unittest.TestCase):
         """
         source = textwrap.dedent(
             """
-            from ui import _earth_panel_class, _workspace_class
-            print(_earth_panel_class().__name__)
-            print(_workspace_class().__name__)
+            import os
+            import sys
+            from ui import _earth_panel_class
+            earth_panel = _earth_panel_class()
+            assert earth_panel.__name__ == "EarthGlobePanel"
+            print("EARTH_PANEL=" + earth_panel.__name__, flush=True)
+
+            from ui import _workspace_class
+            workspace = _workspace_class()
+            assert workspace.__name__ == "HudWorkspace"
+            print("WORKSPACE=" + workspace.__name__, flush=True)
+
+            # Qt WebEngine may fault during DLL teardown on Windows runners.
+            # Import success is already verified; exit without native cleanup.
+            sys.stdout.flush()
+            os._exit(0)
             """
         )
         proc = subprocess.run(
@@ -122,8 +135,8 @@ class TestUIPackageIsLazy(unittest.TestCase):
             f"lazy WebEngine-backed imports failed in an isolated process:\n"
             f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}",
         )
-        self.assertIn("EarthGlobePanel", proc.stdout)
-        self.assertIn("HudWorkspace", proc.stdout)
+        self.assertIn("EARTH_PANEL=EarthGlobePanel", proc.stdout)
+        self.assertIn("WORKSPACE=HudWorkspace", proc.stdout)
 
 
 class TestCameraLazyImport(unittest.TestCase):

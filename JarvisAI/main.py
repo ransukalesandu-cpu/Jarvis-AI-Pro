@@ -1787,7 +1787,7 @@ class JarvisLive:
 
     def _load_last_spoken_language(self) -> str:
         if not get_memory_provider_access_enabled():
-            return "English"
+            return "Sinhala"
         memory = load_memory()
         preferences = memory.get("preferences", {})
         preferences = preferences if isinstance(preferences, dict) else {}
@@ -1807,8 +1807,8 @@ class JarvisLive:
 
         sessions = memory.get("sessions", [])
         if isinstance(sessions, list) and sessions:
-            return self._normalize_briefing_language(sessions[-1].get("language", "English"))
-        return "English"
+            return self._normalize_briefing_language(sessions[-1].get("language", "Sinhala"))
+        return "Sinhala"
 
     def _remember_spoken_language(self, text: str) -> None:
         """Persist a briefing-language preference only after an explicit request."""

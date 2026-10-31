@@ -654,6 +654,7 @@ class HUDMainWindow(QMainWindow):
         """Wire VisualizerBridge signals to UI components."""
         self._bridge.sig_audio_energy.connect(self.wireframe_visualizer.set_audio_energy)
         self._bridge.sig_audio_energy.connect(self._mini_orb.set_audio_energy)
+        self._bridge.sig_audio_energy.connect(self._heart_reactor.set_audio_energy)
         self._bridge.sig_audio_energy.connect(self._dashboard.set_audio_energy)
         self._bridge.sig_state_changed.connect(self._on_state_changed)
         self._bridge.sig_auth_state_changed.connect(self._on_auth_state_changed)

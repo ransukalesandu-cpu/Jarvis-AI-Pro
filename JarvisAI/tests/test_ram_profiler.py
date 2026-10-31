@@ -107,7 +107,7 @@ class TestSamplingAccuracy(unittest.TestCase):
             ),
         ):
             sample = profile_ram.memory_sample(7, {}, set())
-        self.assertRegex(sample["timestamp_utc"], r"\\.\\d{3}\\+00:00$")
+        self.assertRegex(sample["timestamp_utc"], r"\.\d{3}\+00:00$")
 
     def test_process_with_unreadable_memory_is_not_counted(self):
         process = Mock()

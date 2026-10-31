@@ -129,6 +129,7 @@ class HUDMainWindow(QMainWindow):
         self._bihansa_toggle.setChecked(enabled)
         self._bihansa_effects.setChecked(self._settings.value("bihansa/effects", True, type=bool))
         self._bihansa_voice_reactive.setChecked(self._settings.value("bihansa/voice_reactive", True, type=bool))
+        self._reduced_motion_toggle.setChecked(self._settings.value("accessibility/reduced_motion", False, type=bool))
         self._apply_bihansa_preferences()
         self._set_bihansa_enabled(self._bihansa_toggle.isChecked())
 
@@ -314,8 +315,12 @@ class HUDMainWindow(QMainWindow):
         self._bihansa_voice_reactive = QCheckBox("Voice-reactive visuals")
         self._bihansa_voice_reactive.setChecked(True)
         self._bihansa_voice_reactive.setStyleSheet("QCheckBox { color: #ff9be8; spacing: 6px; padding: 4px; }")
+        self._reduced_motion_toggle = QCheckBox("Reduce hologram motion")
+        self._reduced_motion_toggle.setToolTip("Reduce continuous movement and animation for a calmer display")
+        self._reduced_motion_toggle.setStyleSheet("QCheckBox { color: #b9d7df; spacing: 6px; padding: 4px; }")
         right_menu_layout.addWidget(self._bihansa_effects)
         right_menu_layout.addWidget(self._bihansa_voice_reactive)
+        right_menu_layout.addWidget(self._reduced_motion_toggle)
         # Keep the popup lightweight; open real telemetry widgets on the dashboard.
         for label, panel_index in (
             ("OPEN BRAIN PANEL", 0),
@@ -663,6 +668,7 @@ class HUDMainWindow(QMainWindow):
         self.sig_hybrid_telemetry.connect(self._panel_brain.update_telemetry)
         self._bihansa_effects.toggled.connect(lambda value: self._settings.setValue("bihansa/effects", value) if hasattr(self, "_settings") else None)
         self._bihansa_voice_reactive.toggled.connect(lambda value: self._settings.setValue("bihansa/voice_reactive", value) if hasattr(self, "_settings") else None)
+        self._reduced_motion_toggle.toggled.connect(self._set_reduced_motion)
 
     @pyqtSlot(bool)
     def _set_bihansa_enabled(self, enabled: bool):
@@ -746,10 +752,21 @@ class HUDMainWindow(QMainWindow):
         dialog = BihansaSettingsDialog(self, settings=prefs, on_applied=self._apply_bihansa_preferences)
         dialog.exec()
 
+    def _set_reduced_motion(self, enabled: bool):
+        """Apply the global accessibility preference to both hologram personas."""
+        enabled = bool(enabled)
+        if hasattr(self, "_settings"):
+            self._settings.setValue("accessibility/reduced_motion", enabled)
+        bihansa_prefs = BihansaModeSettings(self._settings)
+        self.wireframe_visualizer.set_reduced_motion(enabled)
+        self.bihansa_visualizer.set_reduced_motion(enabled or bihansa_prefs.reduced_motion)
+
     def _apply_bihansa_preferences(self):
         """Apply persisted appearance preferences to the active hologram widget."""
         prefs = BihansaModeSettings(self._settings)
-        self.bihansa_visualizer.set_reduced_motion(prefs.reduced_motion)
+        global_reduced_motion = self._settings.value("accessibility/reduced_motion", False, type=bool)
+        self.wireframe_visualizer.set_reduced_motion(global_reduced_motion)
+        self.bihansa_visualizer.set_reduced_motion(global_reduced_motion or prefs.reduced_motion)
         self.bihansa_visualizer.set_glow_intensity(prefs.glow_intensity)
         self.bihansa_visualizer.set_animation_speed(prefs.animation_speed)
         self.bihansa_visualizer.set_effects_enabled(

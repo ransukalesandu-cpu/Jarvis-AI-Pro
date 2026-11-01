@@ -4738,6 +4738,11 @@ class JarvisLive:
                 await self._finish_shutdown()
                 return
 
+def _select_desktop_ui_mode(*, legacy_ui_available: bool) -> str:
+    """Select the original desktop interface as the normal launch target."""
+    return "original" if legacy_ui_available else "unavailable"
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="JARVIS AI Personal Assistant")
@@ -4757,7 +4762,7 @@ def main():
             traceback.print_exc()
         return
 
-    if JarvisUI is None:
+    if _select_desktop_ui_mode(legacy_ui_available=JarvisUI is not None) != "original":
         print(
             "[JARVIS] The original desktop UI could not be loaded. "
             "Install or repair the desktop UI dependencies."

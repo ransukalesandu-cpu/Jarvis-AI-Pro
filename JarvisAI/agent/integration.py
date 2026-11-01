@@ -79,7 +79,8 @@ class AgentService:
         self.capture = capture or ScreenCapture(
             monitor=1, max_width=1280, max_height=720, min_interval_s=2.0
         )
-        self.capture.set_paused(self.settings.screen_paused)
+        self._manual_screen_paused = bool(self.settings.screen_paused)
+        self.capture.set_paused(self._manual_screen_paused)
 
         self.vision = vision or ScreenVision(
             self.capture,
@@ -131,6 +132,7 @@ class AgentService:
             vision=self.vision,
             computer=self.computer,
             request_approval=self._request_approval,
+            before_step=self._authorize_task_step,
             on_milestone=self._on_milestone,
             logger=self._log,
         )
@@ -181,13 +183,15 @@ class AgentService:
         return self.runner.pause()
 
     def resume(self) -> bool:
+        self._ensure_can_continue()
         return self.runner.resume()
 
     def resume_last(self) -> Task | None:
-        """Continue the most recent unfinished task, if any."""
+        """Continue the most recent unfinished task after rechecking access."""
         candidates = self.store.unfinished()
         if not candidates:
             return None
+        self._ensure_can_continue()
         return self.runner.resume_task(candidates[0].id)
 
     def handle_voice(self, text: str) -> str | None:
@@ -200,10 +204,13 @@ class AgentService:
         if command.action == "pause":
             return "Paused." if self.pause() else "Nothing is running to pause."
         if command.action == "resume":
-            if self.resume():
-                return "Continuing."
-            return ("Resumed the last unfinished task." if self.resume_last()
-                    else "There is nothing to resume.")
+            try:
+                if self.resume():
+                    return "Continuing."
+                return ("Resumed the last unfinished task." if self.resume_last()
+                        else "There is nothing to resume.")
+            except PermissionError as exc:
+                return str(exc)
         if command.action == "status":
             return self.status_sentence()
         if command.action == "report":
@@ -309,8 +316,11 @@ class AgentService:
 
     # ── settings -----------------------------------------------------------
     def set_screen_paused(self, paused: bool) -> None:
-        self.capture.set_paused(bool(paused))
-        self._log(f"Agent screen access {'paused' if paused else 'resumed'} by the owner.")
+        self._manual_screen_paused = bool(paused)
+        privacy_locked = self._privacy_locked()
+        self.capture.set_paused(self._manual_screen_paused or privacy_locked)
+        state = "paused" if self._manual_screen_paused or privacy_locked else "resumed"
+        self._log(f"Agent screen access {state} by the owner.")
 
     def set_voice_updates(self, enabled: bool) -> None:
         self._announcer.enabled = bool(enabled)
@@ -323,7 +333,33 @@ class AgentService:
 
             return get_auth_state() == PRIVACY_LOCK
         except Exception:
-            return False
+            # Missing or broken security state must never be interpreted as unlocked.
+            return True
+
+    def _sync_capture_access(self) -> bool:
+        """Apply Privacy Lock to screen capture even if it changes mid-task."""
+        locked = self._privacy_locked()
+        self.capture.set_paused(self._manual_screen_paused or locked)
+        return locked
+
+    def _ensure_can_continue(self) -> None:
+        """Recheck the existing owner and privacy gates before task continuation."""
+        if not self.settings.enabled:
+            raise PermissionError("Autonomous tasks are switched off in settings.")
+        if self._sync_capture_access():
+            raise PermissionError("Privacy Lock is active. Autonomous work is blocked.")
+        if not self._owner_authorized():
+            raise PermissionError("Owner verification is required to continue autonomous work.")
+
+    def _authorize_task_step(self, step: TaskStep) -> str | None:
+        """Revalidate session state before each step and every retry."""
+        if not self.settings.enabled:
+            return "Autonomous tasks are switched off in settings."
+        if self._sync_capture_access():
+            return "Privacy Lock is active. Autonomous work is paused."
+        if not self._owner_authorized():
+            return "Owner verification expired; autonomous work is blocked."
+        return None
 
     def _owner_authorized(self) -> bool:
         try:
@@ -334,19 +370,21 @@ class AgentService:
             return False
 
     def _authorize_desktop(self, description: str) -> tuple[bool, str]:
-        """Desktop actions inherit the task-scope decision, not a fresh prompt."""
+        """Desktop actions inherit the task scope and recheck live owner access."""
+        if self._sync_capture_access():
+            return False, "Privacy Lock is active."
+        if not self._owner_authorized():
+            return False, "Owner verification is required for desktop control."
         if not self.settings.allow_desktop:
             return False, "Desktop control is disabled in autonomy settings."
         if self.settings.dry_run:
             return True, "dry-run"
-        if self._privacy_locked():
-            return False, "Privacy Lock is active."
         return True, "within the authorized task"
 
     def _request_approval(self, step: TaskStep, decision: Any) -> bool:
         """Consequential step: ask the owner through the existing confirm gate."""
-        if not self._owner_authorized():
-            self._log(f"Agent approval denied (owner not verified): {step.title}")
+        if self._sync_capture_access() or not self._owner_authorized():
+            self._log(f"Agent approval denied (owner not verified or Privacy Lock active): {step.title}")
             return False
         try:
             from core import confirm

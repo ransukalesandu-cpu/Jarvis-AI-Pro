@@ -55,7 +55,14 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn("TITLE_HOLD_MS = 1000", splash)
         self.assertIn('"JARVIS"', splash)
         self.assertNotIn("QMediaPlayer", splash)
-        self.assertIn("DURATION_MS = 4100", splash)
+        self.assertNotIn("QWebEngineView", splash)
+        self.assertIn("DURATION_MS = 6500", splash)
+        self.assertIn("FRAME_INTERVAL_MS = 16", splash)
+        self.assertIn("def _draw_particles", splash)
+        self.assertIn("def _draw_reactor", splash)
+        self.assertIn("def _draw_readouts", splash)
+        self.assertIn("PRESS ESC TO SKIP", splash)
+        self.assertIn("if elapsed <= self.TITLE_HOLD_MS", splash)
 
     def test_import_voice_persona(self):
         import voice.persona as persona

@@ -3137,7 +3137,7 @@ class JarvisLive:
                                     self.audio_in_queue.put_nowait(
                                         playable_audio[_i : _i + _PLAYBACK_SLICE_BYTES]
                                     )
-                            elif (not receive_diagnostics.output_audio_checkpoint_logged
+                            elif (not receive_diagnostics.checkpoint_claimed("output_audio")
                                   and receive_diagnostics.claim_checkpoint("short_audio_fragment")):
                                 buffered_bytes = len(audio_fragment_buffer) & ~1
                                 print(
@@ -3333,7 +3333,7 @@ class JarvisLive:
                                         f"({len(final_pcm)} bytes) at turn completion."
                                     )
 
-                            if not receive_diagnostics.output_audio_checkpoint_logged and not self._interrupted:
+                            if not receive_diagnostics.checkpoint_claimed("output_audio") and not self._interrupted:
                                 if receive_diagnostics.output_text_checkpoint_logged and receive_diagnostics.output_audio_bytes_seen:
                                     print(
                                         f"[AudioTrace 3→4/AUDIO] Assistant text arrived, but only "

@@ -63,6 +63,10 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Exercise the preserved PIN/Voice ID security suite explicitly; the
+      # application default remains disabled for the requested dev phase.
+      JARVIS_OWNER_AUTH_ENABLED: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -130,6 +134,7 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
       PYTHONUTF8: "1"
+      JARVIS_OWNER_AUTH_ENABLED: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

@@ -5790,7 +5790,6 @@ class MainWindow(QMainWindow):
         self._neural_view_btn.clicked.connect(
             lambda _checked=False: self._enter_immersive_view("neural")
         )
-        lay.addWidget(self._neural_view_btn)
         self._neural_hand_btn = QPushButton("✋ HAND")
         self._neural_hand_btn.setFixedHeight(26)
         self._neural_hand_btn.setFont(QFont("Consolas", 7, QFont.Weight.Bold))
@@ -5805,7 +5804,6 @@ class MainWindow(QMainWindow):
                 background:{C.PRI_GHO}; }}
         """)
         self._neural_hand_btn.clicked.connect(self._toggle_neural_hand_control)
-        lay.addWidget(self._neural_hand_btn)
         lay.addStretch()
 
         mid = QVBoxLayout(); mid.setSpacing(1)
@@ -6026,6 +6024,13 @@ class MainWindow(QMainWindow):
         hdr.setStyleSheet(f"color: {C.PRI_DIM}; background: transparent; "
                           f"border-bottom: 1px solid {C.BORDER}; padding-bottom: 4px;")
         lay.addWidget(hdr)
+
+        # Advanced visualisation tools live in the controls drawer rather than
+        # competing with the assistant identity in the clean command-centre header.
+        self._neural_view_btn.setFixedHeight(26)
+        self._neural_hand_btn.setFixedHeight(26)
+        lay.addWidget(self._neural_view_btn)
+        lay.addWidget(self._neural_hand_btn)
 
         remote_btn = QPushButton("◉  REMOTE CONTROL")
         remote_btn.setFixedHeight(30)

@@ -143,6 +143,16 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn('("_left_panel", "_telemetry_btn")', handler)
         self.assertIn("self._do_interrupt()", handler)
 
+    def test_hover_navigation_routes_to_glass_workspace_shortcuts(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn("class _HoverMenuButton(QToolButton)", source)
+        self.assertIn("self.showMenu()", source)
+        self.assertIn("self._nav_menu_btn = _HoverMenuButton()", source)
+        for key in ("timers", "music", "news", "media", "system"):
+            self.assertIn(f'("{key}",', source)
+        self.assertIn("self._on_workspace_shortcut(view)", source)
+        self.assertIn("self._show_workspace_side(key)", source)
+
     def test_import_voice_persona(self):
         import voice.persona as persona
         self.assertTrue(hasattr(persona, "JARVIS_SPOKEN_SYSTEM_PROMPT"))

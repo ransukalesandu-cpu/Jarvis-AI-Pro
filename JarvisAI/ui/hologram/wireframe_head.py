@@ -416,8 +416,11 @@ class NeuralWireframeHead(_BASE_CANVAS):
         self._drift_y = 0.0 if self._reduced_motion else math.sin(t * 1.4) * 10.0
         if not self._reduced_motion:
             boost = 2.4 if self._state == "THINKING" else 1.0
+            # Particle rotation is expressed at a 60 Hz reference cadence so
+            # the mesh does not slow down when the adaptive timer reduces FPS.
+            frame_scale = delta * 60.0
             for particle in self._particles:
-                particle["angle"] += particle["speed"] * boost
+                particle["angle"] += particle["speed"] * boost * frame_scale
         self.update()
 
     # ── painting ────────────────────────────────────────────────────────────

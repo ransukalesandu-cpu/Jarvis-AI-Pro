@@ -98,17 +98,20 @@ class LiveReceiveDiagnostics:
         self.last_audio_event_at: float | None = None
         self.last_audio_event_duration = 0.0
 
-    def record_audio_event(self, event_bytes: int, now: float) -> tuple[float, float | None]:
-        """Update arrival timing and return this event's duration and notable gap."""
+    def record_audio_event(
+        self, event_bytes: int, now: float
+    ) -> tuple[float, float | None, float]:
+        """Update arrival timing and return duration, gap, and prior duration."""
+        previous_duration = self.last_audio_event_duration
         duration, gap = _audio_event_timing(
             event_bytes,
             now,
             self.last_audio_event_at,
-            self.last_audio_event_duration,
+            previous_duration,
         )
         self.last_audio_event_at = now
         self.last_audio_event_duration = duration
-        return duration, gap
+        return duration, gap, previous_duration
 
     def record_live_event(self) -> bool:
         """Count a received Live event and report whether it is the first."""

@@ -72,6 +72,36 @@ def _audio_event_timing(
 
 
 
+
+
+class LiveReceiveDiagnostics:
+    """Per-receiver event counters and one-turn diagnostic checkpoints.
+
+    This state is intentionally separate from PCM buffering and playback
+    queues; resetting diagnostics must never discard audio or alter scheduling.
+    """
+
+    def __init__(self) -> None:
+        self.live_events_received = 0
+        self.input_checkpoint_logged = False
+        self.output_text_checkpoint_logged = False
+        self.output_audio_checkpoint_logged = False
+        self.short_audio_fragment_logged = False
+        self.output_audio_bytes_seen = 0
+        self.last_audio_event_at: float | None = None
+        self.last_audio_event_duration = 0.0
+
+    def reset_audio_timing(self) -> None:
+        self.last_audio_event_at = None
+        self.last_audio_event_duration = 0.0
+
+    def reset_turn(self) -> None:
+        self.input_checkpoint_logged = False
+        self.output_text_checkpoint_logged = False
+        self.output_audio_checkpoint_logged = False
+        self.short_audio_fragment_logged = False
+        self.output_audio_bytes_seen = 0
+
 def _resumable_session_handle(response) -> str | None:
     """Return only a server-confirmed resumable Gemini Live session handle."""
     update = getattr(response, "session_resumption_update", None)

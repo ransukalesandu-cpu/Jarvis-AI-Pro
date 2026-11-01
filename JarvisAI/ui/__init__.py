@@ -4775,7 +4775,7 @@ class MainWindow(QMainWindow):
         sc_full = QShortcut(QKeySequence("F11"), self)
         sc_full.activated.connect(self._toggle_fullscreen)
         sc_intr = QShortcut(QKeySequence("Escape"), self)
-        sc_intr.activated.connect(self._do_interrupt)
+        sc_intr.activated.connect(self._handle_escape)
 
     def _show_camera_frame(self, img_bytes: bytes):
         """Slot — display camera preview overlay (main thread)."""
@@ -5895,6 +5895,22 @@ class MainWindow(QMainWindow):
         panel.setVisible(bool(checked))
         if hasattr(self, "_activity_btn"):
             self._activity_btn.setChecked(bool(checked))
+
+    def _handle_escape(self) -> None:
+        """Close transient drawers first; use Escape as interrupt otherwise."""
+        for widget_name, button_name in (
+            ("_quick_drawer", "_drawer_btn"),
+            ("_right_panel", "_activity_btn"),
+            ("_left_panel", "_telemetry_btn"),
+        ):
+            widget = getattr(self, widget_name, None)
+            if widget is not None and widget.isVisible():
+                widget.hide()
+                button = getattr(self, button_name, None)
+                if button is not None:
+                    button.setChecked(False)
+                return
+        self._do_interrupt()
 
     def _build_left_panel(self) -> QWidget:
         w = QWidget()

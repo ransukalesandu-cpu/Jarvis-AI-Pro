@@ -21,7 +21,7 @@ import tempfile
 from unittest.mock import Mock, patch
 import numpy as np
 
-from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt, QPoint, QPropertyAnimation
+from PyQt6.QtCore import QSettings, QEvent, QTimer, Qt, QPoint, QPropertyAnimation
 from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton, QWidget
 from PyQt6.QtTest import QTest
 

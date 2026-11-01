@@ -14,6 +14,8 @@ from PyQt6.QtCore import Qt, QTimer, QPointF, QRectF, pyqtSlot, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import QWidget
 
+from ui.hologram.animation_engine import smooth_damp
+
 
 class BihansaHologramWidget(QWidget):
     """Procedurally generated pink neural face with audio-reactive mouth motion."""
@@ -49,9 +51,32 @@ class BihansaHologramWidget(QWidget):
              rng.uniform(0.7, 2.2), rng.uniform(0.2, 1.0), rng.random() * math.tau)
             for _ in range(74)
         ]
+        self._frame_interval = 33
+        self._particle_budget = 1.0
+        self._performance_glow_scale = 1.0
+        self._last_frame_at = self._start_time
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
-        self._timer.start(33)
+        self._timer.start(self._frame_interval)
+
+    def _visible_particle_count(self) -> int:
+        """Return the number of particles permitted by the current render budget."""
+        return max(0, min(
+            len(self._particles),
+            int(round(len(self._particles) * self._particle_budget)),
+        ))
+
+    def set_performance_budget(
+        self, frame_interval_ms: int, particle_scale: float, glow_scale: float
+    ) -> None:
+        """Adapt animation cadence and effects without rebuilding the face mesh."""
+        interval = max(16, min(200, int(frame_interval_ms)))
+        if interval != self._frame_interval:
+            self._frame_interval = interval
+            self._timer.setInterval(interval)
+        self._particle_budget = max(0.0, min(1.0, float(particle_scale)))
+        self._performance_glow_scale = max(0.2, min(1.0, float(glow_scale)))
+        self.update()
 
     def set_reduced_motion(self, enabled: bool):
         self._reduced_motion = bool(enabled)
@@ -103,15 +128,22 @@ class BihansaHologramWidget(QWidget):
             self.update()
 
     def _tick(self):
-        elapsed = time.monotonic() - self._start_time
+        now = time.monotonic()
+        elapsed = now - self._start_time
+        delta = max(0.0, min(0.1, now - self._last_frame_at))
+        self._last_frame_at = now
         t = 0.0 if self._reduced_motion else elapsed * self._animation_speed
-        self._audio_energy += (self._target_energy - self._audio_energy) * 0.24
+        self._audio_energy = smooth_damp(self._audio_energy, self._target_energy, delta, 9.0)
         if self._state == "THINKING":
             self._yaw, self._pitch, self._roll = math.sin(t * 1.4) * .16, math.cos(t * 1.1) * .08, math.sin(t * .8) * .035
         elif self._state == "SPEAKING":
             self._yaw, self._pitch, self._roll = math.sin(t * .9) * .08, math.sin(t * 1.7) * .045, math.cos(t * .65) * .025
         else:
             self._yaw, self._pitch, self._roll = math.sin(t * .42) * .055, math.cos(t * .37) * .035, math.sin(t * .25) * .015
+        self._yaw = smooth_damp(getattr(self, "_display_yaw", self._yaw), self._yaw, delta, 7.0)
+        self._pitch = smooth_damp(getattr(self, "_display_pitch", self._pitch), self._pitch, delta, 7.0)
+        self._roll = smooth_damp(getattr(self, "_display_roll", self._roll), self._roll, delta, 7.0)
+        self._display_yaw, self._display_pitch, self._display_roll = self._yaw, self._pitch, self._roll
         self._breath_scale = 1.0 if self._reduced_motion else 1.0 + .012 * math.sin(t * 1.3) + self._audio_energy * .018
         if not self._reduced_motion and elapsed > self._next_blink:
             self._blink = max(0.0, 1.0 - (elapsed - self._next_blink) / .16)
@@ -240,7 +272,7 @@ class BihansaHologramWidget(QWidget):
             grid.append(row)
 
         if self._effects_enabled:
-            p.setPen(QPen(QColor(255, 79, 200, int(30 + 32 * self._glow_intensity)), .65))
+            p.setPen(QPen(QColor(255, 79, 200, int(30 + 32 * self._glow_intensity * self._performance_glow_scale)), .65))
             for j in range(rows):
                 for i in range(cols - 1):
                     p.drawLine(grid[j][i], grid[j][i + 1])
@@ -302,7 +334,7 @@ class BihansaHologramWidget(QWidget):
                     continue
                 pt = grid[j][i]
                 pulse = .5 + .5 * math.sin(t * 2.1 + i * .71 + j * .37)
-                radius = 1.0 + pulse * (1.3 + self._audio_energy * 2.2)
+                radius = (1.0 + pulse * (1.3 + self._audio_energy * 2.2)) * self._performance_glow_scale
                 p.setBrush(QColor(255, 190, 244, int(105 + pulse * 145)))
                 p.drawEllipse(pt, radius, radius)
                 if self._effects_enabled and pulse > .86:
@@ -311,7 +343,7 @@ class BihansaHologramWidget(QWidget):
 
         # Floating particles and scanning beam.
         if self._effects_enabled:
-            for x, y, radius, speed, phase in self._particles[:particle_count]:
+            for x, y, radius, speed, phase in self._particles[:min(particle_count, self._visible_particle_count())]:
                 px = (x * .5 + .5) * w + math.sin(t * speed + phase) * 8
                 py = (y * .5 + .5) * h + math.cos(t * speed + phase) * 6
                 alpha = int(45 + 130 * (.5 + .5 * math.sin(t * 1.8 + phase)))

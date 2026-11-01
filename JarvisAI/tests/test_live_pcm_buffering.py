@@ -19,6 +19,7 @@ from core.live_audio import (
     _audio_event_timing,
     _resumable_session_handle,
     _turn_output_diagnostic,
+    _turn_output_diagnostic_from_state,
 )
 
 
@@ -62,14 +63,42 @@ class LivePcmBufferingTests(unittest.TestCase):
 
     def test_turn_output_diagnostic_reports_text_and_partial_audio(self):
         message = _turn_output_diagnostic(
-            True, 960, output_audio_checkpointed=False,
+            True, 240, output_audio_checkpointed=False,
             interrupted=False, min_frame_bytes=480,
         )
         self.assertEqual(
             message,
             "[AudioTrace 3→4/AUDIO] Assistant text arrived, but only "
-            "960 PCM byte(s) arrived this turn; no complete 10 ms frame "
+            "240 PCM byte(s) arrived this turn; no complete 10 ms frame "
             "(480 bytes) reached playback. Check Live model/audio output.",
+        )
+
+    def test_turn_output_diagnostic_from_state_reports_subframe_tail(self):
+        from core.live_audio import LiveReceiveDiagnostics
+
+        diagnostics = LiveReceiveDiagnostics()
+        diagnostics.claim_checkpoint("output_text")
+        diagnostics.record_output_audio_bytes(240)
+        self.assertEqual(
+            _turn_output_diagnostic_from_state(
+                diagnostics, interrupted=False, min_frame_bytes=480
+            ),
+            "[AudioTrace 3→4/AUDIO] Assistant text arrived, but only "
+            "240 PCM byte(s) arrived this turn; no complete 10 ms frame "
+            "(480 bytes) reached playback. Check Live model/audio output.",
+        )
+
+    def test_turn_output_diagnostic_from_state_suppresses_queued_audio(self):
+        from core.live_audio import LiveReceiveDiagnostics
+
+        diagnostics = LiveReceiveDiagnostics()
+        diagnostics.claim_checkpoint("output_text")
+        diagnostics.record_output_audio_bytes(480)
+        diagnostics.claim_checkpoint("output_audio")
+        self.assertIsNone(
+            _turn_output_diagnostic_from_state(
+                diagnostics, interrupted=False, min_frame_bytes=480
+            )
         )
 
     def test_turn_output_diagnostic_reports_text_without_audio(self):

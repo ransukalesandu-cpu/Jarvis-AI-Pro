@@ -172,13 +172,28 @@ class PhoneTests(unittest.TestCase):
 
 
 class ConfirmTests(unittest.TestCase):
-    def test_only_dev_agent_and_memory_transfer_need_a_click(self):
-        from core import confirm
-        for key in ("sec-dev_agent", "sec-memory_export", "sec-memory_import"):
-            self.assertIn(key, confirm._MANUAL_CLICK_ONLY_KEYS, key)
-        for key in ("sec-email_gmail", "sec-send_message", "sec-instagram_account",
-                    "sec-phone_call", "sec-code_helper", "sec-computer_control"):
-            self.assertNotIn(key, confirm._MANUAL_CLICK_ONLY_KEYS, key)
+    def test_all_consequential_actions_use_explicit_spoken_confirmation(self):
+        from core import confirm, security
+        from unittest.mock import patch
+
+        shown = []
+        confirm._pending = None
+        confirm.bind(lambda title, detail: shown.append((title, detail)),
+                     lambda: None)
+        with patch.object(security, "voice_id_required", return_value=False):
+            for key in ("sec-dev_agent", "sec-memory_export", "sec-memory_import",
+                        "sec-email_gmail", "sec-send_message", "sec-instagram_account",
+                        "sec-phone_call", "sec-code_helper", "sec-computer_control"):
+                finished = threading.Event()
+                message = confirm.request(
+                    key, key, "", lambda event=finished: (event.set(), "done")[-1]
+                )
+                self.assertIn("[CONFIRMATION_PENDING]", message)
+                self.assertIn("Say confirm action", message)
+                self.assertIsNone(confirm.resolve_by_voice("yes"))
+                self.assertEqual(confirm.resolve_by_voice("confirm action"), "approved")
+                self.assertTrue(finished.wait(2), key)
+        self.assertEqual(shown, [], "voice-only confirmations must not display a HUD popup")
 
     def test_sensitive_voice_approval_without_live_verification_fails_closed(self):
         from core import confirm, security
@@ -245,16 +260,6 @@ class ConfirmTests(unittest.TestCase):
             finally:
                 voice_id.PROFILE_FILE = orig_profile_file
 
-
-    def test_click_only_actions_reject_voice_approval(self):
-        from core import confirm
-        confirm.bind(lambda t, d: None, lambda: None)
-        for key in ("sec-dev_agent", "sec-memory_export", "sec-memory_import"):
-            message = confirm.request(key, key, "", lambda: "must not run")
-            self.assertIn("spoken approval is disabled", message)
-            self.assertEqual(confirm.resolve_by_voice("confirm action"),
-                             "manual_click_required")
-            confirm.resolve(False)
 
     def test_clip_marks_truncation(self):
         from core import security

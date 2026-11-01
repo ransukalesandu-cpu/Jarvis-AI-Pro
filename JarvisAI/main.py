@@ -60,7 +60,7 @@ from core.live_audio import (
     _MIN_LIVE_AUDIO_FRAME_BYTES, _PLAYBACK_SLICE_BYTES,
     _take_playback_pcm, _pcm_level, _live_audio_chunks,
     _error_text, _is_quota_error, _is_transient_live_disconnect,
-    _is_live_operation_aborted, _audio_event_timing, _resumable_session_handle,
+    _is_live_operation_aborted, _resumable_session_handle,
     LiveReceiveDiagnostics,
 )
 # Re-exported on purpose: tests/test_live_pcm_buffering.py imports these from

@@ -156,6 +156,7 @@ class HUDMainWindow(QMainWindow):
             self._panel_agent = AutonomousPanel(central_widget)
 
         main_layout = QVBoxLayout(central_widget)
+        self._main_layout = main_layout
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(6)
 
@@ -365,6 +366,16 @@ class HUDMainWindow(QMainWindow):
             )
             self._agent_stop_button.clicked.connect(self._stop_agent_task)
             right_menu_layout.addWidget(self._agent_stop_button)
+        self._right_menu_opacity = QGraphicsOpacityEffect(self._right_menu)
+        self._right_menu_opacity.setOpacity(1.0)
+        self._right_menu.setGraphicsEffect(self._right_menu_opacity)
+        self._right_menu_animation = QPropertyAnimation(
+            self._right_menu_opacity, b"opacity", self
+        )
+        self._right_menu_animation.setDuration(150)
+        self._right_menu_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._right_menu_animation.finished.connect(self._finish_right_menu_transition)
+        self._right_menu_hide_after_fade = False
         self._right_menu.hide()
 
         self._bihansa_effects.toggled.connect(self.bihansa_visualizer.set_effects_enabled)
@@ -452,20 +463,76 @@ class HUDMainWindow(QMainWindow):
                 )
         self._dashboard_button.clicked.connect(self._toggle_dashboard_page)
         self._right_menu_button.clicked.connect(self._toggle_right_dropdown)
+        self._apply_compact_layout()
 
 
     def _apply_deferred_resize_layout(self) -> None:
-        """Reposition floating children after Qt has completed native resizing."""
+        """Apply geometry and rendering budgets after native resize processing."""
+        self._apply_compact_layout()
+        self._apply_hologram_stage_budget()
         self._position_left_menu_trigger()
         if hasattr(self, "_right_menu") and self._right_menu.isVisible():
             self._position_right_menu()
+
+    def _apply_compact_layout(self) -> None:
+        """Adapt menus and spacing on narrow displays without replacing the face."""
+        layout = getattr(self, "_main_layout", None)
+        stage = getattr(self, "_hologram_stage", None)
+        if layout is None or stage is None:
+            return
+        width = max(1, self.width())
+        compact = width <= 560
+        ultra_compact = width <= 420
+        margin = 5 if ultra_compact else (7 if compact else 10)
+        layout.setContentsMargins(margin, margin, margin, margin)
+        layout.setSpacing(4 if compact else 6)
+        self._dashboard_button.setVisible(not ultra_compact)
+        self._right_menu.setFixedWidth(min(300, max(220, width - 28)))
+        self._right_menu.setMaximumHeight(max(240, self.height() - 76))
+        if compact:
+            self._left_rail.hide()
+            self._left_menu_trigger.setFixedSize(14, 48)
+        else:
+            self._left_menu_trigger.setFixedSize(18, 58)
+        stage.setMinimumHeight(170 if ultra_compact else 210 if compact else 0)
+        orb_size = 40 if compact else 48
+        self._mini_orb.setFixedSize(orb_size, orb_size)
+        self._position_left_menu_trigger()
+        if self._right_menu.isVisible():
+            self._position_right_menu()
+
+    def _apply_hologram_stage_budget(self) -> None:
+        """Scale procedural rendering work to the space available for the face."""
+        stage = getattr(self, "_hologram_stage", None)
+        if stage is None:
+            return
+        width, height = stage.width(), stage.height()
+        if width <= 0 or height <= 0:
+            return
+        area = width * height
+        if width < 720 or height < 420 or area < 300_000:
+            frame_interval, particle_scale, glow_scale = 33, 0.62, 0.58
+        elif area < 520_000:
+            frame_interval, particle_scale, glow_scale = 24, 0.82, 0.78
+        else:
+            frame_interval, particle_scale, glow_scale = 16, 1.0, 1.0
+        self.wireframe_visualizer.set_performance_budget(
+            frame_interval, particle_scale, glow_scale
+        )
+        self.bihansa_visualizer.set_performance_budget(
+            frame_interval, particle_scale, glow_scale
+        )
+        self._mini_orb.setFixedSize(40 if width < 720 or height < 420 else 48,
+                                    40 if width < 720 or height < 420 else 48)
+        self._heart_reactor.setGeometry(stage.rect())
+        self._heart_reactor.raise_()
 
     def resizeEvent(self, event):
         """Schedule floating-child geometry after the native resize event returns."""
         super().resizeEvent(event)
         timer = getattr(self, "_resize_layout_timer", None)
         if timer is not None:
-            timer.start(10)
+            timer.start(50)
 
     def changeEvent(self, event):
         """Swap the full HUD for the compact status widget while minimised."""
@@ -565,7 +632,7 @@ class HUDMainWindow(QMainWindow):
         """Reveal the telemetry dashboard without applying effects to the OpenGL hologram."""
         self._workspace_animation.stop()
         self._transition_target = "dashboard"
-        self._right_menu.hide()
+        self._hide_right_menu()
         self._left_rail.show()
         self._left_menu_trigger.hide()
         self._dashboard_opacity_effect.setOpacity(0.0)
@@ -583,7 +650,7 @@ class HUDMainWindow(QMainWindow):
             self._finish_workspace_transition()
             return
         self._transition_target = "home"
-        self._right_menu.hide()
+        self._hide_right_menu()
         self._workspace_animation.setStartValue(self._dashboard_opacity_effect.opacity())
         self._workspace_animation.setEndValue(0.0)
         self._workspace_animation.start()
@@ -607,7 +674,7 @@ class HUDMainWindow(QMainWindow):
         """Open the separate dashboard and scroll to one existing live telemetry panel."""
         if panel_index < 0 or panel_index >= len(self._dashboard._cards):
             return
-        self._right_menu.hide()
+        self._hide_right_menu()
         if self._workspace_stack.currentWidget() is not self._dashboard:
             self._show_dashboard_page()
         QTimer.singleShot(280, lambda index=panel_index: self._focus_dashboard_panel(index))
@@ -622,7 +689,7 @@ class HUDMainWindow(QMainWindow):
 
     def _open_agent_panel(self):
         """Open the dashboard and scroll to the autonomous task card."""
-        self._right_menu.hide()
+        self._hide_right_menu()
         if self._panel_agent is None:
             return
         if self._workspace_stack.currentWidget() is not self._dashboard:
@@ -658,17 +725,47 @@ class HUDMainWindow(QMainWindow):
         self._right_menu.move(x, 50)
         self._right_menu.raise_()
 
+    def _finish_right_menu_transition(self) -> None:
+        """Hide the popup only after its closing fade has completed."""
+        if self._right_menu_hide_after_fade:
+            self._right_menu.hide()
+            self._right_menu_opacity.setOpacity(1.0)
+            self._right_menu_hide_after_fade = False
+
+    def _show_right_menu(self) -> None:
+        """Fade the settings popup in without changing the hologram workspace."""
+        self._right_menu_animation.stop()
+        self._right_menu_hide_after_fade = False
+        self._position_right_menu()
+        self._right_menu_opacity.setOpacity(0.0)
+        self._right_menu.show()
+        self._right_menu.raise_()
+        self._right_menu_animation.setStartValue(0.0)
+        self._right_menu_animation.setEndValue(1.0)
+        self._right_menu_animation.start()
+
+    def _hide_right_menu(self) -> None:
+        """Fade the settings popup out while keeping it alive for the animation."""
+        if not self._right_menu.isVisible():
+            return
+        self._right_menu_animation.stop()
+        self._right_menu_hide_after_fade = True
+        self._right_menu_animation.setStartValue(self._right_menu_opacity.opacity())
+        self._right_menu_animation.setEndValue(0.0)
+        self._right_menu_animation.start()
+
     def _toggle_right_dropdown(self):
-        """Show a floating right dropdown without shrinking the hologram workspace."""
-        should_show = not self._right_menu.isVisible()
-        if should_show:
-            self._position_right_menu()
-        self._right_menu.setVisible(should_show)
+        """Toggle the settings popup with a short opacity transition."""
+        if self._right_menu.isVisible():
+            self._hide_right_menu()
+        else:
+            self._show_right_menu()
 
     def _wire_signals(self):
         """Wire VisualizerBridge signals to UI components."""
         self._bridge.sig_audio_energy.connect(self.wireframe_visualizer.set_audio_energy)
         self._bridge.sig_audio_energy.connect(self._mini_orb.set_audio_energy)
+        self._bridge.sig_audio_energy.connect(self._heart_reactor.set_audio_energy)
         self._bridge.sig_audio_energy.connect(self._dashboard.set_audio_energy)
         self._bridge.sig_state_changed.connect(self._on_state_changed)
         self._bridge.sig_auth_state_changed.connect(self._on_auth_state_changed)

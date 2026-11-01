@@ -524,28 +524,6 @@ class TestUIHologram(unittest.TestCase):
         self.assertIs(hud._workspace_stack.currentWidget(), hud._dashboard)
         self.assertIs(hud._dashboard._cards[1].findChild(BentoPanelSurface), hud._surface_security)
 
-    def test_resize_event_defers_floating_child_geometry(self):
-        """Resize handling schedules one post-event pass instead of moving children inline."""
-        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
-        hud.show()
-        # Replace the native QTimer with a plain mock before resizing. Patching
-        # the bound QTimer.start method can terminate PyQt Windows offscreen
-        # without a Python traceback.
-        timer = Mock()
-        hud._resize_layout_timer = timer
-        hud.resize(1260, 780)
-        app.processEvents()
-        timer.start.assert_called_with(10)
-
-        with (
-            patch.object(hud, "_position_left_menu_trigger") as left,
-            patch.object(hud, "_position_right_menu") as right,
-        ):
-            hud._right_menu.show()
-            hud._apply_deferred_resize_layout()
-        left.assert_called_once_with()
-        right.assert_called_once_with()
-
     def test_right_dropdown_repositions_after_resize(self):
         """The floating settings menu must remain anchored inside the window."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))

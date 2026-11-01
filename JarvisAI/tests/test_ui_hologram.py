@@ -69,9 +69,10 @@ class TestUIHologram(unittest.TestCase):
             for animation in widget.findChildren(QPropertyAnimation):
                 animation.stop()
             widget.close()
-            QCoreApplication.processEvents()
+            # Let Qt dispatch DeferredDelete at its normal event-loop boundary.
+            # Forcing sendPostedEvents(None, DeferredDelete) recursively while
+            # pytest still owns wrappers can abort native Qt on CI runners.
             widget.deleteLater()
-            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.addCleanup(dispose)
         return widget
 

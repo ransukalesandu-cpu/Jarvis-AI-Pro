@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import unittest
 from types import SimpleNamespace
@@ -121,6 +122,82 @@ class LiveAudioHelperTests(unittest.TestCase):
     def test_aborted_operation_classifier_requires_both_close_and_reason(self):
         self.assertTrue(_is_live_operation_aborted(RuntimeError("1008 policy violation: operation was aborted")))
         self.assertFalse(_is_live_operation_aborted(RuntimeError("1008 unrelated close")))
+
+
+class RealtimeAudioSenderTests(unittest.IsolatedAsyncioTestCase):
+    class Queue:
+        def __init__(self, items):
+            self.items = list(items)
+
+        async def get(self):
+            if self.items:
+                return self.items.pop(0)
+            raise asyncio.CancelledError()
+
+    class Session:
+        def __init__(self, error=None):
+            self.sent = []
+            self.error = error
+
+        async def send_realtime_input(self, *, audio):
+            if self.error:
+                raise self.error
+            self.sent.append(audio)
+
+    async def test_sender_preserves_pcm_rate_and_forwards_frames(self):
+        from core.live_audio import run_realtime_audio_sender
+
+        queue = self.Queue([
+            {"data": b"pcm-a", "mime_type": "audio/pcm"},
+            {"data": b"pcm-b", "mime_type": "audio/pcm;rate=16000"},
+        ])
+        session = self.Session()
+        with self.assertRaises(asyncio.CancelledError):
+            await run_realtime_audio_sender(
+                queue,
+                session,
+                is_allowed=lambda: True,
+                make_blob=lambda data, mime: (data, mime),
+                on_send_error=lambda exc, count: self.fail(str(exc)),
+            )
+        self.assertEqual(
+            session.sent,
+            [
+                (b"pcm-a", "audio/pcm;rate=16000"),
+                (b"pcm-b", "audio/pcm;rate=16000"),
+            ],
+        )
+
+    async def test_sender_skips_frames_when_auth_gate_denies(self):
+        from core.live_audio import run_realtime_audio_sender
+
+        queue = self.Queue([{"data": b"private", "mime_type": "audio/pcm;rate=16000"}])
+        session = self.Session()
+        with self.assertRaises(asyncio.CancelledError):
+            await run_realtime_audio_sender(
+                queue,
+                session,
+                is_allowed=lambda: False,
+                make_blob=lambda data, mime: (data, mime),
+                on_send_error=lambda exc, count: self.fail(str(exc)),
+            )
+        self.assertEqual(session.sent, [])
+
+    async def test_sender_reports_failure_and_propagates_exception(self):
+        from core.live_audio import run_realtime_audio_sender
+
+        failure = ConnectionError("socket closed")
+        session = self.Session(error=failure)
+        reported = []
+        with self.assertRaisesRegex(ConnectionError, "socket closed"):
+            await run_realtime_audio_sender(
+                self.Queue([{"data": b"pcm", "mime_type": "audio/pcm;rate=16000"}]),
+                session,
+                is_allowed=lambda: True,
+                make_blob=lambda data, mime: (data, mime),
+                on_send_error=lambda exc, count: reported.append((exc, count)),
+            )
+        self.assertEqual(reported, [(failure, 0)])
 
 
 if __name__ == "__main__":

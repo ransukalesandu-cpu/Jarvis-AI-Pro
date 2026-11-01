@@ -4857,8 +4857,6 @@ class MainWindow(QMainWindow):
         if kind == "holo":
             self._workspace.show_holo_gestures()
             self._workspace_side.hide()
-        else:
-            self._show_workspace_side()
         elif kind == "video_pause":
             self._workspace._pause_video()
         elif kind == "video_seek":
@@ -4904,6 +4902,9 @@ class MainWindow(QMainWindow):
             self._workspace.show_system_panel(data.get("focus") or data.get("metric"))
         else:
             self._workspace.show_view(kind)
+        if kind != "holo":
+            self._show_workspace_side()
+
     def _show_news_briefing_overlay(self, items) -> None:
         self._show_workspace_side()
         self._news_briefing_overlay.set_items(items)

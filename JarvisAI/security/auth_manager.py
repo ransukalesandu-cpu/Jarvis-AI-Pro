@@ -43,6 +43,10 @@ DEFAULT_STATE_PATH = Path(__file__).resolve().parent.parent / "config" / "auth_s
 MAX_FAILED_PIN_ATTEMPTS = 3
 DEFAULT_COOLDOWN_SECONDS = 60
 
+# Temporary local-development switch. Set JARVIS_OWNER_AUTH_ENABLED=1 to restore
+# PIN and Voice ID checks without deleting their implementation or stored vault.
+OWNER_AUTH_ENABLED = os.environ.get("JARVIS_OWNER_AUTH_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
+
 
 def ensure_restricted_dir(path: Path | str) -> Path:
     """Ensure directory exists with restricted permissions (0700 on POSIX)."""
@@ -167,6 +171,15 @@ class AuthManager:
         A Privacy Lock or mandatory owner re-authentication always takes precedence.
         Host-only cloud access remains gated by the separate live Voice ID factor.
         """
+        if not OWNER_AUTH_ENABLED:
+            with self._lock:
+                if self.state != PRIVACY_LOCK:
+                    self.state = FULL_ACCESS_MODE
+                    self._auth_method = None
+                    self._requires_owner_reauth = False
+                    self._pin_verified = False
+                    self._voice_verified = False
+            return
         if not self.is_pin_enrolled():
             return
         with self._lock:
@@ -237,6 +250,16 @@ class AuthManager:
 
     def get_state(self) -> str:
         with self._lock:
+            if not OWNER_AUTH_ENABLED:
+                if self.state == PRIVACY_LOCK and time.time() < self.lock_until:
+                    return PRIVACY_LOCK
+                self.state = FULL_ACCESS_MODE
+                self.lock_until = 0.0
+                self._requires_owner_reauth = False
+                self._auth_method = None
+                self._pin_verified = False
+                self._voice_verified = False
+                return FULL_ACCESS_MODE
             if self.state == PRIVACY_LOCK and time.time() >= self.lock_until:
                 # Cooldown expiry is not authentication. Remain silent until PIN re-auth.
                 self.state = CHALLENGE_MODE
@@ -360,6 +383,8 @@ class AuthManager:
     def process_voice_result(self, is_master: bool, similarity: float, is_live: bool = False, is_stranger: bool = False) -> tuple[str, str]:
         """Handle an already-computed enrolled Voice ID result; never voice-unlock after Privacy Lock."""
         state = self.get_state()
+        if not OWNER_AUTH_ENABLED:
+            return (state, "Owner Voice ID authentication is temporarily disabled.")
         if state == PRIVACY_LOCK or self.requires_owner_reauthentication():
             return state, "Privacy Lock requires owner PIN re-authentication."
         method = self.get_auth_method()
@@ -394,6 +419,8 @@ class AuthManager:
             return False, 0.0, False
 
     def process_voice_authentication(self, audio, sample_rate: int = 16000) -> tuple[str, str]:
+        if not OWNER_AUTH_ENABLED:
+            return self.get_state(), "Owner Voice ID authentication is temporarily disabled."
         matched, score, live = self.verify_owner_voice(audio, sample_rate=sample_rate)
         return self.process_voice_result(matched, score, live, is_stranger=not matched)
 
@@ -401,22 +428,32 @@ class AuthManager:
         return self.get_state() == PRIVACY_LOCK
 
     def requires_owner_reauthentication(self) -> bool:
+        if not OWNER_AUTH_ENABLED:
+            return False
         self.get_state()
         with self._lock:
             return self._requires_owner_reauth
 
     def owner_factors_verified(self) -> bool:
-        """True only after both a valid PIN and a live enrolled-speaker check this process."""
+        """True only after both factors when enabled; temporary dev mode skips owner factors."""
+        if not OWNER_AUTH_ENABLED:
+            return True
         with self._lock:
             return self._pin_verified and self._voice_verified
 
     def is_owner_access_allowed(self) -> bool:
+        if not OWNER_AUTH_ENABLED:
+            return not self.is_privacy_lock_active()
         return self.get_state() == FULL_ACCESS_MODE and not self.requires_owner_reauthentication()
 
     def is_silent(self) -> bool:
+        if not OWNER_AUTH_ENABLED:
+            return self.is_privacy_lock_active()
         return self.is_privacy_lock_active() or self.requires_owner_reauthentication()
 
     def needs_pin(self) -> bool:
+        if not OWNER_AUTH_ENABLED:
+            return False
         state = self.get_state()
         return (
             state != PRIVACY_LOCK

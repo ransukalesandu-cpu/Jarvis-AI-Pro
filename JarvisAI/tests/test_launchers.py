@@ -131,6 +131,18 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn("command.addWidget(self._interrupt_btn)", footer)
         self.assertIn("command.addWidget(self._mute_btn)", footer)
 
+    def test_escape_closes_open_drawers_before_interrupting(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn('QShortcut(QKeySequence("Escape"), self)', source)
+        self.assertIn("sc_intr.activated.connect(self._handle_escape)", source)
+        handler = source.split("    def _handle_escape(self)", 1)[1].split(
+            "    def _build_left_panel(self)", 1
+        )[0]
+        self.assertIn('("_quick_drawer", "_drawer_btn")', handler)
+        self.assertIn('("_right_panel", "_activity_btn")', handler)
+        self.assertIn('("_left_panel", "_telemetry_btn")', handler)
+        self.assertIn("self._do_interrupt()", handler)
+
     def test_import_voice_persona(self):
         import voice.persona as persona
         self.assertTrue(hasattr(persona, "JARVIS_SPOKEN_SYSTEM_PROMPT"))

@@ -54,7 +54,9 @@ class SmartPanelHeader(QTextBrowser):
     _FALLBACK_HTML = (
         '<div class="shell"><span class="eyebrow">JARVIS / SMART COMMAND SURFACE</span>'
         '<br/><span class="title">{{TITLE}}</span>'
-        '<br/><span class="status">● {{STATUS}}</span><div class="nav">{{NAV_ITEMS}}</div></div>'
+        '<br/><span class="status">● {{STATUS}}</span>'
+        '<a class="close" href="jarvis://close" title="Close smart panel">×</a>'
+        '<div class="nav">{{NAV_ITEMS}}</div></div>'
     )
 
     def __init__(self, parent=None):

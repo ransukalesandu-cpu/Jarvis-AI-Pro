@@ -14,10 +14,26 @@ from main import (
     _is_transient_live_disconnect,
     _output_write_is_unpaced,
     _take_playback_pcm,
+    _audio_event_timing,
 )
 
 
 class LivePcmBufferingTests(unittest.TestCase):
+    def test_audio_event_timing_reports_only_significant_arrival_gaps(self):
+        duration, gap = _audio_event_timing(4800, 10.50, 10.0, 0.10)
+        self.assertAlmostEqual(duration, 0.10)
+        self.assertAlmostEqual(gap, 0.50)
+
+        duration, gap = _audio_event_timing(4800, 10.15, 10.0, 0.10)
+        self.assertAlmostEqual(duration, 0.10)
+        self.assertIsNone(gap)
+
+    def test_audio_event_timing_handles_first_event_and_invalid_input(self):
+        duration, gap = _audio_event_timing(4800, 10.0, None, 0.0)
+        self.assertAlmostEqual(duration, 0.10)
+        self.assertIsNone(gap)
+        self.assertEqual(_audio_event_timing("bad", 10.0, 9.0, 0.1), (0.0, None))
+
     def test_live_playback_prebuffer_and_output_blocksize(self):
         # 24 kHz * mono * int16 * 0.3 seconds = 14,400 bytes.
         self.assertEqual(_MIN_PREBUFFER_BYTES, 14_400)

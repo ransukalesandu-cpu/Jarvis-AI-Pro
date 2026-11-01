@@ -35,7 +35,7 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import (
     QAbstractButton, QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect,
-    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QScrollArea,
+    QDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QScrollArea,
     QSizePolicy, QSplitter, QStackedWidget, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
     QSlider, QToolButton, QMenu,
 )
@@ -4865,6 +4865,160 @@ class MainWindow(QMainWindow):
             active, title=self._workspace._view_title.text(), status="ACTIVE"
         )
 
+    def _open_bento_dashboard(self) -> None:
+        """Open the optional Bento overview as a separate lightweight window."""
+        dialog = getattr(self, "_bento_dialog", None)
+        if dialog is not None:
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+            self._refresh_bento_dashboard()
+            return
+
+        dialog = QDialog(self)
+        dialog.setObjectName("BentoDashboard")
+        dialog.setWindowTitle("JARVIS  /  BENTO COMMAND DASHBOARD")
+        dialog.setModal(False)
+        dialog.resize(760, 500)
+        dialog.setMinimumSize(620, 420)
+        dialog.setStyleSheet(f"""
+            QDialog#BentoDashboard {{
+                background: {C.BG};
+                color: {C.TEXT};
+            }}
+            QFrame#BentoCard {{
+                background: {C.PANEL};
+                border: 1px solid {C.BORDER_B};
+                border-radius: 9px;
+            }}
+            QLabel#BentoEyebrow {{
+                color: {C.PRI_DIM};
+                background: transparent;
+                font: 8pt 'Courier New';
+                letter-spacing: 1px;
+            }}
+            QLabel#BentoValue {{
+                color: {C.TEXT};
+                background: transparent;
+                font: bold 19pt 'Segoe UI';
+            }}
+            QLabel#BentoDetail {{
+                color: {C.TEXT_MED};
+                background: transparent;
+                font: 8pt 'Segoe UI';
+            }}
+            QPushButton {{
+                color: {C.PRI};
+                background: {C.PANEL2};
+                border: 1px solid {C.BORDER_B};
+                border-radius: 5px;
+                padding: 8px 12px;
+                font: bold 8pt 'Courier New';
+            }}
+            QPushButton:hover {{
+                background: {C.PRI_GHO};
+                border-color: {C.PRI};
+            }}
+        """)
+        root = QVBoxLayout(dialog)
+        root.setContentsMargins(18, 16, 18, 16)
+        root.setSpacing(12)
+
+        heading = QHBoxLayout()
+        title = QLabel("▦  COMMAND OVERVIEW")
+        title.setStyleSheet(f"color: {C.PRI}; background: transparent; font: bold 13pt 'Courier New';")
+        heading.addWidget(title)
+        heading.addStretch()
+        subtitle = QLabel("LIVE SYSTEM SNAPSHOT")
+        subtitle.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent; font: 8pt 'Courier New';")
+        heading.addWidget(subtitle)
+        root.addLayout(heading)
+
+        grid = QGridLayout()
+        grid.setSpacing(10)
+        self._bento_value_labels = {}
+
+        cards = (
+            ("ASSISTANT STATE", "assistant", "INITIALISING", "Voice and hologram state"),
+            ("CPU LOAD", "cpu", "--", "Host processor utilisation"),
+            ("MEMORY", "memory", "--", "Host memory utilisation"),
+            ("UPTIME", "uptime", "--", "Assistant session uptime"),
+            ("VOICE INPUT", "voice", "READY", "Microphone availability"),
+            ("ACTIVE VIEW", "view", "HOLOGRAM", "Current command surface"),
+        )
+        for index, (eyebrow, key, initial, detail) in enumerate(cards):
+            card = QFrame()
+            card.setObjectName("BentoCard")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(14, 13, 14, 13)
+            card_layout.setSpacing(7)
+            small = QLabel(eyebrow)
+            small.setObjectName("BentoEyebrow")
+            value = QLabel(initial)
+            value.setObjectName("BentoValue")
+            value.setWordWrap(True)
+            desc = QLabel(detail)
+            desc.setObjectName("BentoDetail")
+            desc.setWordWrap(True)
+            card_layout.addWidget(small)
+            card_layout.addWidget(value)
+            card_layout.addStretch()
+            card_layout.addWidget(desc)
+            grid.addWidget(card, index // 3, index % 3)
+            self._bento_value_labels[key] = value
+        for column in range(3):
+            grid.setColumnStretch(column, 1)
+        for row in range(2):
+            grid.setRowStretch(row, 1)
+        root.addLayout(grid, 1)
+
+        actions = QHBoxLayout()
+        for label, key in (
+            ("TIMER", "timers"),
+            ("MUSIC", "music"),
+            ("NEWS", "news"),
+            ("MEDIA", "media"),
+        ):
+            button = QPushButton(label)
+            button.clicked.connect(
+                lambda _checked=False, view=key: self._on_workspace_shortcut(view)
+            )
+            actions.addWidget(button)
+        actions.addStretch()
+        close_button = QPushButton("CLOSE")
+        close_button.clicked.connect(dialog.close)
+        actions.addWidget(close_button)
+        root.addLayout(actions)
+
+        self._bento_dialog = dialog
+        self._bento_timer = QTimer(dialog)
+        self._bento_timer.setInterval(3000)
+        self._bento_timer.timeout.connect(self._refresh_bento_dashboard)
+        dialog.finished.connect(self._bento_timer.stop)
+        self._refresh_bento_dashboard()
+        self._bento_timer.start()
+        dialog.show()
+
+    def _refresh_bento_dashboard(self) -> None:
+        """Refresh only while the optional Bento window is open."""
+        labels = getattr(self, "_bento_value_labels", None)
+        if not labels:
+            return
+        try:
+            labels["assistant"].setText(str(getattr(self.hud, "state", "READY")).upper())
+        except Exception:
+            labels["assistant"].setText("READY")
+        try:
+            labels["cpu"].setText(f"{psutil.cpu_percent(interval=None):.0f}%")
+            labels["memory"].setText(f"{psutil.virtual_memory().percent:.0f}%")
+            labels["uptime"].setText(getattr(self, "_uptime_lbl", None).text().replace("UP  ", "")
+                                     if getattr(self, "_uptime_lbl", None) else "--")
+        except Exception:
+            labels["cpu"].setText("--")
+            labels["memory"].setText("--")
+        labels["voice"].setText("MUTED" if self._muted else "ACTIVE")
+        labels["view"].setText("SMART GLASS" if self._workspace_open else "HOLOGRAM")
+
     def _on_workspace_shortcut(self, key: str) -> None:
         """Handle the HTML smart-panel shortcuts through a strict local allowlist."""
         if self._cam_active:
@@ -5810,6 +5964,9 @@ class MainWindow(QMainWindow):
             action.triggered.connect(
                 lambda _checked=False, view=key: self._on_workspace_shortcut(view)
             )
+        self._nav_menu.addSeparator()
+        dashboard_action = self._nav_menu.addAction("▦   BENTO DASHBOARD")
+        dashboard_action.triggered.connect(self._open_bento_dashboard)
         self._nav_menu_btn.setMenu(self._nav_menu)
         lay.addWidget(self._nav_menu_btn)
         lay.addWidget(_badge(APP_VERSION, C.PRI_DIM))

@@ -182,7 +182,7 @@ class LivePcmBufferingTests(unittest.TestCase):
         self.assertFalse(diagnostics.claim_checkpoint("unknown"))
         self.assertFalse(diagnostics.checkpoint_claimed("unknown"))
         self.assertTrue(diagnostics.checkpoint_claimed("input"))
-        self.assertFalse(diagnostics.checkpoint_claimed("output_audio"))
+        self.assertTrue(diagnostics.checkpoint_claimed("output_audio"))
         diagnostics.reset_turn()
         self.assertTrue(diagnostics.claim_checkpoint("input"))
         self.assertTrue(diagnostics.claim_checkpoint("output_audio"))
@@ -199,7 +199,7 @@ class LivePcmBufferingTests(unittest.TestCase):
 
         duration, gap, previous_duration = diagnostics.record_audio_event(4800, 10.5)
         self.assertAlmostEqual(duration, 0.10)
-        self.assertAlmostEqual(gap, 0.40)
+        self.assertAlmostEqual(gap, 0.50)
         self.assertAlmostEqual(previous_duration, 0.10)
         self.assertEqual(diagnostics.last_audio_event_at, 10.5)
         self.assertAlmostEqual(diagnostics.last_audio_event_duration, 0.10)

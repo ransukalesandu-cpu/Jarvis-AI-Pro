@@ -186,7 +186,7 @@ class HybridLLMRouter:
             + "). Configure a provider API key or start local Ollama."
         )
 
-    def _call_gemini(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+    def _call_gemini(self, prompt: str, system_prompt: str, **kwargs: Any) -> ProviderResult:
         if self._supabase_enabled:
             from core.supabase_cloud_provider import call_supabase_provider
             return call_supabase_provider(
@@ -206,7 +206,7 @@ class HybridLLMRouter:
         )
         return {"text": response.text or "", "model": model}
 
-    def _call_groq(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+    def _call_groq(self, prompt: str, system_prompt: str, **kwargs: Any) -> ProviderResult:
         if self._supabase_enabled:
             from core.supabase_cloud_provider import call_supabase_provider
             return call_supabase_provider(
@@ -240,7 +240,7 @@ class HybridLLMRouter:
         return {"text": str(message.get("content") or "").strip(),
                 "model": str((data.get("model") or model))}
 
-    def _call_openai(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+    def _call_openai(self, prompt: str, system_prompt: str, **kwargs: Any) -> ProviderResult:
         if self._supabase_enabled:
             from core.supabase_cloud_provider import call_supabase_provider
             return call_supabase_provider(
@@ -260,7 +260,7 @@ class HybridLLMRouter:
         )
         return {"text": response.choices[0].message.content or "", "model": model}
 
-    def _call_claude(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+    def _call_claude(self, prompt: str, system_prompt: str, **kwargs: Any) -> ProviderResult:
         if self._supabase_enabled:
             from core.supabase_cloud_provider import call_supabase_provider
             return call_supabase_provider(
@@ -283,7 +283,7 @@ class HybridLLMRouter:
         )
         return {"text": text, "model": model}
 
-    def _call_ollama(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+    def _call_ollama(self, prompt: str, system_prompt: str, **kwargs: Any) -> ProviderResult:
         payload = {
             "model": str(kwargs.get("local_model") or self.local_model),
             "system": system_prompt,

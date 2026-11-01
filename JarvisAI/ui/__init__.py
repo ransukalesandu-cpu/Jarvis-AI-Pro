@@ -37,7 +37,7 @@ from PyQt6.QtWidgets import (
     QAbstractButton, QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QScrollArea,
     QSizePolicy, QSplitter, QStackedWidget, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
-    QSlider, QToolButton,
+    QSlider, QToolButton, QMenu,
 )
 from .smart_panel import SmartPanelHeader
 from core.voice_ui_control import (
@@ -163,6 +163,16 @@ def configure_qt_graphics_backend() -> bool:
     except Exception as exc:
         print(f"[HUD] Could not select the OpenGL graphics API: {exc}")
         return False
+
+
+class _HoverMenuButton(QToolButton):
+    """Small edge-navigation trigger that opens its menu when hovered."""
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        menu = self.menu()
+        if menu is not None and not menu.isVisible():
+            self.showMenu()
 
 
 class C:
@@ -5763,6 +5773,42 @@ class MainWindow(QMainWindow):
             l.setStyleSheet(f"color: {color}; background: transparent;")
             return l
 
+        self._nav_menu_btn = _HoverMenuButton()
+        self._nav_menu_btn.setText("☰")
+        self._nav_menu_btn.setFixedSize(28, 28)
+        self._nav_menu_btn.setFont(QFont("Courier New", 13, QFont.Weight.Bold))
+        self._nav_menu_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._nav_menu_btn.setToolTip("Hover for quick command windows")
+        self._nav_menu_btn.setStyleSheet(f"""
+            QToolButton {{
+                color: {C.PRI}; background: {C.PANEL};
+                border: 1px solid {C.BORDER_B}; border-radius: 4px;
+            }}
+            QToolButton:hover {{ background: {C.PRI_GHO}; border-color: {C.PRI}; }}
+        """)
+        self._nav_menu = QMenu(self._nav_menu_btn)
+        self._nav_menu.setStyleSheet(f"""
+            QMenu {{
+                background: {C.DARK}; color: {C.TEXT};
+                border: 1px solid {C.BORDER_B}; padding: 6px;
+            }}
+            QMenu::item {{ padding: 8px 28px 8px 12px; border-radius: 3px; }}
+            QMenu::item:selected {{ color: {C.PRI}; background: {C.PRI_GHO}; }}
+            QMenu::separator {{ height: 1px; background: {C.BORDER}; margin: 4px 6px; }}
+        """)
+        for key, label in (
+            ("timers", "◷   TIMER & REMINDERS"),
+            ("music", "♫   YOUTUBE MUSIC"),
+            ("news", "◉   LIVE NEWS"),
+            ("media", "▣   MEDIA PLAYER"),
+            ("system", "⌘   SYSTEM STATUS"),
+        ):
+            action = self._nav_menu.addAction(label)
+            action.triggered.connect(
+                lambda _checked=False, view=key: self._on_workspace_shortcut(view)
+            )
+        self._nav_menu_btn.setMenu(self._nav_menu)
+        lay.addWidget(self._nav_menu_btn)
         lay.addWidget(_badge(APP_VERSION, C.PRI_DIM))
         lay.addSpacing(8)
         self._drawer_btn = QPushButton("⚙")

@@ -29,7 +29,7 @@ _STABLE_TURNS_TO_SHRINK = 3
 
 def _normalize_input_audio_mime_type(value: Any) -> str:
     """Ensure raw PCM input always carries its sample rate for Gemini Live."""
-    mime_type = str(value or "audio/pcm;rate=16000")
+    mime_type = str(value)
     if mime_type.lower().startswith("audio/pcm") and "rate=" not in mime_type.lower():
         return "audio/pcm;rate=16000"
     return mime_type
@@ -57,15 +57,14 @@ async def run_realtime_audio_sender(
         mime_type = _normalize_input_audio_mime_type(
             msg.get("mime_type", "audio/pcm;rate=16000")
         )
-        data = msg["data"]
         if frames_sent == 0:
             print(
                 f"[AudioTrace 1→3] Sending first input frame "
-                f"({len(data)} bytes; {mime_type})."
+                f"({len(msg.get('data', b''))} bytes; {mime_type})."
             )
         try:
             await session.send_realtime_input(
-                audio=make_blob(data, mime_type)
+                audio=make_blob(msg["data"], mime_type)
             )
         except asyncio.CancelledError:
             raise

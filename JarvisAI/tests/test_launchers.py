@@ -47,6 +47,27 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertNotIn('self._hud_cam_stack.addWidget(self._workspace)', source)
         self.assertNotIn('self._hud_cam_stack.setCurrentWidget(self._workspace)', source)
 
+    def test_smart_panel_has_html_css_assets_and_safe_local_navigation(self):
+        html_asset = ROOT / "JarvisAI" / "ui" / "assets" / "smart_panel.html"
+        css_asset = ROOT / "JarvisAI" / "ui" / "assets" / "smart_panel.css"
+        module = (ROOT / "JarvisAI" / "ui" / "smart_panel.py").read_text(encoding="utf-8")
+        html = html_asset.read_text(encoding="utf-8")
+        css = css_asset.read_text(encoding="utf-8")
+        self.assertIn("{{STYLE}}", html)
+        self.assertIn("{{NAV_ITEMS}}", html)
+        self.assertIn(".nav-item.active", css)
+        self.assertIn("setOpenExternalLinks(False)", module)
+        self.assertIn('url.scheme().casefold() != "jarvis"', module)
+        for key in ("timers", "music", "news", "media", "system"):
+            self.assertIn(f"jarvis://view/{key}", module)
+
+    def test_smart_panel_shortcuts_use_existing_workspace_views(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn("def _on_workspace_shortcut(self, key: str)", source)
+        self.assertIn('self._workspace.show_view("timers", "TIMERS / REMINDERS")', source)
+        self.assertIn('self._workspace.show_webpage("https://music.youtube.com/", "YOUTUBE MUSIC")', source)
+        self.assertIn('self._workspace.show_system_panel("overview")', source)
+
     def test_import_voice_persona(self):
         import voice.persona as persona
         self.assertTrue(hasattr(persona, "JARVIS_SPOKEN_SYSTEM_PROMPT"))

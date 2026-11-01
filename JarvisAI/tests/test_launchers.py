@@ -164,7 +164,7 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn("if self._left_panel.isVisible():", init)
         self.assertIn("timer.start(2000)", toggle)
         self.assertIn("if timer is not None:", toggle)
-        self.assertIn("self._metric_tmr.stop()", toggle)
+        self.assertIn("timer.stop()", toggle)
 
     def test_bento_dashboard_is_separate_and_refreshes_only_while_open(self):
         source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")

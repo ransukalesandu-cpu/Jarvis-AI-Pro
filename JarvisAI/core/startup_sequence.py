@@ -280,9 +280,9 @@ class StartupSequenceSplash(QWidget):
         # The initial title beat is deliberately minimal: no grid, HUD or
         # secondary labels are visible during its one-second hold.
         if elapsed < self.TITLE_FADE_END_MS:
-            p.fillRect(self.rect(), self._BG)
-            self._draw_title(p, w, h, elapsed)
             if elapsed <= self.TITLE_HOLD_MS:
+                p.fillRect(self.rect(), self._BG)
+                self._draw_title(p, w, h, elapsed)
                 p.end()
                 return
             reveal = self._ease(
@@ -290,6 +290,7 @@ class StartupSequenceSplash(QWidget):
                 (self.TITLE_FADE_END_MS - self.TITLE_HOLD_MS)
             )
             self._draw_boot(p, w, h, elapsed, reveal)
+            self._draw_title(p, w, h, elapsed)
         else:
             self._draw_boot(p, w, h, elapsed, 1.0)
         p.end()

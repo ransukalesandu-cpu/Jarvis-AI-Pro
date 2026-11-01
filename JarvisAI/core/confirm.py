@@ -96,7 +96,7 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
     _log(f"SYS: Awaiting spoken confirmation — {title}")
     spoken_detail = f" Details: {detail}." if detail else ""
     return (
-        f"[VOICE_CONFIRMATION_PENDING] Ask the user aloud: "
+        f"[CONFIRMATION_PENDING] Ask the user aloud: "
         f"'{title}.{spoken_detail} Say confirm action to proceed, or cancel action to cancel.' "
         "Do not show a popup, do not execute yet, and do not claim it is done."
     )

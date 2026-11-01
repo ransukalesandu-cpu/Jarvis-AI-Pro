@@ -103,6 +103,24 @@ class LiveReceiveDiagnostics:
         self.last_audio_event_duration = duration
         return duration, gap
 
+    def claim_checkpoint(self, name: str) -> bool:
+        """Claim a one-per-turn diagnostic checkpoint.
+
+        Returns True only for the first claim of a supported checkpoint name.
+        Unknown names are rejected without changing diagnostic state.
+        """
+        attributes = {
+            "input": "input_checkpoint_logged",
+            "output_text": "output_text_checkpoint_logged",
+            "output_audio": "output_audio_checkpoint_logged",
+            "short_audio_fragment": "short_audio_fragment_logged",
+        }
+        attribute = attributes.get(name)
+        if attribute is None or getattr(self, attribute):
+            return False
+        setattr(self, attribute, True)
+        return True
+
     def reset_audio_timing(self) -> None:
         self.last_audio_event_at = None
         self.last_audio_event_duration = 0.0

@@ -162,7 +162,8 @@ class TestLaunchersAndImports(unittest.TestCase):
             "    def _toggle_activity_panel", 1
         )[0]
         self.assertIn("if self._left_panel.isVisible():", init)
-        self.assertIn("self._metric_tmr.start(2000)", toggle)
+        self.assertIn("timer.start(2000)", toggle)
+        self.assertIn("if timer is not None:", toggle)
         self.assertIn("timer.stop()", toggle)
 
     def test_bento_dashboard_is_separate_and_refreshes_only_while_open(self):

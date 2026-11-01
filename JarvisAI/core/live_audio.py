@@ -141,6 +141,10 @@ class LiveReceiveDiagnostics:
         attribute = self._CHECKPOINT_ATTRIBUTES.get(name)
         return bool(attribute and getattr(self, attribute))
 
+    def turn_output_snapshot(self) -> tuple[bool, int]:
+        """Return the text-checkpoint state and PCM byte total for this turn."""
+        return self.output_text_checkpoint_logged, self.output_audio_bytes_seen
+
     def reset_audio_timing(self) -> None:
         self.last_audio_event_at = None
         self.last_audio_event_duration = 0.0

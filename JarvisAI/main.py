@@ -3066,8 +3066,7 @@ class JarvisLive:
                     except Exception:
                         failsoft.suppress('main:JarvisLive._receive_audio')
                         continue
-                    receive_diagnostics.live_events_received += 1
-                    if receive_diagnostics.live_events_received == 1:
+                    if receive_diagnostics.record_live_event():
                         print("[AudioTrace 3/LIVE] First server event received from Gemini Live.")
 
                     # ── Session resumption ───────────────────────────────────

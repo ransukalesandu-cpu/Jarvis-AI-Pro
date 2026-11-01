@@ -71,6 +71,16 @@ def _audio_event_timing(
         return 0.0, None
 
 
+
+def _resumable_session_handle(response) -> str | None:
+    """Return only a server-confirmed resumable Gemini Live session handle."""
+    update = getattr(response, "session_resumption_update", None)
+    if update is None or not getattr(update, "resumable", False):
+        return None
+    handle = getattr(update, "new_handle", None)
+    return handle if handle else None
+
+
 def _take_playback_pcm(buffer: bytearray, *, final: bool = False) -> bytes:
     """Take aligned PCM without producing tiny writes during streaming.
 

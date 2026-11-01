@@ -23,6 +23,13 @@ async function consumeRequest(baseUrl: string, serviceKey: string, userId: strin
   if (!response.ok) return "error";
   return await response.json();
 }
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  // Copy into an ArrayBuffer-backed view for the stricter Deno BufferSource types.
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 async function verifyEnrolledDevice(
   rawBody: Uint8Array,
   userId: string,
@@ -52,12 +59,12 @@ async function verifyEnrolledDevice(
   if (!Array.isArray(devices) || devices.length !== 1) return false;
   if (devices[0]?.revoked_at || devices[0]?.public_key_b64 !== keyHeader) return false;
 
-  const digest = await crypto.subtle.digest("SHA-256", rawBody);
+  const digest = await crypto.subtle.digest("SHA-256", toArrayBuffer(rawBody));
   const digestHex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
   const message = new TextEncoder().encode(`JARVIS-HOST-V1\n${timestamp}\n${nonce}\n${digestHex}`);
   try {
-    const imported = await crypto.subtle.importKey("raw", publicKey, { name: "Ed25519" }, false, ["verify"]);
-    return await crypto.subtle.verify({ name: "Ed25519" }, imported, signature, message);
+    const imported = await crypto.subtle.importKey("raw", toArrayBuffer(publicKey), { name: "Ed25519" }, false, ["verify"]);
+    return await crypto.subtle.verify({ name: "Ed25519" }, imported, toArrayBuffer(signature), toArrayBuffer(message));
   } catch { return false; }
 }
 
@@ -68,8 +75,8 @@ Deno.serve(async (req: Request) => {
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   if (!baseUrl || !anonKey || !serviceKey) return jsonResponse({ error: "server_not_configured" }, 503);
-  // Owner and Guest modes use a valid per-installation anonymous Auth session.
-  // Local owner signing is intentionally not required for this read-only profile.
+  // Owner and Guest modes use a valid per-installation Auth session plus proof
+  // from a device that was enrolled previously. This endpoint never enrolls it.
   const userId = await getUserId(req, baseUrl, anonKey).catch(() => null);
   if (!userId) return jsonResponse({ error: "authentication_required" }, 401);
   const rawBody = new Uint8Array(await req.arrayBuffer());

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import json
 import math
 import os
@@ -333,6 +334,8 @@ class _SysMetrics:
         self._last_net = psutil.net_io_counters()
         self._last_net_t = time.time()
         self._running = True
+        self._stop_event = threading.Event()
+        self._thread = None
         # Probe caches — GPU (NVML) and temperature (WMI) are the expensive
         # queries; initialise their handles once and reuse them instead of
         # rebuilding a connection on every poll.
@@ -343,16 +346,28 @@ class _SysMetrics:
         self._nv_unix   = None         # cached (lib, dev) for Linux/macOS NVML
         self._wmi_conn  = None         # cached WMI connection (creating one is slow)
         self._wmi_ok    = None         # None=untested, False=unavailable here
-        t = threading.Thread(target=self._loop, daemon=True)
-        t.start()
+        self._thread = threading.Thread(
+            target=self._loop, name="JarvisSystemMetrics", daemon=True
+        )
+        self._thread.start()
+
+    def stop(self, timeout: float = 2.5) -> None:
+        """Stop the polling thread before Python tears down native extensions."""
+        self._running = False
+        self._stop_event.set()
+        thread = self._thread
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=max(0.0, float(timeout)))
 
     def _loop(self):
-        while self._running:
+        while self._running and not self._stop_event.is_set():
             try:
                 self._update()
             except Exception:
                 failsoft.suppress('ui:_SysMetrics._loop')
-            time.sleep(2.0)
+            # Event.wait is interruptible; plain time.sleep kept a daemon thread
+            # alive during interpreter shutdown and could abort PyQt test runs.
+            self._stop_event.wait(2.0)
 
     def _update(self):
         cpu = psutil.cpu_percent(interval=None)
@@ -475,6 +490,9 @@ class _SysMetrics:
 
 
 _metrics = _SysMetrics()
+# Daemon threads are not joined automatically during interpreter shutdown.
+# Stop this lightweight poller while Python and its native extensions are alive.
+atexit.register(_metrics.stop)
 
 class HudCanvas(NeuralVizMixin, QOpenGLWidget):
     def __init__(self, face_path: str, assistant_name: str = "J.A.R.V.I.S",

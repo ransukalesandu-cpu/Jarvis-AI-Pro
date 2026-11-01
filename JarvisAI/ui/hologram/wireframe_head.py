@@ -35,6 +35,7 @@ from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QRadialGrad
 from PyQt6.QtWidgets import QWidget
 
 from core.hologram_theme import JARVIS_PALETTE, ThemePalette, backdrop_rgb
+from ui.hologram.animation_engine import smooth_damp
 
 if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
     _BASE_CANVAS = QWidget
@@ -96,7 +97,8 @@ class NeuralWireframeHead(_BASE_CANVAS):
         self._rot_x = 0.0
         self._rot_y = 0.0
         self._drift_y = 0.0
-        self._start_time = time.time()
+        self._start_time = time.monotonic()
+        self._last_frame_at = self._start_time
         self._glitch_intensity = 0.0
         self._glow = 1.0
         self._reduced_motion = False
@@ -376,8 +378,11 @@ class NeuralWireframeHead(_BASE_CANVAS):
 
     # ── animation ───────────────────────────────────────────────────────────
     def _step(self):
-        t = time.time() - self._start_time
-        self._audio_energy += (self._target_energy - self._audio_energy) * 0.25
+        now = time.monotonic()
+        delta = max(0.0, min(0.1, now - self._last_frame_at))
+        self._last_frame_at = now
+        t = now - self._start_time
+        self._audio_energy = smooth_damp(self._audio_energy, self._target_energy, delta, 10.0)
         speed = 0.0 if self._reduced_motion else 1.0
 
         # The head is a *face*, not a spinning ball: it holds a three-quarter
@@ -405,6 +410,9 @@ class NeuralWireframeHead(_BASE_CANVAS):
             self._rot_x = 0.02 + math.sin(t * 0.8) * 0.08
             self._glitch_intensity = 0.0
 
+        self._rot_y = smooth_damp(getattr(self, "_display_rot_y", self._rot_y), self._rot_y, delta, 7.5)
+        self._rot_x = smooth_damp(getattr(self, "_display_rot_x", self._rot_x), self._rot_x, delta, 7.5)
+        self._display_rot_y, self._display_rot_x = self._rot_y, self._rot_x
         self._drift_y = 0.0 if self._reduced_motion else math.sin(t * 1.4) * 10.0
         if not self._reduced_motion:
             boost = 2.4 if self._state == "THINKING" else 1.0
@@ -442,7 +450,7 @@ class NeuralWireframeHead(_BASE_CANVAS):
         width, height = self.width(), self.height()
         cx, cy = width / 2.0, (height / 2.0) + self._drift_y
         palette = self._palette
-        t = time.time() - self._start_time
+        t = time.monotonic() - self._start_time
         primary = QColor(*palette.primary)
         secondary = QColor(*palette.secondary)
         accent = QColor(*palette.accent)

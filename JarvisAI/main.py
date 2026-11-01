@@ -2729,7 +2729,6 @@ class JarvisLive:
         loop = asyncio.get_running_loop()
         actual_sr = SEND_SAMPLE_RATE
         mic_callback_count = 0
-        callback_error_last_reported = [0.0]
         # WebRTC VAD accepts 10/20/30 ms mono int16 frames; buffer callback sizes.
         vad_pcm_buffer = bytearray()
         vad_recent = deque(maxlen=3)

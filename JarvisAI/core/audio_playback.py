@@ -16,6 +16,7 @@ from core.live_audio import (
     RECEIVE_SAMPLE_RATE,
     _MIN_PREBUFFER_BYTES,
     _OUTPUT_BLOCKSIZE,
+    _next_prebuffer_ms,
     _output_write_is_unpaced,
     _pcm_level,
 )
@@ -250,6 +251,28 @@ async def run_audio_playback(
     pending_pcm = bytearray()
     playback_started = False
     prebuffer_logged = False
+    prebuffer_target_ms = 300
+    stable_turns = 0
+    turn_had_underrun = False
+
+    def finish_buffer_turn() -> None:
+        nonlocal prebuffer_target_ms, stable_turns, turn_had_underrun
+        if turn_had_underrun:
+            stable_turns = 0
+        else:
+            stable_turns += 1
+            adjusted = _next_prebuffer_ms(
+                prebuffer_target_ms, stable_turns=stable_turns
+            )
+            if adjusted < prebuffer_target_ms:
+                prebuffer_target_ms = adjusted
+                stable_turns = 0
+                print(
+                    "[AudioTrace 4/BUFFER] Stable audio turns; "
+                    f"reducing adaptive prebuffer to {prebuffer_target_ms} ms."
+                )
+        turn_had_underrun = False
+
     try:
         while True:
             # An interruption must discard both queued and locally buffered
@@ -273,7 +296,7 @@ async def run_audio_playback(
             # Maintain a ~300 ms jitter buffer before the first write and
             # whenever the local buffer falls below target. This gives Live
             # audio a chance to arrive before the speaker queue runs dry.
-            while len(pending_pcm) < _MIN_PREBUFFER_BYTES and not playback_started:
+            while len(pending_pcm) < int(RECEIVE_SAMPLE_RATE * CHANNELS * 2 * prebuffer_target_ms / 1000) and not playback_started:
                 if host._shutdown_requested:
                     break
                 if host._playback_interrupt_requested.is_set():
@@ -331,6 +354,8 @@ async def run_audio_playback(
                                 playback_started = True
                             break
 
+                        finish_buffer_turn()
+                        finish_buffer_turn()
                         host.set_speaking(False)
                         host._turn_done_event.clear()
                         playback_started = False
@@ -362,7 +387,7 @@ async def run_audio_playback(
                         print(
                             "[AudioTrace 4/BUFFER] PCM prebuffer ready: "
                             f"{len(pending_pcm)} bytes "
-                            f"(target={_MIN_PREBUFFER_BYTES} bytes, about 300 ms)."
+                            f"(target={int(RECEIVE_SAMPLE_RATE * CHANNELS * 2 * prebuffer_target_ms / 1000)} bytes, about {prebuffer_target_ms} ms)."
                         )
                         prebuffer_logged = True
                 else:
@@ -399,6 +424,15 @@ async def run_audio_playback(
                         # starting playback with no reserve.
                         playback_started = False
                         prebuffer_logged = False
+                        if not turn_had_underrun:
+                            prebuffer_target_ms = _next_prebuffer_ms(
+                                prebuffer_target_ms, underrun=True
+                            )
+                            turn_had_underrun = True
+                            print(
+                                "[AudioTrace 4/BUFFER] Adaptive prebuffer increased "
+                                f"to {prebuffer_target_ms} ms after an underrun."
+                            )
                         now_mono = time.monotonic()
                         if now_mono - last_queue_starvation_log >= 1.0:
                             print(

@@ -48,7 +48,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 from core.ui_coordinator import HeadlessJarvisUI
-from core.audio_callback_guard import enqueue_audio_frame
+from core.audio_callback_guard import enqueue_audio_frame, guarded_audio_callback
 from core.playback_interrupt import interrupt_playback
 from core.voice_ui_control import has_wake_name_prefix, parse_voice_ui_command
 from core.audio_capture import (
@@ -2930,25 +2930,31 @@ class JarvisLive:
             else:
                 self._expire_voice_id_audio()
 
-        def callback(indata, frames, time_info, status):
-            """Keep a callback exception visible instead of silently losing mic input."""
+        def report_callback_error(exc, _operation):
+            print(
+                f"[AudioTrace 1/MIC] Callback failed; dropping this frame: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            traceback.print_exception(type(exc), exc, exc.__traceback__)
             try:
-                _mic_callback_impl(indata, frames, time_info, status)
-            except Exception as exc:
-                now = time.monotonic()
-                if now - callback_error_last_reported[0] >= 5.0:
-                    callback_error_last_reported[0] = now
-                    print(
-                        f"[AudioTrace 1/MIC] Callback failed; dropping this frame: "
-                        f"{type(exc).__name__}: {exc}"
-                    )
-                    traceback.print_exc()
-                    try:
-                        self.ui.write_log(
-                            f"ERR: Microphone callback failed: {type(exc).__name__}: {exc}"
-                        )
-                    except Exception:
-                        failsoft.suppress('main:JarvisLive._listen_audio.callback')
+                self.ui.write_log(
+                    f"ERR: Microphone callback failed: {type(exc).__name__}: {exc}"
+                )
+            except Exception:
+                failsoft.suppress('main:JarvisLive._listen_audio.callback')
+
+        def callback(indata, frames, time_info, status):
+            """Keep callback failures visible without terminating PortAudio."""
+            guarded_audio_callback(
+                "main:JarvisLive._listen_audio.callback",
+                _mic_callback_impl,
+                indata,
+                frames,
+                time_info,
+                status,
+                on_error=report_callback_error,
+                cooldown_seconds=5.0,
+            )
 
         try:
 

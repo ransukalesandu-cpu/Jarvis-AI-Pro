@@ -3112,7 +3112,7 @@ class JarvisLive:
                             # leak into the next user's response.
                             audio_fragment_buffer.clear()
                         else:
-                            receive_diagnostics.output_audio_bytes_seen += event_bytes
+                            receive_diagnostics.record_output_audio_bytes(event_bytes)
                             audio_fragment_buffer.extend(b"".join(_audio_chunks))
                             # Keep PCM samples aligned and enqueue only full 50 ms
                             # slices while streaming. Any partial tail stays buffered

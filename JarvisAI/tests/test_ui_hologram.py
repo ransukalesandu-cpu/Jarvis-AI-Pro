@@ -788,6 +788,23 @@ class TestUIHologram(unittest.TestCase):
         self.assertLess(compact[2], medium[2])
         self.assertLess(medium[2], full[2])
 
+    def test_resize_event_defers_floating_child_geometry(self):
+        """Resize work is coalesced until native Qt geometry processing returns."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.show()
+        timer = Mock()
+        hud._resize_layout_timer = timer
+        hud.resize(1260, 780)
+        app.processEvents()
+        timer.start.assert_called_with(50)
+
+        hud._right_menu.show()
+        hud._apply_deferred_resize_layout()
+        expected_x = max(
+            8, hud.centralWidget().width() - hud._right_menu.width() - 12
+        )
+        self.assertEqual(hud._right_menu.x(), expected_x)
+
     def test_responsive_hologram_budget_scales_both_personas_and_orb(self):
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
         hud._hologram_stage.resize(640, 380)

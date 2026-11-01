@@ -47,6 +47,163 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertNotIn('self._hud_cam_stack.addWidget(self._workspace)', source)
         self.assertNotIn('self._hud_cam_stack.setCurrentWidget(self._workspace)', source)
 
+    def test_smart_panel_has_html_css_assets_and_safe_local_navigation(self):
+        html_asset = ROOT / "JarvisAI" / "ui" / "assets" / "smart_panel.html"
+        css_asset = ROOT / "JarvisAI" / "ui" / "assets" / "smart_panel.css"
+        module = (ROOT / "JarvisAI" / "ui" / "smart_panel.py").read_text(encoding="utf-8")
+        html = html_asset.read_text(encoding="utf-8")
+        css = css_asset.read_text(encoding="utf-8")
+        self.assertIn("{{STYLE}}", html)
+        self.assertIn("{{NAV_ITEMS}}", html)
+        self.assertIn(".nav-item.active", css)
+        self.assertIn("setOpenExternalLinks(False)", module)
+        self.assertIn('url.scheme().casefold() != "jarvis"', module)
+        for key in ("timers", "music", "news", "media", "system"):
+            self.assertIn(f'("{key}",', module)
+
+    def test_smart_panel_review_regressions(self):
+        ui = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        workspace = (ROOT / "JarvisAI" / "core" / "hud_workspace.py").read_text(encoding="utf-8")
+        panel = (ROOT / "JarvisAI" / "ui" / "smart_panel.py").read_text(encoding="utf-8")
+
+        self.assertIn("self._workspace._web_view.urlChanged.connect(", ui)
+        self.assertIn("def _sync_workspace_web_header(self, url: QUrl)", ui)
+        select = workspace.split("    def _select(self, key: str, title: str | None = None):", 1)[1]
+        self.assertLess(select.index("self._view_title.setText("), select.index("self.tabs.setCurrentIndex("))
+        self.assertIn("'<style>{{STYLE}}</style>'", panel)
+        self.assertIn("Qt.TextInteractionFlag.LinksAccessibleByKeyboard", panel)
+        self.assertIn("Qt.TextInteractionFlag.LinksAccessibleByMouse", panel)
+
+    def test_smart_panel_shortcuts_use_existing_workspace_views(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn("def _on_workspace_shortcut(self, key: str)", source)
+        self.assertIn('self._workspace.show_view("timers", "TIMERS / REMINDERS")', source)
+        self.assertIn('self._workspace.show_webpage("https://music.youtube.com/", "YOUTUBE MUSIC")', source)
+        self.assertIn('self._workspace.show_system_panel("overview")', source)
+
+    def test_command_center_keeps_advanced_visual_controls_in_settings_drawer(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        header = source.split("    def _build_header(self)", 1)[1].split(
+            "    def _tick_clock(self)", 1
+        )[0]
+        drawer = source.split("    def _build_quick_drawer(self)", 1)[1].split(
+            "    def _", 1
+        )[0]
+        self.assertNotIn("lay.addWidget(self._neural_view_btn)", header)
+        self.assertNotIn("lay.addWidget(self._neural_hand_btn)", header)
+        self.assertIn("lay.addWidget(self._neural_view_btn)", drawer)
+        self.assertIn("lay.addWidget(self._neural_hand_btn)", drawer)
+        # The existing actions remain wired to their original handlers.
+        self.assertIn('self._enter_immersive_view("neural")', header)
+        self.assertIn("self._toggle_neural_hand_control", header)
+
+    def test_command_center_starts_hologram_first_with_optional_telemetry(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        init = source.split("        self._left_panel = self._build_left_panel()", 1)[1].split(
+            "        # Center column:", 1
+        )[0]
+        header = source.split("    def _build_header(self)", 1)[1].split(
+            "    def _tick_clock(self)", 1
+        )[0]
+        self.assertIn("self._left_panel.hide()", init)
+        self.assertIn('self._telemetry_btn = QPushButton("▤")', header)
+        self.assertIn("self._telemetry_btn.clicked.connect(self._toggle_telemetry_panel)", header)
+        self.assertIn("def _toggle_telemetry_panel(self, checked: bool)", source)
+        self.assertIn("panel.setVisible(bool(checked))", source)
+
+    def test_command_center_keeps_history_optional_and_command_bar_persistent(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        init = source.split("        self._right_panel = self._build_right_panel()", 1)[1].split(
+            "        root.addLayout(body, stretch=1)", 1
+        )[0]
+        right = source.split("    def _build_right_panel(self)", 1)[1].split(
+            "    def _build_quick_drawer(self)", 1
+        )[0]
+        footer = source.split("    def _build_footer(self)", 1)[1].split(
+            "    def _on_file_selected", 1
+        )[0]
+        self.assertIn("self._right_panel.hide()", init)
+        self.assertIn("self._activity_btn.clicked.connect(self._toggle_activity_panel)", source)
+        self.assertIn("def _toggle_activity_panel(self, checked: bool)", source)
+        self.assertNotIn("lay.addLayout(self._build_input_row())", right)
+        self.assertIn("self._command_input_row = self._build_input_row()", right)
+        self.assertIn("command.addLayout(self._command_input_row, 1)", footer)
+        self.assertIn("command.addWidget(self._interrupt_btn)", footer)
+        self.assertIn("command.addWidget(self._mute_btn)", footer)
+
+    def test_escape_closes_open_drawers_before_interrupting(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn('QShortcut(QKeySequence("Escape"), self)', source)
+        self.assertIn("sc_intr.activated.connect(self._handle_escape)", source)
+        handler = source.split("    def _handle_escape(self)", 1)[1].split(
+            "    def _build_left_panel(self)", 1
+        )[0]
+        self.assertIn('("_quick_drawer", "_drawer_btn")', handler)
+        self.assertIn('("_right_panel", "_activity_btn")', handler)
+        self.assertIn('("_left_panel", "_telemetry_btn")', handler)
+        self.assertIn("self._do_interrupt()", handler)
+
+    def test_hover_navigation_routes_to_glass_workspace_shortcuts(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn("class _HoverMenuButton(QToolButton)", source)
+        self.assertIn("self.showMenu()", source)
+        self.assertIn("self._nav_menu_btn = _HoverMenuButton()", source)
+        for key in ("timers", "music", "news", "media", "system"):
+            self.assertIn(f'("{key}",', source)
+        self.assertIn("self._on_workspace_shortcut(view)", source)
+        self.assertIn("self._show_workspace_side(key)", source)
+
+    def test_hidden_telemetry_does_not_poll_until_opened(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        init = source.split("        self._metric_tmr = QTimer(self)", 1)[1].split(
+            "        self._close_sig.connect", 1
+        )[0]
+        toggle = source.split("    def _toggle_telemetry_panel(self, checked: bool)", 1)[1].split(
+            "    def _toggle_activity_panel", 1
+        )[0]
+        self.assertIn("if self._left_panel.isVisible():", init)
+        self.assertIn("timer.start(2000)", toggle)
+        self.assertIn("if timer is not None:", toggle)
+        self.assertIn("timer.stop()", toggle)
+
+    def test_bento_dashboard_is_separate_and_refreshes_only_while_open(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        header = source.split("    def _build_header(self)", 1)[1].split(
+            "    def _tick_clock(self)", 1
+        )[0]
+        dashboard = source.split("    def _open_bento_dashboard(self)", 1)[1].split(
+            "    def _on_workspace_shortcut(self)", 1
+        )[0]
+        self.assertIn('self._nav_menu.addAction("▦   BENTO DASHBOARD")', header)
+        self.assertIn("dialog = QDialog(self)", dashboard)
+        self.assertIn("dialog.setModal(False)", dashboard)
+        self.assertIn("self._bento_timer.setInterval(3000)", dashboard)
+        self.assertIn("dialog.finished.connect(self._bento_timer.stop)", dashboard)
+        self.assertIn("self._refresh_bento_dashboard()", dashboard)
+        self.assertIn('("TIMER", "timers")', dashboard)
+        self.assertIn('("MUSIC", "music")', dashboard)
+        self.assertIn('("NEWS", "news")', dashboard)
+        self.assertIn('("MEDIA", "media")', dashboard)
+        self.assertIn("if timer is not None and not timer.isActive():", dashboard)
+        self.assertIn("QGraphicsOpacityEffect(dialog)", dashboard)
+        self.assertIn('QPropertyAnimation(fade, b"opacity", dialog)', dashboard)
+        self.assertIn("self._bento_fade.setDuration(220)", dashboard)
+        self.assertIn("self._bento_fade.start()", dashboard)
+
+    def test_right_quick_controls_menu_exposes_panels_and_assistant_modes(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        header = source.split("    def _build_header(self)", 1)[1].split(
+            "    def _tick_clock(self)", 1
+        )[0]
+        self.assertIn("self._right_menu_btn = QToolButton()", header)
+        self.assertIn('"▦  Bento Dashboard"', header)
+        self.assertIn('"▤  Toggle Telemetry"', header)
+        self.assertIn('"☷  Toggle Activity"', header)
+        self.assertIn('"⚙  Settings & Controls"', header)
+        self.assertIn('"JARVIS Mode"', header)
+        self.assertIn('"BIHANSA Mode"', header)
+        self.assertIn("self._mode_btn.setCurrentIndex(1)", header)
+
     def test_import_voice_persona(self):
         import voice.persona as persona
         self.assertTrue(hasattr(persona, "JARVIS_SPOKEN_SYSTEM_PROMPT"))

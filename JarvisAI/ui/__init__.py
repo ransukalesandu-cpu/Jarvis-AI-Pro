@@ -39,6 +39,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy, QSplitter, QStackedWidget, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
     QSlider, QToolButton,
 )
+from .smart_panel import SmartPanelHeader
 from core.voice_ui_control import (
     VoiceUICommand, is_high_impact_ui_label, normalize_label,
 )
@@ -4574,8 +4575,8 @@ class MainWindow(QMainWindow):
         self._workspace_side = QFrame()
         self._workspace_side.setObjectName("WorkspaceGlassPanel")
         self._workspace_side.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self._workspace_side.setMinimumWidth(270)
-        self._workspace_side.setMaximumWidth(420)
+        self._workspace_side.setMinimumWidth(230)
+        self._workspace_side.setMaximumWidth(390)
         self._workspace_side.setStyleSheet("""
             QFrame#WorkspaceGlassPanel {
                 background: rgba(13, 24, 29, 232);
@@ -4584,9 +4585,14 @@ class MainWindow(QMainWindow):
             }
         """)
         self._workspace_side_layout = QVBoxLayout(self._workspace_side)
-        self._workspace_side_layout.setContentsMargins(3, 3, 3, 3)
+        self._workspace_side_layout.setContentsMargins(5, 5, 5, 5)
         self._workspace_side_layout.setSpacing(0)
-        self._workspace_side_layout.addWidget(self._workspace)
+        self._workspace_header = SmartPanelHeader(self._workspace_side)
+        self._workspace_header.view_requested.connect(self._on_workspace_shortcut)
+        self._workspace_header.close_requested.connect(self._close_workspace)
+        self._workspace.tabs.currentChanged.connect(self._sync_workspace_header)
+        self._workspace_side_layout.addWidget(self._workspace_header)
+        self._workspace_side_layout.addWidget(self._workspace, 1)
         self._workspace_side.hide()
         self._news_briefing_overlay = NewsBriefingOverlay(self._workspace_side)
         self._workspace.news_briefing_items.connect(self._show_news_briefing_overlay)
@@ -4812,14 +4818,57 @@ class MainWindow(QMainWindow):
             self.stop_camera_stream()
         self._earth_panel.start_flight_radar_in_background(manual_place)
 
-    def _show_workspace_side(self) -> None:
-        """Reveal the glass workspace beside the hologram without replacing it."""
+    def _sync_workspace_header(self, index: int) -> None:
+        """Keep the HTML navigation highlight aligned with native workspace tabs."""
+        if index < 0 or not self._workspace_side.isVisible():
+            return
+        key = next(
+            (name for name, tab_index in self._workspace._page_index.items()
+             if tab_index == index),
+            "command",
+        )
+        active = {
+            "timers": "timers", "news": "news", "video": "media",
+            "system": "system",
+        }.get(key, "command")
+        if key == "web":
+            current_url = self._workspace._url_entry.text().casefold()
+            active = "music" if "music.youtube.com" in current_url else "media"
+        self._workspace_header.set_context(
+            active, title=self._workspace._view_title.text(), status="ACTIVE"
+        )
+
+    def _on_workspace_shortcut(self, key: str) -> None:
+        """Handle the HTML smart-panel shortcuts through a strict local allowlist."""
+        if self._cam_active:
+            self.stop_camera_stream()
+        if key == "timers":
+            self._workspace.show_view("timers", "TIMERS / REMINDERS")
+        elif key == "music":
+            self._workspace.show_webpage("https://music.youtube.com/", "YOUTUBE MUSIC")
+        elif key == "news":
+            self._workspace.show_news(self._workspace._last_news_items, "LIVE HEADLINES")
+            self._workspace.show_view("news", "LIVE HEADLINES")
+        elif key == "media":
+            self._workspace.show_view("video", "MEDIA PLAYER")
+        elif key == "system":
+            self._workspace.show_system_panel("overview")
+        else:
+            return
+        self._earth_open = False
+        self._workspace_open = True
+        self._show_workspace_side(key)
+
+    def _show_workspace_side(self, active_view: str = "command") -> None:
+        """Reveal the smart glass workspace beside the unchanged hologram canvas."""
         if self._workspace.parentWidget() is not self._workspace_side:
-            self._workspace_side_layout.addWidget(self._workspace)
+            self._workspace_side_layout.addWidget(self._workspace, 1)
+        self._workspace_header.set_context(active_view, status="ACTIVE")
         self._workspace_side.show()
         total = max(1, self._stage_split.width())
-        side_width = min(420, max(270, int(total * 0.40)))
-        self._stage_split.setSizes([max(260, total - side_width), side_width])
+        side_width = min(390, max(230, int(total * 0.40)))
+        side_width = min(side_width, max(230, total - 180))
+        self._stage_split.setSizes([max(180, total - side_width), side_width])
 
     def _show_workspace(self, kind: str, payload) -> None:
         data = payload if isinstance(payload, dict) else {"value": payload}
@@ -4829,7 +4878,7 @@ class MainWindow(QMainWindow):
                 data.get("title", "NEWSFIRST + ADA DERANA / LIVE BRIEFING"),
             )
             self._workspace_open = True
-            self._show_workspace_side()
+            self._show_workspace_side("news")
             return
         if kind == "briefing_news_hide":
             self._workspace.hide_briefing_news()
@@ -4894,10 +4943,18 @@ class MainWindow(QMainWindow):
         else:
             self._workspace.show_view(kind)
         if kind != "holo":
-            self._show_workspace_side()
+            active_view = {
+                "timer": "timers", "reminder": "timers", "timers": "timers",
+                "news": "news", "video": "media", "video_pause": "media",
+                "video_seek": "media", "video_stop": "media", "video_mute": "media",
+                "system": "system",
+            }.get(kind, "command")
+            if kind == "web":
+                active_view = "music" if "music.youtube.com" in str(data.get("url", "")).casefold() else "media"
+            self._show_workspace_side(active_view)
 
     def _show_news_briefing_overlay(self, items) -> None:
-        self._show_workspace_side()
+        self._show_workspace_side("news")
         self._news_briefing_overlay.set_items(items)
 
     def _hide_news_briefing_overlay(self) -> None:
@@ -4926,7 +4983,7 @@ class MainWindow(QMainWindow):
             self._workspace.show_news(self._workspace._last_news_items, title)
             self._workspace.show_view("news", title)
             self._workspace_open = True
-            self._show_workspace_side()
+            self._show_workspace_side("news")
             return
         self._close_workspace()
         if feature == "earth":
@@ -4942,7 +4999,10 @@ class MainWindow(QMainWindow):
         if feature in self._workspace._page_index:
             self._workspace.show_view(feature, titles.get(feature, feature.upper()))
             self._workspace_open = True
-            self._show_workspace_side()
+            active = {
+                "timers": "timers", "news": "news", "video": "media", "system": "system",
+            }.get(feature, "command")
+            self._show_workspace_side(active)
 
     def _open_holo_news_voice(self, source: str) -> None:
         """Show requested headlines beside the hologram, not in its canvas."""
@@ -4956,7 +5016,7 @@ class MainWindow(QMainWindow):
         self._workspace.show_news(self._workspace._last_news_items, title)
         self._workspace.show_view("news", title)
         self._workspace_open = True
-        self._show_workspace_side()
+        self._show_workspace_side("news")
 
     def _on_cam_frame(self, data: bytes) -> None:
         px = QPixmap()

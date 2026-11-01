@@ -6171,10 +6171,14 @@ class MainWindow(QMainWindow):
         ):
             widget = getattr(self, widget_name, None)
             if widget is not None and widget.isVisible():
-                widget.hide()
-                button = getattr(self, button_name, None)
-                if button is not None:
-                    button.setChecked(False)
+                if widget_name == "_left_panel":
+                    # Route through the toggle so hidden telemetry also stops polling.
+                    self._toggle_telemetry_panel(False)
+                else:
+                    widget.hide()
+                    button = getattr(self, button_name, None)
+                    if button is not None:
+                        button.setChecked(False)
                 return
         self._do_interrupt()
 

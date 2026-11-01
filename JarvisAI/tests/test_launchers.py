@@ -61,6 +61,19 @@ class TestLaunchersAndImports(unittest.TestCase):
         for key in ("timers", "music", "news", "media", "system"):
             self.assertIn(f'("{key}",', module)
 
+    def test_smart_panel_review_regressions(self):
+        ui = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        workspace = (ROOT / "JarvisAI" / "core" / "hud_workspace.py").read_text(encoding="utf-8")
+        panel = (ROOT / "JarvisAI" / "ui" / "smart_panel.py").read_text(encoding="utf-8")
+
+        self.assertIn("self._workspace._web_view.urlChanged.connect(", ui)
+        self.assertIn("def _sync_workspace_web_header(self, url: QUrl)", ui)
+        select = workspace.split("    def _select(self, key: str, title: str | None = None):", 1)[1]
+        self.assertLess(select.index("self._view_title.setText("), select.index("self.tabs.setCurrentIndex("))
+        self.assertIn("'<style>{{STYLE}}</style>'", panel)
+        self.assertIn("Qt.TextInteractionFlag.LinksAccessibleByKeyboard", panel)
+        self.assertIn("Qt.TextInteractionFlag.LinksAccessibleByMouse", panel)
+
     def test_smart_panel_shortcuts_use_existing_workspace_views(self):
         source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
         self.assertIn("def _on_workspace_shortcut(self, key: str)", source)

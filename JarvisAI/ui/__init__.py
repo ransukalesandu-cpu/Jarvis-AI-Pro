@@ -4689,8 +4689,11 @@ class MainWindow(QMainWindow):
         # Metric update timer
         self._metric_tmr = QTimer(self)
         self._metric_tmr.timeout.connect(self._update_metrics)
-        self._metric_tmr.start(2000)
-        self._update_metrics()
+        # Telemetry is hidden on launch, so avoid polling system metrics until
+        # the user opens that panel.
+        if self._left_panel.isVisible():
+            self._metric_tmr.start(2000)
+            self._update_metrics()
 
         self._close_sig.connect(self.close)
         self._log_sig.connect(self._log.append_log)
@@ -5930,6 +5933,13 @@ class MainWindow(QMainWindow):
         if panel is None:
             return
         panel.setVisible(bool(checked))
+        timer = getattr(self, "_metric_tmr", None)
+        if timer is not None:
+            if checked:
+                timer.start(2000)
+                self._update_metrics()
+            else:
+                timer.stop()
         if hasattr(self, "_telemetry_btn"):
             self._telemetry_btn.setChecked(bool(checked))
 

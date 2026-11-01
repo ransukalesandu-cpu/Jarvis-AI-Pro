@@ -3095,6 +3095,7 @@ class JarvisLive:
                     if _audio_chunks:
                         event_bytes = sum(len(chunk) for chunk in _audio_chunks)
                         now_audio_event = time.monotonic()
+                        previous_audio_duration = receive_diagnostics.last_audio_event_duration
                         event_audio_duration, arrival_gap = receive_diagnostics.record_audio_event(
                             event_bytes, now_audio_event
                         )
@@ -3102,13 +3103,11 @@ class JarvisLive:
                             print(
                                 f"[AudioTrace 3→4/AUDIO] Live PCM arrival gap "
                                 f"{arrival_gap * 1000:.0f} ms after a "
-                                f"{receive_diagnostics.last_audio_event_duration * 1000:.0f} ms payload; "
+                                f"{previous_audio_duration * 1000:.0f} ms payload; "
                                 f"next payload={event_bytes} bytes "
                                 f"({event_audio_duration * 1000:.0f} ms). "
                                 "This may explain speech stutter."
                             )
-                        receive_diagnostics.last_audio_event_at = now_audio_event
-                        receive_diagnostics.last_audio_event_duration = event_audio_duration
                         if self._interrupted:
                             # Never let a fragment from a cancelled assistant turn
                             # leak into the next user's response.

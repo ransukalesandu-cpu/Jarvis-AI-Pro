@@ -4658,6 +4658,8 @@ class MainWindow(QMainWindow):
         body.addWidget(self._center_split, stretch=5)
 
         self._right_panel = self._build_right_panel()
+        # Transcript and file history are optional; keep the HUD uncluttered.
+        self._right_panel.hide()
         body.addWidget(self._right_panel, stretch=0)
 
         root.addLayout(body, stretch=1)
@@ -5800,6 +5802,16 @@ class MainWindow(QMainWindow):
         self._telemetry_btn.clicked.connect(self._toggle_telemetry_panel)
         lay.addWidget(self._telemetry_btn)
 
+        self._activity_btn = QPushButton("☷")
+        self._activity_btn.setFixedSize(26, 26)
+        self._activity_btn.setFont(QFont("Courier New", 11))
+        self._activity_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._activity_btn.setCheckable(True)
+        self._activity_btn.setToolTip("Show / hide activity log and file bay")
+        self._activity_btn.setStyleSheet(self._telemetry_btn.styleSheet())
+        self._activity_btn.clicked.connect(self._toggle_activity_panel)
+        lay.addWidget(self._activity_btn)
+
         self._neural_view_btn = QPushButton("◉ FIELD")
         self._neural_view_btn.setFixedHeight(26)
         self._neural_view_btn.setFont(QFont("Consolas", 7, QFont.Weight.Bold))
@@ -5874,6 +5886,15 @@ class MainWindow(QMainWindow):
         panel.setVisible(bool(checked))
         if hasattr(self, "_telemetry_btn"):
             self._telemetry_btn.setChecked(bool(checked))
+
+    def _toggle_activity_panel(self, checked: bool) -> None:
+        """Show or hide the optional transcript and incoming-file panel."""
+        panel = getattr(self, "_right_panel", None)
+        if panel is None:
+            return
+        panel.setVisible(bool(checked))
+        if hasattr(self, "_activity_btn"):
+            self._activity_btn.setChecked(bool(checked))
 
     def _build_left_panel(self) -> QWidget:
         w = QWidget()
@@ -5985,9 +6006,6 @@ class MainWindow(QMainWindow):
         sep2.setStyleSheet(f"color: {C.BORDER}; margin: 2px 0;")
         lay.addWidget(sep2)
 
-        lay.addWidget(_sec("VOICE & COMMAND CONSOLE"))
-        lay.addLayout(self._build_input_row())
-
         self._interrupt_btn = QPushButton("✋  INTERRUPT  [ESC]")
         self._interrupt_btn.setFixedHeight(34)
         self._interrupt_btn.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
@@ -6005,7 +6023,6 @@ class MainWindow(QMainWindow):
             }}
         """)
         self._interrupt_btn.clicked.connect(self._do_interrupt)
-        lay.addWidget(self._interrupt_btn)
 
         self._mute_btn = QPushButton("🎙  MICROPHONE ACTIVE")
         self._mute_btn.setFixedHeight(30)
@@ -6013,8 +6030,10 @@ class MainWindow(QMainWindow):
         self._mute_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._mute_btn.clicked.connect(self._toggle_mute)
         self._style_mute_btn()
-        lay.addWidget(self._mute_btn)
 
+        # Keep command entry and safety controls in the persistent bottom bar;
+        # this panel is now reserved for optional transcript and file history.
+        self._command_input_row = self._build_input_row()
         return w
 
     def _build_quick_drawer(self) -> QWidget:
@@ -6768,19 +6787,37 @@ class MainWindow(QMainWindow):
             threading.Thread(target=self.on_text_command, args=(msg,), daemon=True).start()
 
     def _build_footer(self) -> QWidget:
+        """Persistent compact command bar; activity history stays in its drawer."""
         w = QWidget()
-        w.setFixedHeight(22)
-        w.setStyleSheet(f"background: {C.DARK}; border-top: 1px solid {C.BORDER};")
-        lay = QHBoxLayout(w); lay.setContentsMargins(14, 0, 14, 0)
+        w.setFixedHeight(58)
+        w.setStyleSheet(
+            f"background: {C.DARK}; border-top: 1px solid {C.BORDER};"
+        )
+        root = QVBoxLayout(w)
+        root.setContentsMargins(10, 5, 10, 5)
+        root.setSpacing(3)
 
-        def _fl(txt, color=C.TEXT_MED):
-            l = QLabel(txt); l.setFont(QFont("Courier New", 7))
-            l.setStyleSheet(f"color: {color}; background: transparent;")
-            return l
+        command = QHBoxLayout()
+        command.setSpacing(6)
+        command.addLayout(self._command_input_row, 1)
+        self._interrupt_btn.setFixedSize(112, 30)
+        self._mute_btn.setFixedSize(150, 30)
+        command.addWidget(self._interrupt_btn)
+        command.addWidget(self._mute_btn)
+        root.addLayout(command)
 
-        lay.addWidget(_fl("[F4] Mute  ·  [F11] Fullscreen"))
-        lay.addStretch()
-        lay.addWidget(_fl("CREATED BY  /  SATHIJA BALACHANDRA", C.PRI_DIM))
+        meta = QHBoxLayout()
+        meta.setContentsMargins(2, 0, 2, 0)
+        hint = QLabel("[F4] Mute  ·  [F11] Fullscreen  ·  [ESC] Interrupt")
+        hint.setFont(QFont("Courier New", 6))
+        hint.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
+        meta.addWidget(hint)
+        meta.addStretch()
+        credit = QLabel("JARVIS  /  COMMAND CENTER")
+        credit.setFont(QFont("Courier New", 6))
+        credit.setStyleSheet(f"color: {C.PRI_DIM}; background: transparent;")
+        meta.addWidget(credit)
+        root.addLayout(meta)
         return w
 
     def _on_file_selected(self, path: str):

@@ -153,6 +153,18 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn("self._on_workspace_shortcut(view)", source)
         self.assertIn("self._show_workspace_side(key)", source)
 
+    def test_hidden_telemetry_does_not_poll_until_opened(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        init = source.split("        self._metric_tmr = QTimer(self)", 1)[1].split(
+            "        self._close_sig.connect", 1
+        )[0]
+        toggle = source.split("    def _toggle_telemetry_panel(self, checked: bool)", 1)[1].split(
+            "    def _toggle_activity_panel", 1
+        )[0]
+        self.assertIn("if self._left_panel.isVisible():", init)
+        self.assertIn("self._metric_tmr.start(2000)", toggle)
+        self.assertIn("self._metric_tmr.stop()", toggle)
+
     def test_import_voice_persona(self):
         import voice.persona as persona
         self.assertTrue(hasattr(persona, "JARVIS_SPOKEN_SYSTEM_PROMPT"))

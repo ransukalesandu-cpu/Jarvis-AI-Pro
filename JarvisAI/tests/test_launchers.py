@@ -185,6 +185,20 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn('("MEDIA", "media")', dashboard)
         self.assertIn("if timer is not None and not timer.isActive():", dashboard)
 
+    def test_right_quick_controls_menu_exposes_panels_and_assistant_modes(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        header = source.split("    def _build_header(self)", 1)[1].split(
+            "    def _tick_clock(self)", 1
+        )[0]
+        self.assertIn("self._right_menu_btn = QToolButton()", header)
+        self.assertIn('"▦  Bento Dashboard"', header)
+        self.assertIn('"▤  Toggle Telemetry"', header)
+        self.assertIn('"☷  Toggle Activity"', header)
+        self.assertIn('"⚙  Settings & Controls"', header)
+        self.assertIn('"JARVIS Mode"', header)
+        self.assertIn('"BIHANSA Mode"', header)
+        self.assertIn("self._mode_btn.setCurrentIndex(1)", header)
+
     def test_import_voice_persona(self):
         import voice.persona as persona
         self.assertTrue(hasattr(persona, "JARVIS_SPOKEN_SYSTEM_PROMPT"))

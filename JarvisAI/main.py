@@ -104,10 +104,8 @@ from google import genai
 from google.genai import types
 try:
     from ui import JarvisUI, configure_qt_graphics_backend
-    from ui.hud_main import HologramHUDUI
 except ImportError:
     JarvisUI = None
-    HologramHUDUI = None
     configure_qt_graphics_backend = None
 
 
@@ -4740,20 +4738,15 @@ class JarvisLive:
                 await self._finish_shutdown()
                 return
 
-def _select_desktop_ui_mode(*, hud_available: bool, api_configured: bool, pin_enrolled: bool) -> str:
-    """Keep the upgraded Hologram HUD selected through first-run setup.
-
-    API-key and owner-PIN enrollment are handled inside the HUD. Missing setup
-    must never route the user back to the legacy desktop window.
-    """
-    return "hologram" if hud_available else "unavailable"
+def _select_desktop_ui_mode(*, legacy_ui_available: bool) -> str:
+    """Select the original desktop interface as the normal launch target."""
+    return "original" if legacy_ui_available else "unavailable"
 
 
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="JARVIS AI Personal Assistant")
     parser.add_argument("--headless", action="store_true", help="Run in headless background daemon mode")
-    parser.add_argument("--hologram-hud", action="store_true", help="Launch Neural Wireframe Hologram HUD")
     args, _ = parser.parse_known_args()
 
     if args.headless:
@@ -4769,10 +4762,10 @@ def main():
             traceback.print_exc()
         return
 
-    if HologramHUDUI is None:
+    if _select_desktop_ui_mode(legacy_ui_available=JarvisUI is not None) != "original":
         print(
-            "[JARVIS] The upgraded Hologram HUD could not be loaded. "
-            "The legacy UI will not be opened as a fallback; repair/install the UI dependencies."
+            "[JARVIS] The original desktop UI could not be loaded. "
+            "Install or repair the desktop UI dependencies."
         )
         return
     from PyQt6.QtCore import QTimer
@@ -4813,46 +4806,11 @@ def main():
         if splash is not None:
             splash.close()
 
-        _api_configured = False
-        _pin_enrolled = False
-        _setup_check_error = None
-        try:
-            from memory.config_manager import is_configured as _api_is_configured
-            from core.security import get_auth_manager as _get_auth_manager
-            _api_configured = bool(_api_is_configured())
-            _pin_enrolled = bool(_get_auth_manager().is_pin_enrolled())
-        except Exception as exc:
-            _setup_check_error = exc
-            print(
-                "[JARVIS] First-run setup check failed; opening setup UI: "
-                f"{type(exc).__name__}: {exc}"
-            )
-
-        _ui_mode = _select_desktop_ui_mode(
-            hud_available=HologramHUDUI is not None,
-            api_configured=_api_configured,
-            pin_enrolled=_pin_enrolled,
-        )
-        if _ui_mode == "hologram":
-            _missing_setup = []
-            if not _api_configured:
-                _missing_setup.append("Gemini API key")
-            if not _pin_enrolled:
-                _missing_setup.append("owner PIN")
-            if _setup_check_error is not None:
-                _missing_setup.append("setup status could not be verified")
-            if _missing_setup:
-                print(
-                    "[JARVIS] Keeping the Hologram HUD active during first-run setup; "
-                    f"pending: {', '.join(_missing_setup)}."
-                )
-            else:
-                print("[JARVIS] Launching the upgraded Neural Wireframe Hologram HUD.")
-            ui = HologramHUDUI()
-        else:
-            # Never instantiate the legacy UI just because setup is incomplete.
-            print("[JARVIS] Hologram HUD is unavailable; refusing legacy UI fallback.")
-            return
+        # Restore the original JARVIS desktop interface as the default UI.
+        # JarvisUI owns its existing API-key and owner-privacy setup overlays;
+        # the Live core, authentication gates and ActionDispatcher stay shared.
+        print("[JARVIS] Launching the original JARVIS desktop UI.")
+        ui = JarvisUI("face.png")
         startup["ui"] = ui
 
         def runner():

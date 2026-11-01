@@ -83,6 +83,15 @@ class LivePcmBufferingTests(unittest.TestCase):
         self.assertIsNone(diagnostics.last_audio_event_at)
         self.assertEqual(diagnostics.last_audio_event_duration, 0.0)
 
+    def test_live_receive_diagnostics_counts_events_and_identifies_first(self):
+        from core.live_audio import LiveReceiveDiagnostics
+
+        diagnostics = LiveReceiveDiagnostics()
+        self.assertTrue(diagnostics.record_live_event())
+        self.assertEqual(diagnostics.live_events_received, 1)
+        self.assertFalse(diagnostics.record_live_event())
+        self.assertEqual(diagnostics.live_events_received, 2)
+
     def test_live_receive_diagnostics_claims_each_checkpoint_once_per_turn(self):
         from core.live_audio import LiveReceiveDiagnostics
 

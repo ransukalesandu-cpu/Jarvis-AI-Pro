@@ -33,7 +33,7 @@ def test_dangerous_confirmation_is_spoken_without_showing_popup(monkeypatch):
         lambda: (completed.set() or "deleted"),
     )
 
-    assert "[VOICE_CONFIRMATION_PENDING]" in response
+    assert "[CONFIRMATION_PENDING]" in response
     assert "confirm action" in response
     assert "report.txt" in response
     assert shown == []

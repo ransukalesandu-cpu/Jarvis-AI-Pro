@@ -97,6 +97,20 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn('self._enter_immersive_view("neural")', header)
         self.assertIn("self._toggle_neural_hand_control", header)
 
+    def test_command_center_starts_hologram_first_with_optional_telemetry(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        init = source.split("        self._left_panel = self._build_left_panel()", 1)[1].split(
+            "        # Center column:", 1
+        )[0]
+        header = source.split("    def _build_header(self)", 1)[1].split(
+            "    def _tick_clock(self)", 1
+        )[0]
+        self.assertIn("self._left_panel.hide()", init)
+        self.assertIn('self._telemetry_btn = QPushButton("▤")', header)
+        self.assertIn("self._telemetry_btn.clicked.connect(self._toggle_telemetry_panel)", header)
+        self.assertIn("def _toggle_telemetry_panel(self, checked: bool)", source)
+        self.assertIn("panel.setVisible(bool(checked))", source)
+
     def test_import_voice_persona(self):
         import voice.persona as persona
         self.assertTrue(hasattr(persona, "JARVIS_SPOKEN_SYSTEM_PROMPT"))

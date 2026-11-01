@@ -115,6 +115,12 @@ class LiveReceiveDiagnostics:
         self.live_events_received += 1
         return self.live_events_received == 1
 
+    def record_output_audio_bytes(self, byte_count: int) -> int:
+        """Accumulate received PCM bytes and return the new per-turn total."""
+        if byte_count > 0:
+            self.output_audio_bytes_seen += byte_count
+        return self.output_audio_bytes_seen
+
     def claim_checkpoint(self, name: str) -> bool:
         """Claim a one-per-turn diagnostic checkpoint.
 

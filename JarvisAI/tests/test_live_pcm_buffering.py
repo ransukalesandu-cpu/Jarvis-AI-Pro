@@ -15,9 +15,224 @@ from main import (
     _output_write_is_unpaced,
     _take_playback_pcm,
 )
+from core.live_audio import (
+    _audio_event_timing,
+    _resumable_session_handle,
+    _turn_output_diagnostic,
+    _turn_output_diagnostic_from_state,
+)
 
 
 class LivePcmBufferingTests(unittest.TestCase):
+    def test_audio_event_timing_reports_only_significant_arrival_gaps(self):
+        duration, gap = _audio_event_timing(4800, 10.50, 10.0, 0.10)
+        self.assertAlmostEqual(duration, 0.10)
+        self.assertAlmostEqual(gap, 0.50)
+
+        duration, gap = _audio_event_timing(4800, 10.15, 10.0, 0.10)
+        self.assertAlmostEqual(duration, 0.10)
+        self.assertIsNone(gap)
+
+    def test_audio_event_timing_handles_first_event_and_invalid_input(self):
+        duration, gap = _audio_event_timing(4800, 10.0, None, 0.0)
+        self.assertAlmostEqual(duration, 0.10)
+        self.assertIsNone(gap)
+        self.assertEqual(_audio_event_timing("bad", 10.0, 9.0, 0.1), (0.0, None))
+
+    def test_session_resumption_helper_accepts_only_resumable_handles(self):
+        class Update:
+            def __init__(self, resumable, handle):
+                self.resumable = resumable
+                self.new_handle = handle
+
+        class Response:
+            def __init__(self, update):
+                self.session_resumption_update = update
+
+        self.assertEqual(
+            _resumable_session_handle(Response(Update(True, "resume-token"))),
+            "resume-token",
+        )
+        self.assertIsNone(
+            _resumable_session_handle(Response(Update(False, "unsafe-token")))
+        )
+        self.assertIsNone(
+            _resumable_session_handle(Response(Update(True, "")))
+        )
+        self.assertIsNone(_resumable_session_handle(object()))
+
+    def test_turn_output_diagnostic_reports_text_and_partial_audio(self):
+        message = _turn_output_diagnostic(
+            True, 240, output_audio_checkpointed=False,
+            interrupted=False, min_frame_bytes=480,
+        )
+        self.assertEqual(
+            message,
+            "[AudioTrace 3→4/AUDIO] Assistant text arrived, but only "
+            "240 PCM byte(s) arrived this turn; no complete 10 ms frame "
+            "(480 bytes) reached playback. Check Live model/audio output.",
+        )
+
+    def test_turn_output_diagnostic_from_state_reports_subframe_tail(self):
+        from core.live_audio import LiveReceiveDiagnostics
+
+        diagnostics = LiveReceiveDiagnostics()
+        diagnostics.claim_checkpoint("output_text")
+        diagnostics.record_output_audio_bytes(240)
+        self.assertEqual(
+            _turn_output_diagnostic_from_state(
+                diagnostics, interrupted=False, min_frame_bytes=480
+            ),
+            "[AudioTrace 3→4/AUDIO] Assistant text arrived, but only "
+            "240 PCM byte(s) arrived this turn; no complete 10 ms frame "
+            "(480 bytes) reached playback. Check Live model/audio output.",
+        )
+
+    def test_turn_output_diagnostic_from_state_suppresses_queued_audio(self):
+        from core.live_audio import LiveReceiveDiagnostics
+
+        diagnostics = LiveReceiveDiagnostics()
+        diagnostics.claim_checkpoint("output_text")
+        diagnostics.record_output_audio_bytes(480)
+        diagnostics.claim_checkpoint("output_audio")
+        self.assertIsNone(
+            _turn_output_diagnostic_from_state(
+                diagnostics, interrupted=False, min_frame_bytes=480
+            )
+        )
+
+    def test_turn_output_diagnostic_reports_text_without_audio(self):
+        self.assertEqual(
+            _turn_output_diagnostic(
+                True, 0, output_audio_checkpointed=False,
+                interrupted=False, min_frame_bytes=480,
+            ),
+            "[AudioTrace 3→4/AUDIO] Assistant text arrived but Gemini "
+            "returned no audio payload for this turn.",
+        )
+
+    def test_turn_output_diagnostic_reports_audio_without_text(self):
+        self.assertEqual(
+            _turn_output_diagnostic(
+                False, 240, output_audio_checkpointed=False,
+                interrupted=False, min_frame_bytes=480,
+            ),
+            "[AudioTrace 3→4/AUDIO] Only 240 PCM byte(s) arrived without "
+            "a playable frame or assistant text.",
+        )
+
+    def test_turn_output_diagnostic_reports_empty_turn(self):
+        self.assertEqual(
+            _turn_output_diagnostic(
+                False, 0, output_audio_checkpointed=False,
+                interrupted=False, min_frame_bytes=480,
+            ),
+            "[AudioTrace 3/LIVE] Turn completed without assistant "
+            "transcription or audio payload.",
+        )
+
+    def test_turn_output_diagnostic_is_suppressed_after_audio_or_interrupt(self):
+        for kwargs in (
+            {"output_audio_checkpointed": True, "interrupted": False},
+            {"output_audio_checkpointed": False, "interrupted": True},
+        ):
+            with self.subTest(kwargs=kwargs):
+                self.assertIsNone(
+                    _turn_output_diagnostic(
+                        True, 960, min_frame_bytes=480, **kwargs
+                    )
+                )
+
+    def test_live_receive_diagnostics_reset_turn_without_resetting_event_count(self):
+        from core.live_audio import LiveReceiveDiagnostics
+
+        diagnostics = LiveReceiveDiagnostics()
+        diagnostics.live_events_received = 4
+        diagnostics.input_checkpoint_logged = True
+        diagnostics.output_text_checkpoint_logged = True
+        diagnostics.output_audio_checkpoint_logged = True
+        diagnostics.short_audio_fragment_logged = True
+        diagnostics.output_audio_bytes_seen = 9600
+        diagnostics.last_audio_event_at = 12.5
+        diagnostics.last_audio_event_duration = 0.2
+
+        diagnostics.reset_turn()
+        self.assertEqual(diagnostics.live_events_received, 4)
+        self.assertFalse(diagnostics.input_checkpoint_logged)
+        self.assertFalse(diagnostics.output_text_checkpoint_logged)
+        self.assertFalse(diagnostics.output_audio_checkpoint_logged)
+        self.assertFalse(diagnostics.short_audio_fragment_logged)
+        self.assertEqual(diagnostics.output_audio_bytes_seen, 0)
+        self.assertEqual(diagnostics.last_audio_event_at, 12.5)
+
+        diagnostics.reset_audio_timing()
+        self.assertIsNone(diagnostics.last_audio_event_at)
+        self.assertEqual(diagnostics.last_audio_event_duration, 0.0)
+
+    def test_live_receive_diagnostics_accumulates_output_audio_bytes(self):
+        from core.live_audio import LiveReceiveDiagnostics
+
+        diagnostics = LiveReceiveDiagnostics()
+        self.assertEqual(diagnostics.record_output_audio_bytes(480), 480)
+        self.assertEqual(diagnostics.record_output_audio_bytes(960), 1440)
+        self.assertEqual(diagnostics.record_output_audio_bytes(0), 1440)
+        diagnostics.reset_turn()
+        self.assertEqual(diagnostics.output_audio_bytes_seen, 0)
+
+    def test_live_receive_diagnostics_turn_output_snapshot(self):
+        from core.live_audio import LiveReceiveDiagnostics
+
+        diagnostics = LiveReceiveDiagnostics()
+        self.assertEqual(diagnostics.turn_output_snapshot(), (False, 0))
+        diagnostics.claim_checkpoint("output_text")
+        diagnostics.record_output_audio_bytes(960)
+        self.assertEqual(diagnostics.turn_output_snapshot(), (True, 960))
+        diagnostics.reset_turn()
+        self.assertEqual(diagnostics.turn_output_snapshot(), (False, 0))
+
+    def test_live_receive_diagnostics_counts_events_and_identifies_first(self):
+        from core.live_audio import LiveReceiveDiagnostics
+
+        diagnostics = LiveReceiveDiagnostics()
+        self.assertTrue(diagnostics.record_live_event())
+        self.assertEqual(diagnostics.live_events_received, 1)
+        self.assertFalse(diagnostics.record_live_event())
+        self.assertEqual(diagnostics.live_events_received, 2)
+
+    def test_live_receive_diagnostics_claims_each_checkpoint_once_per_turn(self):
+        from core.live_audio import LiveReceiveDiagnostics
+
+        diagnostics = LiveReceiveDiagnostics()
+        self.assertTrue(diagnostics.claim_checkpoint("input"))
+        self.assertFalse(diagnostics.claim_checkpoint("input"))
+        self.assertTrue(diagnostics.claim_checkpoint("output_text"))
+        self.assertTrue(diagnostics.claim_checkpoint("output_audio"))
+        self.assertTrue(diagnostics.claim_checkpoint("short_audio_fragment"))
+        self.assertFalse(diagnostics.claim_checkpoint("unknown"))
+        self.assertFalse(diagnostics.checkpoint_claimed("unknown"))
+        self.assertTrue(diagnostics.checkpoint_claimed("input"))
+        self.assertTrue(diagnostics.checkpoint_claimed("output_audio"))
+        diagnostics.reset_turn()
+        self.assertTrue(diagnostics.claim_checkpoint("input"))
+        self.assertTrue(diagnostics.claim_checkpoint("output_audio"))
+
+    def test_live_receive_diagnostics_records_audio_event_timing(self):
+        from core.live_audio import LiveReceiveDiagnostics
+
+        diagnostics = LiveReceiveDiagnostics()
+        duration, gap, previous_duration = diagnostics.record_audio_event(4800, 10.0)
+        self.assertAlmostEqual(duration, 0.10)
+        self.assertIsNone(gap)
+        self.assertEqual(previous_duration, 0.0)
+        self.assertEqual(diagnostics.last_audio_event_at, 10.0)
+
+        duration, gap, previous_duration = diagnostics.record_audio_event(4800, 10.5)
+        self.assertAlmostEqual(duration, 0.10)
+        self.assertAlmostEqual(gap, 0.50)
+        self.assertAlmostEqual(previous_duration, 0.10)
+        self.assertEqual(diagnostics.last_audio_event_at, 10.5)
+        self.assertAlmostEqual(diagnostics.last_audio_event_duration, 0.10)
+
     def test_live_playback_prebuffer_and_output_blocksize(self):
         # 24 kHz * mono * int16 * 0.3 seconds = 14,400 bytes.
         self.assertEqual(_MIN_PREBUFFER_BYTES, 14_400)

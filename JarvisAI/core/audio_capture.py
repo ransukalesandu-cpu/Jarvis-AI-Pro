@@ -57,3 +57,38 @@ def open_input_stream_with_fallback(
             used_default=True,
             selected_device_error=selected_error,
         )
+
+
+def resample_input_audio(indata: Any, source_rate: int, target_rate: int) -> Any:
+    """Resample a sounddevice int16 input block while preserving its shape.
+
+    This mirrors the Live microphone callback's linear interpolation and
+    clipping behavior. If conversion is unnecessary or the input is too short,
+    the original block is returned unchanged.
+    """
+    import numpy as np
+
+    if source_rate == target_rate or source_rate <= 0 or target_rate <= 0:
+        return indata
+    if getattr(indata, "size", 0) <= 0:
+        return indata
+    raw_mono = indata[:, 0] if indata.ndim > 1 else indata
+    n_samples = int(round(len(raw_mono) * target_rate / source_rate))
+    if n_samples <= 0 or len(raw_mono) <= 1:
+        return indata
+    old_x = np.linspace(0, 1, len(raw_mono))
+    new_x = np.linspace(0, 1, n_samples)
+    resampled_float = np.interp(new_x, old_x, raw_mono.astype(np.float32))
+    resampled = np.clip(resampled_float, -32768, 32767).astype(np.int16)
+    return resampled.reshape(-1, 1) if indata.ndim > 1 else resampled
+
+
+def take_fixed_pcm_frames(buffer: bytearray, frame_bytes: int) -> list[bytes]:
+    """Remove and return all complete fixed-size PCM frames from a buffer."""
+    if frame_bytes <= 0:
+        raise ValueError("frame_bytes must be positive")
+    frames = []
+    while len(buffer) >= frame_bytes:
+        frames.append(bytes(buffer[:frame_bytes]))
+        del buffer[:frame_bytes]
+    return frames

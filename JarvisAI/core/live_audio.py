@@ -6,7 +6,9 @@ PCM framing and Live-event/error handling can be tested independently.
 
 from __future__ import annotations
 
+import asyncio
 import base64
+from typing import Any
 
 import numpy as np
 
@@ -23,6 +25,55 @@ _MIN_PREBUFFER_MS = 150
 _MAX_PREBUFFER_MS = 600
 _PREBUFFER_STEP_MS = 50
 _STABLE_TURNS_TO_SHRINK = 3
+
+
+def _normalize_input_audio_mime_type(value: Any) -> str:
+    """Ensure raw PCM input always carries its sample rate for Gemini Live."""
+    mime_type = str(value)
+    if mime_type.lower().startswith("audio/pcm") and "rate=" not in mime_type.lower():
+        return "audio/pcm;rate=16000"
+    return mime_type
+
+
+async def run_realtime_audio_sender(
+    out_queue: Any,
+    session: Any,
+    *,
+    is_allowed: Any,
+    make_blob: Any,
+    on_send_error: Any,
+) -> None:
+    """Forward queued PCM frames to Gemini Live without owning auth policy.
+
+    Authentication remains a caller-supplied gate so this transport helper
+    cannot bypass Privacy Lock or the mandatory PIN challenge.
+    """
+    frames_sent = 0
+    print("[AudioTrace 1→3] Sender running; waiting for microphone/phone audio frames.")
+    while True:
+        msg = await out_queue.get()
+        if not is_allowed():
+            continue
+        mime_type = _normalize_input_audio_mime_type(
+            msg.get("mime_type", "audio/pcm;rate=16000")
+        )
+        if frames_sent == 0:
+            print(
+                f"[AudioTrace 1→3] Sending first input frame "
+                f"({len(msg.get('data', b''))} bytes; {mime_type})."
+            )
+        try:
+            await session.send_realtime_input(
+                audio=make_blob(msg["data"], mime_type)
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            on_send_error(exc, frames_sent)
+            raise
+        frames_sent += 1
+        if frames_sent == 1:
+            print("[AudioTrace 1→3] First input frame accepted by the Live client.")
 
 
 def _next_prebuffer_ms(current_ms: int, *, underrun: bool = False, stable_turns: int = 0) -> int:
@@ -42,6 +93,182 @@ def _next_prebuffer_ms(current_ms: int, *, underrun: bool = False, stable_turns:
     elif stable >= _STABLE_TURNS_TO_SHRINK:
         current -= _PREBUFFER_STEP_MS // 2
     return min(_MAX_PREBUFFER_MS, max(_MIN_PREBUFFER_MS, current))
+
+
+
+def _audio_event_timing(
+    event_bytes: int,
+    now: float,
+    previous_at: float | None,
+    previous_duration: float,
+) -> tuple[float, float | None]:
+    """Return payload duration and a noteworthy inter-event arrival gap.
+
+    This isolates the receiver's PCM timing diagnostic from the Gemini event
+    loop. It does not alter buffering, scheduling, or playback decisions.
+    """
+    try:
+        byte_count = max(0, int(event_bytes))
+        current = float(now)
+        duration = byte_count / (RECEIVE_SAMPLE_RATE * CHANNELS * 2)
+        if previous_at is None:
+            return duration, None
+        gap = current - float(previous_at)
+        expected_gap = max(0.0, float(previous_duration)) + 0.10
+        if gap > max(0.18, expected_gap) and gap < 3.0:
+            return duration, gap
+        return duration, None
+    except (TypeError, ValueError, OverflowError):
+        return 0.0, None
+
+
+
+
+
+class LiveReceiveDiagnostics:
+    """Per-receiver event counters and one-turn diagnostic checkpoints.
+
+    This state is intentionally separate from PCM buffering and playback
+    queues; resetting diagnostics must never discard audio or alter scheduling.
+    """
+
+    _CHECKPOINT_ATTRIBUTES = {
+        "input": "input_checkpoint_logged",
+        "output_text": "output_text_checkpoint_logged",
+        "output_audio": "output_audio_checkpoint_logged",
+        "short_audio_fragment": "short_audio_fragment_logged",
+    }
+
+    def __init__(self) -> None:
+        self.live_events_received = 0
+        self.input_checkpoint_logged = False
+        self.output_text_checkpoint_logged = False
+        self.output_audio_checkpoint_logged = False
+        self.short_audio_fragment_logged = False
+        self.output_audio_bytes_seen = 0
+        self.last_audio_event_at: float | None = None
+        self.last_audio_event_duration = 0.0
+
+    def record_audio_event(
+        self, event_bytes: int, now: float
+    ) -> tuple[float, float | None, float]:
+        """Update arrival timing and return duration, gap, and prior duration."""
+        previous_duration = self.last_audio_event_duration
+        duration, gap = _audio_event_timing(
+            event_bytes,
+            now,
+            self.last_audio_event_at,
+            previous_duration,
+        )
+        self.last_audio_event_at = now
+        self.last_audio_event_duration = duration
+        return duration, gap, previous_duration
+
+    def record_live_event(self) -> bool:
+        """Count a received Live event and report whether it is the first."""
+        self.live_events_received += 1
+        return self.live_events_received == 1
+
+    def record_output_audio_bytes(self, byte_count: int) -> int:
+        """Accumulate received PCM bytes and return the new per-turn total."""
+        if byte_count > 0:
+            self.output_audio_bytes_seen += byte_count
+        return self.output_audio_bytes_seen
+
+    def claim_checkpoint(self, name: str) -> bool:
+        """Claim a one-per-turn diagnostic checkpoint.
+
+        Returns True only for the first claim of a supported checkpoint name.
+        Unknown names are rejected without changing diagnostic state.
+        """
+        attribute = self._CHECKPOINT_ATTRIBUTES.get(name)
+        if attribute is None or getattr(self, attribute):
+            return False
+        setattr(self, attribute, True)
+        return True
+
+    def checkpoint_claimed(self, name: str) -> bool:
+        """Return whether a supported one-per-turn checkpoint was claimed."""
+        attribute = self._CHECKPOINT_ATTRIBUTES.get(name)
+        return bool(attribute and getattr(self, attribute))
+
+    def turn_output_snapshot(self) -> tuple[bool, int]:
+        """Return the text-checkpoint state and PCM byte total for this turn."""
+        return self.output_text_checkpoint_logged, self.output_audio_bytes_seen
+
+    def reset_audio_timing(self) -> None:
+        self.last_audio_event_at = None
+        self.last_audio_event_duration = 0.0
+
+    def reset_turn(self) -> None:
+        self.input_checkpoint_logged = False
+        self.output_text_checkpoint_logged = False
+        self.output_audio_checkpoint_logged = False
+        self.short_audio_fragment_logged = False
+        self.output_audio_bytes_seen = 0
+
+def _turn_output_diagnostic(
+    output_text_seen: bool,
+    output_audio_bytes: int,
+    *,
+    output_audio_checkpointed: bool,
+    interrupted: bool,
+    min_frame_bytes: int,
+) -> str | None:
+    """Build the end-of-turn diagnostic without reading receiver state.
+
+    Returns None when audio was successfully queued, the turn was interrupted,
+    or no diagnostic is appropriate.
+    """
+    if output_audio_checkpointed or interrupted:
+        return None
+    if output_text_seen and output_audio_bytes:
+        return (
+            "[AudioTrace 3→4/AUDIO] Assistant text arrived, but only "
+            f"{output_audio_bytes} PCM byte(s) arrived this turn; "
+            f"no complete 10 ms frame ({min_frame_bytes} bytes) "
+            "reached playback. Check Live model/audio output."
+        )
+    if output_text_seen:
+        return (
+            "[AudioTrace 3→4/AUDIO] Assistant text arrived but Gemini "
+            "returned no audio payload for this turn."
+        )
+    if output_audio_bytes:
+        return (
+            f"[AudioTrace 3→4/AUDIO] Only {output_audio_bytes} "
+            "PCM byte(s) arrived without a playable frame or assistant text."
+        )
+    return (
+        "[AudioTrace 3/LIVE] Turn completed without assistant "
+        "transcription or audio payload."
+    )
+
+
+def _turn_output_diagnostic_from_state(
+    diagnostics: "LiveReceiveDiagnostics",
+    *,
+    interrupted: bool,
+    min_frame_bytes: int,
+) -> str | None:
+    """Build the turn-end diagnostic from the receiver's current state."""
+    output_text_seen, output_audio_bytes = diagnostics.turn_output_snapshot()
+    return _turn_output_diagnostic(
+        output_text_seen,
+        output_audio_bytes,
+        output_audio_checkpointed=diagnostics.checkpoint_claimed("output_audio"),
+        interrupted=interrupted,
+        min_frame_bytes=min_frame_bytes,
+    )
+
+
+def _resumable_session_handle(response) -> str | None:
+    """Return only a server-confirmed resumable Gemini Live session handle."""
+    update = getattr(response, "session_resumption_update", None)
+    if update is None or not getattr(update, "resumable", False):
+        return None
+    handle = getattr(update, "new_handle", None)
+    return handle if handle else None
 
 
 def _take_playback_pcm(buffer: bytearray, *, final: bool = False) -> bytes:

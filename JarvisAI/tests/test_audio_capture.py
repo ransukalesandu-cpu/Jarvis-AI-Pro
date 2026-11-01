@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import unittest
 
-from core.audio_capture import open_input_stream_with_fallback
+from core.audio_capture import (
+    open_input_stream_with_fallback,
+    resample_input_audio,
+    take_fixed_pcm_frames,
+)
 
 
 class FakeStream:
@@ -22,6 +26,51 @@ class FakeAudioBackend:
         if kwargs["device"] in self.failing_devices:
             raise RuntimeError(f"device {kwargs['device']} unavailable")
         return FakeStream(kwargs)
+
+
+class AudioCaptureSignalTests(unittest.TestCase):
+    def test_resampling_preserves_rate_matched_input(self):
+        import numpy as np
+
+        source = np.array([0, 100, -100], dtype=np.int16)
+        self.assertIs(resample_input_audio(source, 16_000, 16_000), source)
+
+    def test_resampling_changes_sample_count_and_preserves_channel_shape(self):
+        import numpy as np
+
+        source = np.array([[0], [1000], [2000], [3000]], dtype=np.int16)
+        result = resample_input_audio(source, 8_000, 16_000)
+        self.assertEqual(result.shape, (8, 1))
+        self.assertEqual(result.dtype, np.int16)
+        self.assertEqual(int(result[0, 0]), 0)
+        self.assertEqual(int(result[-1, 0]), 3000)
+
+    def test_resampling_clips_to_int16_range(self):
+        import numpy as np
+
+        source = np.array([-40_000, 40_000], dtype=np.int32)
+        result = resample_input_audio(source, 8_000, 8_000)
+        self.assertIs(result, source)
+        converted = resample_input_audio(source, 8_000, 16_000)
+        self.assertLessEqual(int(converted.max()), 32767)
+        self.assertGreaterEqual(int(converted.min()), -32768)
+
+    def test_fixed_pcm_frames_consumes_only_complete_frames(self):
+        buffer = bytearray(b"abcdefghij")
+        frames = take_fixed_pcm_frames(buffer, 4)
+        self.assertEqual(frames, [b"abcd", b"efgh"])
+        self.assertEqual(buffer, bytearray(b"ij"))
+
+    def test_fixed_pcm_frames_can_continue_after_more_bytes_arrive(self):
+        buffer = bytearray(b"abc")
+        self.assertEqual(take_fixed_pcm_frames(buffer, 4), [])
+        buffer.extend(b"d")
+        self.assertEqual(take_fixed_pcm_frames(buffer, 4), [b"abcd"])
+        self.assertEqual(buffer, bytearray())
+
+    def test_fixed_pcm_frames_rejects_non_positive_frame_size(self):
+        with self.assertRaises(ValueError):
+            take_fixed_pcm_frames(bytearray(b"data"), 0)
 
 
 class AudioCaptureTests(unittest.TestCase):

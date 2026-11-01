@@ -35,9 +35,9 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import (
     QAbstractButton, QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect,
-    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QScrollArea,
+    QDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QScrollArea,
     QSizePolicy, QSplitter, QStackedWidget, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
-    QSlider, QToolButton,
+    QSlider, QToolButton, QMenu,
 )
 from .smart_panel import SmartPanelHeader
 from core.voice_ui_control import (
@@ -163,6 +163,16 @@ def configure_qt_graphics_backend() -> bool:
     except Exception as exc:
         print(f"[HUD] Could not select the OpenGL graphics API: {exc}")
         return False
+
+
+class _HoverMenuButton(QToolButton):
+    """Small edge-navigation trigger that opens its menu when hovered."""
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        menu = self.menu()
+        if menu is not None and not menu.isVisible():
+            self.showMenu()
 
 
 class C:
@@ -4500,6 +4510,9 @@ class MainWindow(QMainWindow):
         body.setSpacing(0)
 
         self._left_panel = self._build_left_panel()
+        # Keep the hologram as the primary focus on launch. Telemetry remains
+        # available from the compact header control without consuming HUD width.
+        self._left_panel.hide()
         body.addWidget(self._left_panel, stretch=0)
 
         # Center column: HUD + resizable content panel via QSplitter
@@ -4655,6 +4668,8 @@ class MainWindow(QMainWindow):
         body.addWidget(self._center_split, stretch=5)
 
         self._right_panel = self._build_right_panel()
+        # Transcript and file history are optional; keep the HUD uncluttered.
+        self._right_panel.hide()
         body.addWidget(self._right_panel, stretch=0)
 
         root.addLayout(body, stretch=1)
@@ -4674,8 +4689,11 @@ class MainWindow(QMainWindow):
         # Metric update timer
         self._metric_tmr = QTimer(self)
         self._metric_tmr.timeout.connect(self._update_metrics)
-        self._metric_tmr.start(2000)
-        self._update_metrics()
+        # Telemetry is hidden on launch, so avoid polling system metrics until
+        # the user opens that panel.
+        if self._left_panel.isVisible():
+            self._metric_tmr.start(2000)
+            self._update_metrics()
 
         self._close_sig.connect(self.close)
         self._log_sig.connect(self._log.append_log)
@@ -4770,7 +4788,7 @@ class MainWindow(QMainWindow):
         sc_full = QShortcut(QKeySequence("F11"), self)
         sc_full.activated.connect(self._toggle_fullscreen)
         sc_intr = QShortcut(QKeySequence("Escape"), self)
-        sc_intr.activated.connect(self._do_interrupt)
+        sc_intr.activated.connect(self._handle_escape)
 
     def _show_camera_frame(self, img_bytes: bytes):
         """Slot — display camera preview overlay (main thread)."""
@@ -4846,6 +4864,172 @@ class MainWindow(QMainWindow):
         self._workspace_header.set_context(
             active, title=self._workspace._view_title.text(), status="ACTIVE"
         )
+
+    def _open_bento_dashboard(self) -> None:
+        """Open the optional Bento overview as a separate lightweight window."""
+        dialog = getattr(self, "_bento_dialog", None)
+        if dialog is not None:
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+            timer = getattr(self, "_bento_timer", None)
+            if timer is not None and not timer.isActive():
+                timer.start()
+            self._refresh_bento_dashboard()
+            return
+
+        dialog = QDialog(self)
+        dialog.setObjectName("BentoDashboard")
+        dialog.setWindowTitle("JARVIS  /  BENTO COMMAND DASHBOARD")
+        dialog.setModal(False)
+        dialog.resize(760, 500)
+        dialog.setMinimumSize(620, 420)
+        dialog.setStyleSheet(f"""
+            QDialog#BentoDashboard {{
+                background: {C.BG};
+                color: {C.TEXT};
+            }}
+            QFrame#BentoCard {{
+                background: {C.PANEL};
+                border: 1px solid {C.BORDER_B};
+                border-radius: 9px;
+            }}
+            QLabel#BentoEyebrow {{
+                color: {C.PRI_DIM};
+                background: transparent;
+                font: 8pt 'Courier New';
+                letter-spacing: 1px;
+            }}
+            QLabel#BentoValue {{
+                color: {C.TEXT};
+                background: transparent;
+                font: bold 19pt 'Segoe UI';
+            }}
+            QLabel#BentoDetail {{
+                color: {C.TEXT_MED};
+                background: transparent;
+                font: 8pt 'Segoe UI';
+            }}
+            QPushButton {{
+                color: {C.PRI};
+                background: {C.PANEL2};
+                border: 1px solid {C.BORDER_B};
+                border-radius: 5px;
+                padding: 8px 12px;
+                font: bold 8pt 'Courier New';
+            }}
+            QPushButton:hover {{
+                background: {C.PRI_GHO};
+                border-color: {C.PRI};
+            }}
+        """)
+        root = QVBoxLayout(dialog)
+        root.setContentsMargins(18, 16, 18, 16)
+        root.setSpacing(12)
+
+        heading = QHBoxLayout()
+        title = QLabel("▦  COMMAND OVERVIEW")
+        title.setStyleSheet(f"color: {C.PRI}; background: transparent; font: bold 13pt 'Courier New';")
+        heading.addWidget(title)
+        heading.addStretch()
+        subtitle = QLabel("LIVE SYSTEM SNAPSHOT")
+        subtitle.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent; font: 8pt 'Courier New';")
+        heading.addWidget(subtitle)
+        root.addLayout(heading)
+
+        grid = QGridLayout()
+        grid.setSpacing(10)
+        self._bento_value_labels = {}
+
+        cards = (
+            ("ASSISTANT STATE", "assistant", "INITIALISING", "Voice and hologram state"),
+            ("CPU LOAD", "cpu", "--", "Host processor utilisation"),
+            ("MEMORY", "memory", "--", "Host memory utilisation"),
+            ("UPTIME", "uptime", "--", "Assistant session uptime"),
+            ("VOICE INPUT", "voice", "READY", "Microphone availability"),
+            ("ACTIVE VIEW", "view", "HOLOGRAM", "Current command surface"),
+        )
+        for index, (eyebrow, key, initial, detail) in enumerate(cards):
+            card = QFrame()
+            card.setObjectName("BentoCard")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(14, 13, 14, 13)
+            card_layout.setSpacing(7)
+            small = QLabel(eyebrow)
+            small.setObjectName("BentoEyebrow")
+            value = QLabel(initial)
+            value.setObjectName("BentoValue")
+            value.setWordWrap(True)
+            desc = QLabel(detail)
+            desc.setObjectName("BentoDetail")
+            desc.setWordWrap(True)
+            card_layout.addWidget(small)
+            card_layout.addWidget(value)
+            card_layout.addStretch()
+            card_layout.addWidget(desc)
+            grid.addWidget(card, index // 3, index % 3)
+            self._bento_value_labels[key] = value
+        for column in range(3):
+            grid.setColumnStretch(column, 1)
+        for row in range(2):
+            grid.setRowStretch(row, 1)
+        root.addLayout(grid, 1)
+
+        actions = QHBoxLayout()
+        for label, key in (
+            ("TIMER", "timers"),
+            ("MUSIC", "music"),
+            ("NEWS", "news"),
+            ("MEDIA", "media"),
+        ):
+            button = QPushButton(label)
+            button.clicked.connect(
+                lambda _checked=False, view=key: self._on_workspace_shortcut(view)
+            )
+            actions.addWidget(button)
+        actions.addStretch()
+        close_button = QPushButton("CLOSE")
+        close_button.clicked.connect(dialog.close)
+        actions.addWidget(close_button)
+        root.addLayout(actions)
+
+        self._bento_dialog = dialog
+        self._bento_timer = QTimer(dialog)
+        self._bento_timer.setInterval(3000)
+        self._bento_timer.timeout.connect(self._refresh_bento_dashboard)
+        dialog.finished.connect(self._bento_timer.stop)
+        self._refresh_bento_dashboard()
+        self._bento_timer.start()
+        fade = QGraphicsOpacityEffect(dialog)
+        dialog.setGraphicsEffect(fade)
+        fade.setOpacity(0.0)
+        self._bento_fade = QPropertyAnimation(fade, b"opacity", dialog)
+        self._bento_fade.setDuration(220)
+        self._bento_fade.setStartValue(0.0)
+        self._bento_fade.setEndValue(1.0)
+        self._bento_fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+        dialog.show()
+        self._bento_fade.start()
+
+    def _refresh_bento_dashboard(self) -> None:
+        """Refresh only while the optional Bento window is open."""
+        labels = getattr(self, "_bento_value_labels", None)
+        if not labels:
+            return
+        try:
+            labels["assistant"].setText(str(getattr(self.hud, "state", "READY")).upper())
+        except Exception:
+            labels["assistant"].setText("READY")
+        try:
+            labels["cpu"].setText(f"{psutil.cpu_percent(interval=None):.0f}%")
+            labels["memory"].setText(f"{psutil.virtual_memory().percent:.0f}%")
+            labels["uptime"].setText(getattr(self, "_uptime_lbl", None).text().replace("UP  ", "")
+                                     if getattr(self, "_uptime_lbl", None) else "--")
+        except Exception:
+            labels["cpu"].setText("--")
+            labels["memory"].setText("--")
+        labels["voice"].setText("MUTED" if self._muted else "ACTIVE")
+        labels["view"].setText("SMART GLASS" if self._workspace_open else "HOLOGRAM")
 
     def _on_workspace_shortcut(self, key: str) -> None:
         """Handle the HTML smart-panel shortcuts through a strict local allowlist."""
@@ -5758,6 +5942,45 @@ class MainWindow(QMainWindow):
             l.setStyleSheet(f"color: {color}; background: transparent;")
             return l
 
+        self._nav_menu_btn = _HoverMenuButton()
+        self._nav_menu_btn.setText("☰")
+        self._nav_menu_btn.setFixedSize(28, 28)
+        self._nav_menu_btn.setFont(QFont("Courier New", 13, QFont.Weight.Bold))
+        self._nav_menu_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._nav_menu_btn.setToolTip("Hover for quick command windows")
+        self._nav_menu_btn.setStyleSheet(f"""
+            QToolButton {{
+                color: {C.PRI}; background: {C.PANEL};
+                border: 1px solid {C.BORDER_B}; border-radius: 4px;
+            }}
+            QToolButton:hover {{ background: {C.PRI_GHO}; border-color: {C.PRI}; }}
+        """)
+        self._nav_menu = QMenu(self._nav_menu_btn)
+        self._nav_menu.setStyleSheet(f"""
+            QMenu {{
+                background: {C.DARK}; color: {C.TEXT};
+                border: 1px solid {C.BORDER_B}; padding: 6px;
+            }}
+            QMenu::item {{ padding: 8px 28px 8px 12px; border-radius: 3px; }}
+            QMenu::item:selected {{ color: {C.PRI}; background: {C.PRI_GHO}; }}
+            QMenu::separator {{ height: 1px; background: {C.BORDER}; margin: 4px 6px; }}
+        """)
+        for key, label in (
+            ("timers", "◷   TIMER & REMINDERS"),
+            ("music", "♫   YOUTUBE MUSIC"),
+            ("news", "◉   LIVE NEWS"),
+            ("media", "▣   MEDIA PLAYER"),
+            ("system", "⌘   SYSTEM STATUS"),
+        ):
+            action = self._nav_menu.addAction(label)
+            action.triggered.connect(
+                lambda _checked=False, view=key: self._on_workspace_shortcut(view)
+            )
+        self._nav_menu.addSeparator()
+        dashboard_action = self._nav_menu.addAction("▦   BENTO DASHBOARD")
+        dashboard_action.triggered.connect(self._open_bento_dashboard)
+        self._nav_menu_btn.setMenu(self._nav_menu)
+        lay.addWidget(self._nav_menu_btn)
         lay.addWidget(_badge(APP_VERSION, C.PRI_DIM))
         lay.addSpacing(8)
         self._drawer_btn = QPushButton("⚙")
@@ -5776,6 +5999,37 @@ class MainWindow(QMainWindow):
         self._drawer_btn.setCheckable(True)
         self._drawer_btn.clicked.connect(self._toggle_drawer)
         lay.addWidget(self._drawer_btn)
+
+        self._telemetry_btn = QPushButton("▤")
+        self._telemetry_btn.setFixedSize(26, 26)
+        self._telemetry_btn.setFont(QFont("Courier New", 11))
+        self._telemetry_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._telemetry_btn.setCheckable(True)
+        self._telemetry_btn.setChecked(False)
+        self._telemetry_btn.setToolTip("Show / hide system telemetry")
+        self._telemetry_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {C.TEXT_DIM};
+                border: 1px solid {C.BORDER}; border-radius: 4px;
+            }}
+            QPushButton:hover, QPushButton:checked {{
+                color: {C.PRI}; border-color: {C.PRI_DIM};
+                background: {C.PRI_GHO};
+            }}
+        """)
+        self._telemetry_btn.clicked.connect(self._toggle_telemetry_panel)
+        lay.addWidget(self._telemetry_btn)
+
+        self._activity_btn = QPushButton("☷")
+        self._activity_btn.setFixedSize(26, 26)
+        self._activity_btn.setFont(QFont("Courier New", 11))
+        self._activity_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._activity_btn.setCheckable(True)
+        self._activity_btn.setToolTip("Show / hide activity log and file bay")
+        self._activity_btn.setStyleSheet(self._telemetry_btn.styleSheet())
+        self._activity_btn.clicked.connect(self._toggle_activity_panel)
+        lay.addWidget(self._activity_btn)
+
         self._neural_view_btn = QPushButton("◉ FIELD")
         self._neural_view_btn.setFixedHeight(26)
         self._neural_view_btn.setFont(QFont("Consolas", 7, QFont.Weight.Bold))
@@ -5790,7 +6044,6 @@ class MainWindow(QMainWindow):
         self._neural_view_btn.clicked.connect(
             lambda _checked=False: self._enter_immersive_view("neural")
         )
-        lay.addWidget(self._neural_view_btn)
         self._neural_hand_btn = QPushButton("✋ HAND")
         self._neural_hand_btn.setFixedHeight(26)
         self._neural_hand_btn.setFont(QFont("Consolas", 7, QFont.Weight.Bold))
@@ -5805,7 +6058,6 @@ class MainWindow(QMainWindow):
                 background:{C.PRI_GHO}; }}
         """)
         self._neural_hand_btn.clicked.connect(self._toggle_neural_hand_control)
-        lay.addWidget(self._neural_hand_btn)
         lay.addStretch()
 
         mid = QVBoxLayout(); mid.setSpacing(1)
@@ -5826,6 +6078,47 @@ class MainWindow(QMainWindow):
         lay.addLayout(mid)
         lay.addStretch()
 
+        self._right_menu_btn = QToolButton()
+        self._right_menu_btn.setText("⋮")
+        self._right_menu_btn.setFixedSize(25, 28)
+        self._right_menu_btn.setFont(QFont("Courier New", 15, QFont.Weight.Bold))
+        self._right_menu_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._right_menu_btn.setToolTip("Quick controls and assistant mode")
+        self._right_menu_btn.setStyleSheet(f"""
+            QToolButton {{
+                color: {C.TEXT_DIM}; background: transparent;
+                border: 1px solid {C.BORDER}; border-radius: 4px;
+            }}
+            QToolButton:hover {{ color: {C.PRI}; border-color: {C.PRI_DIM}; }}
+        """)
+        self._right_menu = QMenu(self._right_menu_btn)
+        self._right_menu.setStyleSheet(self._nav_menu.styleSheet())
+        dash_action = self._right_menu.addAction("▦  Bento Dashboard")
+        dash_action.triggered.connect(self._open_bento_dashboard)
+        self._right_menu.addSeparator()
+        telemetry_action = self._right_menu.addAction("▤  Toggle Telemetry")
+        telemetry_action.triggered.connect(
+            lambda _checked=False: self._toggle_telemetry_panel(
+                not self._left_panel.isVisible()
+            )
+        )
+        activity_action = self._right_menu.addAction("☷  Toggle Activity")
+        activity_action.triggered.connect(
+            lambda _checked=False: self._toggle_activity_panel(
+                not self._right_panel.isVisible()
+            )
+        )
+        settings_action = self._right_menu.addAction("⚙  Settings & Controls")
+        settings_action.triggered.connect(self._toggle_drawer)
+        self._right_menu.addSeparator()
+        jarvis_action = self._right_menu.addAction("JARVIS Mode")
+        jarvis_action.triggered.connect(lambda: self._mode_btn.setCurrentIndex(0))
+        bihansa_action = self._right_menu.addAction("BIHANSA Mode")
+        bihansa_action.triggered.connect(lambda: self._mode_btn.setCurrentIndex(1))
+        self._right_menu_btn.setMenu(self._right_menu)
+        self._right_menu_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        lay.addWidget(self._right_menu_btn)
+
         right_col = QVBoxLayout(); right_col.setSpacing(2)
         self._clock_lbl = QLabel("00:00:00")
         self._clock_lbl.setFont(QFont("Courier New", 14, QFont.Weight.Bold))
@@ -5843,6 +6136,47 @@ class MainWindow(QMainWindow):
     def _tick_clock(self):
         self._clock_lbl.setText(time.strftime("%H:%M:%S"))
         self._date_lbl.setText(time.strftime("%a %d %b %Y"))
+
+    def _toggle_telemetry_panel(self, checked: bool) -> None:
+        """Show or hide the optional telemetry rail without affecting the HUD."""
+        panel = getattr(self, "_left_panel", None)
+        if panel is None:
+            return
+        panel.setVisible(bool(checked))
+        timer = getattr(self, "_metric_tmr", None)
+        if timer is not None:
+            if checked:
+                timer.start(2000)
+                self._update_metrics()
+            else:
+                timer.stop()
+        if hasattr(self, "_telemetry_btn"):
+            self._telemetry_btn.setChecked(bool(checked))
+
+    def _toggle_activity_panel(self, checked: bool) -> None:
+        """Show or hide the optional transcript and incoming-file panel."""
+        panel = getattr(self, "_right_panel", None)
+        if panel is None:
+            return
+        panel.setVisible(bool(checked))
+        if hasattr(self, "_activity_btn"):
+            self._activity_btn.setChecked(bool(checked))
+
+    def _handle_escape(self) -> None:
+        """Close transient drawers first; use Escape as interrupt otherwise."""
+        for widget_name, button_name in (
+            ("_quick_drawer", "_drawer_btn"),
+            ("_right_panel", "_activity_btn"),
+            ("_left_panel", "_telemetry_btn"),
+        ):
+            widget = getattr(self, widget_name, None)
+            if widget is not None and widget.isVisible():
+                widget.hide()
+                button = getattr(self, button_name, None)
+                if button is not None:
+                    button.setChecked(False)
+                return
+        self._do_interrupt()
 
     def _build_left_panel(self) -> QWidget:
         w = QWidget()
@@ -5954,9 +6288,6 @@ class MainWindow(QMainWindow):
         sep2.setStyleSheet(f"color: {C.BORDER}; margin: 2px 0;")
         lay.addWidget(sep2)
 
-        lay.addWidget(_sec("VOICE & COMMAND CONSOLE"))
-        lay.addLayout(self._build_input_row())
-
         self._interrupt_btn = QPushButton("✋  INTERRUPT  [ESC]")
         self._interrupt_btn.setFixedHeight(34)
         self._interrupt_btn.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
@@ -5974,7 +6305,6 @@ class MainWindow(QMainWindow):
             }}
         """)
         self._interrupt_btn.clicked.connect(self._do_interrupt)
-        lay.addWidget(self._interrupt_btn)
 
         self._mute_btn = QPushButton("🎙  MICROPHONE ACTIVE")
         self._mute_btn.setFixedHeight(30)
@@ -5982,8 +6312,10 @@ class MainWindow(QMainWindow):
         self._mute_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._mute_btn.clicked.connect(self._toggle_mute)
         self._style_mute_btn()
-        lay.addWidget(self._mute_btn)
 
+        # Keep command entry and safety controls in the persistent bottom bar;
+        # this panel is now reserved for optional transcript and file history.
+        self._command_input_row = self._build_input_row()
         return w
 
     def _build_quick_drawer(self) -> QWidget:
@@ -6026,6 +6358,13 @@ class MainWindow(QMainWindow):
         hdr.setStyleSheet(f"color: {C.PRI_DIM}; background: transparent; "
                           f"border-bottom: 1px solid {C.BORDER}; padding-bottom: 4px;")
         lay.addWidget(hdr)
+
+        # Advanced visualisation tools live in the controls drawer rather than
+        # competing with the assistant identity in the clean command-centre header.
+        self._neural_view_btn.setFixedHeight(26)
+        self._neural_hand_btn.setFixedHeight(26)
+        lay.addWidget(self._neural_view_btn)
+        lay.addWidget(self._neural_hand_btn)
 
         remote_btn = QPushButton("◉  REMOTE CONTROL")
         remote_btn.setFixedHeight(30)
@@ -6730,19 +7069,37 @@ class MainWindow(QMainWindow):
             threading.Thread(target=self.on_text_command, args=(msg,), daemon=True).start()
 
     def _build_footer(self) -> QWidget:
+        """Persistent compact command bar; activity history stays in its drawer."""
         w = QWidget()
-        w.setFixedHeight(22)
-        w.setStyleSheet(f"background: {C.DARK}; border-top: 1px solid {C.BORDER};")
-        lay = QHBoxLayout(w); lay.setContentsMargins(14, 0, 14, 0)
+        w.setFixedHeight(58)
+        w.setStyleSheet(
+            f"background: {C.DARK}; border-top: 1px solid {C.BORDER};"
+        )
+        root = QVBoxLayout(w)
+        root.setContentsMargins(10, 5, 10, 5)
+        root.setSpacing(3)
 
-        def _fl(txt, color=C.TEXT_MED):
-            l = QLabel(txt); l.setFont(QFont("Courier New", 7))
-            l.setStyleSheet(f"color: {color}; background: transparent;")
-            return l
+        command = QHBoxLayout()
+        command.setSpacing(6)
+        command.addLayout(self._command_input_row, 1)
+        self._interrupt_btn.setFixedSize(112, 30)
+        self._mute_btn.setFixedSize(150, 30)
+        command.addWidget(self._interrupt_btn)
+        command.addWidget(self._mute_btn)
+        root.addLayout(command)
 
-        lay.addWidget(_fl("[F4] Mute  ·  [F11] Fullscreen"))
-        lay.addStretch()
-        lay.addWidget(_fl("CREATED BY  /  SATHIJA BALACHANDRA", C.PRI_DIM))
+        meta = QHBoxLayout()
+        meta.setContentsMargins(2, 0, 2, 0)
+        hint = QLabel("[F4] Mute  ·  [F11] Fullscreen  ·  [ESC] Interrupt")
+        hint.setFont(QFont("Courier New", 6))
+        hint.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
+        meta.addWidget(hint)
+        meta.addStretch()
+        credit = QLabel("JARVIS  /  COMMAND CENTER")
+        credit.setFont(QFont("Courier New", 6))
+        credit.setStyleSheet(f"color: {C.PRI_DIM}; background: transparent;")
+        meta.addWidget(credit)
+        root.addLayout(meta)
         return w
 
     def _on_file_selected(self, path: str):

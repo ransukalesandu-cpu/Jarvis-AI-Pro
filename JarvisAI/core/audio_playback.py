@@ -14,7 +14,6 @@ import numpy as np
 from core.live_audio import (
     CHANNELS,
     RECEIVE_SAMPLE_RATE,
-    _MIN_PREBUFFER_BYTES,
     _OUTPUT_BLOCKSIZE,
     _next_prebuffer_ms,
     _output_write_is_unpaced,
@@ -355,7 +354,6 @@ async def run_audio_playback(
                             break
 
                         finish_buffer_turn()
-                        finish_buffer_turn()
                         host.set_speaking(False)
                         host._turn_done_event.clear()
                         playback_started = False
@@ -381,7 +379,7 @@ async def run_audio_playback(
                 continue
 
             if not playback_started:
-                if len(pending_pcm) >= _MIN_PREBUFFER_BYTES:
+                if len(pending_pcm) >= int(RECEIVE_SAMPLE_RATE * CHANNELS * 2 * prebuffer_target_ms / 1000):
                     playback_started = True
                     if not prebuffer_logged:
                         print(
@@ -407,6 +405,7 @@ async def run_audio_playback(
                         and host._turn_done_event.is_set()
                     )
                     if turn_complete and host.audio_in_queue.empty():
+                        finish_buffer_turn()
                         host.set_speaking(False)
                         host._turn_done_event.clear()
                         playback_started = False
@@ -463,7 +462,7 @@ async def run_audio_playback(
             if not first_output_chunk_logged:
                 print(
                     "[AudioTrace 4/OUTPUT] First buffered PCM batch ready for playback "
-                    f"({len(batch)} bytes; prebuffer target={_MIN_PREBUFFER_BYTES} bytes)."
+                    f"({len(batch)} bytes; prebuffer target={int(RECEIVE_SAMPLE_RATE * CHANNELS * 2 * prebuffer_target_ms / 1000)} bytes)."
                 )
                 first_output_chunk_logged = True
 

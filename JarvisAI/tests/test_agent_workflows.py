@@ -26,6 +26,13 @@ class WorkflowLibraryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.library.save(Task(objective="unfinished"), "unfinished")
 
+
+    def test_rejects_task_with_unverified_step(self):
+        task = self._completed_task()
+        task.steps[0].state = StepState.FAILED
+        with self.assertRaises(ValueError):
+            self.library.save(task, "incomplete")
+
     def test_saved_template_excludes_executable_details(self):
         task = self._completed_task()
         task.steps[0].command = "echo api_key=secret"

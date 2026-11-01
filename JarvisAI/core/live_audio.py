@@ -81,6 +81,13 @@ class LiveReceiveDiagnostics:
     queues; resetting diagnostics must never discard audio or alter scheduling.
     """
 
+    _CHECKPOINT_ATTRIBUTES = {
+        "input": "input_checkpoint_logged",
+        "output_text": "output_text_checkpoint_logged",
+        "output_audio": "output_audio_checkpoint_logged",
+        "short_audio_fragment": "short_audio_fragment_logged",
+    }
+
     def __init__(self) -> None:
         self.live_events_received = 0
         self.input_checkpoint_logged = False
@@ -114,13 +121,7 @@ class LiveReceiveDiagnostics:
         Returns True only for the first claim of a supported checkpoint name.
         Unknown names are rejected without changing diagnostic state.
         """
-        attributes = {
-            "input": "input_checkpoint_logged",
-            "output_text": "output_text_checkpoint_logged",
-            "output_audio": "output_audio_checkpoint_logged",
-            "short_audio_fragment": "short_audio_fragment_logged",
-        }
-        attribute = attributes.get(name)
+        attribute = self._CHECKPOINT_ATTRIBUTES.get(name)
         if attribute is None or getattr(self, attribute):
             return False
         setattr(self, attribute, True)

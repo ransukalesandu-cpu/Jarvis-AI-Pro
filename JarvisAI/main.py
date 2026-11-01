@@ -65,7 +65,7 @@ from core.live_audio import (
     _take_playback_pcm, _pcm_level, _live_audio_chunks,
     _error_text, _is_quota_error, _is_transient_live_disconnect,
     _is_live_operation_aborted, _resumable_session_handle,
-    _turn_output_diagnostic, LiveReceiveDiagnostics,
+    _turn_output_diagnostic_from_state, LiveReceiveDiagnostics,
 )
 # Re-exported on purpose: tests/test_live_pcm_buffering.py imports these from
 # `main`, and the module has always exposed them. Do not "clean up".
@@ -3335,15 +3335,8 @@ class JarvisLive:
                                         f"({len(final_pcm)} bytes) at turn completion."
                                     )
 
-                            output_text_seen, output_audio_bytes = (
-                                receive_diagnostics.turn_output_snapshot()
-                            )
-                            diagnostic_message = _turn_output_diagnostic(
-                                output_text_seen,
-                                output_audio_bytes,
-                                output_audio_checkpointed=(
-                                    receive_diagnostics.checkpoint_claimed("output_audio")
-                                ),
+                            diagnostic_message = _turn_output_diagnostic_from_state(
+                                receive_diagnostics,
                                 interrupted=self._interrupted,
                                 min_frame_bytes=_MIN_LIVE_AUDIO_FRAME_BYTES,
                             )

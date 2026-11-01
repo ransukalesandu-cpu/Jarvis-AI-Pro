@@ -15,7 +15,11 @@ from main import (
     _output_write_is_unpaced,
     _take_playback_pcm,
 )
-from core.live_audio import _audio_event_timing, _resumable_session_handle
+from core.live_audio import (
+    _audio_event_timing,
+    _resumable_session_handle,
+    _turn_output_diagnostic,
+)
 
 
 class LivePcmBufferingTests(unittest.TestCase):
@@ -55,6 +59,60 @@ class LivePcmBufferingTests(unittest.TestCase):
             _resumable_session_handle(Response(Update(True, "")))
         )
         self.assertIsNone(_resumable_session_handle(object()))
+
+    def test_turn_output_diagnostic_reports_text_and_partial_audio(self):
+        message = _turn_output_diagnostic(
+            True, 960, output_audio_checkpointed=False,
+            interrupted=False, min_frame_bytes=480,
+        )
+        self.assertEqual(
+            message,
+            "[AudioTrace 3→4/AUDIO] Assistant text arrived, but only "
+            "960 PCM byte(s) arrived this turn; no complete 10 ms frame "
+            "(480 bytes) reached playback. Check Live model/audio output.",
+        )
+
+    def test_turn_output_diagnostic_reports_text_without_audio(self):
+        self.assertEqual(
+            _turn_output_diagnostic(
+                True, 0, output_audio_checkpointed=False,
+                interrupted=False, min_frame_bytes=480,
+            ),
+            "[AudioTrace 3→4/AUDIO] Assistant text arrived but Gemini "
+            "returned no audio payload for this turn.",
+        )
+
+    def test_turn_output_diagnostic_reports_audio_without_text(self):
+        self.assertEqual(
+            _turn_output_diagnostic(
+                False, 240, output_audio_checkpointed=False,
+                interrupted=False, min_frame_bytes=480,
+            ),
+            "[AudioTrace 3→4/AUDIO] Only 240 PCM byte(s) arrived without "
+            "a playable frame or assistant text.",
+        )
+
+    def test_turn_output_diagnostic_reports_empty_turn(self):
+        self.assertEqual(
+            _turn_output_diagnostic(
+                False, 0, output_audio_checkpointed=False,
+                interrupted=False, min_frame_bytes=480,
+            ),
+            "[AudioTrace 3/LIVE] Turn completed without assistant "
+            "transcription or audio payload.",
+        )
+
+    def test_turn_output_diagnostic_is_suppressed_after_audio_or_interrupt(self):
+        for kwargs in (
+            {"output_audio_checkpointed": True, "interrupted": False},
+            {"output_audio_checkpointed": False, "interrupted": True},
+        ):
+            with self.subTest(kwargs=kwargs):
+                self.assertIsNone(
+                    _turn_output_diagnostic(
+                        True, 960, min_frame_bytes=480, **kwargs
+                    )
+                )
 
     def test_live_receive_diagnostics_reset_turn_without_resetting_event_count(self):
         from core.live_audio import LiveReceiveDiagnostics

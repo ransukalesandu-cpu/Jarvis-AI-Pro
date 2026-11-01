@@ -5000,7 +5000,16 @@ class MainWindow(QMainWindow):
         dialog.finished.connect(self._bento_timer.stop)
         self._refresh_bento_dashboard()
         self._bento_timer.start()
+        fade = QGraphicsOpacityEffect(dialog)
+        dialog.setGraphicsEffect(fade)
+        fade.setOpacity(0.0)
+        self._bento_fade = QPropertyAnimation(fade, b"opacity", dialog)
+        self._bento_fade.setDuration(220)
+        self._bento_fade.setStartValue(0.0)
+        self._bento_fade.setEndValue(1.0)
+        self._bento_fade.setEasingCurve(QEasingCurve.Type.OutCubic)
         dialog.show()
+        self._bento_fade.start()
 
     def _refresh_bento_dashboard(self) -> None:
         """Refresh only while the optional Bento window is open."""

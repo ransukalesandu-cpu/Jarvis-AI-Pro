@@ -123,14 +123,16 @@ class LivePcmBufferingTests(unittest.TestCase):
         from core.live_audio import LiveReceiveDiagnostics
 
         diagnostics = LiveReceiveDiagnostics()
-        duration, gap = diagnostics.record_audio_event(4800, 10.0)
+        duration, gap, previous_duration = diagnostics.record_audio_event(4800, 10.0)
         self.assertAlmostEqual(duration, 0.10)
         self.assertIsNone(gap)
+        self.assertEqual(previous_duration, 0.0)
         self.assertEqual(diagnostics.last_audio_event_at, 10.0)
 
-        duration, gap = diagnostics.record_audio_event(4800, 10.5)
+        duration, gap, previous_duration = diagnostics.record_audio_event(4800, 10.5)
         self.assertAlmostEqual(duration, 0.10)
         self.assertAlmostEqual(gap, 0.40)
+        self.assertAlmostEqual(previous_duration, 0.10)
         self.assertEqual(diagnostics.last_audio_event_at, 10.5)
         self.assertAlmostEqual(diagnostics.last_audio_event_duration, 0.10)
 

@@ -768,10 +768,12 @@ class TestUIHologram(unittest.TestCase):
         hud._right_menu_animation.setDuration(20)
         hud._toggle_right_dropdown()
         self.assertTrue(hud._right_menu.isVisible())
-        QTest.qWait(35)
+        # Advance the Qt animation deterministically without a nested event-loop
+        # wait, which is unstable with the offscreen Qt platform on CI runners.
+        hud._right_menu_animation.setCurrentTime(20)
         self.assertAlmostEqual(hud._right_menu_opacity.opacity(), 1.0, places=2)
         hud._toggle_right_dropdown()
-        QTest.qWait(35)
+        hud._right_menu_animation.setCurrentTime(20)
         self.assertFalse(hud._right_menu.isVisible())
 
 

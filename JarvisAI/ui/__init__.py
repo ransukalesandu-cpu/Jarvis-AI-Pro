@@ -4569,7 +4569,26 @@ class MainWindow(QMainWindow):
         self._hud_cam_stack.addWidget(self._earth_panel)
         HudWorkspace = _workspace_class()
         self._workspace = HudWorkspace()
-        self._news_briefing_overlay = NewsBriefingOverlay(self._hud_cam_stack)
+
+        # Keep media/data views beside the hologram instead of replacing its canvas.
+        self._workspace_side = QFrame()
+        self._workspace_side.setObjectName("WorkspaceGlassPanel")
+        self._workspace_side.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._workspace_side.setMinimumWidth(270)
+        self._workspace_side.setMaximumWidth(420)
+        self._workspace_side.setStyleSheet("""
+            QFrame#WorkspaceGlassPanel {
+                background: rgba(13, 24, 29, 232);
+                border: 1px solid rgba(113, 212, 194, 145);
+                border-radius: 10px;
+            }
+        """)
+        self._workspace_side_layout = QVBoxLayout(self._workspace_side)
+        self._workspace_side_layout.setContentsMargins(3, 3, 3, 3)
+        self._workspace_side_layout.setSpacing(0)
+        self._workspace_side_layout.addWidget(self._workspace)
+        self._workspace_side.hide()
+        self._news_briefing_overlay = NewsBriefingOverlay(self._workspace_side)
         self._workspace.news_briefing_items.connect(self._show_news_briefing_overlay)
         self._workspace.news_briefing_ended.connect(self._hide_news_briefing_overlay)
         self._workspace.news_briefing_image_ready.connect(self._set_news_briefing_image)
@@ -4585,10 +4604,27 @@ class MainWindow(QMainWindow):
         self._workspace.flight_radar_map_requested.connect(lambda: self._show_earth("", "", "flights"))
         self._earth_panel.flight_radar_updated.connect(self._workspace.show_live_flights)
         self._holo_stop_sig.connect(self._workspace.stop_holo_camera)
-        self._hud_cam_stack.addWidget(self._workspace)
         self._earth_open = False
         self._cam_active = False
         self._workspace_open = False
+
+        self._stage_split = QSplitter(Qt.Orientation.Horizontal)
+        self._stage_split.setObjectName("HologramWorkspaceSplit")
+        self._stage_split.setHandleWidth(5)
+        self._stage_split.setStyleSheet(f"""
+            QSplitter::handle {{
+                background: rgba(113, 212, 194, 72);
+                width: 5px;
+            }}
+            QSplitter::handle:hover {{ background: {C.PRI_DIM}; }}
+        """)
+        self._stage_split.addWidget(self._hud_cam_stack)
+        self._stage_split.addWidget(self._workspace_side)
+        self._stage_split.setStretchFactor(0, 5)
+        self._stage_split.setStretchFactor(1, 3)
+        self._stage_split.setCollapsible(0, False)
+        self._stage_split.setCollapsible(1, True)
+        self._stage_split.setSizes([900, 0])
 
         self._center_split = QSplitter(Qt.Orientation.Vertical)
         self._center_split.setStyleSheet(f"""
@@ -4600,7 +4636,7 @@ class MainWindow(QMainWindow):
                 background: {C.PRI_DIM};
             }}
         """)
-        self._center_split.addWidget(self._hud_cam_stack)
+        self._center_split.addWidget(self._stage_split)
         self._center_split.addWidget(self._content_panel)
         self._center_split.addWidget(self._quiz_panel)
         self._center_split.setStretchFactor(0, 3)
@@ -4752,9 +4788,10 @@ class MainWindow(QMainWindow):
     def _show_earth(self, destination: str = "", origin: str = "", mode: str = "show") -> None:
         self._holo_stop_sig.emit()
         was_fullscreen = self._workspace._is_fullscreen
-        self._workspace.restore_to_embedded(self._hud_cam_stack)
+        self._workspace.restore_to_embedded(self._workspace_side)
         if was_fullscreen:
-            self._hud_cam_stack.addWidget(self._workspace)
+            self._workspace_side_layout.addWidget(self._workspace)
+        self._workspace_side.hide()
         if self._cam_active:
             self.stop_camera_stream()
         self._workspace_open = False
@@ -4775,6 +4812,15 @@ class MainWindow(QMainWindow):
             self.stop_camera_stream()
         self._earth_panel.start_flight_radar_in_background(manual_place)
 
+    def _show_workspace_side(self) -> None:
+        """Reveal the glass workspace beside the hologram without replacing it."""
+        if self._workspace.parentWidget() is not self._workspace_side:
+            self._workspace_side_layout.addWidget(self._workspace)
+        self._workspace_side.show()
+        total = max(1, self._stage_split.width())
+        side_width = min(420, max(270, int(total * 0.40)))
+        self._stage_split.setSizes([max(260, total - side_width), side_width])
+
     def _show_workspace(self, kind: str, payload) -> None:
         data = payload if isinstance(payload, dict) else {"value": payload}
         if kind == "briefing_news":
@@ -4782,32 +4828,26 @@ class MainWindow(QMainWindow):
                 data.get("items", data.get("text", "")),
                 data.get("title", "NEWSFIRST + ADA DERANA / LIVE BRIEFING"),
             )
+            self._workspace_open = True
+            self._show_workspace_side()
             return
         if kind == "briefing_news_hide":
             self._workspace.hide_briefing_news()
             return
         self._earth_panel.stop_flight_radar()
-        if kind == "news" and self._workspace._is_fullscreen:
-            # Keep the Holo stage active during a briefing. The image server is
-            # updated from the same headline cards and the deck polls for them.
-            self._workspace.show_news(
-                data.get("items", data.get("text", "")),
-                data.get("title", "HEADLINES"),
-                keep_holo=True,
-            )
-            return
         if self._cam_active:
             self.stop_camera_stream()
         if kind != "holo":
             self._workspace.stop_holo_camera()
             was_fullscreen = self._workspace._is_fullscreen
-            self._workspace.restore_to_embedded(self._hud_cam_stack)
+            self._workspace.restore_to_embedded(self._workspace_side)
             if was_fullscreen:
-                self._hud_cam_stack.addWidget(self._workspace)
+                self._workspace_side_layout.addWidget(self._workspace)
         self._earth_open = False
         self._workspace_open = True
         if kind == "holo":
             self._workspace.show_holo_gestures()
+            self._workspace_side.hide()
         elif kind == "video_pause":
             self._workspace._pause_video()
         elif kind == "video_seek":
@@ -4854,9 +4894,10 @@ class MainWindow(QMainWindow):
         else:
             self._workspace.show_view(kind)
         if kind != "holo":
-            self._hud_cam_stack.setCurrentWidget(self._workspace)
+            self._show_workspace_side()
 
     def _show_news_briefing_overlay(self, items) -> None:
+        self._show_workspace_side()
         self._news_briefing_overlay.set_items(items)
 
     def _hide_news_briefing_overlay(self) -> None:
@@ -4871,18 +4912,21 @@ class MainWindow(QMainWindow):
     def _close_workspace(self) -> None:
         self._workspace.stop_holo_camera()
         was_fullscreen = self._workspace._is_fullscreen
-        self._workspace.restore_to_embedded(self._hud_cam_stack)
+        self._workspace.restore_to_embedded(self._workspace_side)
         if was_fullscreen:
-            self._hud_cam_stack.addWidget(self._workspace)
+            self._workspace_side_layout.addWidget(self._workspace)
         self._workspace_open = False
+        self._workspace_side.hide()
         self._hud_cam_stack.setCurrentIndex(1 if self._cam_active else 0)
 
     def _open_holo_feature(self, feature: str) -> None:
-        """Route a Holo gesture to an existing HUD panel without invoking tools."""
+        """Route a Holo gesture to an existing workspace side tab without invoking tools."""
         if feature in {"news", "newsfirst", "adaderana"}:
-            self._workspace.show_holo_gestures()
-            source = {"news": "newsfirst", "newsfirst": "newsfirst", "adaderana": "adaderana"}[feature]
-            self._workspace.open_latest_holo_article(source)
+            title = "LIVE HEADLINES" if feature == "news" else f"{feature.upper()} HEADLINES"
+            self._workspace.show_news(self._workspace._last_news_items, title)
+            self._workspace.show_view("news", title)
+            self._workspace_open = True
+            self._show_workspace_side()
             return
         self._close_workspace()
         if feature == "earth":
@@ -4898,14 +4942,21 @@ class MainWindow(QMainWindow):
         if feature in self._workspace._page_index:
             self._workspace.show_view(feature, titles.get(feature, feature.upper()))
             self._workspace_open = True
-            self._hud_cam_stack.setCurrentWidget(self._workspace)
+            self._show_workspace_side()
 
     def _open_holo_news_voice(self, source: str) -> None:
-        """Keep the native Holo stage active while opening a publisher story/site."""
+        """Show requested headlines beside the hologram, not in its canvas."""
         if self._cam_active:
             self.stop_camera_stream()
-        self._workspace.show_holo_gestures()
-        QTimer.singleShot(650, lambda: self._workspace.open_latest_holo_article(source))
+        was_fullscreen = self._workspace._is_fullscreen
+        self._workspace.restore_to_embedded(self._workspace_side)
+        if was_fullscreen:
+            self._workspace_side_layout.addWidget(self._workspace)
+        title = f"{str(source or 'LIVE').upper()} HEADLINES"
+        self._workspace.show_news(self._workspace._last_news_items, title)
+        self._workspace.show_view("news", title)
+        self._workspace_open = True
+        self._show_workspace_side()
 
     def _on_cam_frame(self, data: bytes) -> None:
         px = QPixmap()

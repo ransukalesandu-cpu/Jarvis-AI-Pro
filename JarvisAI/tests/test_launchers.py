@@ -37,6 +37,16 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn('ui = JarvisUI("face.png")', source)
         self.assertNotIn("HologramHUDUI", source)
 
+    def test_content_workspace_opens_in_glass_side_panel_beside_hologram(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn('self._stage_split = QSplitter(Qt.Orientation.Horizontal)', source)
+        self.assertIn('self._stage_split.addWidget(self._hud_cam_stack)', source)
+        self.assertIn('self._stage_split.addWidget(self._workspace_side)', source)
+        self.assertIn('QFrame#WorkspaceGlassPanel', source)
+        self.assertIn('self._center_split.addWidget(self._stage_split)', source)
+        self.assertNotIn('self._hud_cam_stack.addWidget(self._workspace)', source)
+        self.assertNotIn('self._hud_cam_stack.setCurrentWidget(self._workspace)', source)
+
     def test_import_voice_persona(self):
         import voice.persona as persona
         self.assertTrue(hasattr(persona, "JARVIS_SPOKEN_SYSTEM_PROMPT"))

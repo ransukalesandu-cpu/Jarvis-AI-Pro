@@ -4872,6 +4872,9 @@ class MainWindow(QMainWindow):
             dialog.show()
             dialog.raise_()
             dialog.activateWindow()
+            timer = getattr(self, "_bento_timer", None)
+            if timer is not None and not timer.isActive():
+                timer.start()
             self._refresh_bento_dashboard()
             return
 

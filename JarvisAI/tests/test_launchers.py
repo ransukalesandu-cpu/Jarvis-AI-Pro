@@ -58,6 +58,7 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn(".nav-item.active", css)
         self.assertIn("setOpenExternalLinks(False)", module)
         self.assertIn('url.scheme().casefold() != "jarvis"', module)
+        self.assertIn('href="jarvis://close"', module)
         for key in ("timers", "music", "news", "media", "system"):
             self.assertIn(f'("{key}",', module)
 

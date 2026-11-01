@@ -199,6 +199,20 @@ class TestUIHologram(unittest.TestCase):
         self.assertFalse(bihansa._voice_reactive)
         self.assertEqual(bihansa._target_energy, 0.0)
 
+    def test_global_reduced_motion_applies_to_both_hologram_personas(self):
+        """The accessibility toggle reduces motion for JARVIS and Bihansa."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        toggle = hud._reduced_motion_toggle
+
+        toggle.setChecked(True)
+        self.assertTrue(hud.wireframe_visualizer._reduced_motion)
+        self.assertTrue(hud.bihansa_visualizer._reduced_motion)
+        self.assertTrue(hud._settings.value("accessibility/reduced_motion", False, type=bool))
+
+        toggle.setChecked(False)
+        self.assertFalse(hud.wireframe_visualizer._reduced_motion)
+        self.assertFalse(hud.bihansa_visualizer._reduced_motion)
+
     def test_telemetry_panels_creation_and_updates(self):
         """Test modular telemetry panels."""
         # 1. Hybrid Brain Panel

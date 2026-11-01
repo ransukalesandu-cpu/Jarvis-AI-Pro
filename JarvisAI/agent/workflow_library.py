@@ -9,7 +9,7 @@ from __future__ import annotations
 import json, os, re, threading, time
 from pathlib import Path
 from typing import Any
-from agent.models import Task, TaskState
+from agent.models import StepState, Task, TaskState
 from agent.store import redact
 
 _MAX_TEMPLATES = 40
@@ -50,6 +50,8 @@ class WorkflowLibrary:
         """Save a completed task as a fresh-planning template; never save actions."""
         if not isinstance(task, Task) or task.state is not TaskState.COMPLETED:
             raise ValueError("Only a successfully completed task can be saved.")
+        if not task.steps or any(step.state is not StepState.COMPLETED for step in task.steps):
+            raise ValueError("Every workflow step must be verified complete before saving.")
         label = " ".join(str(name or "").split())[:_MAX_NAME]
         if not label: raise ValueError("A workflow name is required.")
         steps = [{"title": redact(step.title, 100), "kind": step.kind.value}

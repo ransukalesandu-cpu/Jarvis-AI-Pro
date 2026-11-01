@@ -127,7 +127,6 @@ class StartupSequenceSplash(QWidget):
             p.drawLine(-radius - 24, 0, radius + 24, 0)
             p.drawLine(0, -radius - 24, 0, radius + 24)
             p.setPen(QPen(QColor(79, 220, 225, int(210 * reveal)), 2))
-            import math
             p.drawArc(int(-radius), int(-radius), int(radius * 2),
                       int(radius * 2), int((t * .12) % 360 * 16), 105 * 16)
             p.drawArc(int(-radius * .78), int(-radius * .78),

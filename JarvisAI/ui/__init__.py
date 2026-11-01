@@ -4591,6 +4591,10 @@ class MainWindow(QMainWindow):
         self._workspace_header.view_requested.connect(self._on_workspace_shortcut)
         self._workspace_header.close_requested.connect(self._close_workspace)
         self._workspace.tabs.currentChanged.connect(self._sync_workspace_header)
+        if self._workspace._web_view is not None:
+            self._workspace._web_view.urlChanged.connect(
+                self._sync_workspace_web_header
+            )
         self._workspace_side_layout.addWidget(self._workspace_header)
         self._workspace_side_layout.addWidget(self._workspace, 1)
         self._workspace_side.hide()
@@ -4817,6 +4821,11 @@ class MainWindow(QMainWindow):
         if self._cam_active:
             self.stop_camera_stream()
         self._earth_panel.start_flight_radar_in_background(manual_place)
+
+    def _sync_workspace_web_header(self, url: QUrl) -> None:
+        """Keep the URL entry and smart header synchronized after web navigation."""
+        self._workspace._url_entry.setText(url.toString())
+        self._sync_workspace_header(self._workspace.tabs.currentIndex())
 
     def _sync_workspace_header(self, index: int) -> None:
         """Keep the HTML navigation highlight aligned with native workspace tabs."""

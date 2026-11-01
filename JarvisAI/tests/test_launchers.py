@@ -141,6 +141,7 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn('("_quick_drawer", "_drawer_btn")', handler)
         self.assertIn('("_right_panel", "_activity_btn")', handler)
         self.assertIn('("_left_panel", "_telemetry_btn")', handler)
+        self.assertIn("self._toggle_telemetry_panel(False)", handler)
         self.assertIn("self._do_interrupt()", handler)
 
     def test_hover_navigation_routes_to_glass_workspace_shortcuts(self):

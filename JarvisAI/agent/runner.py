@@ -71,6 +71,7 @@ class TaskRunner:
         vision: Any | None = None,
         computer: Any | None = None,
         request_approval: Callable[[TaskStep, policy_module.Decision], bool] | None = None,
+        before_step: Callable[[TaskStep], str | None] | None = None,
         on_milestone: Callable[[str], None] | None = None,
         logger: Callable[[str], None] | None = None,
         clock: Callable[[], float] = time.time,
@@ -95,6 +96,7 @@ class TaskRunner:
         self.vision = vision
         self.computer = computer
         self._approval = request_approval
+        self._before_step = before_step
         self._milestone = on_milestone
         self._logger = logger or (lambda message: None)
         self._clock = clock
@@ -443,6 +445,13 @@ class TaskRunner:
         attempt = 0
         while True:
             attempt += 1
+            if self._before_step is not None:
+                try:
+                    blocked_reason = self._before_step(step)
+                except Exception:
+                    blocked_reason = "Authorization could not be revalidated; the step was blocked."
+                if blocked_reason:
+                    return StepResult.blocked_result(str(blocked_reason))
             step.mark_running()
             self.store.save(task)
             result = self.executor.execute(step, ctx)

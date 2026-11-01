@@ -536,5 +536,33 @@ class ExecutorTests(unittest.TestCase):
         self.assertEqual(env["JARVIS_KEEP_ME"], "yes")
 
 
+class StepAuthorizationRevalidationTests(unittest.TestCase):
+    def test_lost_authorization_blocks_before_executor_runs(self):
+        step = TaskStep(title="inspect", kind=StepKind.INSPECT, command="git status")
+        runner, executor, _ = make_runner(self, steps=[step])
+        runner._before_step = lambda _step: "Privacy Lock is active."
+        task = runner.submit("inspect safely")
+        runner.run_task(task)
+        self.assertEqual(executor.calls, [])
+        self.assertIs(task.steps[0].state, StepState.BLOCKED)
+        self.assertTrue(any("Privacy Lock" in item for item in task.blockers))
+
+    def test_authorization_is_rechecked_before_each_retry(self):
+        step = TaskStep(title="flaky", kind=StepKind.RUN_COMMAND,
+                        command="python -m pytest", max_retries=2)
+        runner, executor, _ = make_runner(
+            self,
+            steps=[step],
+            outcomes=[StepResult.failure("temporary network error", retryable=True)],
+        )
+        checks = iter([None, "Owner verification expired."])
+        runner._before_step = lambda _step: next(checks)
+        task = runner.submit("retry only while authorized")
+        runner.run_task(task)
+        self.assertEqual(len(executor.calls), 1)
+        self.assertIs(task.steps[0].state, StepState.BLOCKED)
+        self.assertTrue(any("Owner verification expired" in item for item in task.blockers))
+
+
 if __name__ == "__main__":
     unittest.main()

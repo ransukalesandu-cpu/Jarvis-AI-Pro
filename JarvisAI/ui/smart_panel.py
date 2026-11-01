@@ -52,6 +52,7 @@ class SmartPanelHeader(QTextBrowser):
         .close { color: #d98a59; text-decoration: none; font-size: 15px; }
     """
     _FALLBACK_HTML = (
+        '<style>{{STYLE}}</style>'
         '<div class="shell"><span class="eyebrow">JARVIS / SMART COMMAND SURFACE</span>'
         '<br/><span class="title">{{TITLE}}</span>'
         '<br/><span class="status">● {{STATUS}}</span><div class="nav">{{NAV_ITEMS}}</div></div>'
@@ -67,7 +68,10 @@ class SmartPanelHeader(QTextBrowser):
         self.setFixedHeight(116)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
+        self.setTextInteractionFlags(
+            Qt.TextInteractionFlag.LinksAccessibleByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByKeyboard
+        )
         self.setStyleSheet("QTextBrowser#SmartPanelHeader { background: transparent; border: 0; }")
         self.document().setDocumentMargin(0)
         self.anchorClicked.connect(self._route_link)

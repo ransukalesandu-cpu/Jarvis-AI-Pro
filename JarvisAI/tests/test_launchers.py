@@ -111,6 +111,26 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn("def _toggle_telemetry_panel(self, checked: bool)", source)
         self.assertIn("panel.setVisible(bool(checked))", source)
 
+    def test_command_center_keeps_history_optional_and_command_bar_persistent(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        init = source.split("        self._right_panel = self._build_right_panel()", 1)[1].split(
+            "        root.addLayout(body, stretch=1)", 1
+        )[0]
+        right = source.split("    def _build_right_panel(self)", 1)[1].split(
+            "    def _build_quick_drawer(self)", 1
+        )[0]
+        footer = source.split("    def _build_footer(self)", 1)[1].split(
+            "    def _on_file_selected", 1
+        )[0]
+        self.assertIn("self._right_panel.hide()", init)
+        self.assertIn("self._activity_btn.clicked.connect(self._toggle_activity_panel)", source)
+        self.assertIn("def _toggle_activity_panel(self, checked: bool)", source)
+        self.assertNotIn("lay.addLayout(self._build_input_row())", right)
+        self.assertIn("self._command_input_row = self._build_input_row()", right)
+        self.assertIn("command.addLayout(self._command_input_row, 1)", footer)
+        self.assertIn("command.addWidget(self._interrupt_btn)", footer)
+        self.assertIn("command.addWidget(self._mute_btn)", footer)
+
     def test_import_voice_persona(self):
         import voice.persona as persona
         self.assertTrue(hasattr(persona, "JARVIS_SPOKEN_SYSTEM_PROMPT"))

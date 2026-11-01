@@ -6069,6 +6069,47 @@ class MainWindow(QMainWindow):
         lay.addLayout(mid)
         lay.addStretch()
 
+        self._right_menu_btn = QToolButton()
+        self._right_menu_btn.setText("⋮")
+        self._right_menu_btn.setFixedSize(25, 28)
+        self._right_menu_btn.setFont(QFont("Courier New", 15, QFont.Weight.Bold))
+        self._right_menu_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._right_menu_btn.setToolTip("Quick controls and assistant mode")
+        self._right_menu_btn.setStyleSheet(f"""
+            QToolButton {{
+                color: {C.TEXT_DIM}; background: transparent;
+                border: 1px solid {C.BORDER}; border-radius: 4px;
+            }}
+            QToolButton:hover {{ color: {C.PRI}; border-color: {C.PRI_DIM}; }}
+        """)
+        self._right_menu = QMenu(self._right_menu_btn)
+        self._right_menu.setStyleSheet(self._nav_menu.styleSheet())
+        dash_action = self._right_menu.addAction("▦  Bento Dashboard")
+        dash_action.triggered.connect(self._open_bento_dashboard)
+        self._right_menu.addSeparator()
+        telemetry_action = self._right_menu.addAction("▤  Toggle Telemetry")
+        telemetry_action.triggered.connect(
+            lambda _checked=False: self._toggle_telemetry_panel(
+                not self._left_panel.isVisible()
+            )
+        )
+        activity_action = self._right_menu.addAction("☷  Toggle Activity")
+        activity_action.triggered.connect(
+            lambda _checked=False: self._toggle_activity_panel(
+                not self._right_panel.isVisible()
+            )
+        )
+        settings_action = self._right_menu.addAction("⚙  Settings & Controls")
+        settings_action.triggered.connect(self._toggle_drawer)
+        self._right_menu.addSeparator()
+        jarvis_action = self._right_menu.addAction("JARVIS Mode")
+        jarvis_action.triggered.connect(lambda: self._mode_btn.setCurrentIndex(0))
+        bihansa_action = self._right_menu.addAction("BIHANSA Mode")
+        bihansa_action.triggered.connect(lambda: self._mode_btn.setCurrentIndex(1))
+        self._right_menu_btn.setMenu(self._right_menu)
+        self._right_menu_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        lay.addWidget(self._right_menu_btn)
+
         right_col = QVBoxLayout(); right_col.setSpacing(2)
         self._clock_lbl = QLabel("00:00:00")
         self._clock_lbl.setFont(QFont("Courier New", 14, QFont.Weight.Bold))

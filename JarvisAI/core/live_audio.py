@@ -194,6 +194,23 @@ def _turn_output_diagnostic(
     )
 
 
+def _turn_output_diagnostic_from_state(
+    diagnostics: "LiveReceiveDiagnostics",
+    *,
+    interrupted: bool,
+    min_frame_bytes: int,
+) -> str | None:
+    """Build the turn-end diagnostic from the receiver's current state."""
+    output_text_seen, output_audio_bytes = diagnostics.turn_output_snapshot()
+    return _turn_output_diagnostic(
+        output_text_seen,
+        output_audio_bytes,
+        output_audio_checkpointed=diagnostics.checkpoint_claimed("output_audio"),
+        interrupted=interrupted,
+        min_frame_bytes=min_frame_bytes,
+    )
+
+
 def _resumable_session_handle(response) -> str | None:
     """Return only a server-confirmed resumable Gemini Live session handle."""
     update = getattr(response, "session_resumption_update", None)

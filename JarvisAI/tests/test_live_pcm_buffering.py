@@ -57,6 +57,32 @@ class LivePcmBufferingTests(unittest.TestCase):
         )
         self.assertIsNone(_resumable_session_handle(object()))
 
+    def test_live_receive_diagnostics_reset_turn_without_resetting_event_count(self):
+        from core.live_audio import LiveReceiveDiagnostics
+
+        diagnostics = LiveReceiveDiagnostics()
+        diagnostics.live_events_received = 4
+        diagnostics.input_checkpoint_logged = True
+        diagnostics.output_text_checkpoint_logged = True
+        diagnostics.output_audio_checkpoint_logged = True
+        diagnostics.short_audio_fragment_logged = True
+        diagnostics.output_audio_bytes_seen = 9600
+        diagnostics.last_audio_event_at = 12.5
+        diagnostics.last_audio_event_duration = 0.2
+
+        diagnostics.reset_turn()
+        self.assertEqual(diagnostics.live_events_received, 4)
+        self.assertFalse(diagnostics.input_checkpoint_logged)
+        self.assertFalse(diagnostics.output_text_checkpoint_logged)
+        self.assertFalse(diagnostics.output_audio_checkpoint_logged)
+        self.assertFalse(diagnostics.short_audio_fragment_logged)
+        self.assertEqual(diagnostics.output_audio_bytes_seen, 0)
+        self.assertEqual(diagnostics.last_audio_event_at, 12.5)
+
+        diagnostics.reset_audio_timing()
+        self.assertIsNone(diagnostics.last_audio_event_at)
+        self.assertEqual(diagnostics.last_audio_event_duration, 0.0)
+
     def test_live_playback_prebuffer_and_output_blocksize(self):
         # 24 kHz * mono * int16 * 0.3 seconds = 14,400 bytes.
         self.assertEqual(_MIN_PREBUFFER_BYTES, 14_400)

@@ -3095,11 +3095,8 @@ class JarvisLive:
                     if _audio_chunks:
                         event_bytes = sum(len(chunk) for chunk in _audio_chunks)
                         now_audio_event = time.monotonic()
-                        event_audio_duration, arrival_gap = _audio_event_timing(
-                            event_bytes,
-                            now_audio_event,
-                            receive_diagnostics.last_audio_event_at,
-                            receive_diagnostics.last_audio_event_duration,
+                        event_audio_duration, arrival_gap = receive_diagnostics.record_audio_event(
+                            event_bytes, now_audio_event
                         )
                         if arrival_gap is not None:
                             print(

@@ -412,11 +412,11 @@ def capture_user_personal_facts(user_text: str) -> int:
 
 
 def _request_default_owner_memory(*, timeout: float = 8.0) -> dict[str, Any]:
-    """Fetch the shared default owner profile for Owner and Guest modes.
+    """Fetch the shared owner profile from this already-enrolled installation.
 
-    This uses the installation's stable anonymous Supabase Auth session and a
-    replay-protected, quota-limited Edge Function. It deliberately does not
-    require the local owner signature; sensitive actions remain separately gated.
+    Device signing is independent of the interactive Owner/Guest mode, so Guest
+    Mode on the same enrolled Windows installation retains read-only access.
+    A fresh installation without the enrolled DPAPI-backed device key fails closed.
     """
     base_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
     public_key = os.getenv("SUPABASE_ANON_KEY", "").strip()
@@ -429,16 +429,27 @@ def _request_default_owner_memory(*, timeout: float = 8.0) -> dict[str, Any]:
     if not has_persistent_auth_session():
         raise RuntimeError("Default owner memory needs a stable OS-protected Supabase session")
 
+    # Sign the exact request bytes with the enrolled device key. This is a
+    # read-only Guest/Owner capability and does not assert owner authorization.
+    body_bytes = b"{}"
+    try:
+        from security.host_device_identity import public_key_b64, sign_request
+        signature_headers = sign_request(body_bytes)
+        device_public_key = public_key_b64()
+    except Exception:
+        raise RuntimeError("Default owner memory requires an enrolled device signing key") from None
+
+    headers = {
+        "Content-Type": "application/json",
+        "apikey": public_key,
+        "Authorization": "Bearer " + access_token,
+        **signature_headers,
+        "X-Jarvis-Host-Key": device_public_key,
+    }
     request = urllib.request.Request(
         base_url + "/functions/v1/jarvis-default-owner-memory",
-        data=b"{}",
-        headers={
-            "Content-Type": "application/json",
-            "apikey": public_key,
-            "Authorization": "Bearer " + access_token,
-            "X-Jarvis-Host-Timestamp": str(int(time.time())),
-            "X-Jarvis-Host-Nonce": secrets.token_urlsafe(24),
-        },
+        data=body_bytes,
+        headers=headers,
         method="POST",
     )
     try:
@@ -455,7 +466,6 @@ def _request_default_owner_memory(*, timeout: float = 8.0) -> dict[str, Any]:
     if not isinstance(profile, dict):
         raise RuntimeError("Default owner memory returned an invalid profile")
     return profile
-
 
 def format_default_owner_memory_context(profile: dict[str, Any]) -> str:
     """Render only the known default-owner fields as bounded reference data."""

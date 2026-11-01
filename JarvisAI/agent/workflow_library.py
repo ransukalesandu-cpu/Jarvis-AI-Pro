@@ -27,7 +27,7 @@ def _atomic_write(path: Path, payload: str) -> None:
     temporary = path.with_name(path.name + ".tmp")
     fd = os.open(str(temporary), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\\n") as stream:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
             stream.write(payload); stream.flush(); os.fsync(stream.fileno())
         os.replace(temporary, path)
     finally:

@@ -4835,15 +4835,6 @@ class MainWindow(QMainWindow):
             self._workspace.hide_briefing_news()
             return
         self._earth_panel.stop_flight_radar()
-        if kind == "news" and self._workspace._is_fullscreen:
-            # Keep the Holo stage active during a briefing. The image server is
-            # updated from the same headline cards and the deck polls for them.
-            self._workspace.show_news(
-                data.get("items", data.get("text", "")),
-                data.get("title", "HEADLINES"),
-                keep_holo=True,
-            )
-            return
         if self._cam_active:
             self.stop_camera_stream()
         if kind != "holo":
@@ -4932,6 +4923,7 @@ class MainWindow(QMainWindow):
         """Route a Holo gesture to an existing workspace side tab without invoking tools."""
         if feature in {"news", "newsfirst", "adaderana"}:
             title = "LIVE HEADLINES" if feature == "news" else f"{feature.upper()} HEADLINES"
+            self._workspace.show_news(self._workspace._last_news_items, title)
             self._workspace.show_view("news", title)
             self._workspace_open = True
             self._show_workspace_side()

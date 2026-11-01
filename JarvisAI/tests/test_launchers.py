@@ -165,6 +165,26 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn("self._metric_tmr.start(2000)", toggle)
         self.assertIn("self._metric_tmr.stop()", toggle)
 
+    def test_bento_dashboard_is_separate_and_refreshes_only_while_open(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        header = source.split("    def _build_header(self)", 1)[1].split(
+            "    def _tick_clock(self)", 1
+        )[0]
+        dashboard = source.split("    def _open_bento_dashboard(self)", 1)[1].split(
+            "    def _on_workspace_shortcut(self)", 1
+        )[0]
+        self.assertIn('self._nav_menu.addAction("▦   BENTO DASHBOARD")', header)
+        self.assertIn("dialog = QDialog(self)", dashboard)
+        self.assertIn("dialog.setModal(False)", dashboard)
+        self.assertIn("self._bento_timer.setInterval(3000)", dashboard)
+        self.assertIn("dialog.finished.connect(self._bento_timer.stop)", dashboard)
+        self.assertIn("self._refresh_bento_dashboard()", dashboard)
+        self.assertIn('("TIMER", "timers")', dashboard)
+        self.assertIn('("MUSIC", "music")', dashboard)
+        self.assertIn('("NEWS", "news")', dashboard)
+        self.assertIn('("MEDIA", "media")', dashboard)
+        self.assertIn("if timer is not None and not timer.isActive():", dashboard)
+
     def test_import_voice_persona(self):
         import voice.persona as persona
         self.assertTrue(hasattr(persona, "JARVIS_SPOKEN_SYSTEM_PROMPT"))

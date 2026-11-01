@@ -4745,118 +4745,16 @@ def _select_desktop_ui_mode(*, legacy_ui_available: bool) -> str:
 
 
 def main():
-    import argparse
-    parser = argparse.ArgumentParser(description="JARVIS AI Personal Assistant")
-    parser.add_argument("--headless", action="store_true", help="Run in headless background daemon mode")
-    args, _ = parser.parse_known_args()
+    """Compatibility entry point delegating startup to the runtime package."""
+    from core.runtime.bootstrap import run_application
 
-    if args.headless:
-        print("[JARVIS Core] Starting in Headless Daemon Mode...")
-        ui = HeadlessJarvisUI()
-        jarvis = JarvisLive(ui)
-        try:
-            asyncio.run(jarvis.run())
-        except KeyboardInterrupt:
-            print("\\n[JARVIS Core] Headless core shutting down...")
-        except Exception as exc:
-            print(f"[JARVIS Core] Headless runtime failed: {type(exc).__name__}: {exc}")
-            traceback.print_exc()
-        return
-
-    if _select_desktop_ui_mode(legacy_ui_available=JarvisUI is not None) != "original":
-        print(
-            "[JARVIS] The original desktop UI could not be loaded. "
-            "Install or repair the desktop UI dependencies."
-        )
-        return
-    from PyQt6.QtCore import QTimer
-    from PyQt6.QtWidgets import QApplication
-
-    # Windows defaults Qt Quick to D3D11. The HUD neural canvas is an
-    # OpenGL widget, so select a matching backend before the startup video or
-    # any Qt Quick window is created.
-    if configure_qt_graphics_backend:
-        configure_qt_graphics_backend()
-    app = QApplication.instance() or QApplication(sys.argv)
-    app.setStyle("Fusion")
-    startup = {
-        "ui": None, "splash": None, "jarvis": None,
-        "stop_event": threading.Event(),
-    }
-
-    def stop_live_on_app_exit():
-        startup["stop_event"].set()
-        live = startup.get("jarvis")
-        if live is not None:
-            live.request_shutdown()
-        # An autonomous task must not keep running (or hold capture handles)
-        # after the user closes the app.
-        try:
-            from agent.integration import shutdown_service
-
-            shutdown_service()
-        except Exception:
-            failsoft.suppress("main:main")
-
-    app.aboutToQuit.connect(stop_live_on_app_exit)
-
-    def launch_jarvis():
-        if startup["ui"] is not None:
-            return
-        splash = startup["splash"]
-        if splash is not None:
-            splash.close()
-
-        # Restore the original JARVIS desktop interface as the default UI.
-        # JarvisUI owns its existing API-key and owner-privacy setup overlays;
-        # the Live core, authentication gates and ActionDispatcher stay shared.
-        print("[JARVIS] Launching the original JARVIS desktop UI.")
-        ui = JarvisUI("face.png")
-        startup["ui"] = ui
-
-        def runner():
-            if not ui.wait_for_api_key(startup["stop_event"]):
-                return
-            jarvis = JarvisLive(ui)
-            startup["jarvis"] = jarvis
-            try:
-                asyncio.run(jarvis.run())
-            except KeyboardInterrupt:
-                print("\n🔴 Shutting down...")
-            except Exception as exc:
-                print(
-                    f"[CRITICAL THREAD CRASH] JARVIS runtime worker stopped: "
-                    f"{type(exc).__name__}: {exc}"
-                )
-                traceback.print_exc()
-                try:
-                    ui.write_log(
-                        f"ERR: JARVIS runtime stopped unexpectedly: {type(exc).__name__}: {exc}"
-                    )
-                    ui.set_state("ERROR")
-                except Exception:
-                    failsoft.suppress('main:main.launch_jarvis.runner')
-            finally:
-                if jarvis._shutdown_requested:
-                    ui.request_close()
-
-        threading.Thread(target=runner, daemon=False).start()
-
-    # Run a lightweight, code-drawn boot sequence before creating the HUD.
-    # It uses no video/assets and falls back to the normal launcher on failure.
-    try:
-        from core.startup_sequence import StartupSequenceSplash
-
-        splash = StartupSequenceSplash()
-        startup["splash"] = splash
-        splash.finished.connect(launch_jarvis)
-        splash.start()
-    except Exception as exc:
-        print(f"[Startup] Cinematic boot screen unavailable; opening JARVIS directly: {exc}")
-        startup["splash"] = None
-        QTimer.singleShot(0, launch_jarvis)
-
-    app.exec()
+    return run_application(
+        headless_ui_factory=HeadlessJarvisUI,
+        live_factory=JarvisLive,
+        desktop_ui_factory=JarvisUI,
+        configure_graphics_backend=configure_qt_graphics_backend,
+        suppress_error=failsoft.suppress,
+    )
 
 if __name__ == "__main__":
     main()

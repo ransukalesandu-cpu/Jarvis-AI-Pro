@@ -230,8 +230,20 @@ class SkeletonLoader(QFrame):
             layout.addWidget(bar)
         layout.addStretch(1)
         self._timer = QTimer(self)
+        self._timer.setInterval(160)
         self._timer.timeout.connect(self._pulse)
-        self._timer.start(160)
+        self._animation_enabled = True
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt API
+        """Animate skeleton shimmer only while the loader is actually visible."""
+        super().showEvent(event)
+        if self._animation_enabled and not self._timer.isActive():
+            self._timer.start()
+
+    def hideEvent(self, event) -> None:  # noqa: N802 - Qt API
+        """Stop idle shimmer work when its dashboard surface is hidden."""
+        self._timer.stop()
+        super().hideEvent(event)
 
     def _pulse(self):
         self._phase = (self._phase + 1) % 4
@@ -244,6 +256,8 @@ class SkeletonLoader(QFrame):
         self.update()
 
     def stop(self):
+        """Permanently stop shimmer once live content replaces the skeleton."""
+        self._animation_enabled = False
         self._timer.stop()
 
 

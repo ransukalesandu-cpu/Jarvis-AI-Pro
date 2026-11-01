@@ -21,8 +21,8 @@ import tempfile
 from unittest.mock import Mock, patch
 import numpy as np
 
-from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt, QPoint, QPropertyAnimation
-from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton
+from PyQt6.QtCore import QSettings, QEvent, QTimer, Qt, QPoint, QPropertyAnimation
+from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton, QWidget
 from PyQt6.QtTest import QTest
 
 # Ensure QApplication exists before testing Qt widgets
@@ -69,9 +69,10 @@ class TestUIHologram(unittest.TestCase):
             for animation in widget.findChildren(QPropertyAnimation):
                 animation.stop()
             widget.close()
-            QCoreApplication.processEvents()
+            # Let Qt dispatch DeferredDelete at its normal event-loop boundary.
+            # Forcing sendPostedEvents(None, DeferredDelete) recursively while
+            # pytest still owns wrappers can abort native Qt on CI runners.
             widget.deleteLater()
-            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.addCleanup(dispose)
         return widget
 
@@ -787,6 +788,104 @@ class TestUIHologram(unittest.TestCase):
         self.assertLess(medium[0] * medium[1], full[0] * full[1])
         self.assertLess(compact[2], medium[2])
         self.assertLess(medium[2], full[2])
+
+    def test_resize_event_defers_floating_child_geometry(self):
+        """Resize work is coalesced until native Qt geometry processing returns."""
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.show()
+        timer = Mock()
+        hud._resize_layout_timer = timer
+        hud.resize(1260, 780)
+        app.processEvents()
+        timer.start.assert_called_with(50)
+
+        hud._right_menu.show()
+        hud._apply_deferred_resize_layout()
+        expected_x = max(
+            8, hud.centralWidget().width() - hud._right_menu.width() - 12
+        )
+        self.assertEqual(hud._right_menu.x(), expected_x)
+
+    def test_responsive_hologram_budget_scales_both_personas_and_orb(self):
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud._hologram_stage.resize(640, 380)
+        hud._apply_hologram_stage_budget()
+        self.assertEqual(hud.wireframe_visualizer._frame_interval, 33)
+        self.assertEqual(hud.bihansa_visualizer._frame_interval, 33)
+        self.assertEqual(hud._mini_orb.size().width(), 40)
+        self.assertEqual(hud._heart_reactor.geometry(), hud._hologram_stage.rect())
+
+        hud._hologram_stage.resize(900, 650)
+        hud._apply_hologram_stage_budget()
+        self.assertEqual(hud.wireframe_visualizer._frame_interval, 16)
+        self.assertEqual(hud.bihansa_visualizer._frame_interval, 16)
+        self.assertEqual(hud._mini_orb.size().width(), 48)
+        self.assertEqual(hud._heart_reactor.geometry(), hud._hologram_stage.rect())
+
+    def test_bihansa_performance_budget_limits_particles_and_glow(self):
+        widget = self._track_widget(BihansaHologramWidget())
+        self.assertEqual(widget._visible_particle_count(), len(widget._particles))
+        widget.set_performance_budget(33, 0.5, 0.6)
+        self.assertEqual(widget._visible_particle_count(), round(len(widget._particles) * 0.5))
+        self.assertEqual(widget._frame_interval, 33)
+        self.assertAlmostEqual(widget._performance_glow_scale, 0.6)
+        widget.set_performance_budget(5, 2.0, 4.0)
+        self.assertEqual(widget._frame_interval, 16)
+        self.assertEqual(widget._visible_particle_count(), len(widget._particles))
+        self.assertEqual(widget._performance_glow_scale, 1.0)
+
+    def test_animation_engine_is_frame_rate_independent_and_finite(self):
+        from ui.hologram.animation_engine import pulse, smooth_damp
+
+        one_frame = smooth_damp(0.0, 1.0, 1 / 60, 8.0)
+        two_half_frames = smooth_damp(
+            smooth_damp(0.0, 1.0, 1 / 120, 8.0), 1.0, 1 / 120, 8.0
+        )
+        self.assertAlmostEqual(one_frame, two_half_frames, places=5)
+        self.assertEqual(smooth_damp(0.25, 1.0, 0.0), 0.25)
+        self.assertEqual(smooth_damp(float("nan"), 1.0, 0.02), 0.0)
+        self.assertEqual(pulse(10.0, 1.0, reduced_motion=True), 0.5)
+        self.assertGreaterEqual(pulse(0.0, 1.0), 0.0)
+        self.assertLessEqual(pulse(0.0, 1.0), 1.0)
+
+    def test_neural_heart_reactor_tracks_clamped_audio_energy(self):
+        stage = self._track_widget(QWidget())
+        reactor = NeuralHeartReactor(stage)
+        reactor.set_audio_energy(0.75)
+        self.assertAlmostEqual(reactor._audio_energy, 0.75)
+        reactor.set_audio_energy(5.0)
+        self.assertEqual(reactor._audio_energy, 1.0)
+        reactor.set_audio_energy(float("nan"))
+        self.assertEqual(reactor._audio_energy, 0.0)
+
+    def test_right_dropdown_uses_fade_transition(self):
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.show()
+        app.processEvents()
+        hud._right_menu_animation.setDuration(20)
+        hud._toggle_right_dropdown()
+        self.assertTrue(hud._right_menu.isVisible())
+        hud._right_menu_animation.setCurrentTime(20)
+        self.assertAlmostEqual(hud._right_menu_opacity.opacity(), 1.0, places=2)
+        hud._toggle_right_dropdown()
+        hud._right_menu_animation.setCurrentTime(20)
+        self.assertFalse(hud._right_menu.isVisible())
+
+    def test_hud_compact_layout_adapts_without_replacing_hologram(self):
+        hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
+        hud.setMinimumSize(0, 0)
+        hud.resize(390, 620)
+        hud._apply_compact_layout()
+        self.assertTrue(hud._dashboard_button.isHidden())
+        self.assertEqual(hud._mini_orb.width(), 40)
+        self.assertTrue(hud._left_rail.isHidden())
+        self.assertIs(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
+
+        hud.resize(900, 700)
+        hud._apply_compact_layout()
+        self.assertFalse(hud._dashboard_button.isHidden())
+        self.assertEqual(hud._mini_orb.width(), 48)
+        self.assertIs(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
 
 
 if __name__ == "__main__":

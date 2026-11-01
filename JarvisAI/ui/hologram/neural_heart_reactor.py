@@ -20,6 +20,7 @@ class NeuralHeartReactor(QWidget):
         super().__init__(stage)
         self._stage = stage
         self._state = "IDLE"
+        self._audio_energy = 0.0
         self._started_at = time.monotonic()
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
@@ -41,6 +42,17 @@ class NeuralHeartReactor(QWidget):
         self._state = str(state or "IDLE").upper()
         self.update()
 
+    def set_audio_energy(self, level: float) -> None:
+        """Drive the reactor pulse from normalized live audio energy."""
+        try:
+            value = float(level)
+        except (TypeError, ValueError):
+            value = 0.0
+        if not math.isfinite(value):
+            value = 0.0
+        self._audio_energy = max(0.0, min(1.0, value))
+        self.update()
+
     @staticmethod
     def _cycle_color(elapsed: float) -> QColor:
         """Smoothly loop only through red -> pink -> orange -> red."""
@@ -58,11 +70,16 @@ class NeuralHeartReactor(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         t = time.monotonic() - self._started_at
-        pulse = (math.sin(t * 2.0 * math.pi * 0.42) + 1.0) * 0.5
-        breath = 1.0 + 0.055 * math.sin(t * 2.0 * math.pi * 0.42)
+        pulse_rate = 0.42 + self._audio_energy * 0.48
+        pulse = (math.sin(t * 2.0 * math.pi * pulse_rate) + 1.0) * 0.5
+        breath = 1.0 + (0.055 + self._audio_energy * 0.035) * math.sin(t * 2.0 * math.pi * pulse_rate)
         c = self._cycle_color(t)
-        # State can gently intensify the reactor, but never changes its palette.
-        state_boost = 1.18 if self._state in ("SPEAKING", "THINKING") else 1.0
+        # Audio and state gently intensify the reactor without changing its palette.
+        state_boost = 1.0 + self._audio_energy * 0.35
+        if self._state in ("SPEAKING", "THINKING"):
+            state_boost *= 1.12
+        elif self._state in ("PRIVACY_LOCK", "ERROR", "DISCONNECTED"):
+            state_boost *= 0.72
 
         # Small heart (about 40px) on the hologram's left side; smaller than orb.
         cx, cy = max(31.0, min(47.0, w * 0.085)), h * 0.37

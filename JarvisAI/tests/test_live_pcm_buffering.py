@@ -14,9 +14,9 @@ from main import (
     _is_transient_live_disconnect,
     _output_write_is_unpaced,
     _take_playback_pcm,
-    _audio_event_timing,
     _resumable_session_handle,
 )
+from core.live_audio import _audio_event_timing
 
 
 class LivePcmBufferingTests(unittest.TestCase):

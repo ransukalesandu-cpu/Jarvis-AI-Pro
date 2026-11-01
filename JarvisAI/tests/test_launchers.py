@@ -18,50 +18,24 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn(jarvis_dir, sys.path)
         self.assertIn(voice_dir, sys.path)
 
-    def test_desktop_ui_uses_hologram_when_setup_is_complete(self):
+    def test_desktop_ui_selects_original_interface_when_available(self):
         import main as root_main
         self.assertEqual(
-            root_main._select_desktop_ui_mode(
-                hud_available=True, api_configured=True, pin_enrolled=True
-            ),
-            "hologram",
+            root_main._select_desktop_ui_mode(legacy_ui_available=True),
+            "original",
         )
 
-    def test_desktop_ui_keeps_hologram_when_gemini_key_is_missing(self):
+    def test_desktop_ui_fails_closed_when_original_interface_is_unavailable(self):
         import main as root_main
         self.assertEqual(
-            root_main._select_desktop_ui_mode(
-                hud_available=True, api_configured=False, pin_enrolled=True
-            ),
-            "hologram",
-        )
-
-    def test_desktop_ui_keeps_hologram_when_owner_pin_is_missing(self):
-        import main as root_main
-        self.assertEqual(
-            root_main._select_desktop_ui_mode(
-                hud_available=True, api_configured=True, pin_enrolled=False
-            ),
-            "hologram",
-        )
-
-    def test_desktop_ui_keeps_hologram_when_both_setup_steps_are_missing(self):
-        import main as root_main
-        self.assertEqual(
-            root_main._select_desktop_ui_mode(
-                hud_available=True, api_configured=False, pin_enrolled=False
-            ),
-            "hologram",
-        )
-
-    def test_desktop_ui_fails_closed_instead_of_opening_legacy_ui_if_hud_is_unavailable(self):
-        import main as root_main
-        self.assertEqual(
-            root_main._select_desktop_ui_mode(
-                hud_available=False, api_configured=False, pin_enrolled=False
-            ),
+            root_main._select_desktop_ui_mode(legacy_ui_available=False),
             "unavailable",
         )
+
+    def test_desktop_launcher_uses_original_jarvis_ui(self):
+        source = (ROOT / "JarvisAI" / "main.py").read_text(encoding="utf-8")
+        self.assertIn('ui = JarvisUI("face.png")', source)
+        self.assertNotIn("HologramHUDUI", source)
 
     def test_import_voice_persona(self):
         import voice.persona as persona

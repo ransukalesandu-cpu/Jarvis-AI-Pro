@@ -6,6 +6,7 @@ PCM framing and Live-event/error handling can be tested independently.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 
 import numpy as np
@@ -23,6 +24,56 @@ _MIN_PREBUFFER_MS = 150
 _MAX_PREBUFFER_MS = 600
 _PREBUFFER_STEP_MS = 50
 _STABLE_TURNS_TO_SHRINK = 3
+
+
+def _normalize_input_audio_mime_type(value: Any) -> str:
+    """Ensure raw PCM input always carries its sample rate for Gemini Live."""
+    mime_type = str(value or "audio/pcm;rate=16000")
+    if mime_type.lower().startswith("audio/pcm") and "rate=" not in mime_type.lower():
+        return "audio/pcm;rate=16000"
+    return mime_type
+
+
+async def run_realtime_audio_sender(
+    out_queue: Any,
+    session: Any,
+    *,
+    is_allowed: Any,
+    make_blob: Any,
+    on_send_error: Any,
+) -> None:
+    """Forward queued PCM frames to Gemini Live without owning auth policy.
+
+    Authentication remains a caller-supplied gate so this transport helper
+    cannot bypass Privacy Lock or the mandatory PIN challenge.
+    """
+    frames_sent = 0
+    print("[AudioTrace 1→3] Sender running; waiting for microphone/phone audio frames.")
+    while True:
+        msg = await out_queue.get()
+        if not is_allowed():
+            continue
+        mime_type = _normalize_input_audio_mime_type(
+            msg.get("mime_type", "audio/pcm;rate=16000")
+        )
+        data = msg["data"]
+        if frames_sent == 0:
+            print(
+                f"[AudioTrace 1→3] Sending first input frame "
+                f"({len(data)} bytes; {mime_type})."
+            )
+        try:
+            await session.send_realtime_input(
+                audio=make_blob(data, mime_type)
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            on_send_error(exc, frames_sent)
+            raise
+        frames_sent += 1
+        if frames_sent == 1:
+            print("[AudioTrace 1→3] First input frame accepted by the Live client.")
 
 
 def _next_prebuffer_ms(current_ms: int, *, underrun: bool = False, stable_turns: int = 0) -> int:

@@ -61,6 +61,7 @@ from core.live_audio import (
     _take_playback_pcm, _pcm_level, _live_audio_chunks,
     _error_text, _is_quota_error, _is_transient_live_disconnect,
     _is_live_operation_aborted, _audio_event_timing, _resumable_session_handle,
+    LiveReceiveDiagnostics,
 )
 # Re-exported on purpose: tests/test_live_pcm_buffering.py imports these from
 # `main`, and the module has always exposed them. Do not "clean up".
@@ -3046,15 +3047,8 @@ class JarvisLive:
         voice_confirmation_consumed = False
         voice_ui_action_consumed = False
         holo_open_request_pending = False
-        live_events_received = 0
-        input_checkpoint_logged = False
-        output_text_checkpoint_logged = False
-        output_audio_checkpoint_logged = False
-        short_audio_fragment_logged = False
-        output_audio_bytes_seen = 0
+        receive_diagnostics = LiveReceiveDiagnostics()
         audio_fragment_buffer = bytearray()
-        last_audio_event_at = None
-        last_audio_event_duration = 0.0
 
         try:
             while True:
@@ -3072,8 +3066,8 @@ class JarvisLive:
                     except Exception:
                         failsoft.suppress('main:JarvisLive._receive_audio')
                         continue
-                    live_events_received += 1
-                    if live_events_received == 1:
+                    receive_diagnostics.live_events_received += 1
+                    if receive_diagnostics.live_events_received == 1:
                         print("[AudioTrace 3/LIVE] First server event received from Gemini Live.")
 
                     # ── Session resumption ───────────────────────────────────
@@ -3104,40 +3098,40 @@ class JarvisLive:
                         event_audio_duration, arrival_gap = _audio_event_timing(
                             event_bytes,
                             now_audio_event,
-                            last_audio_event_at,
-                            last_audio_event_duration,
+                            receive_diagnostics.last_audio_event_at,
+                            receive_diagnostics.last_audio_event_duration,
                         )
                         if arrival_gap is not None:
                             print(
                                 f"[AudioTrace 3→4/AUDIO] Live PCM arrival gap "
                                 f"{arrival_gap * 1000:.0f} ms after a "
-                                f"{last_audio_event_duration * 1000:.0f} ms payload; "
+                                f"{receive_diagnostics.last_audio_event_duration * 1000:.0f} ms payload; "
                                 f"next payload={event_bytes} bytes "
                                 f"({event_audio_duration * 1000:.0f} ms). "
                                 "This may explain speech stutter."
                             )
-                        last_audio_event_at = now_audio_event
-                        last_audio_event_duration = event_audio_duration
+                        receive_diagnostics.last_audio_event_at = now_audio_event
+                        receive_diagnostics.last_audio_event_duration = event_audio_duration
                         if self._interrupted:
                             # Never let a fragment from a cancelled assistant turn
                             # leak into the next user's response.
                             audio_fragment_buffer.clear()
                         else:
-                            output_audio_bytes_seen += event_bytes
+                            receive_diagnostics.output_audio_bytes_seen += event_bytes
                             audio_fragment_buffer.extend(b"".join(_audio_chunks))
                             # Keep PCM samples aligned and enqueue only full 50 ms
                             # slices while streaming. Any partial tail stays buffered
                             # instead of becoming a tiny write.
                             playable_audio = _take_playback_pcm(audio_fragment_buffer)
                             if playable_audio:
-                                if not output_audio_checkpoint_logged:
+                                if not receive_diagnostics.output_audio_checkpoint_logged:
                                     print(
                                         f"[AudioTrace 3→4/AUDIO] Playable Gemini PCM accumulated: "
                                         f"{len(playable_audio)} bytes across Live event(s) "
                                         f"(raw event={event_bytes} bytes; playback slice="
                                         f"{_PLAYBACK_SLICE_BYTES} bytes)."
                                     )
-                                    output_audio_checkpoint_logged = True
+                                    receive_diagnostics.output_audio_checkpoint_logged = True
                                 if not self._vocal_audio_started:
                                     for event in self._vocal_plan.before:
                                         self._enqueue_vocal_event(event)
@@ -3149,14 +3143,14 @@ class JarvisLive:
                                     self.audio_in_queue.put_nowait(
                                         playable_audio[_i : _i + _PLAYBACK_SLICE_BYTES]
                                     )
-                            elif not output_audio_checkpoint_logged and not short_audio_fragment_logged:
+                            elif not receive_diagnostics.output_audio_checkpoint_logged and not receive_diagnostics.short_audio_fragment_logged:
                                 buffered_bytes = len(audio_fragment_buffer) & ~1
                                 print(
                                     f"[AudioTrace 3→4/AUDIO] PCM fragment buffered "
                                     f"({buffered_bytes} byte(s)); waiting for a full "
                                     f"{_PLAYBACK_SLICE_BYTES}-byte (50 ms) playback slice."
                                 )
-                                short_audio_fragment_logged = True
+                                receive_diagnostics.short_audio_fragment_logged = True
 
                     if sc:
 
@@ -3203,12 +3197,12 @@ class JarvisLive:
                             txt = _clean_transcript(sc.output_transcription.text)
                             # Ignore output transcriptions from an interrupted assistant turn.
                             if txt and not self._interrupted and not _is_repeat_chunk(txt, out_buf):
-                                if not output_text_checkpoint_logged:
+                                if not receive_diagnostics.output_text_checkpoint_logged:
                                     print(
                                         f"[AudioTrace 3/GEN] Assistant transcription received: "
                                         f"{txt[:160]!r}"
                                     )
-                                    output_text_checkpoint_logged = True
+                                    receive_diagnostics.output_text_checkpoint_logged = True
                                 self._plan_vocal_response(txt)
                                 self._assistant_turn_pending = True
                                 out_buf.append(txt)
@@ -3226,9 +3220,9 @@ class JarvisLive:
                         if sc.input_transcription and sc.input_transcription.text:
                             txt = _clean_transcript(sc.input_transcription.text)
                             if txt:
-                                if not input_checkpoint_logged:
+                                if not receive_diagnostics.input_checkpoint_logged:
                                     print(f"[AudioTrace 2/STT] Recognized user speech: {txt[:160]!r}")
-                                    input_checkpoint_logged = True
+                                    receive_diagnostics.input_checkpoint_logged = True
                                 self._assistant_turn_pending = True
                                 # Some Live responses deliver the user's
                                 # transcription before the interrupted marker.
@@ -3324,8 +3318,7 @@ class JarvisLive:
 
                         if sc.turn_complete:
                             # Start arrival-cadence tracking fresh for the next turn.
-                            last_audio_event_at = None
-                            last_audio_event_duration = 0.0
+                            receive_diagnostics.reset_audio_timing()
                             # Flush a valid short tail only after Live confirms the
                             # turn ended. Streaming writes remain 50 ms aligned.
                             final_pcm = b""
@@ -3342,29 +3335,29 @@ class JarvisLive:
                                 if self._turn_done_event and self._turn_done_event.is_set():
                                     self._turn_done_event.clear()
                                 self.audio_in_queue.put_nowait(final_pcm)
-                                if not output_audio_checkpoint_logged:
+                                if not receive_diagnostics.output_audio_checkpoint_logged:
                                     print(
                                         f"[AudioTrace 3→4/AUDIO] Queued final PCM tail "
                                         f"({len(final_pcm)} bytes) at turn completion."
                                     )
-                                    output_audio_checkpoint_logged = True
+                                    receive_diagnostics.output_audio_checkpoint_logged = True
 
-                            if not output_audio_checkpoint_logged and not self._interrupted:
-                                if output_text_checkpoint_logged and output_audio_bytes_seen:
+                            if not receive_diagnostics.output_audio_checkpoint_logged and not self._interrupted:
+                                if receive_diagnostics.output_text_checkpoint_logged and receive_diagnostics.output_audio_bytes_seen:
                                     print(
                                         f"[AudioTrace 3→4/AUDIO] Assistant text arrived, but only "
-                                        f"{output_audio_bytes_seen} PCM byte(s) arrived this turn; "
+                                        f"{receive_diagnostics.output_audio_bytes_seen} PCM byte(s) arrived this turn; "
                                         f"no complete 10 ms frame ({_MIN_LIVE_AUDIO_FRAME_BYTES} bytes) "
                                         "reached playback. Check Live model/audio output."
                                     )
-                                elif output_text_checkpoint_logged:
+                                elif receive_diagnostics.output_text_checkpoint_logged:
                                     print(
                                         "[AudioTrace 3→4/AUDIO] Assistant text arrived but Gemini "
                                         "returned no audio payload for this turn."
                                     )
-                                elif output_audio_bytes_seen:
+                                elif receive_diagnostics.output_audio_bytes_seen:
                                     print(
-                                        f"[AudioTrace 3→4/AUDIO] Only {output_audio_bytes_seen} "
+                                        f"[AudioTrace 3→4/AUDIO] Only {receive_diagnostics.output_audio_bytes_seen} "
                                         "PCM byte(s) arrived without a playable frame or assistant text."
                                     )
                                 else:
@@ -3384,11 +3377,7 @@ class JarvisLive:
                                     f"trailing PCM byte(s) at turn end ({reason})."
                                 )
                                 audio_fragment_buffer.clear()
-                            input_checkpoint_logged = False
-                            output_text_checkpoint_logged = False
-                            output_audio_checkpoint_logged = False
-                            short_audio_fragment_logged = False
-                            output_audio_bytes_seen = 0
+                            receive_diagnostics.reset_turn()
                             if (not self._interrupted and self._vocal_audio_started
                                     and self._vocal_plan.after):
                                 for event in self._vocal_plan.after:

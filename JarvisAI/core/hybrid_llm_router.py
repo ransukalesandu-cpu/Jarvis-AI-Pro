@@ -14,6 +14,8 @@ import time
 import urllib.request
 from typing import Any
 
+from core.provider_protocol import ProviderResult, TextProvider
+
 logger = logging.getLogger("Jarvis.LLMRouter")
 
 
@@ -72,7 +74,7 @@ class HybridLLMRouter:
         )
         self.ollama_endpoint = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
         self.local_model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
-        self.providers = {
+        self.providers: dict[str, TextProvider] = {
             "gemini": self._call_gemini,
             "groq": self._call_groq,
             "openai": self._call_openai,
@@ -109,7 +111,7 @@ class HybridLLMRouter:
             return False
 
     @staticmethod
-    def _validate_result(result: Any, provider: str) -> dict[str, Any]:
+    def _validate_result(result: Any, provider: str) -> ProviderResult:
         if not isinstance(result, dict):
             raise RuntimeError(f"{provider} returned an invalid response object")
         text = result.get("text")
@@ -123,7 +125,7 @@ class HybridLLMRouter:
         prompt: str,
         system_prompt: str = "You are JARVIS, a capable personal AI assistant.",
         **kwargs: Any,
-    ) -> dict[str, Any]:
+    ) -> ProviderResult:
         """Query configured providers in priority order with bounded failover."""
         prompt = str(prompt or "").strip()
         system_prompt = str(system_prompt or "").strip()
@@ -184,7 +186,7 @@ class HybridLLMRouter:
             + "). Configure a provider API key or start local Ollama."
         )
 
-    def _call_gemini(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+    def _call_gemini(self, prompt: str, system_prompt: str, **kwargs: Any) -> ProviderResult:
         if self._supabase_enabled:
             from core.supabase_cloud_provider import call_supabase_provider
             return call_supabase_provider(
@@ -204,7 +206,7 @@ class HybridLLMRouter:
         )
         return {"text": response.text or "", "model": model}
 
-    def _call_groq(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+    def _call_groq(self, prompt: str, system_prompt: str, **kwargs: Any) -> ProviderResult:
         if self._supabase_enabled:
             from core.supabase_cloud_provider import call_supabase_provider
             return call_supabase_provider(
@@ -238,7 +240,7 @@ class HybridLLMRouter:
         return {"text": str(message.get("content") or "").strip(),
                 "model": str((data.get("model") or model))}
 
-    def _call_openai(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+    def _call_openai(self, prompt: str, system_prompt: str, **kwargs: Any) -> ProviderResult:
         if self._supabase_enabled:
             from core.supabase_cloud_provider import call_supabase_provider
             return call_supabase_provider(
@@ -258,7 +260,7 @@ class HybridLLMRouter:
         )
         return {"text": response.choices[0].message.content or "", "model": model}
 
-    def _call_claude(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+    def _call_claude(self, prompt: str, system_prompt: str, **kwargs: Any) -> ProviderResult:
         if self._supabase_enabled:
             from core.supabase_cloud_provider import call_supabase_provider
             return call_supabase_provider(
@@ -281,7 +283,7 @@ class HybridLLMRouter:
         )
         return {"text": text, "model": model}
 
-    def _call_ollama(self, prompt: str, system_prompt: str, **kwargs: Any) -> dict[str, Any]:
+    def _call_ollama(self, prompt: str, system_prompt: str, **kwargs: Any) -> ProviderResult:
         payload = {
             "model": str(kwargs.get("local_model") or self.local_model),
             "system": system_prompt,

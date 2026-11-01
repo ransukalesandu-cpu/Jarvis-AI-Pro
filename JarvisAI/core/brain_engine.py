@@ -17,6 +17,7 @@ from core.brain_protocol import (
     render_text_fallback_prompt,
 )
 from core.provider_fallback import query_text_fallback
+from core.provider_protocol import ProviderResult, TextProviderRouter
 
 logger = logging.getLogger("Jarvis.BrainEngine")
 
@@ -197,8 +198,8 @@ class BrainEngine:
         self,
         *,
         config_path: str | Path | None = None,
-        query_fn: Callable[..., Any] | None = None,
-        router_factory: Callable[..., Any] | None = None,
+        query_fn: Callable[..., tuple[ProviderResult, str]] | None = None,
+        router_factory: Callable[..., TextProviderRouter] | None = None,
         memory_retriever: Callable[..., Any] | None = None,
         memory_enabled: bool = False,
     ) -> None:

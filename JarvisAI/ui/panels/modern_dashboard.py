@@ -7,13 +7,6 @@ from __future__ import annotations
 
 import math
 
-
-def dashboard_grid_positions(width: int, card_count: int = 5) -> tuple[tuple[int, int], ...]:
-    """Return stable card positions for wide two-column and compact one-column layouts."""
-    count = max(0, int(card_count))
-    columns = 1 if int(width) <= 760 else 2
-    return tuple((index // columns, index % columns) for index in range(count))
-
 from PyQt6.QtCore import QEasingCurve, QPointF, QPropertyAnimation, QRectF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPen, QRadialGradient
 from PyQt6.QtWidgets import (
@@ -330,7 +323,6 @@ class ModernDashboard(QWidget):
         hero = QFrame(content)
         hero.setObjectName("HeroSurface")
         hero_layout = QHBoxLayout(hero)
-        self._hero_layout = hero_layout
         hero_layout.setContentsMargins(24, 18, 20, 18)
         hero_layout.setSpacing(12)
 
@@ -389,7 +381,6 @@ class ModernDashboard(QWidget):
         content_layout.addLayout(section)
 
         grid = QGridLayout()
-        self._grid = grid
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(14)
         grid.setVerticalSpacing(14)
@@ -397,7 +388,7 @@ class ModernDashboard(QWidget):
         grid.setColumnStretch(1, 1)
         self._cards: list[MagneticCard] = []
         # Keep telemetry components intact; the dashboard simply rearranges them.
-        positions = dashboard_grid_positions(1000, len(panels))
+        positions = ((0, 0), (0, 1), (1, 0), (1, 1), (2, 0))
         for panel, position in zip(panels, positions):
             card = MagneticCard(panel, content)
             card.setMinimumWidth(0)
@@ -438,7 +429,6 @@ class ModernDashboard(QWidget):
         ready_layout.addLayout(action_row)
         quick_layout.addWidget(self._ready_group)
         self._ready_group.hide()
-        self._quick_surface = quick
         grid.addWidget(quick, 2, 1)
 
         if extra_panel is not None:
@@ -458,55 +448,6 @@ class ModernDashboard(QWidget):
         self._loading_timer = QTimer(self)
         self._loading_timer.setSingleShot(True)
         self._loading_timer.timeout.connect(self.finish_loading)
-        self._layout_timer = QTimer(self)
-        self._layout_timer.setSingleShot(True)
-        self._layout_timer.setInterval(70)
-        self._layout_timer.timeout.connect(self._apply_responsive_layout)
-        self._compact_layout = None
-        self._apply_responsive_layout()
-
-    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
-        """Debounce grid rearrangement while the user resizes the HUD."""
-        super().resizeEvent(event)
-        if hasattr(self, "_layout_timer"):
-            self._layout_timer.start()
-
-    def _apply_responsive_layout(self) -> None:
-        """Reflow cards and trim hero spacing without changing any live panel."""
-        width = max(1, self._scroll.viewport().width())
-        compact = width <= 760
-        if compact == self._compact_layout:
-            return
-        self._compact_layout = compact
-        positions = dashboard_grid_positions(width, len(self._cards))
-        for card in self._cards:
-            self._grid.removeWidget(card)
-        for card, (row, column) in zip(self._cards, positions):
-            self._grid.addWidget(card, row, column)
-        next_row = len(self._cards) if compact else (len(self._cards) + 1) // 2
-        self._grid.removeWidget(self._quick_surface)
-        if compact:
-            self._grid.addWidget(self._quick_surface, next_row, 0, 1, 1)
-            self._grid.setColumnStretch(1, 0)
-            self._grid.setHorizontalSpacing(8)
-            self._grid.setVerticalSpacing(10)
-            self._hero_layout.setContentsMargins(14, 12, 14, 12)
-            self._hero_layout.setSpacing(6)
-            self.orb.setFixedSize(64, 64)
-            if self._extra_card is not None:
-                self._grid.removeWidget(self._extra_card)
-                self._grid.addWidget(self._extra_card, next_row + 1, 0, 1, 1)
-        else:
-            self._grid.addWidget(self._quick_surface, next_row, 1)
-            self._grid.setColumnStretch(1, 1)
-            self._grid.setHorizontalSpacing(14)
-            self._grid.setVerticalSpacing(14)
-            self._hero_layout.setContentsMargins(24, 18, 20, 18)
-            self._hero_layout.setSpacing(12)
-            self.orb.setFixedSize(104, 104)
-            if self._extra_card is not None:
-                self._grid.removeWidget(self._extra_card)
-                self._grid.addWidget(self._extra_card, next_row + 1, 0, 1, 2)
 
     def open_extra(self) -> bool:
         """Scroll the autonomous-task card into view (no-op when absent)."""

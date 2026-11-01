@@ -47,6 +47,16 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertNotIn('self._hud_cam_stack.addWidget(self._workspace)', source)
         self.assertNotIn('self._hud_cam_stack.setCurrentWidget(self._workspace)', source)
 
+    def test_desktop_startup_uses_code_drawn_splash_not_video(self):
+        source = (ROOT / "JarvisAI" / "main.py").read_text(encoding="utf-8")
+        splash = (ROOT / "JarvisAI" / "core" / "startup_sequence.py").read_text(encoding="utf-8")
+        self.assertIn("StartupSequenceSplash", source)
+        self.assertIn("splash.finished.connect(launch_jarvis)", source)
+        self.assertIn("TITLE_HOLD_MS = 1000", splash)
+        self.assertIn('"JARVIS"', splash)
+        self.assertNotIn("QMediaPlayer", splash)
+        self.assertIn("DURATION_MS = 4100", splash)
+
     def test_import_voice_persona(self):
         import voice.persona as persona
         self.assertTrue(hasattr(persona, "JARVIS_SPOKEN_SYSTEM_PROMPT"))

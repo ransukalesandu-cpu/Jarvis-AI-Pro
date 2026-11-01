@@ -4841,9 +4841,19 @@ def main():
 
         threading.Thread(target=runner, daemon=False).start()
 
-    # Startup intro video/logo splash disabled: open the main JARVIS HUD directly.
-    startup["splash"] = None
-    QTimer.singleShot(0, launch_jarvis)
+    # Run a lightweight, code-drawn boot sequence before creating the HUD.
+    # It uses no video/assets and falls back to the normal launcher on failure.
+    try:
+        from core.startup_sequence import StartupSequenceSplash
+
+        splash = StartupSequenceSplash()
+        startup["splash"] = splash
+        splash.finished.connect(launch_jarvis)
+        splash.start()
+    except Exception as exc:
+        print(f"[Startup] Cinematic boot screen unavailable; opening JARVIS directly: {exc}")
+        startup["splash"] = None
+        QTimer.singleShot(0, launch_jarvis)
 
     app.exec()
 

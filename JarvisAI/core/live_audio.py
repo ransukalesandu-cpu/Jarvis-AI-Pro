@@ -103,6 +103,11 @@ class LiveReceiveDiagnostics:
         self.last_audio_event_duration = duration
         return duration, gap
 
+    def record_live_event(self) -> bool:
+        """Count a received Live event and report whether it is the first."""
+        self.live_events_received += 1
+        return self.live_events_received == 1
+
     def claim_checkpoint(self, name: str) -> bool:
         """Claim a one-per-turn diagnostic checkpoint.
 

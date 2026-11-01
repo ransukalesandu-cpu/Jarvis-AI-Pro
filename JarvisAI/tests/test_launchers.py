@@ -81,6 +81,22 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn('self._workspace.show_webpage("https://music.youtube.com/", "YOUTUBE MUSIC")', source)
         self.assertIn('self._workspace.show_system_panel("overview")', source)
 
+    def test_command_center_keeps_advanced_visual_controls_in_settings_drawer(self):
+        source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
+        header = source.split("    def _build_header(self)", 1)[1].split(
+            "    def _tick_clock(self)", 1
+        )[0]
+        drawer = source.split("    def _build_quick_drawer(self)", 1)[1].split(
+            "    def _", 1
+        )[0]
+        self.assertNotIn("lay.addWidget(self._neural_view_btn)", header)
+        self.assertNotIn("lay.addWidget(self._neural_hand_btn)", header)
+        self.assertIn("lay.addWidget(self._neural_view_btn)", drawer)
+        self.assertIn("lay.addWidget(self._neural_hand_btn)", drawer)
+        # The existing actions remain wired to their original handlers.
+        self.assertIn('self._enter_immersive_view("neural")', header)
+        self.assertIn("self._toggle_neural_hand_control", header)
+
     def test_import_voice_persona(self):
         import voice.persona as persona
         self.assertTrue(hasattr(persona, "JARVIS_SPOKEN_SYSTEM_PROMPT"))

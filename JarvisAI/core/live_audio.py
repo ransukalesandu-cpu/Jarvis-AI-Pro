@@ -44,6 +44,33 @@ def _next_prebuffer_ms(current_ms: int, *, underrun: bool = False, stable_turns:
     return min(_MAX_PREBUFFER_MS, max(_MIN_PREBUFFER_MS, current))
 
 
+
+def _audio_event_timing(
+    event_bytes: int,
+    now: float,
+    previous_at: float | None,
+    previous_duration: float,
+) -> tuple[float, float | None]:
+    """Return payload duration and a noteworthy inter-event arrival gap.
+
+    This isolates the receiver's PCM timing diagnostic from the Gemini event
+    loop. It does not alter buffering, scheduling, or playback decisions.
+    """
+    try:
+        byte_count = max(0, int(event_bytes))
+        current = float(now)
+        duration = byte_count / (RECEIVE_SAMPLE_RATE * CHANNELS * 2)
+        if previous_at is None:
+            return duration, None
+        gap = current - float(previous_at)
+        expected_gap = max(0.0, float(previous_duration)) + 0.10
+        if gap > max(0.18, expected_gap) and gap < 3.0:
+            return duration, gap
+        return duration, None
+    except (TypeError, ValueError, OverflowError):
+        return 0.0, None
+
+
 def _take_playback_pcm(buffer: bytearray, *, final: bool = False) -> bytes:
     """Take aligned PCM without producing tiny writes during streaming.
 

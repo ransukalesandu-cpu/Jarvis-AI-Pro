@@ -15,6 +15,7 @@ from main import (
     _output_write_is_unpaced,
     _take_playback_pcm,
     _audio_event_timing,
+    _resumable_session_handle,
 )
 
 
@@ -33,6 +34,28 @@ class LivePcmBufferingTests(unittest.TestCase):
         self.assertAlmostEqual(duration, 0.10)
         self.assertIsNone(gap)
         self.assertEqual(_audio_event_timing("bad", 10.0, 9.0, 0.1), (0.0, None))
+
+    def test_session_resumption_helper_accepts_only_resumable_handles(self):
+        class Update:
+            def __init__(self, resumable, handle):
+                self.resumable = resumable
+                self.new_handle = handle
+
+        class Response:
+            def __init__(self, update):
+                self.session_resumption_update = update
+
+        self.assertEqual(
+            _resumable_session_handle(Response(Update(True, "resume-token"))),
+            "resume-token",
+        )
+        self.assertIsNone(
+            _resumable_session_handle(Response(Update(False, "unsafe-token")))
+        )
+        self.assertIsNone(
+            _resumable_session_handle(Response(Update(True, "")))
+        )
+        self.assertIsNone(_resumable_session_handle(object()))
 
     def test_live_playback_prebuffer_and_output_blocksize(self):
         # 24 kHz * mono * int16 * 0.3 seconds = 14,400 bytes.

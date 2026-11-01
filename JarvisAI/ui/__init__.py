@@ -37,7 +37,7 @@ from PyQt6.QtWidgets import (
     QAbstractButton, QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QScrollArea,
     QSizePolicy, QSplitter, QStackedWidget, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
-    QSlider, QToolButton, QTextBrowser,
+    QSlider, QToolButton,
 )
 from .smart_panel import SmartPanelHeader
 from core.voice_ui_control import (

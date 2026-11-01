@@ -21,7 +21,7 @@ import tempfile
 from unittest.mock import Mock, patch
 import numpy as np
 
-from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt, QPoint
+from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt, QPoint, QPropertyAnimation
 from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton
 from PyQt6.QtTest import QTest
 
@@ -61,7 +61,15 @@ class TestUIHologram(unittest.TestCase):
 
     def _track_widget(self, widget):
         def dispose():
+            # Stop child Qt timers/animations before deferred deletion. Leaving a
+            # native callback queued while the offscreen QApplication tears down
+            # can abort the Windows/Linux smoke-test process.
+            for timer in widget.findChildren(QTimer):
+                timer.stop()
+            for animation in widget.findChildren(QPropertyAnimation):
+                animation.stop()
             widget.close()
+            QCoreApplication.processEvents()
             widget.deleteLater()
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.addCleanup(dispose)
@@ -540,7 +548,11 @@ class TestUIHologram(unittest.TestCase):
         self.assertTrue(hud._right_menu.isVisible())
 
         hud.resize(1024, 700)
-        app.processEvents()
+        # Exercise the deferred geometry pass deterministically. The scheduling
+        # contract is covered separately by test_resize_event_defers_floating_child_geometry;
+        # waiting on a native Qt timer here can terminate the Windows offscreen
+        # platform process before pytest has a chance to report an assertion.
+        hud._apply_deferred_resize_layout()
         expected_x = max(
             8, hud.centralWidget().width() - hud._right_menu.width() - 12
         )

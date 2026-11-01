@@ -13,7 +13,7 @@ Design rules
 * Colours are ``(r, g, b)`` tuples in 0-255. Renderers convert to whatever type
   they need.
 * Every palette ships a *neutral* fallback: if a value is unknown, the caller
-  gets the JARVIS copper palette rather than a crash or an invisible black.
+  gets the JARVIS cyan palette rather than a crash or an invisible black.
 
 The settings object (:class:`VisualPreferences`) is deliberately tolerant: it
 clamps out-of-range values and falls back to defaults, because it is fed
@@ -99,15 +99,15 @@ class ThemePalette:
         )
 
 
-# JARVIS: copper-orange neural identity; Bihansa remains rose-pink.
-# Bihansa remains a separate rose-pink persona; geometry and rendering are shared.
+# JARVIS: restore the original electric-cyan neural identity; Bihansa remains rose-pink.
+# Keep the personas separate: geometry and rendering are shared, not their colours.
 JARVIS_PALETTE = ThemePalette(
     mode="jarvis",
-    primary=(255, 172, 92),     # copper orange
-    secondary=(255, 215, 168), # warm copper neural nodes
-    glow=(255, 128, 48),       # amber bloom
-    accent=(255, 172, 92),     # copper UI chrome
-    deep=(92, 48, 20),        # far-side depth
+    primary=(0, 229, 255),       # electric cyan (#00e5ff)
+    secondary=(145, 245, 255), # bright cyan neural nodes
+    glow=(0, 188, 212),        # cyan bloom
+    accent=(0, 229, 255),      # cyan UI chrome
+    deep=(0, 55, 72),          # far-side depth
     heart_red=(255, 56, 72),
     heart_pink=(255, 96, 158),
     heart_orange=(255, 140, 48),

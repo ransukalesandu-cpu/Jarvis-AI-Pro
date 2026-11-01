@@ -48,11 +48,11 @@ class TestPalettes(unittest.TestCase):
                 self.assertEqual(len(rgb), 3)
                 self.assertTrue(all(isinstance(c, int) and 0 <= c <= 255 for c in rgb))
 
-    def test_jarvis_is_copper_and_bihansa_is_pink(self):
-        # JARVIS: copper orange, red dominant with a warm amber middle channel.
-        self.assertGreater(JARVIS_PALETTE.primary[0], 200)
-        self.assertGreater(JARVIS_PALETTE.primary[1], 120)
-        self.assertGreater(JARVIS_PALETTE.primary[0], JARVIS_PALETTE.primary[2])
+    def test_jarvis_is_electric_cyan_and_bihansa_is_pink(self):
+        # JARVIS returns to the original electric-cyan identity (#00e5ff).
+        self.assertEqual(JARVIS_PALETTE.primary, (0, 229, 255))
+        self.assertGreater(JARVIS_PALETTE.secondary[1], 200)
+        self.assertGreater(JARVIS_PALETTE.secondary[2], 200)
         # Bihansa: rose pink, red and blue both high, green lower.
         self.assertGreater(BIHANSA_PALETTE.primary[0], 200)
         self.assertGreater(BIHANSA_PALETTE.primary[2], 150)

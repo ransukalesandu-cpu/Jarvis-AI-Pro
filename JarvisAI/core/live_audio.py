@@ -156,6 +156,44 @@ class LiveReceiveDiagnostics:
         self.short_audio_fragment_logged = False
         self.output_audio_bytes_seen = 0
 
+def _turn_output_diagnostic(
+    output_text_seen: bool,
+    output_audio_bytes: int,
+    *,
+    output_audio_checkpointed: bool,
+    interrupted: bool,
+    min_frame_bytes: int,
+) -> str | None:
+    """Build the end-of-turn diagnostic without reading receiver state.
+
+    Returns None when audio was successfully queued, the turn was interrupted,
+    or no diagnostic is appropriate.
+    """
+    if output_audio_checkpointed or interrupted:
+        return None
+    if output_text_seen and output_audio_bytes:
+        return (
+            "[AudioTrace 3→4/AUDIO] Assistant text arrived, but only "
+            f"{output_audio_bytes} PCM byte(s) arrived this turn; "
+            f"no complete 10 ms frame ({min_frame_bytes} bytes) "
+            "reached playback. Check Live model/audio output."
+        )
+    if output_text_seen:
+        return (
+            "[AudioTrace 3→4/AUDIO] Assistant text arrived but Gemini "
+            "returned no audio payload for this turn."
+        )
+    if output_audio_bytes:
+        return (
+            f"[AudioTrace 3→4/AUDIO] Only {output_audio_bytes} "
+            "PCM byte(s) arrived without a playable frame or assistant text."
+        )
+    return (
+        "[AudioTrace 3/LIVE] Turn completed without assistant "
+        "transcription or audio payload."
+    )
+
+
 def _resumable_session_handle(response) -> str | None:
     """Return only a server-confirmed resumable Gemini Live session handle."""
     update = getattr(response, "session_resumption_update", None)

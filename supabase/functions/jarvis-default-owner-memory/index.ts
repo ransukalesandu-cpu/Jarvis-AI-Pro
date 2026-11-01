@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info, x-jarvis-host-timestamp, x-jarvis-host-nonce",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info, x-jarvis-host-timestamp, x-jarvis-host-nonce, x-jarvis-host-key, x-jarvis-host-signature",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const jsonResponse = (body: unknown, status = 200) =>
@@ -54,7 +54,7 @@ async function verifyEnrolledDevice(
 
   const digest = await crypto.subtle.digest("SHA-256", rawBody);
   const digestHex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
-  const message = new TextEncoder().encode(`JARVIS-HOST-V1\\n${timestamp}\\n${nonce}\\n${digestHex}`);
+  const message = new TextEncoder().encode(`JARVIS-HOST-V1\n${timestamp}\n${nonce}\n${digestHex}`);
   try {
     const imported = await crypto.subtle.importKey("raw", publicKey, { name: "Ed25519" }, false, ["verify"]);
     return await crypto.subtle.verify({ name: "Ed25519" }, imported, signature, message);
@@ -76,7 +76,7 @@ Deno.serve(async (req: Request) => {
   if (rawBody.length > 1024) return jsonResponse({ error: "request_too_large" }, 413);
   const nonce = req.headers.get("X-Jarvis-Host-Nonce") || "";
   const timestampHeader = req.headers.get("X-Jarvis-Host-Timestamp") || "";
-  if (!/^\\d{10}$/.test(timestampHeader) || nonce.length < 16 || nonce.length > 128) return jsonResponse({ error: "request_nonce_required" }, 400);
+  if (!/^\d{10}$/.test(timestampHeader) || nonce.length < 16 || nonce.length > 128) return jsonResponse({ error: "request_nonce_required" }, 400);
   const timestamp = Number(timestampHeader);
   if (!Number.isSafeInteger(timestamp) || Math.abs(Date.now() / 1000 - timestamp) > 300) return jsonResponse({ error: "request_timestamp_invalid" }, 400);
 

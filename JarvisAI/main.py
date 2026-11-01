@@ -3337,21 +3337,24 @@ class JarvisLive:
                                     )
 
                             if not receive_diagnostics.checkpoint_claimed("output_audio") and not self._interrupted:
-                                if receive_diagnostics.output_text_checkpoint_logged and receive_diagnostics.output_audio_bytes_seen:
+                                output_text_seen, output_audio_bytes = (
+                                    receive_diagnostics.turn_output_snapshot()
+                                )
+                                if output_text_seen and output_audio_bytes:
                                     print(
                                         f"[AudioTrace 3→4/AUDIO] Assistant text arrived, but only "
-                                        f"{receive_diagnostics.output_audio_bytes_seen} PCM byte(s) arrived this turn; "
+                                        f"{output_audio_bytes} PCM byte(s) arrived this turn; "
                                         f"no complete 10 ms frame ({_MIN_LIVE_AUDIO_FRAME_BYTES} bytes) "
                                         "reached playback. Check Live model/audio output."
                                     )
-                                elif receive_diagnostics.output_text_checkpoint_logged:
+                                elif output_text_seen:
                                     print(
                                         "[AudioTrace 3→4/AUDIO] Assistant text arrived but Gemini "
                                         "returned no audio payload for this turn."
                                     )
-                                elif receive_diagnostics.output_audio_bytes_seen:
+                                elif output_audio_bytes:
                                     print(
-                                        f"[AudioTrace 3→4/AUDIO] Only {receive_diagnostics.output_audio_bytes_seen} "
+                                        f"[AudioTrace 3→4/AUDIO] Only {output_audio_bytes} "
                                         "PCM byte(s) arrived without a playable frame or assistant text."
                                     )
                                 else:

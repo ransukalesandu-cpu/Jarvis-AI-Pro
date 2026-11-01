@@ -115,6 +115,10 @@ class HUDMainWindow(QMainWindow):
         self._auth_manager = get_auth_manager() if callable(get_auth_manager) else None
 
         self._privacy_locked = False
+        # Let native Qt resize/layout processing finish before moving floating children.
+        self._resize_layout_timer = QTimer(self)
+        self._resize_layout_timer.setSingleShot(True)
+        self._resize_layout_timer.timeout.connect(self._apply_deferred_resize_layout)
         self._init_ui()
         self._wire_signals()
         # Minimising must not leave a large empty frame on the desktop: the
@@ -445,12 +449,18 @@ class HUDMainWindow(QMainWindow):
         self._right_menu_button.clicked.connect(self._toggle_right_dropdown)
 
 
-    def resizeEvent(self, event):
-        """Keep floating menus inside the central workspace after window resizes."""
-        super().resizeEvent(event)
+    def _apply_deferred_resize_layout(self) -> None:
+        """Reposition floating children after Qt has completed native resizing."""
         self._position_left_menu_trigger()
         if hasattr(self, "_right_menu") and self._right_menu.isVisible():
             self._position_right_menu()
+
+    def resizeEvent(self, event):
+        """Schedule floating-child geometry after the native resize event returns."""
+        super().resizeEvent(event)
+        timer = getattr(self, "_resize_layout_timer", None)
+        if timer is not None:
+            timer.start(10)
 
     def changeEvent(self, event):
         """Swap the full HUD for the compact status widget while minimised."""

@@ -125,6 +125,23 @@ class LiveAudioHelperTests(unittest.TestCase):
 
 
 class RealtimeAudioSenderTests(unittest.IsolatedAsyncioTestCase):
+    def test_pcm_mime_normalization_preserves_explicit_rate_and_non_pcm_types(self):
+        from core.live_audio import _normalize_input_audio_mime_type
+
+        self.assertEqual(
+            _normalize_input_audio_mime_type("audio/pcm"),
+            "audio/pcm;rate=16000",
+        )
+        self.assertEqual(
+            _normalize_input_audio_mime_type("audio/pcm;rate=24000"),
+            "audio/pcm;rate=24000",
+        )
+        self.assertEqual(
+            _normalize_input_audio_mime_type("audio/ogg"),
+            "audio/ogg",
+        )
+        self.assertEqual(_normalize_input_audio_mime_type(None), "None")
+
     class Queue:
         def __init__(self, items):
             self.items = list(items)

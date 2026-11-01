@@ -61,7 +61,7 @@ from core.live_audio import (
     _take_playback_pcm, _pcm_level, _live_audio_chunks,
     _error_text, _is_quota_error, _is_transient_live_disconnect,
     _is_live_operation_aborted, _resumable_session_handle,
-    LiveReceiveDiagnostics,
+    _turn_output_diagnostic, LiveReceiveDiagnostics,
 )
 # Re-exported on purpose: tests/test_live_pcm_buffering.py imports these from
 # `main`, and the module has always exposed them. Do not "clean up".
@@ -3336,32 +3336,20 @@ class JarvisLive:
                                         f"({len(final_pcm)} bytes) at turn completion."
                                     )
 
-                            if not receive_diagnostics.checkpoint_claimed("output_audio") and not self._interrupted:
-                                output_text_seen, output_audio_bytes = (
-                                    receive_diagnostics.turn_output_snapshot()
-                                )
-                                if output_text_seen and output_audio_bytes:
-                                    print(
-                                        f"[AudioTrace 3→4/AUDIO] Assistant text arrived, but only "
-                                        f"{output_audio_bytes} PCM byte(s) arrived this turn; "
-                                        f"no complete 10 ms frame ({_MIN_LIVE_AUDIO_FRAME_BYTES} bytes) "
-                                        "reached playback. Check Live model/audio output."
-                                    )
-                                elif output_text_seen:
-                                    print(
-                                        "[AudioTrace 3→4/AUDIO] Assistant text arrived but Gemini "
-                                        "returned no audio payload for this turn."
-                                    )
-                                elif output_audio_bytes:
-                                    print(
-                                        f"[AudioTrace 3→4/AUDIO] Only {output_audio_bytes} "
-                                        "PCM byte(s) arrived without a playable frame or assistant text."
-                                    )
-                                else:
-                                    print(
-                                        "[AudioTrace 3/LIVE] Turn completed without assistant "
-                                        "transcription or audio payload."
-                                    )
+                            output_text_seen, output_audio_bytes = (
+                                receive_diagnostics.turn_output_snapshot()
+                            )
+                            diagnostic_message = _turn_output_diagnostic(
+                                output_text_seen,
+                                output_audio_bytes,
+                                output_audio_checkpointed=(
+                                    receive_diagnostics.checkpoint_claimed("output_audio")
+                                ),
+                                interrupted=self._interrupted,
+                                min_frame_bytes=_MIN_LIVE_AUDIO_FRAME_BYTES,
+                            )
+                            if diagnostic_message:
+                                print(diagnostic_message)
                             if audio_fragment_buffer:
                                 trailing_bytes = len(audio_fragment_buffer)
                                 reason = (

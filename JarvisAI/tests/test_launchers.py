@@ -59,7 +59,7 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn("setOpenExternalLinks(False)", module)
         self.assertIn('url.scheme().casefold() != "jarvis"', module)
         for key in ("timers", "music", "news", "media", "system"):
-            self.assertIn(f"jarvis://view/{key}", module)
+            self.assertIn(f'("{key}",', module)
 
     def test_smart_panel_shortcuts_use_existing_workspace_views(self):
         source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")

@@ -22,7 +22,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt, QPoint, QPropertyAnimation
-from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton
+from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton, QWidget
 from PyQt6.QtTest import QTest
 
 # Ensure QApplication exists before testing Qt widgets

@@ -133,6 +133,11 @@ class LiveReceiveDiagnostics:
         setattr(self, attribute, True)
         return True
 
+    def checkpoint_claimed(self, name: str) -> bool:
+        """Return whether a supported one-per-turn checkpoint was claimed."""
+        attribute = self._CHECKPOINT_ATTRIBUTES.get(name)
+        return bool(attribute and getattr(self, attribute))
+
     def reset_audio_timing(self) -> None:
         self.last_audio_event_at = None
         self.last_audio_event_duration = 0.0

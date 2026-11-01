@@ -21,7 +21,7 @@ import tempfile
 from unittest.mock import Mock, patch
 import numpy as np
 
-from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt, QPoint
+from PyQt6.QtCore import QSettings, QCoreApplication, QEvent, QTimer, Qt, QPoint, QPropertyAnimation
 from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton
 from PyQt6.QtTest import QTest
 
@@ -61,7 +61,15 @@ class TestUIHologram(unittest.TestCase):
 
     def _track_widget(self, widget):
         def dispose():
+            # Stop child Qt timers/animations before deferred deletion. Leaving a
+            # native callback queued while the offscreen QApplication tears down
+            # can abort the Windows/Linux smoke-test process.
+            for timer in widget.findChildren(QTimer):
+                timer.stop()
+            for animation in widget.findChildren(QPropertyAnimation):
+                animation.stop()
             widget.close()
+            QCoreApplication.processEvents()
             widget.deleteLater()
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.addCleanup(dispose)

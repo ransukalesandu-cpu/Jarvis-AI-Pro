@@ -60,7 +60,7 @@ from core.live_audio import (
     _MIN_LIVE_AUDIO_FRAME_BYTES, _PLAYBACK_SLICE_BYTES,
     _take_playback_pcm, _pcm_level, _live_audio_chunks,
     _error_text, _is_quota_error, _is_transient_live_disconnect,
-    _is_live_operation_aborted, _audio_event_timing,
+    _is_live_operation_aborted, _audio_event_timing, _resumable_session_handle,
 )
 # Re-exported on purpose: tests/test_live_pcm_buffering.py imports these from
 # `main`, and the module has always exposed them. Do not "clean up".
@@ -3082,12 +3082,11 @@ class JarvisLive:
                     # moment is what the flag exists to prevent — so only
                     # resumable handles are kept. This is three lines and it is
                     # the entire fix for "every reconnect forgets everything".
-                    _sru = getattr(response, "session_resumption_update", None)
-                    if _sru is not None:
-                        if getattr(_sru, "resumable", False) and getattr(_sru, "new_handle", None):
-                            if self._resume_handle is None:
-                                print("[JARVIS] 🔗 Session resumption armed")
-                            self._resume_handle = _sru.new_handle
+                    resumable_handle = _resumable_session_handle(response)
+                    if resumable_handle:
+                        if self._resume_handle is None:
+                            print("[JARVIS] 🔗 Session resumption armed")
+                        self._resume_handle = resumable_handle
 
                     sc = response.server_content
                     _early_transcript = getattr(

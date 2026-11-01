@@ -19,6 +19,29 @@ _OUTPUT_BLOCKSIZE = 2048
 _MIN_LIVE_AUDIO_FRAME_BYTES = (RECEIVE_SAMPLE_RATE // 100) * 2
 _PLAYBACK_SLICE_BYTES = 2400
 _MIN_PREBUFFER_BYTES = int(RECEIVE_SAMPLE_RATE * CHANNELS * 2 * 0.30)
+_MIN_PREBUFFER_MS = 150
+_MAX_PREBUFFER_MS = 600
+_PREBUFFER_STEP_MS = 50
+_STABLE_TURNS_TO_SHRINK = 3
+
+
+def _next_prebuffer_ms(current_ms: int, *, underrun: bool = False, stable_turns: int = 0) -> int:
+    """Adapt the Live playback jitter target within safe latency bounds.
+
+    One underrun raises the target by 50 ms. Three complete turns without an
+    underrun lower it by 25 ms, avoiding rapid oscillation on bursty networks.
+    """
+    try:
+        current = int(current_ms)
+        stable = max(0, int(stable_turns))
+    except (TypeError, ValueError, OverflowError):
+        current, stable = 300, 0
+    current = min(_MAX_PREBUFFER_MS, max(_MIN_PREBUFFER_MS, current))
+    if underrun:
+        current += _PREBUFFER_STEP_MS
+    elif stable >= _STABLE_TURNS_TO_SHRINK:
+        current -= _PREBUFFER_STEP_MS // 2
+    return min(_MAX_PREBUFFER_MS, max(_MIN_PREBUFFER_MS, current))
 
 
 def _take_playback_pcm(buffer: bytearray, *, final: bool = False) -> bytes:

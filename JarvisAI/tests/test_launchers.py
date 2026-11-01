@@ -184,6 +184,10 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn('("NEWS", "news")', dashboard)
         self.assertIn('("MEDIA", "media")', dashboard)
         self.assertIn("if timer is not None and not timer.isActive():", dashboard)
+        self.assertIn("QGraphicsOpacityEffect(dialog)", dashboard)
+        self.assertIn('QPropertyAnimation(fade, b"opacity", dialog)', dashboard)
+        self.assertIn("self._bento_fade.setDuration(220)", dashboard)
+        self.assertIn("self._bento_fade.start()", dashboard)
 
     def test_right_quick_controls_menu_exposes_panels_and_assistant_modes(self):
         source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")

@@ -4575,8 +4575,8 @@ class MainWindow(QMainWindow):
         self._workspace_side = QFrame()
         self._workspace_side.setObjectName("WorkspaceGlassPanel")
         self._workspace_side.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self._workspace_side.setMinimumWidth(270)
-        self._workspace_side.setMaximumWidth(420)
+        self._workspace_side.setMinimumWidth(230)
+        self._workspace_side.setMaximumWidth(390)
         self._workspace_side.setStyleSheet("""
             QFrame#WorkspaceGlassPanel {
                 background: rgba(13, 24, 29, 232);
@@ -4590,6 +4590,7 @@ class MainWindow(QMainWindow):
         self._workspace_header = SmartPanelHeader(self._workspace_side)
         self._workspace_header.view_requested.connect(self._on_workspace_shortcut)
         self._workspace_header.close_requested.connect(self._close_workspace)
+        self._workspace.tabs.currentChanged.connect(self._sync_workspace_header)
         self._workspace_side_layout.addWidget(self._workspace_header)
         self._workspace_side_layout.addWidget(self._workspace, 1)
         self._workspace_side.hide()
@@ -4817,6 +4818,26 @@ class MainWindow(QMainWindow):
             self.stop_camera_stream()
         self._earth_panel.start_flight_radar_in_background(manual_place)
 
+    def _sync_workspace_header(self, index: int) -> None:
+        """Keep the HTML navigation highlight aligned with native workspace tabs."""
+        if index < 0 or not self._workspace_side.isVisible():
+            return
+        key = next(
+            (name for name, tab_index in self._workspace._page_index.items()
+             if tab_index == index),
+            "command",
+        )
+        active = {
+            "timers": "timers", "news": "news", "video": "media",
+            "system": "system",
+        }.get(key, "command")
+        if key == "web":
+            current_url = self._workspace._url_entry.text().casefold()
+            active = "music" if "music.youtube.com" in current_url else "media"
+        self._workspace_header.set_context(
+            active, title=self._workspace._view_title.text(), status="ACTIVE"
+        )
+
     def _on_workspace_shortcut(self, key: str) -> None:
         """Handle the HTML smart-panel shortcuts through a strict local allowlist."""
         if self._cam_active:
@@ -4845,8 +4866,9 @@ class MainWindow(QMainWindow):
         self._workspace_header.set_context(active_view, status="ACTIVE")
         self._workspace_side.show()
         total = max(1, self._stage_split.width())
-        side_width = min(390, max(270, int(total * 0.40)))
-        self._stage_split.setSizes([max(260, total - side_width), side_width])
+        side_width = min(390, max(230, int(total * 0.40)))
+        side_width = min(side_width, max(230, total - 180))
+        self._stage_split.setSizes([max(180, total - side_width), side_width])
 
     def _show_workspace(self, kind: str, payload) -> None:
         data = payload if isinstance(payload, dict) else {"value": payload}
@@ -4977,7 +4999,10 @@ class MainWindow(QMainWindow):
         if feature in self._workspace._page_index:
             self._workspace.show_view(feature, titles.get(feature, feature.upper()))
             self._workspace_open = True
-            self._show_workspace_side(feature if feature in {"news", "newsfirst", "adaderana"} else "command")
+            active = {
+                "timers": "timers", "news": "news", "video": "media", "system": "system",
+            }.get(feature, "command")
+            self._show_workspace_side(active)
 
     def _open_holo_news_voice(self, source: str) -> None:
         """Show requested headlines beside the hologram, not in its canvas."""

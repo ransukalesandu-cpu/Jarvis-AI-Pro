@@ -24,8 +24,8 @@ class SmartPanelHeader(QTextBrowser):
         ("timers", "TIME"),
         ("music", "MUSIC"),
         ("news", "NEWS"),
-        ("media", "MEDIA"),
-        ("system", "SYSTEM"),
+        ("media", "VIDEO"),
+        ("system", "SYS"),
     )
     _TITLES = {
         "timers": "TIMERS & REMINDERS",

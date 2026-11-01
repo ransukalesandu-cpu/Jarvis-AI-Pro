@@ -51,7 +51,11 @@ from core.ui_coordinator import HeadlessJarvisUI
 from core.audio_callback_guard import enqueue_audio_frame
 from core.playback_interrupt import interrupt_playback
 from core.voice_ui_control import has_wake_name_prefix, parse_voice_ui_command
-from core.audio_capture import open_input_stream_with_fallback
+from core.audio_capture import (
+    open_input_stream_with_fallback,
+    resample_input_audio,
+    take_fixed_pcm_frames,
+)
 from core.audio_playback import (
     run_audio_playback,
 )
@@ -2748,15 +2752,7 @@ class JarvisLive:
                     f"[AudioTrace 1/MIC] First callback received: frames={frames}, "
                     f"level={_pcm_level(indata):.3f}, status={status or 'OK'}."
                 )
-            if actual_sr != SEND_SAMPLE_RATE and actual_sr > 0 and indata.size > 0:
-                raw_mono = indata[:, 0] if indata.ndim > 1 else indata
-                n_samples = int(round(len(raw_mono) * SEND_SAMPLE_RATE / actual_sr))
-                if n_samples > 0 and len(raw_mono) > 1:
-                    old_x = np.linspace(0, 1, len(raw_mono))
-                    new_x = np.linspace(0, 1, n_samples)
-                    resampled_float = np.interp(new_x, old_x, raw_mono.astype(np.float32))
-                    resampled = np.clip(resampled_float, -32768, 32767).astype(np.int16)
-                    indata = resampled.reshape(-1, 1) if indata.ndim > 1 else resampled
+            indata = resample_input_audio(indata, actual_sr, SEND_SAMPLE_RATE)
             # Voice-ID enrollment is intentionally deferred until the
             # speaking/turn gate below. Otherwise JARVIS can enroll its own
             # speaker echo as the user's voice while it is talking.
@@ -2842,9 +2838,7 @@ class JarvisLive:
                                 vad_pcm_buffer.extend(
                                     np.asarray(mono, dtype=np.int16).tobytes()
                                 )
-                                while len(vad_pcm_buffer) >= 640:  # 20 ms at 16 kHz
-                                    frame = bytes(vad_pcm_buffer[:640])
-                                    del vad_pcm_buffer[:640]
+                                for frame in take_fixed_pcm_frames(vad_pcm_buffer, 640):
                                     vad_recent.append(
                                         self._speech_vad.is_speech(
                                             frame, SEND_SAMPLE_RATE

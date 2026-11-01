@@ -1,19 +1,11 @@
 """
-core/confirm.py — a confirmation the model cannot forge.
+core/confirm.py — voice-only confirmation for consequential actions.
 
-THE DESIGN HERE
-    The confirmation token is issued by the *interface*, never by the model:
-
-      1. An action calls `request(...)` with a callable that does the real work.
-      2. This module hands the UI a banner with CONFIRM / CANCEL and returns
-         IMMEDIATELY with a sentence for the model to say out loud.
-      3. If — and only if — the user presses CONFIRM or says the exact voice
-         phrase "confirm action" while a request is pending, `resolve()` runs
-         the stored callable off the Qt thread. CANCEL has matching paths.
-
-    Nothing blocks. The model keeps talking while the banner is up, so this
-    costs no latency at all; in fact it is cheaper than the old gate, which
-    burned two tool round trips (reject, then re-call) on every shutdown.
+    The model cannot create or resolve a confirmation token. The application
+    stores the callable locally and accepts only an explicit spoken phrase
+    while that exact request is pending. No confirmation HUD or popup is shown.
+    Ordinary low-risk actions never reach this module; they execute directly
+    through the risk policy in core/security.py.
 
 WHAT BELONGS HERE AND WHAT DOES NOT
     Only genuinely irreversible things. Anything that can be reversed should be
@@ -48,12 +40,8 @@ class _Pending:
 
 _pending: Optional[_Pending] = None
 _lock = threading.Lock()
-_MANUAL_CLICK_ONLY_KEYS = {
-    "sec-dev_agent", "sec-memory_export", "sec-memory_import",
-}
-# Keep these three operations click-only even if an unrelated environment
-# setting changes. Other confirmation-gated actions can use the exact spoken
-# approval phrase with verified live owner speech.
+# All confirmation-gated operations use the voice-only path. The pending
+# request is local, time-limited, and can only be resolved by an explicit phrase.
 
 # Set once at startup by main.py. Signature: (title, detail) -> None for show,
 # and () -> None for hide. Both are marshalled onto the Qt thread by the UI.
@@ -69,14 +57,12 @@ def bind(show, hide, log=None) -> None:
 
 
 def is_bound() -> bool:
-    """True when a real UI is connected to show and hide the banner.
+    """True when the confirmation service is wired into the running assistant.
 
-    Headless runs (and modules imported by tests) leave this False, which is how
-    the autonomous engine knows nobody is present to approve a consequential
-    step and must therefore refuse it instead of hanging on a banner that can
-    never appear.
+    Voice confirmation does not require a visible UI. The callback binding is
+    retained for compatibility with the existing startup wiring.
     """
-    return _show_cb is not None and _hide_cb is not None
+    return _log_cb is not None
 
 
 def _log(msg: str) -> None:
@@ -88,18 +74,11 @@ def _log(msg: str) -> None:
 
 
 def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
-    """Park an irreversible action behind the on-screen gate.
+    """Park a consequential action until the user explicitly confirms by voice.
 
-    Returns the sentence the tool should hand back to the model — phrased as an
-    instruction so the assistant asks the user out loud in their own language,
-    rather than reading an English string verbatim."""
+    No UI callback is invoked: the returned instruction is spoken by JARVIS.
+    """
     global _pending
-
-    if _show_cb is None:
-        # No interface bound (headless, or a very early call). Refuse rather
-        # than silently performing something irreversible.
-        return (f"I cannot confirm '{title}' right now because the interface is "
-                f"not available, so I have not done it.")
 
     with _lock:
         if _pending is not None and time.monotonic() - _pending.at <= TIMEOUT_SECONDS:
@@ -114,27 +93,12 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
         _pending = _Pending(key=key, title=title, detail=detail,
                             run=run, at=time.monotonic())
 
-    try:
-        _show_cb(title, detail)
-    except Exception as e:
-        with _lock:
-            _pending = None
-        return f"Could not ask for confirmation: {e}. Nothing was done."
-
-    _log(f"SYS: Awaiting confirmation — {title}")
-    if key in _MANUAL_CLICK_ONLY_KEYS:
-        guidance = (
-            "This request requires the user to click CONFIRM on the HUD; spoken "
-            "approval is disabled for it. They can click CANCEL instead."
-        )
-    else:
-        guidance = (
-            "The user can say 'confirm action' with verified live owner speech or click CONFIRM on the HUD; "
-            "they can say 'cancel action' or click CANCEL instead."
-        )
+    _log(f"SYS: Awaiting spoken confirmation — {title}")
+    spoken_detail = f" Details: {detail}." if detail else ""
     return (
-        f"[CONFIRMATION_PENDING] I have put a confirmation on screen for: {title}. "
-        f"{guidance} Do not claim it is done."
+        f"[CONFIRMATION_PENDING] Ask the user aloud: "
+        f"'{title}.{spoken_detail} Say confirm action to proceed, or cancel action to cancel.' "
+        "Do not show a popup, do not execute yet, and do not claim it is done."
     )
 
 
@@ -155,7 +119,7 @@ def resolve(accepted: bool, source: str = "HUD") -> None:
 def _finish(p: _Pending | None, accepted: bool, source: str) -> None:
     """Complete an already-claimed confirmation without holding `_lock`."""
 
-    if _hide_cb:
+    if source != "voice" and _hide_cb:
         try:
             _hide_cb()
         except Exception:
@@ -192,20 +156,10 @@ def resolve_by_voice(text: str) -> str | None:
     manual HUD click; the pending object is checked again before consuming it.
     """
     phrase = " ".join(re.findall(r"[a-z0-9]+", str(text or "").casefold()))
-    # Use explicit phrases so ordinary conversation (especially a bare
-    # "yes" or "no") cannot approve or reject a sensitive operation by accident.
-    # Voice approval still passes through Voice ID below; manual-click-only
-    # operations remain click-only regardless of the phrase.
-    accepted = {
-        "confirm", "confirm action", "approve", "approve action",
-        "accept access", "allow access", "approve access", "grant access",
-        "accept request", "approve request", "allow request",
-    }
-    rejected = {
-        "cancel", "cancel action", "deny", "deny action",
-        "deny access", "reject access", "decline access",
-        "deny request", "reject request", "decline request",
-    }
+    # Only these complete phrases resolve a pending request. Bare yes/no,
+    # generic confirm, and casual approval words are deliberately ignored.
+    accepted = {"confirm action"}
+    rejected = {"cancel action"}
     if phrase in accepted:
         decision, label = True, "approved"
     elif phrase in rejected:
@@ -220,17 +174,17 @@ def resolve_by_voice(text: str) -> str | None:
             if pending is not None:
                 _pending = None
             return None
-        if decision and pending.key in _MANUAL_CLICK_ONLY_KEYS:
-            _log(f"SEC: Voice approval ignored — manual HUD click required for {pending.title}.")
-            return "manual_click_required"
     if decision:
         try:
             from core import security
-            if not security.authorize_voice_confirmation():
+            # During the explicitly configured development phase owner Voice ID
+            # is disabled. When it is enabled again, require verified live owner
+            # speech before accepting the spoken approval.
+            if security.voice_id_required() and not security.authorize_voice_confirmation():
                 _log(f"SEC: Voice ID blocked spoken approval for {pending.title}.")
                 return "voice_id_required"
         except Exception:
-            _log(f"SEC: Voice ID check unavailable; spoken approval denied for {pending.title}.")
+            _log(f"SEC: Voice authorization unavailable; spoken approval denied for {pending.title}.")
             return "voice_id_required"
     with _lock:
         if _pending is not pending:

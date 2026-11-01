@@ -3280,7 +3280,7 @@ class JarvisLive:
                                         elif decision == "voice_id_required":
                                             self.ui.write_log(
                                                 "SEC: Voice ID did not verify this speaker; "
-                                                "spoken approval denied. Use the HUD click."
+                                                "spoken approval denied. Nothing was executed."
                                             )
                                         else:
                                             self.ui.write_log(

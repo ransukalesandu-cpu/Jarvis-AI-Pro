@@ -66,6 +66,7 @@ from core.live_audio import (
     _error_text, _is_quota_error, _is_transient_live_disconnect,
     _is_live_operation_aborted, _resumable_session_handle,
     _turn_output_diagnostic_from_state, LiveReceiveDiagnostics,
+    run_realtime_audio_sender,
 )
 # Re-exported on purpose: tests/test_live_pcm_buffering.py imports these from
 # `main`, and the module has always exposed them. Do not "clean up".
@@ -2653,53 +2654,31 @@ class JarvisLive:
         )
 
     async def _send_realtime(self):
-        frames_sent = 0
-        print("[AudioTrace 1→3] Sender running; waiting for microphone/phone audio frames.")
-        while True:
-            msg = await self.out_queue.get()
+        def is_audio_send_allowed() -> bool:
             try:
                 manager = security.get_auth_manager()
-                if manager.is_silent() or manager.needs_pin():
-                    continue
+                return not manager.is_silent() and not manager.needs_pin()
             except Exception:
                 failsoft.suppress('main:JarvisLive._send_realtime')
-                continue
-            # Gemini 3.x Live rejects the old realtime_input.media_chunks field
-            # (what `media=...` maps to) and closes the socket with a 1007. Send
-            # mic / phone PCM through the new `audio` field instead. Queue items
-            # are {"data": <bytes>, "mime_type": <str>} from _listen_audio and
-            # the phone relay.
-            # Gemini Live needs the PCM sample rate in the MIME type. The
-            # local mic is explicitly opened at SEND_SAMPLE_RATE (16 kHz);
-            # omitting rate can make the server interpret the samples at a
-            # different rate, distorting speech timing and recognition.
-            mime_type = str(msg.get("mime_type", "audio/pcm;rate=16000"))
-            if mime_type.lower().startswith("audio/pcm") and "rate=" not in mime_type.lower():
-                mime_type = "audio/pcm;rate=16000"
-            if frames_sent == 0:
-                print(
-                    f"[AudioTrace 1→3] Sending first input frame "
-                    f"({len(msg.get('data', b''))} bytes; {mime_type})."
-                )
-            try:
-                await self.session.send_realtime_input(
-                    audio=types.Blob(
-                        data=msg["data"],
-                        mime_type=mime_type,
-                    )
-                )
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                print(
-                    f"[AudioTrace 1→3] Live audio send failed after {frames_sent} "
-                    f"frames: {type(exc).__name__}: {exc}"
-                )
-                traceback.print_exc()
-                raise
-            frames_sent += 1
-            if frames_sent == 1:
-                print("[AudioTrace 1→3] First input frame accepted by the Live client.")
+                return False
+
+        def report_send_error(exc, frames_sent: int) -> None:
+            print(
+                f"[AudioTrace 1→3] Live audio send failed after {frames_sent} "
+                f"frames: {type(exc).__name__}: {exc}"
+            )
+            traceback.print_exc()
+
+        await run_realtime_audio_sender(
+            self.out_queue,
+            self.session,
+            is_allowed=is_audio_send_allowed,
+            make_blob=lambda data, mime_type: types.Blob(
+                data=data,
+                mime_type=mime_type,
+            ),
+            on_send_error=report_send_error,
+        )
 
     async def _resend_interrupted_request(self, text: str) -> None:
         """Continue a recognized user request after a fresh Live session opens."""

@@ -4500,6 +4500,9 @@ class MainWindow(QMainWindow):
         body.setSpacing(0)
 
         self._left_panel = self._build_left_panel()
+        # Keep the hologram as the primary focus on launch. Telemetry remains
+        # available from the compact header control without consuming HUD width.
+        self._left_panel.hide()
         body.addWidget(self._left_panel, stretch=0)
 
         # Center column: HUD + resizable content panel via QSplitter
@@ -5776,6 +5779,27 @@ class MainWindow(QMainWindow):
         self._drawer_btn.setCheckable(True)
         self._drawer_btn.clicked.connect(self._toggle_drawer)
         lay.addWidget(self._drawer_btn)
+
+        self._telemetry_btn = QPushButton("▤")
+        self._telemetry_btn.setFixedSize(26, 26)
+        self._telemetry_btn.setFont(QFont("Courier New", 11))
+        self._telemetry_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._telemetry_btn.setCheckable(True)
+        self._telemetry_btn.setChecked(False)
+        self._telemetry_btn.setToolTip("Show / hide system telemetry")
+        self._telemetry_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {C.TEXT_DIM};
+                border: 1px solid {C.BORDER}; border-radius: 4px;
+            }}
+            QPushButton:hover, QPushButton:checked {{
+                color: {C.PRI}; border-color: {C.PRI_DIM};
+                background: {C.PRI_GHO};
+            }}
+        """)
+        self._telemetry_btn.clicked.connect(self._toggle_telemetry_panel)
+        lay.addWidget(self._telemetry_btn)
+
         self._neural_view_btn = QPushButton("◉ FIELD")
         self._neural_view_btn.setFixedHeight(26)
         self._neural_view_btn.setFont(QFont("Consolas", 7, QFont.Weight.Bold))
@@ -5841,6 +5865,15 @@ class MainWindow(QMainWindow):
     def _tick_clock(self):
         self._clock_lbl.setText(time.strftime("%H:%M:%S"))
         self._date_lbl.setText(time.strftime("%a %d %b %Y"))
+
+    def _toggle_telemetry_panel(self, checked: bool) -> None:
+        """Show or hide the optional telemetry rail without affecting the HUD."""
+        panel = getattr(self, "_left_panel", None)
+        if panel is None:
+            return
+        panel.setVisible(bool(checked))
+        if hasattr(self, "_telemetry_btn"):
+            self._telemetry_btn.setChecked(bool(checked))
 
     def _build_left_panel(self) -> QWidget:
         w = QWidget()

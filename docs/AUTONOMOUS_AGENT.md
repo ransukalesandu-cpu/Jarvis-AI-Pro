@@ -150,6 +150,19 @@ Additional behaviour worth knowing:
   alone used to be kept, which silently dropped pytest's trailing "N passed" line
   and left the verification step unable to tell a green suite from a red one.
 
+### Runtime authorization revalidation
+
+Starting a task is not a permanent authorization grant. JARVIS rechecks the current
+owner-access state and Privacy Lock before every step and retry. Resuming a paused
+or persisted task also requires current owner access, an enabled autonomy setting,
+and an unlocked privacy state. If the security state cannot be read, the task is
+blocked rather than treated as unlocked.
+
+Privacy Lock also pauses the agent's screen-capture source. The manual screen-pause
+preference remains independent, so unlocking Privacy Lock does not silently undo
+a user-requested screen pause. Desktop input rechecks owner access and Privacy Lock
+at action time; dry-run does not override Privacy Lock.
+
 ## 4. Step kinds
 
 | Kind | Effect | Policy tier |

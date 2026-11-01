@@ -3,9 +3,21 @@ import unittest
 from unittest.mock import patch
 
 from core.hybrid_llm_router import HybridLLMRouter, resolve_preferred_provider
+from core.provider_protocol import TextProvider, TextProviderRouter
 
 
 class HybridLLMRouterTests(unittest.TestCase):
+    def test_router_and_provider_adapters_satisfy_shared_contracts(self):
+        router = HybridLLMRouter(api_keys={}, online_check=False)
+        self.assertIsInstance(router, TextProviderRouter)
+        self.assertEqual(
+            set(router.providers),
+            {"gemini", "groq", "openai", "claude", "ollama"},
+        )
+        for provider, adapter in router.providers.items():
+            with self.subTest(provider=provider):
+                self.assertIsInstance(adapter, TextProvider)
+
     def test_explicit_hybrid_provider_takes_precedence(self):
         self.assertEqual(
             resolve_preferred_provider({"hybrid_provider": "groq", "ai_provider": "openai"}),

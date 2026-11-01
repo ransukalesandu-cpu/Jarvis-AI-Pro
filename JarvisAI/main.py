@@ -66,6 +66,7 @@ from core.live_audio import (
 # `main`, and the module has always exposed them. Do not "clean up".
 from core.live_audio import (  # noqa: F401
     _MIN_PREBUFFER_BYTES,
+    _next_prebuffer_ms,
     _output_write_is_unpaced,
 )
 import re

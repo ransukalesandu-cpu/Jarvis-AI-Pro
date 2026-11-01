@@ -7,6 +7,7 @@ from main import (
     _MIN_LIVE_AUDIO_FRAME_BYTES,
     _MIN_PREBUFFER_BYTES,
     _OUTPUT_BLOCKSIZE,
+    _next_prebuffer_ms,
     _PLAYBACK_SLICE_BYTES,
     _error_text,
     _is_live_operation_aborted,
@@ -21,6 +22,14 @@ class LivePcmBufferingTests(unittest.TestCase):
         # 24 kHz * mono * int16 * 0.3 seconds = 14,400 bytes.
         self.assertEqual(_MIN_PREBUFFER_BYTES, 14_400)
         self.assertEqual(_OUTPUT_BLOCKSIZE, 2048)
+
+    def test_adaptive_prebuffer_grows_after_underrun_and_shrinks_after_stability(self):
+        self.assertEqual(_next_prebuffer_ms(300, underrun=True), 350)
+        self.assertEqual(_next_prebuffer_ms(600, underrun=True), 600)
+        self.assertEqual(_next_prebuffer_ms(150, stable_turns=3), 150)
+        self.assertEqual(_next_prebuffer_ms(400, stable_turns=3), 375)
+        self.assertEqual(_next_prebuffer_ms(400, stable_turns=2), 400)
+        self.assertEqual(_next_prebuffer_ms(900), 600)
 
     def test_live_abort_classifier_recognizes_policy_close_1008(self):
         self.assertTrue(

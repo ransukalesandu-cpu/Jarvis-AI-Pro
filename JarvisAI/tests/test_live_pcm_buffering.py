@@ -83,6 +83,21 @@ class LivePcmBufferingTests(unittest.TestCase):
         self.assertIsNone(diagnostics.last_audio_event_at)
         self.assertEqual(diagnostics.last_audio_event_duration, 0.0)
 
+    def test_live_receive_diagnostics_records_audio_event_timing(self):
+        from core.live_audio import LiveReceiveDiagnostics
+
+        diagnostics = LiveReceiveDiagnostics()
+        duration, gap = diagnostics.record_audio_event(4800, 10.0)
+        self.assertAlmostEqual(duration, 0.10)
+        self.assertIsNone(gap)
+        self.assertEqual(diagnostics.last_audio_event_at, 10.0)
+
+        duration, gap = diagnostics.record_audio_event(4800, 10.5)
+        self.assertAlmostEqual(duration, 0.10)
+        self.assertAlmostEqual(gap, 0.40)
+        self.assertEqual(diagnostics.last_audio_event_at, 10.5)
+        self.assertAlmostEqual(diagnostics.last_audio_event_duration, 0.10)
+
     def test_live_playback_prebuffer_and_output_blocksize(self):
         # 24 kHz * mono * int16 * 0.3 seconds = 14,400 bytes.
         self.assertEqual(_MIN_PREBUFFER_BYTES, 14_400)

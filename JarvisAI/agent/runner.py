@@ -312,12 +312,18 @@ class TaskRunner:
             queued_task = self._tasks.get(queued_id) or self.store.load(queued_id)
             if queued_task is None or queued_task.state.terminal:
                 continue
+            previous_state = queued_task.state
+            previous_reason = queued_task.cancel_reason
             queued_task.cancel_reason = str(reason)
             queued_task.transition(TaskState.CANCELLED, "removed from queue")
             queued_task.note(f"queued task cancelled: {reason}")
             try:
                 self.store.save(queued_task)
             except Exception:
+                # Restore the live object to match its still-uncancelled durable
+                # snapshot before returning the ID to the queue.
+                queued_task.state = previous_state
+                queued_task.cancel_reason = previous_reason
                 with self._lock:
                     if queued_id not in self._queue:
                         self._queue.append(queued_id)

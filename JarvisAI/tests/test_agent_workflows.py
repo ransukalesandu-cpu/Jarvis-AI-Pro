@@ -138,6 +138,31 @@ class CloudTaskStoreTests(unittest.TestCase):
         self.assertEqual([item.id for item in rows], [task.id])
 
 
+    @patch("agent.cloud_store.load_cloud_agent_task", side_effect=RuntimeError("cloud unavailable"))
+    def test_load_does_not_misreport_cloud_outage_as_missing_task(self, _load):
+        with self.assertRaisesRegex(RuntimeError, "cloud unavailable"):
+            CloudTaskStore().load("task-1")
+
+    @patch("agent.cloud_store.load_cloud_agent_task", return_value=None)
+    def test_load_returns_none_only_when_cloud_confirms_task_is_missing(self, _load):
+        self.assertIsNone(CloudTaskStore().load("missing-task"))
+
+    @patch("agent.cloud_store.load_cloud_agent_task", return_value={"report": "not-a-dict"})
+    def test_load_rejects_malformed_cloud_snapshot(self, _load):
+        with self.assertRaisesRegex(RuntimeError, "could not be restored"):
+            CloudTaskStore().load("task-1")
+
+    @patch("agent.cloud_store.list_cloud_agent_tasks", side_effect=RuntimeError("cloud unavailable"))
+    def test_task_history_does_not_hide_cloud_outage_as_empty_history(self, _list):
+        with self.assertRaisesRegex(RuntimeError, "cloud unavailable"):
+            CloudTaskStore().list_tasks()
+
+    @patch("agent.cloud_store.list_cloud_agent_events", side_effect=RuntimeError("cloud unavailable"))
+    def test_event_history_does_not_hide_cloud_outage_as_empty_events(self, _list):
+        with self.assertRaisesRegex(RuntimeError, "cloud unavailable"):
+            CloudTaskStore().read_events("task-1")
+
+
 class AgentWorkflowIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.service = AgentService.__new__(AgentService)

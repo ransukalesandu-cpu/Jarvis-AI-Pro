@@ -34,18 +34,17 @@ class CloudTaskStore:
         save_cloud_agent_task(task.to_dict())
 
     def load(self, task_id: str) -> Task | None:
-        try:
-            data = load_cloud_agent_task(str(task_id))
-        except Exception as exc:
-            logger.warning("Cloud task read unavailable (%s)", type(exc).__name__)
+        # A missing row is a normal None result; transport/auth/server failures
+        # must propagate so callers never mistake an outage for a missing task.
+        data = load_cloud_agent_task(str(task_id))
+        if data is None:
             return None
         if not isinstance(data, dict):
-            return None
+            raise RuntimeError("Cloud task snapshot has an invalid format")
         try:
             return Task.from_dict(data)
         except Exception as exc:
-            logger.warning("Cloud task snapshot could not be restored (%s)", type(exc).__name__)
-            return None
+            raise RuntimeError("Cloud task snapshot could not be restored") from exc
 
     def delete(self, task_id: str) -> None:
         delete_cloud_agent_task(str(task_id))
@@ -59,11 +58,8 @@ class CloudTaskStore:
             logger.warning("Cloud task event was not persisted (%s)", type(exc).__name__)
 
     def read_events(self, task_id: str, limit: int = 200) -> list[dict[str, Any]]:
-        try:
-            rows = list_cloud_agent_events(str(task_id), limit)
-        except Exception as exc:
-            logger.warning("Cloud task events unavailable (%s)", type(exc).__name__)
-            return []
+        # Do not present an unavailable event journal as an empty one.
+        rows = list_cloud_agent_events(str(task_id), limit)
         events = []
         for row in rows:
             data = row.get("event_data")
@@ -76,11 +72,9 @@ class CloudTaskStore:
         return events[-max(1, min(200, int(limit))):]
 
     def list_tasks(self, limit: int = 40) -> list[dict[str, Any]]:
-        try:
-            rows = list_cloud_agent_tasks()
-        except Exception as exc:
-            logger.warning("Cloud task history unavailable (%s)", type(exc).__name__)
-            return []
+        # An empty list means the cloud query succeeded and found no tasks.
+        # Let network/auth/server errors reach the UI instead of hiding history.
+        rows = list_cloud_agent_tasks()
         return [
             {
                 "id": str(row.get("task_id") or ""),

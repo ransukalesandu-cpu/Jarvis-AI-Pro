@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from core.agent_protocol import AgentResponse
 from core.brain_protocol import (
     RequestProfile, build_brain_protocol, profile_guidance, profile_request,
     render_text_fallback_prompt,

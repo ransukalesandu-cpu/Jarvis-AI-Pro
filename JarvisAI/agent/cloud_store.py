@@ -34,12 +34,17 @@ class CloudTaskStore:
         save_cloud_agent_task(task.to_dict())
 
     def load(self, task_id: str) -> Task | None:
-        data = load_cloud_agent_task(str(task_id))
+        try:
+            data = load_cloud_agent_task(str(task_id))
+        except Exception as exc:
+            logger.warning("Cloud task read unavailable (%s)", type(exc).__name__)
+            return None
         if not isinstance(data, dict):
             return None
         try:
             return Task.from_dict(data)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Cloud task snapshot could not be restored (%s)", type(exc).__name__)
             return None
 
     def delete(self, task_id: str) -> None:
@@ -54,7 +59,11 @@ class CloudTaskStore:
             logger.warning("Cloud task event was not persisted (%s)", type(exc).__name__)
 
     def read_events(self, task_id: str, limit: int = 200) -> list[dict[str, Any]]:
-        rows = list_cloud_agent_events(str(task_id), limit)
+        try:
+            rows = list_cloud_agent_events(str(task_id), limit)
+        except Exception as exc:
+            logger.warning("Cloud task events unavailable (%s)", type(exc).__name__)
+            return []
         events = []
         for row in rows:
             data = row.get("event_data")
@@ -67,7 +76,11 @@ class CloudTaskStore:
         return events[-max(1, min(200, int(limit))):]
 
     def list_tasks(self, limit: int = 40) -> list[dict[str, Any]]:
-        rows = list_cloud_agent_tasks()
+        try:
+            rows = list_cloud_agent_tasks()
+        except Exception as exc:
+            logger.warning("Cloud task history unavailable (%s)", type(exc).__name__)
+            return []
         return [
             {
                 "id": str(row.get("task_id") or ""),

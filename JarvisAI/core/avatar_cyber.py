@@ -190,6 +190,7 @@ class CyberParts:
         self.cap_v = np.zeros((0, 3), dtype=np.float32)
         self.ears = np.zeros((0, 2, 0, 3), dtype=np.float32)
         self.cap_f = np.zeros((0, 3), dtype=np.int32)
+        self.hair_centre = np.zeros(3, dtype=np.float32)
         self.face_keep = np.zeros(0, dtype=np.int64)
         self.bust_n = np.zeros((0, 3))
         self._lut_key = None
@@ -236,6 +237,7 @@ class CyberParts:
 
         self.ears = _ears(v, n_head)
         self.cap_v, self.cap_f, centre = _hair_cap(v, faces, n_head)
+        self.hair_centre = centre
         self.hair = _grow_hair(self.cap_v, self.cap_f, centre, rng)
 
         # Bust: neck base flaring into shoulders (front half), fixed in space.

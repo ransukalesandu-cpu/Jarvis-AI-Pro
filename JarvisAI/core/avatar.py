@@ -47,6 +47,8 @@ _BUCKETS = 4
 _CYBER_PRIMARY = QColor(30, 150, 255)
 _CYBER_ACCENT = QColor(150, 240, 255)
 _HAIR = QColor(70, 120, 210)          # deeper and denser than the skin glass
+_VOL_HAIR = QColor(20, 150, 200)      # the volume look's hair: deeper cyan
+_BUST_LOOKS = ("cyber", "volume")     # sculpted head on shoulders
 _MIN_ALPHA = 0.05
 
 # Resolution of the surface-shading colour ramp. Banding across a filled facet
@@ -136,7 +138,7 @@ class HoloAvatar:
     def __init__(self, style: str | None = None) -> None:
         if style is not None:
             self.style = style
-        mesh = get_head_mesh(sculpt=self.look == "cyber")
+        mesh = get_head_mesh(sculpt=self.look in _BUST_LOOKS)
         self._v0 = mesh["verts"]
         self._n0 = mesh["normals"]
         self._jaw = mesh["jaw"]
@@ -162,7 +164,8 @@ class HoloAvatar:
         self._mesh = mesh
         self._cyber = None
         self._rot = np.eye(3, dtype=np.float32)
-        if self.look == "cyber":
+        self._vol = None
+        if self.look in _BUST_LOOKS:
             self.SPAN = mesh["span"][0] - float(self._cyber_parts().bust_v[:, 1].min())
 
         self._lut_cache: list = []
@@ -233,13 +236,19 @@ class HoloAvatar:
         self._mood_primary = QColor(113, 212, 194)
         self._mood_accent = QColor(217, 138, 89)
         self._state_str = "IDLE"
-        if self.look == "cyber":
-            self._mood_primary = QColor(_CYBER_PRIMARY)
-            self._mood_accent = QColor(_CYBER_ACCENT)
+        if self.look in _BUST_LOOKS:
+            self._mood_primary = QColor(self._base_colors()[0])
+            self._mood_accent = QColor(self._base_colors()[1])
 
     @property
     def look(self) -> str:
         return self.style or ("shaded" if self.shaded else "glass")
+
+    def _base_colors(self) -> tuple[QColor, QColor]:
+        if self.look == "volume":
+            from core.avatar_volume import VOLUME_ACCENT, VOLUME_PRIMARY
+            return VOLUME_PRIMARY, VOLUME_ACCENT
+        return _CYBER_PRIMARY, _CYBER_ACCENT
 
     def _cyber_parts(self):
         if self._cyber is None:
@@ -687,16 +696,19 @@ class HoloAvatar:
         if bg is None:
             bg = QColor(0, 0, 0)
 
-        cyber = self.look == "cyber"
-        if cyber and primary.rgb() == accent.rgb():
-            # Idle: the reference's electric blue with ice-white highlights.
-            primary, accent = _CYBER_PRIMARY, _CYBER_ACCENT
-        elif cyber:
-            primary = _CYBER_PRIMARY
+        bust = self.look in _BUST_LOOKS
+        if bust and primary.rgb() == accent.rgb():
+            # Idle: the look's own colours (electric blue, or cyan).
+            primary, accent = self._base_colors()
+        elif bust:
+            primary = self._base_colors()[0]
         primary, accent = self._adapt_colors(0.016, primary, accent)
         amp = self._glow
         verts, norms = self._pose()
-        if cyber:
+        if self.look == "volume":
+            self._paint_volume(p, cx, cy, r, verts, norms, primary, accent, bg, amp)
+            return
+        if bust:
             self._paint_cyber(p, cx, cy, r, verts, norms, primary, accent, bg, amp)
             return
 
@@ -726,6 +738,68 @@ class HoloAvatar:
         w = np.maximum(_CAM_D - pts[..., 2], 0.35)
         k = (_CAM_D / w) * r
         return cx + pts[..., 0] * k, cy - pts[..., 1] * k
+
+    def _paint_volume(self, p: QPainter, cx: float, cy: float, r: float, verts, norms,
+                      primary: QColor, accent: QColor, bg: QColor, amp: float) -> None:
+        """Smooth cyan hologram with no wires: a soft glowing volume, crisp features."""
+        from core.avatar_volume import VolumePainter, grow_tufts
+        cp = self._cyber_parts()
+        if self._vol is None:
+            self._vol = VolumePainter()
+            rng = np.random.default_rng(11)
+            self._tufts = grow_tufts(cp.cap_v, cp.cap_f, cp.hair_centre, rng)
+            n = self._tufts[:, :2].mean(axis=1) - cp.hair_centre
+            self._tuft_n = n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
+        vol = self._vol
+        rot = self._rot
+
+        ar = r * 2.0
+        grad = QRadialGradient(cx, cy + r * 0.1, ar)
+        grad.setColorAt(0.00, _c(primary, 46 + 60 * amp))
+        grad.setColorAt(0.50, _c(primary, 14 + 26 * amp))
+        grad.setColorAt(1.00, _c(primary, 0))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawEllipse(QRectF(cx - ar, cy + r * 0.1 - ar, ar * 2, ar * 2))
+
+        xs, ys = self._project(verts, cx, cy, r)
+        bxs, bys = self._project(cp.bust_v, cx, cy, r)
+        bottom = float(bys.max()) + 4.0
+        rect = QRectF(cx - r * 2.1, cy - r * 1.45, r * 4.2, bottom - (cy - r * 1.45))
+
+        def body(bp: QPainter) -> None:
+            zero_b = np.zeros(len(cp.bust_faces), dtype=np.float32)
+            vol.fill(bp, bxs, bys, cp.bust_v, cp.bust_n, cp.bust_faces, zero_b, primary, amp,
+                     fade=cp.bust_fade, cull=False, gain=0.9)
+            if cp.ears.size:
+                ev = cp.ears @ rot.T
+                ex, ey = self._project(ev, cx, cy, r)
+                cp.paint_ears(bp, np.stack([ex, ey], axis=-1), primary)
+            keep = cp.face_keep
+            vol.fill(bp, xs, ys, verts, norms, self._f[keep], self._fgroup[keep], primary, amp)
+            if len(cp.cap_f):
+                cv = cp.cap_v @ rot.T
+                gx, gy = self._project(cv, cx, cy, r)
+                cn = (cp.cap_v - cp.hair_centre) @ rot.T
+                cn /= np.maximum(np.linalg.norm(cn, axis=1, keepdims=True), 1e-9)
+                zf = np.zeros(len(cp.cap_f), dtype=np.float32)
+                vol.fill(bp, gx, gy, cv, cn, cp.cap_f, zf, _VOL_HAIR, amp, gain=1.3)
+            if len(self._tufts):
+                tv = self._tufts @ rot.T
+                tx, ty = self._project(tv, cx, cy, r)
+                tn = self._tuft_n @ rot.T
+                vol.tufts(bp, np.stack([tx, ty], axis=-1), tv[:, 2, 2], tn[:, 2],
+                          _VOL_HAIR, primary.lighter(150))
+
+        vol.compose(p, rect, body)
+        vol.scanline(p, rect, self._t, primary.lighter(140))
+
+        self._paint_features(p, cx, cy, xs, ys, norms, r, primary, accent, bg, amp)
+        face = max(0.0, math.cos(self._yaw) * math.cos(self._pitch)) ** 2
+        if face > 0.02:
+            brow_col = _c(primary.lighter(160), 215 * face)
+            for key in ("brow_l", "brow_r"):
+                vol.brow(p, xs, ys, self._lm[key], r * 0.055, brow_col)
 
     def _paint_cyber(self, p: QPainter, cx: float, cy: float, r: float, verts, norms,
                      primary: QColor, accent: QColor, bg: QColor, amp: float) -> None:
@@ -952,7 +1026,7 @@ class HoloAvatar:
                 glint = QPointF(cpt.x() - rad * 0.30, cpt.y() - rad * 0.30 * vis)
                 p.setBrush(QBrush(_c(QColor(255, 255, 255), 230 * face * vis)))
                 p.drawEllipse(glint, rad * 0.18, rad * 0.18 * vis)
-                if self._cyber is not None and self.look == "cyber":
+                if self._cyber is not None and self.look in _BUST_LOOKS:
                     self._cyber.paint_eye_glow(p, cpt, rad, accent, face * vis * (0.75 + 0.25 * amp))
 
         # ── brows ───────────────────────────────────────────────────────────
@@ -1007,7 +1081,7 @@ class HoloAvatar:
 
         # ── forehead chip & cheek circuit highlights ──────────────────────
         # Central forehead processor reticle node
-        if self.look == "cyber":
+        if self.look in _BUST_LOOKS:
             return                 # the hair covers the forehead chip
         forehead_x = cx
         forehead_y = cy - r * 0.72

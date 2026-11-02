@@ -57,7 +57,7 @@ class AgentService:
         *,
         settings: AgentSettings | None = None,
         workspace: Path | str | None = None,
-        store: TaskStore | None = None,
+        store: Any | None = None,
         bus: EventBus | None = None,
         capture: ScreenCapture | None = None,
         vision: ScreenVision | None = None,

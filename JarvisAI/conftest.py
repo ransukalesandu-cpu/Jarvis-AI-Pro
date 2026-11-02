@@ -22,7 +22,15 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from pathlib import Path
+
+# Per-user state (triggers, action log, rules store) goes to a throwaway folder
+# during tests, never to the developer's real %LOCALAPPDATA%\JarvisAI.
+os.environ.setdefault("JARVIS_DATA_DIR", tempfile.mkdtemp(prefix="jarvis-test-data-"))
+# The security-layer tests describe the confirmation gate, so the suite runs
+# with Full Access off; tests for Full Access turn it on explicitly.
+os.environ.setdefault("JARVIS_FULL_ACCESS", "0")
 
 JARVIS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = JARVIS_DIR.parent

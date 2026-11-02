@@ -16,8 +16,18 @@ same one-file operation as writing a plugin: define ``TOOL`` and a handler.
     }
 
 The handler is invoked through signature introspection: it receives ``parameters``
-plus whichever of ``player`` / ``speak`` / ``response`` / ``session_memory`` it
-actually declares — so existing action signatures work unchanged.
+plus whichever of ``player`` / ``speak`` / ``response`` / ``session_memory`` /
+``cancel_event`` it actually declares — so existing action signatures work unchanged.
+
+Optional fields (see core/tool_runtime.py): ``risk`` ("read" | "write" |
+"destructive", for the action log only), ``timeout`` (seconds), ``long_running``
+(run as a background job and return a job id), and ``available`` (a callable;
+the tool is hidden from Gemini while it returns False, e.g. until credentials
+are configured). Every tool also gets an optional ``device`` argument.
+
+A file may define several tools with ``TOOLS = [TOOL_A, TOOL_B]`` instead of
+one ``TOOL``. Adding a tool is one new file in actions/ (or plugins/) and no
+change anywhere else.
 
 Discovery runs once at startup; import errors, validation errors, and name
 collisions are logged and the offending file is skipped — they NEVER raise out
@@ -34,9 +44,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
+from core.tool_runtime import ToolMeta, meta_from_declaration
+
 _NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,63}$")
 _DEFAULT_PARAMS = {"type": "OBJECT", "properties": {}}
-_CTX_KEYS = ("player", "speak", "response", "session_memory")
+_CTX_KEYS = ("player", "speak", "response", "session_memory", "cancel_event",
+             "dispatch", "session_calls", "show_image", "start_background")
 
 
 # A tool may declare that the model should NOT be held up waiting for it.
@@ -65,6 +78,18 @@ class ActionRecord:
     error: str = ""
     behavior: Optional[str] = None     # None = the API's default (blocking)
     scheduling: Optional[str] = None   # None = the API's default (WHEN_IDLE)
+    meta: ToolMeta = field(default_factory=ToolMeta)
+    available: Optional[Callable[[], bool]] = None
+
+
+def _is_available(rec) -> bool:
+    check = getattr(rec, "available", None)
+    if check is None:
+        return True
+    try:
+        return bool(check())
+    except Exception:
+        return False
 
 
 class ActionRegistry:
@@ -77,6 +102,8 @@ class ActionRegistry:
     def get_tool_declarations(self) -> list[dict]:
         out = []
         for rec in self._actions.values():
+            if not _is_available(rec):
+                continue
             decl = {"name": rec.name, "description": rec.description,
                     "parameters": rec.parameters}
             if rec.behavior:
@@ -94,6 +121,10 @@ class ActionRegistry:
 
     def names(self) -> set[str]:
         return set(self._actions.keys())
+
+    def meta(self, name: str) -> Optional[ToolMeta]:
+        rec = self._actions.get(name)
+        return rec.meta if rec else None
 
     # -- called from _execute_tool (core/runtime/live_tools.py) --
     def run(self, name: str, parameters: dict, ctx: dict | None = None) -> str:
@@ -121,9 +152,10 @@ def _call_handler(fn: Callable, parameters: dict, ctx: dict) -> str:
     return fn(parameters=parameters, **kwargs)
 
 
-def _validate(module, filename: str) -> ActionRecord:
+def _validate(module, filename: str, tool: dict | None = None) -> ActionRecord:
     """Returns an ActionRecord; .valid=False + .error set on any problem. Never raises."""
-    tool = getattr(module, "TOOL", None)
+    if tool is None:
+        tool = getattr(module, "TOOL", None)
     if not isinstance(tool, dict):
         return ActionRecord(name=Path(filename).stem, file=filename,
                             error="No module-level TOOL dict (not a discoverable action).")
@@ -148,10 +180,39 @@ def _validate(module, filename: str) -> ActionRecord:
         return ActionRecord(name=name, file=filename,
                             error="TOOL['handler'] missing or not callable.")
 
+    available = tool.get("available")
     return ActionRecord(name=name, description=description.strip(), parameters=parameters,
                         handler=handler, file=filename, valid=True, error="",
                         behavior=_opt_upper(tool.get("behavior"), _BEHAVIORS),
-                        scheduling=_opt_upper(tool.get("scheduling"), _SCHEDULING))
+                        scheduling=_opt_upper(tool.get("scheduling"), _SCHEDULING),
+                        meta=meta_from_declaration(tool),
+                        available=available if callable(available) else None)
+
+
+def _tool_dicts(module) -> list:
+    """The tool declarations a module offers: TOOL, or the TOOLS list."""
+    tool = getattr(module, "TOOL", None)
+    if tool is not None:
+        return [tool]
+    tools = getattr(module, "TOOLS", None)
+    if isinstance(tools, (list, tuple)):
+        return list(tools)
+    return []
+
+
+def _collect_triggers(module, filename: str, logger: Callable[[str], None]) -> None:
+    """Register a module's ``TRIGGERS`` list (see core/triggers.py). Never raises."""
+    rows = getattr(module, "TRIGGERS", None)
+    if not rows:
+        return
+    from core.triggers import get_trigger_registry
+    registry = get_trigger_registry()
+    for row in rows if isinstance(rows, (list, tuple)) else [rows]:
+        try:
+            trig = registry.register(dict(row), source="file")
+            logger(f"Trigger registered: {trig.name} ({filename})")
+        except Exception as exc:
+            logger(f"Trigger rejected in {filename}: {exc}")
 
 
 def discover_actions(actions_dir: Path, reserved_names: set[str] | None = None,
@@ -189,31 +250,37 @@ def discover_actions(actions_dir: Path, reserved_names: set[str] | None = None,
                     sys.modules.pop(module_name, None)
                     raise
 
-            if getattr(module, "TOOL", None) is None:
+            _collect_triggers(module, path.name, logger)
+            tool_dicts = _tool_dicts(module)
+            if not tool_dicts:
                 continue   # not an action file — a helper/capture-only module
 
-            rec = _validate(module, path.name)
-
-            if rec.valid and rec.name in reserved:
-                rec = ActionRecord(name=rec.name, file=path.name,
-                                   error=f"Name '{rec.name}' collides with a reserved core tool — rejected.")
-            elif rec.valid and rec.name in valid:
-                other = valid[rec.name].file
-                rec = ActionRecord(name=rec.name, file=path.name,
-                                   error=f"Name '{rec.name}' already used by action '{other}' — rejected.")
+            records = []
+            for tool in tool_dicts:
+                rec = _validate(module, path.name, tool)
+                if rec.valid and rec.name in reserved:
+                    rec = ActionRecord(name=rec.name, file=path.name,
+                                       error=f"Name '{rec.name}' collides with a reserved core tool — rejected.")
+                elif rec.valid and rec.name in valid:
+                    other = valid[rec.name].file
+                    rec = ActionRecord(name=rec.name, file=path.name,
+                                       error=f"Name '{rec.name}' already used by action '{other}' — rejected.")
+                records.append(rec)
+                if rec.valid:
+                    valid[rec.name] = rec
 
         except Exception as e:
-            rec = ActionRecord(name=path.stem, file=path.name,
-                               error=f"Failed to load: {e}")
+            records = [ActionRecord(name=path.stem, file=path.name,
+                                    error=f"Failed to load: {e}")]
             traceback.print_exc()
 
-        all_records.append(rec)
-        if rec.valid:
-            valid[rec.name] = rec
-            logger(f"Action loaded: {rec.name} ({path.name})")
-        else:
-            # Only log a rejection if the file actually tried to be an action.
-            logger(f"Action rejected: {path.name} — {rec.error}")
+        for rec in records:
+            all_records.append(rec)
+            if rec.valid:
+                logger(f"Action loaded: {rec.name} ({path.name})")
+            else:
+                # Only log a rejection if the file actually tried to be an action.
+                logger(f"Action rejected: {path.name} — {rec.error}")
 
     registry = ActionRegistry(valid, logger)
     registry._all_records = all_records

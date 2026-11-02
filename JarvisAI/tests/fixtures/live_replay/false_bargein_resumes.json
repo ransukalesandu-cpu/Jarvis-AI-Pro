@@ -1,0 +1,42 @@
+{
+ "description": "Echo is mistaken for user speech mid-answer and Gemini never confirms it. The answer must resume and the following injected turn must play.",
+ "steps": [
+  {
+   "input_text": "what's the weather"
+  },
+  {
+   "delay": 0.05,
+   "turn_complete": true
+  },
+  {
+   "delay": 0.04,
+   "audio_ms": 40,
+   "repeat": 14
+  },
+  {
+   "action": "local_bargein"
+  },
+  {
+   "delay": 0.04,
+   "audio_ms": 40,
+   "repeat": 26
+  },
+  {
+   "delay": 0.01,
+   "turn_complete": true
+  },
+  {
+   "delay": 2.0,
+   "action": "client_turn"
+  },
+  {
+   "delay": 0.04,
+   "audio_ms": 40,
+   "repeat": 40
+  },
+  {
+   "delay": 0.01,
+   "turn_complete": true
+  }
+ ]
+}

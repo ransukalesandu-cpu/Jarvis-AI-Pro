@@ -27,12 +27,18 @@ and config/google_token.json out of Git, same as config/api_keys.json.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
+GMAIL_COMPOSE_SCOPE = "https://www.googleapis.com/auth/gmail.compose"
+# Requested when the owner (re)connects the account. A token saved before
+# gmail.compose was added keeps working for everything except drafts; the draft
+# action says so and asks for a reconnect instead of failing obscurely.
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.send",
+    GMAIL_COMPOSE_SCOPE,
     "https://www.googleapis.com/auth/calendar",
 ]
 
@@ -44,11 +50,14 @@ def _base_dir() -> Path:
 
 
 def _creds_file() -> Path:
-    return _base_dir() / "config" / "google_credentials.json"
+    # Secrets may live outside the checkout: JARVIS_GOOGLE_CREDENTIALS_FILE.
+    override = os.environ.get("JARVIS_GOOGLE_CREDENTIALS_FILE", "").strip()
+    return Path(override) if override else _base_dir() / "config" / "google_credentials.json"
 
 
 def _token_file() -> Path:
-    return _base_dir() / "config" / "google_token.json"
+    override = os.environ.get("JARVIS_GOOGLE_TOKEN_FILE", "").strip()
+    return Path(override) if override else _base_dir() / "config" / "google_token.json"
 
 
 def is_configured() -> bool:
@@ -73,7 +82,9 @@ def get_credentials():
     token_file = _token_file()
     if token_file.exists():
         try:
-            creds = Credentials.from_authorized_user_file(str(token_file), SCOPES)
+            # Load with the scopes the token was granted, so a token from before
+            # a scope was added still refreshes.
+            creds = Credentials.from_authorized_user_file(str(token_file))
         except Exception:
             creds = None
 

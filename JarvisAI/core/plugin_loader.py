@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
+from core.tool_runtime import ToolMeta, meta_from_declaration
+
 from memory.config_manager import get_plugin_enabled, get_plugin_config
 
 _NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,63}$")
@@ -46,6 +48,18 @@ class PluginRecord:
     settings: Optional[dict] = None   # optional PLUGIN_SETTINGS schema (config fields)
     behavior: Optional[str] = None    # None = the API's default (blocking)
     scheduling: Optional[str] = None  # None = the API's default (WHEN_IDLE)
+    meta: ToolMeta = field(default_factory=ToolMeta)
+    available: Optional[Callable[[], bool]] = None
+
+
+def _is_available(rec) -> bool:
+    check = getattr(rec, "available", None)
+    if check is None:
+        return True
+    try:
+        return bool(check())
+    except Exception:
+        return False
 
 
 class PluginRegistry:
@@ -64,7 +78,7 @@ class PluginRegistry:
     def get_tool_declarations(self) -> list[dict]:
         decls = []
         for name, rec in self._plugins.items():
-            if get_plugin_enabled(name):
+            if get_plugin_enabled(name) and _is_available(rec):
                 decl = {
                     "name": rec.name,
                     "description": rec.description,
@@ -77,6 +91,10 @@ class PluginRegistry:
 
     def has(self, name: str) -> bool:
         return name in self._plugins
+
+    def meta(self, name: str) -> Optional[ToolMeta]:
+        rec = self._plugins.get(name)
+        return rec.meta if rec else None
 
     def scheduling(self, name: str) -> Optional[str]:
         """How this plugin's result should re-enter the conversation, if it said."""
@@ -186,10 +204,13 @@ def _validate(module, filename: str) -> PluginRecord:
     if not (isinstance(settings, dict) and isinstance(settings.get("fields"), list)):
         settings = None
 
+    available = plugin_meta.get("available")
     return PluginRecord(name=name, description=description.strip(), parameters=parameters,
                          run=run_fn, file=filename, valid=True, error="", settings=settings,
                          behavior=_opt_upper(plugin_meta.get("behavior"), _BEHAVIORS),
-                         scheduling=_opt_upper(plugin_meta.get("scheduling"), _SCHEDULING))
+                         scheduling=_opt_upper(plugin_meta.get("scheduling"), _SCHEDULING),
+                         meta=meta_from_declaration(plugin_meta),
+                         available=available if callable(available) else None)
 
 
 def _load_error(path: Path, plugins_dir: Path, exc: Exception) -> str:

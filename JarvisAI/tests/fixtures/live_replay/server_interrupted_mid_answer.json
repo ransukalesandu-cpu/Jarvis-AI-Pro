@@ -1,0 +1,30 @@
+{
+ "description": "Gemini reports `interrupted` 1 s into a 3 s answer, then answers the new question. Old audio must stop within 300 ms; the new answer must play in full.",
+ "steps": [
+  {
+   "input_text": "tell me about the moon"
+  },
+  {
+   "delay": 0.02,
+   "audio_ms": 100,
+   "repeat": 30
+  },
+  {
+   "delay": 0.8,
+   "interrupted": true
+  },
+  {
+   "delay": 0.05,
+   "input_text": "what time is it"
+  },
+  {
+   "delay": 0.04,
+   "audio_ms": 40,
+   "repeat": 30
+  },
+  {
+   "delay": 0.01,
+   "turn_complete": true
+  }
+ ]
+}

@@ -108,7 +108,9 @@ class WakeSleepMixin:
         self.ui.write_log("SYS: Voice detected — interrupting JARVIS.")
         # The microphone callback has already marshalled this handler onto
         # the asyncio loop, so keep queue and playback lifecycle changes here.
-        self._interrupt_on_loop(replay)
+        # VAD/echo can mistake JARVIS's own voice for the user, so this pause is
+        # provisional until Gemini confirms user speech (core/barge_in.py).
+        self._interrupt_on_loop(replay, provisional=True)
 
     def _on_double_clap_detected(self) -> None:
         """The clap worker calls from its own thread; marshal state changes."""

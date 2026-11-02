@@ -355,6 +355,38 @@ def save_proactive_audio_enabled(enabled: bool) -> None:
     _save_flag("proactive_audio", enabled)
 
 
+def get_full_access() -> bool:
+    """Full Access: tool calls run immediately with no confirmation questions.
+
+    The single place this setting lives (default ON for the owner's own
+    devices). ``JARVIS_FULL_ACCESS=0`` turns it off for a run; saving
+    ``full_access: false`` turns it off permanently. See core/full_access.py.
+    """
+    env = os.environ.get("JARVIS_FULL_ACCESS")
+    if env is not None and env.strip():
+        return env.strip().lower() not in {"0", "false", "no", "off"}
+    return bool(load_api_keys().get("full_access", True))
+
+
+def save_full_access(enabled: bool) -> None:
+    _save_flag("full_access", bool(enabled))
+
+
+def get_quiet_hours() -> str:
+    """Local window when proactive triggers stay silent, e.g. '22:00-07:00'.
+
+    Empty means no quiet hours. ``JARVIS_QUIET_HOURS`` overrides the saved value.
+    """
+    env = os.environ.get("JARVIS_QUIET_HOURS")
+    if env is not None:
+        return env.strip()
+    return str(load_api_keys().get("quiet_hours", "") or "").strip()
+
+
+def save_quiet_hours(value: str) -> None:
+    _save_flag("quiet_hours", str(value or "").strip())
+
+
 def get_memory_provider_access_enabled() -> bool:
     """Whether stored memory may be included in AI-provider requests.
 

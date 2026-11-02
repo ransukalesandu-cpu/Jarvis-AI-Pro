@@ -518,13 +518,13 @@ def _redact_cloud_payload(value: Any, depth: int = 0) -> Any:
         return "[DEPTH_LIMIT]"
     if isinstance(value, str):
         from agent.store import redact
-        return redact(value, 8000)
+        return redact(value, 1400)
     if isinstance(value, list):
-        return [_redact_cloud_payload(item, depth + 1) for item in value[:256]]
+        return [_redact_cloud_payload(item, depth + 1) for item in value[:96]]
     if isinstance(value, dict):
         return {
             str(key)[:100]: _redact_cloud_payload(item, depth + 1)
-            for key, item in list(value.items())[:256]
+            for key, item in list(value.items())[:160]
         }
     if value is None or isinstance(value, (bool, int, float)):
         return value
@@ -540,6 +540,8 @@ def save_cloud_agent_task(task_data: dict[str, Any]) -> None:
     state = str(clean.get("state") or "")
     if not task_id or not objective or not state:
         raise ValueError("Task snapshot is missing required metadata")
+    if len(json.dumps(clean, ensure_ascii=False, separators=(",", ":"))) > 60_000:
+        raise ValueError("Task snapshot exceeds the cloud persistence limit")
     _request_personal_memory({
         "operation": "agent_task_save", "task_id": task_id,
         "state": state, "objective": objective, "task_data": clean,
@@ -566,6 +568,12 @@ def delete_cloud_agent_task(task_id: str) -> None:
 
 def append_cloud_agent_event(task_id: str, event: dict[str, Any]) -> None:
     clean = _redact_cloud_payload(event)
+    if len(json.dumps(clean, ensure_ascii=False, separators=(",", ":"))) > 10_500:
+        clean = {
+            "kind": str(event.get("kind") or "event")[:80],
+            "truncated": True,
+            "summary": redact(str(event), 5000),
+        }
     _request_personal_memory({
         "operation": "agent_event_append", "task_id": str(task_id),
         "event_data": clean,

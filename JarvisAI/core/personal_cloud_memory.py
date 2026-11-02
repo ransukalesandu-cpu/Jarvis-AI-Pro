@@ -510,3 +510,99 @@ def get_default_owner_memory_context() -> str:
     except Exception as exc:
         logger.warning("Default owner memory unavailable (%s)", type(exc).__name__)
         return ""
+
+
+def _redact_cloud_payload(value: Any, depth: int = 0) -> Any:
+    """Bound and redact strings recursively before any task data leaves the device."""
+    if depth > 12:
+        return "[DEPTH_LIMIT]"
+    if isinstance(value, str):
+        from agent.store import redact
+        return redact(value, 8000)
+    if isinstance(value, list):
+        return [_redact_cloud_payload(item, depth + 1) for item in value[:256]]
+    if isinstance(value, dict):
+        return {
+            str(key)[:100]: _redact_cloud_payload(item, depth + 1)
+            for key, item in list(value.items())[:256]
+        }
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return str(value)[:500]
+
+
+def save_cloud_agent_task(task_data: dict[str, Any]) -> None:
+    if not isinstance(task_data, dict):
+        raise ValueError("Task snapshot must be an object")
+    clean = _redact_cloud_payload(task_data)
+    task_id = str(clean.get("id") or "")
+    objective = str(clean.get("objective") or "")
+    state = str(clean.get("state") or "")
+    if not task_id or not objective or not state:
+        raise ValueError("Task snapshot is missing required metadata")
+    _request_personal_memory({
+        "operation": "agent_task_save", "task_id": task_id,
+        "state": state, "objective": objective, "task_data": clean,
+    })
+
+
+def load_cloud_agent_task(task_id: str) -> dict[str, Any] | None:
+    result = _request_personal_memory({
+        "operation": "agent_task_load", "task_id": str(task_id),
+    })
+    value = result.get("task")
+    return value if isinstance(value, dict) else None
+
+
+def list_cloud_agent_tasks() -> list[dict[str, Any]]:
+    result = _request_personal_memory({"operation": "agent_task_list"})
+    rows = result.get("tasks")
+    return [row for row in rows[:40] if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+def delete_cloud_agent_task(task_id: str) -> None:
+    _request_personal_memory({"operation": "agent_task_delete", "task_id": str(task_id)})
+
+
+def append_cloud_agent_event(task_id: str, event: dict[str, Any]) -> None:
+    clean = _redact_cloud_payload(event)
+    _request_personal_memory({
+        "operation": "agent_event_append", "task_id": str(task_id),
+        "event_data": clean,
+    })
+
+
+def list_cloud_agent_events(task_id: str, limit: int = 200) -> list[dict[str, Any]]:
+    result = _request_personal_memory({
+        "operation": "agent_event_list", "task_id": str(task_id),
+        "limit": max(1, min(200, int(limit))),
+    })
+    rows = result.get("events")
+    return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+def save_cloud_agent_workflow(record: dict[str, Any]) -> dict[str, Any]:
+    result = _request_personal_memory({"operation": "workflow_save", **record})
+    saved = result.get("workflow")
+    return saved if isinstance(saved, dict) else record
+
+
+def list_cloud_agent_workflows() -> list[dict[str, Any]]:
+    result = _request_personal_memory({"operation": "workflow_list"})
+    rows = result.get("workflows")
+    return [row for row in rows[:40] if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+def get_cloud_agent_workflow(workflow_id: str) -> dict[str, Any] | None:
+    result = _request_personal_memory({
+        "operation": "workflow_get", "workflow_id": str(workflow_id),
+    })
+    row = result.get("workflow")
+    return row if isinstance(row, dict) else None
+
+
+def delete_cloud_agent_workflow(workflow_id: str) -> bool:
+    result = _request_personal_memory({
+        "operation": "workflow_delete", "workflow_id": str(workflow_id),
+    })
+    return result.get("deleted") is True

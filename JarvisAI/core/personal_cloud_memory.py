@@ -512,18 +512,19 @@ def get_default_owner_memory_context() -> str:
         return ""
 
 
-def _redact_cloud_payload(value: Any, depth: int = 0) -> Any:
-    """Bound and redact strings recursively before any task data leaves the device."""
+def _redact_cloud_payload(value: Any, depth: int = 0, field_name: str = "") -> Any:
+    """Redact all strings while preserving bounded executable checkpoint fields."""
     if depth > 12:
         return "[DEPTH_LIMIT]"
     if isinstance(value, str):
         from agent.store import redact
-        return redact(value, 1400)
+        limit = 12_000 if field_name == "content" else 4_000 if field_name == "command" else 1_400
+        return redact(value, limit)
     if isinstance(value, list):
         return [_redact_cloud_payload(item, depth + 1) for item in value[:96]]
     if isinstance(value, dict):
         return {
-            str(key)[:100]: _redact_cloud_payload(item, depth + 1)
+            str(key)[:100]: _redact_cloud_payload(item, depth + 1, str(key))
             for key, item in list(value.items())[:160]
         }
     if value is None or isinstance(value, (bool, int, float)):

@@ -38,6 +38,7 @@ from agent.cloud_store import CloudTaskStore
 from agent.voice import SpeechAnnouncer, VoiceCommandRouter, status_sentence
 
 from core import failsoft
+from core.browser_automation import BrowserAutomation
 
 logger = logging.getLogger("Jarvis.Agent")
 
@@ -100,6 +101,8 @@ class AgentService:
             authorize=self._authorize_desktop,
             logger=self._log,
         )
+        # A separate visible Chromium context; never reuse the owner's personal browser profile.
+        self.browser = BrowserAutomation(timeout_ms=15000)
         self._planner = planner or TaskPlanner(
             ask=ask_model if ask_model is not None else self._model_asker(),
             workspace=self.workspace,
@@ -132,6 +135,7 @@ class AgentService:
             workspace=self.workspace,
             vision=self.vision,
             computer=self.computer,
+            browser=self.browser,
             request_approval=self._request_approval,
             before_step=self._authorize_task_step,
             on_milestone=self._on_milestone,

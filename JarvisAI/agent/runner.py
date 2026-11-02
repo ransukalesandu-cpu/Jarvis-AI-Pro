@@ -74,6 +74,7 @@ class TaskRunner:
         workspace: Path | str | None = None,
         vision: Any | None = None,
         computer: Any | None = None,
+        browser: Any | None = None,
         request_approval: Callable[[TaskStep, policy_module.Decision], bool] | None = None,
         before_step: Callable[[TaskStep], str | None] | None = None,
         on_milestone: Callable[[str], None] | None = None,
@@ -99,6 +100,7 @@ class TaskRunner:
         self.executor = executor or StepExecutor(engine=self.engine)
         self.vision = vision
         self.computer = computer
+        self.browser = browser
         self._approval = request_approval
         self._before_step = before_step
         self._milestone = on_milestone
@@ -272,6 +274,14 @@ class TaskRunner:
         while True:
             with self._lock:
                 if not self._queue:
+                    # Playwright's synchronous API is thread-affine. Close the
+                    # browser on the same worker that used it, before allowing a
+                    # new worker to start and reuse the browser service.
+                    if self.browser is not None:
+                        try:
+                            self.browser.close()
+                        except Exception:
+                            failsoft.suppress("agent.runner:browser_shutdown")
                     self._thread = None
                     return
                 task_id = self._queue.pop(0)
@@ -525,6 +535,7 @@ class TaskRunner:
             logger=self._logger,
             vision=self.vision,
             computer=self.computer,
+            browser=self.browser,
             policy=self.engine.policy,
             request_approval=self._approval,
             sleep=self._sleep,

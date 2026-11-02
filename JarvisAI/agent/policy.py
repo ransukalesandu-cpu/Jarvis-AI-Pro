@@ -134,7 +134,9 @@ def classify_step(step: TaskStep) -> tuple[Risk, str]:
     if step.consequential:
         return Risk.CONSEQUENTIAL, "plan marked this step consequential"
     if step.kind in (StepKind.INSPECT, StepKind.READ_FILE, StepKind.NOTE,
-                     StepKind.OBSERVE_SCREEN, StepKind.VERIFY):
+                     StepKind.OBSERVE_SCREEN, StepKind.VERIFY,
+                     StepKind.BROWSER_SEARCH, StepKind.BROWSER_NAVIGATE,
+                     StepKind.BROWSER_READ, StepKind.BROWSER_FOLLOW_LINK):
         if step.command:
             return classify_command(step.command)
         return Risk.READ, "observation only"
@@ -251,6 +253,11 @@ class PolicyEngine:
             return Decision(False, risk, "file writes are disabled for autonomous tasks", blocked=True)
         if step.kind is StepKind.SCREEN_ACTION and not policy.allow_input_control:
             return Decision(False, risk, "desktop control is disabled for autonomous tasks", blocked=True)
+        if step.kind in (
+            StepKind.BROWSER_SEARCH, StepKind.BROWSER_NAVIGATE,
+            StepKind.BROWSER_READ, StepKind.BROWSER_FOLLOW_LINK,
+        ) and not policy.allow_network:
+            return Decision(False, risk, "browser access is disabled for autonomous tasks", blocked=True)
 
         command = str(step.command or "")
         for pattern in policy.deny_patterns:

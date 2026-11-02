@@ -147,9 +147,9 @@ class CloudTaskStoreTests(unittest.TestCase):
     def test_load_returns_none_only_when_cloud_confirms_task_is_missing(self, _load):
         self.assertIsNone(CloudTaskStore().load("missing-task"))
 
-    @patch("agent.cloud_store.load_cloud_agent_task", return_value={"unexpected": "shape"})
+    @patch("agent.cloud_store.load_cloud_agent_task", return_value={"report": "not-a-dict"})
     def test_load_rejects_malformed_cloud_snapshot(self, _load):
-        with self.assertRaisesRegex(RuntimeError, "invalid format"):
+        with self.assertRaisesRegex(RuntimeError, "could not be restored"):
             CloudTaskStore().load("task-1")
 
     @patch("agent.cloud_store.list_cloud_agent_tasks", side_effect=RuntimeError("cloud unavailable"))

@@ -12,8 +12,20 @@ This feature is an isolated foundation for browser-vs-chat intent routing. It do
 Playwright is already listed in `JarvisAI/requirements.txt`. After installing project requirements, install Chromium:
 `python -m playwright install chromium`
 
+## Agent integration (Part 2)
+The autonomous task engine now exposes four typed browser steps to its existing model planner and voice/HUD task workflow:
+
+- `browser_search`: search the public web for a bounded query.
+- `browser_navigate`: open an absolute public HTTP(S) URL.
+- `browser_read`: read the current page's visible text.
+- `browser_follow_link`: follow a visible link by its accessible name.
+
+The agent runs these steps in its background worker, not the Qt or audio callback thread. Every task still passes the existing Owner Authentication, Privacy Lock, per-step authorization recheck, task limits, and network policy. Browser output is labelled untrusted evidence. A separate visible Chromium context is used; JARVIS does not reuse personal browser profiles or cookies.
+
 ## Important limits
-This first increment is a callable service layer, not yet wired into the Qt dashboard/voice command handler. Call `dispatch` from a worker thread, never an audio callback or GUI thread. It does not automatically submit forms, send messages, purchase items, download files, or execute arbitrary model-generated clicks. For consequential actions, add a confirmation UI before enabling them. Browser page content is untrusted and must not be allowed to override JARVIS system/security instructions.
+Browser automation is deliberately read-only in this increment. It cannot submit forms, click buttons, log in, send messages, purchase items, download files, or execute page scripts. Link following reads the link's href and navigates directly rather than invoking page click handlers. Consequential browser actions must be implemented as separate typed operations and remain behind the existing explicit approval gate; do not weaken the shared security layer.
+
+DNS validation blocks localhost, private, link-local, and other non-public destinations, including routed requests. DNS rebinding between validation and browser resolution remains a documented limitation; this module is not a network sandbox. Use OS/container network isolation for stronger protection when browsing untrusted destinations.
 
 ## Run tests
 From `JarvisAI/`:

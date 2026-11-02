@@ -33,7 +33,8 @@ from agent.runner import RunnerConfig, TaskRunner
 from agent.screen_capture import ScreenCapture
 from agent.screen_vision import OcrEngine, ScreenVision
 from agent.settings import AgentSettings
-from agent.store import TaskStore, redact
+from agent.store import redact
+from agent.cloud_store import CloudTaskStore
 from agent.voice import SpeechAnnouncer, VoiceCommandRouter, status_sentence
 
 from core import failsoft
@@ -68,7 +69,7 @@ class AgentService:
         self.settings = settings or AgentSettings.load()
         self.workspace = Path(workspace).resolve() if workspace else _repo_root()
         self.bus = bus or EventBus()
-        self.store = store or TaskStore()
+        self.store = store if store is not None else CloudTaskStore()
         self._log = logger_ or (lambda message: logger.info("%s", message))
         self._announcer = SpeechAnnouncer(enabled=self.settings.autonomy_voice_updates)
         self._router = VoiceCommandRouter()
@@ -268,10 +269,9 @@ class AgentService:
         """Load the small workflow library only when a workflow feature is used."""
         library = getattr(self, "_workflow_library_instance", None)
         if library is None:
-            from agent.store import agent_data_dir
             from agent.workflow_library import WorkflowLibrary
 
-            library = WorkflowLibrary(agent_data_dir() / "workflows.json")
+            library = WorkflowLibrary()
             self._workflow_library_instance = library
         return library
 

@@ -274,6 +274,14 @@ class TaskRunner:
         while True:
             with self._lock:
                 if not self._queue:
+                    # Playwright's synchronous API is thread-affine. Close the
+                    # browser on the same worker that used it, before allowing a
+                    # new worker to start and reuse the browser service.
+                    if self.browser is not None:
+                        try:
+                            self.browser.close()
+                        except Exception:
+                            failsoft.suppress("agent.runner:browser_shutdown")
                     self._thread = None
                     return
                 task_id = self._queue.pop(0)

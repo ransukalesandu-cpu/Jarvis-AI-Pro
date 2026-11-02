@@ -46,6 +46,7 @@ _CAM_D = 4.6
 _BUCKETS = 4
 _CYBER_PRIMARY = QColor(30, 150, 255)
 _CYBER_ACCENT = QColor(150, 240, 255)
+_HAIR = QColor(70, 120, 210)          # deeper and denser than the skin glass
 _MIN_ALPHA = 0.05
 
 # Resolution of the surface-shading colour ramp. Banding across a filled facet
@@ -135,7 +136,7 @@ class HoloAvatar:
     def __init__(self, style: str | None = None) -> None:
         if style is not None:
             self.style = style
-        mesh = get_head_mesh()
+        mesh = get_head_mesh(sculpt=self.look == "cyber")
         self._v0 = mesh["verts"]
         self._n0 = mesh["normals"]
         self._jaw = mesh["jaw"]
@@ -751,6 +752,13 @@ class HoloAvatar:
                        cp.bust_fade, primary, amp)
         cp.paint_traces(p, bxs, bys, cp.bust_n, cp.bust_traces, cp.trace_phase, accent, t, amp)
 
+        if cp.ears.size:
+            # Behind the glass head, so the near ear reads through the skin edge
+            # and the far one hides as the head turns.
+            ev = cp.ears @ self._rot.T
+            ex, ey = self._project(ev, cx, cy, r)
+            cp.paint_ears(p, np.stack([ex, ey], axis=-1), primary)
+
         xs, ys = self._project(verts, cx, cy, r)
         keep = cp.face_keep
         cp.paint_fill(p, xs, ys, verts, self._f[keep], self._fgroup[keep], primary, amp,
@@ -758,10 +766,15 @@ class HoloAvatar:
         cp.paint_edges(p, xs, ys, norms, cp.edges[:, 0], cp.edges[:, 1], self._fade, primary, amp)
         cp.paint_traces(p, xs, ys, norms, cp.traces, cp.trace_phase, accent, t, amp)
 
+        if len(cp.cap_f):
+            cv = cp.cap_v @ self._rot.T
+            gx, gy = self._project(cv, cx, cy, r)
+            zf = np.zeros(len(cp.cap_f), dtype=np.float32)
+            cp.paint_fill(p, gx, gy, cv, cp.cap_f, zf, _HAIR, amp, centre=zf, gain=1.25)
         if cp.hair.size:
             hp = cp.hair @ self._rot.T
             hx, hy = self._project(hp, cx, cy, r)
-            cp.paint_hair(p, np.stack([hx, hy], axis=-1), hp[..., 2], primary)
+            cp.paint_hair(p, np.stack([hx, hy], axis=-1), hp[..., 2], primary, r / 300.0)
 
         self._paint_features(p, cx, cy, xs, ys, norms, r, primary, accent, bg, amp)
 
@@ -994,6 +1007,8 @@ class HoloAvatar:
 
         # ── forehead chip & cheek circuit highlights ──────────────────────
         # Central forehead processor reticle node
+        if self.look == "cyber":
+            return                 # the hair covers the forehead chip
         forehead_x = cx
         forehead_y = cy - r * 0.72
         p.setPen(QPen(_c(accent, 140 * face), 1.0))

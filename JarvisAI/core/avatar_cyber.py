@@ -77,6 +77,102 @@ def _walk_traces(verts: np.ndarray, adj: list[set[int]], seeds: list[int], rng,
     return traces
 
 
+def _hair_cap(v: np.ndarray, faces: np.ndarray, n_head: int):
+    """Scalp faces lifted off the skull: the mass of the hair.
+
+    Returns (cap vertices, cap faces, head centre). Cap vertices share the head
+    indexing; only the ones the cap faces use matter.
+    """
+    head = v[:n_head]
+    centre = np.array([0.0, float(head[:, 1].mean()) * 0.5, -0.05], dtype=np.float32)
+    x, y, z = head[:, 0], head[:, 1], head[:, 2]
+    # Hairline: high at the front, lower at the temples, down to the ears behind.
+    line = np.where(z > 0.0, 0.50 + 0.10 * np.clip(z, 0, 1) - 0.25 * np.clip(np.abs(x) - 0.25, 0, 1),
+                    0.40 - 0.55 * np.clip(-z, 0, 1))
+    scalp = y > line
+    hf = faces[(faces < n_head).all(axis=1)]
+    cap_f = hf[scalp[hf].all(axis=1)]
+    off = head - centre
+    r = np.linalg.norm(off, axis=1, keepdims=True)
+    top = np.clip((y - 0.25) / 0.75, 0, 1)[:, None]
+    lift = 0.03 + 0.07 * top                          # fuller on top than at the sides
+    cap_v = (centre + off * (1.0 + lift / np.maximum(r, 1e-6))).astype(np.float32)
+    return cap_v, cap_f.astype(np.int32), centre
+
+
+def _grow_hair(cap_v: np.ndarray, cap_f: np.ndarray, centre: np.ndarray, rng,
+               count: int = 320) -> np.ndarray:
+    """Short wavy strands lying on the cap, combed off a side part.
+
+    Front strands sweep across the forehead, the crown combs back from the
+    part, the sides fall down and back. Gravity bends them all a little.
+    """
+    if len(cap_f) == 0:
+        return np.zeros((0, 8, 3), dtype=np.float32)
+    tri = cap_v[cap_f]
+    area = np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1)
+    # Seen from the front: weight the roots towards the hairline and the top.
+    mid = tri.mean(axis=1)
+    weight = area * (0.15 + np.clip(mid[:, 2] + 0.4, 0, 1.4))
+    pick = rng.choice(len(cap_f), size=count, p=weight / weight.sum())
+    part_x = -0.26                                   # a side part, viewer's left
+    strands = []
+    for f in pick:
+        w = rng.dirichlet((1.0, 1.0, 1.0)).astype(np.float32)
+        p = (tri[f] * w[:, None]).sum(0)
+        r0 = float(np.linalg.norm(p - centre)) + 0.01
+        x, y, z = (float(c) for c in p)
+        if abs(x) > 0.55 and y < 0.55:                       # sides: down and back
+            comb = np.array([np.sign(x) * 0.15, -0.8, -0.6])
+            steps = 3
+        elif z > 0.15:                                       # front: across, a fringe
+            comb = np.array([0.85 if x >= part_x else -0.7, -0.25, 0.45])
+            steps = 7
+        else:                                                # crown: back from the part
+            comb = np.array([0.4 * (1 if x >= part_x else -1), -0.3, -0.85])
+            steps = 5
+        comb = comb.astype(np.float32) + rng.normal(0, 0.15, 3).astype(np.float32)
+        ph = float(rng.random() * 6.283)
+        amp = 0.010 + 0.012 * rng.random()
+        pts = []
+        for k in range(8):
+            n = (p - centre) / (np.linalg.norm(p - centre) or 1.0)
+            p = centre + n * r0
+            tang = comb - n * float(np.dot(comb, n))
+            tang /= np.linalg.norm(tang) or 1.0
+            pts.append(p + np.cross(n, tang) * amp * math.sin(ph + k * 1.4))
+            if k < steps:
+                p = p + tang * 0.055
+            comb = comb + np.array([0.0, -0.10, 0.0], dtype=np.float32)
+        strands.append(pts)
+    return np.array(strands, dtype=np.float32)
+
+
+def _ears(v: np.ndarray, n_head: int) -> np.ndarray:
+    """Two ears as 3D outlines: rim (helix) plus inner fold (antihelix).
+
+    Returns (2, 2, N, 3): side, curve, point. Placed on the side of the skull
+    between eye level and the base of the nose, leaning back slightly.
+    """
+    head = v[:n_head]
+    band = np.abs(head[:, 1] - 0.0) < 0.08
+    half_w = float(np.abs(head[band, 0]).max())
+    t = np.linspace(0.0, 2.0 * math.pi, 22)
+    out = []
+    for side in (-1.0, 1.0):
+        curves = []
+        for scale, depth in ((1.0, 0.035), (0.58, 0.015)):
+            # A "C" that is wider at the top than at the lobe.
+            yy = 0.035 + scale * (0.17 * np.sin(t) * np.where(np.sin(t) > 0, 1.0, 1.15))
+            zz = -0.36 + scale * 0.085 * np.cos(t) * (1.0 + 0.25 * np.sin(t))
+            zz -= 0.10 * (yy - 0.035)                    # lean back
+            # The rim stands off the skull, most at the back and the top.
+            xx = side * (half_w * 0.95 + depth + 0.055 * (1 - np.cos(t)) + 0.03 * np.clip(np.sin(t), 0, 1))
+            curves.append(np.stack([xx, yy, zz], axis=1))
+        out.append(curves)
+    return np.array(out, dtype=np.float32)
+
+
 class CyberParts:
     """Everything precomputed for the cyber look (built once per avatar)."""
 
@@ -91,6 +187,9 @@ class CyberParts:
         self.bust_traces: list[np.ndarray] = []
         self.centre_w = np.zeros(0)
         self.edges = np.zeros((0, 2), dtype=np.int32)
+        self.cap_v = np.zeros((0, 3), dtype=np.float32)
+        self.ears = np.zeros((0, 2, 0, 3), dtype=np.float32)
+        self.cap_f = np.zeros((0, 3), dtype=np.int32)
         self.face_keep = np.zeros(0, dtype=np.int64)
         self.bust_n = np.zeros((0, 3))
         self._lut_key = None
@@ -135,30 +234,9 @@ class CyberParts:
         centre *= np.clip((v[:, 2] - 0.05) / 0.3, 0.0, 1.0)
         self.centre_w = centre[faces].mean(axis=1).astype(np.float32)
 
-        # Hair: strands combed back from the hairline, lifted at the front.
-        head_c = np.array([0.0, float(v[:n_head, 1].mean()), 0.0], dtype=np.float32)
-        top = np.flatnonzero((v[:n_head, 1] > 0.42) & (v[:n_head, 2] > -0.55))
-        picks = rng.choice(top, size=220, replace=len(top) < 220)
-        strands = []
-        for idx in picks:
-            p0 = v[idx].astype(np.float32)
-            r0 = float(np.linalg.norm(p0 - head_c)) + 0.035
-            side = np.sign(p0[0]) or 1.0
-            direction = np.array([side * (0.18 + rng.random() * 0.25), 0.45 + rng.random() * 0.25,
-                                  -0.95], dtype=np.float32)
-            direction /= np.linalg.norm(direction)
-            lift = 0.07 * max(0.0, (p0[2] - 0.1) / 0.6)       # the quiff at the front
-            pts = []
-            p = p0.copy()
-            for k in range(9):
-                off = p - head_c
-                off *= (r0 + lift * (1 - k / 9)) / (np.linalg.norm(off) or 1.0)
-                pts.append(head_c + off)
-                p = p + direction * 0.075
-                direction = direction + np.array([0.0, -0.10, 0.0], dtype=np.float32)
-                direction /= np.linalg.norm(direction)
-            strands.append(pts)
-        self.hair = np.array(strands, dtype=np.float32)
+        self.ears = _ears(v, n_head)
+        self.cap_v, self.cap_f, centre = _hair_cap(v, faces, n_head)
+        self.hair = _grow_hair(self.cap_v, self.cap_f, centre, rng)
 
         # Bust: neck base flaring into shoulders (front half), fixed in space.
         neck = v[n_head:]
@@ -224,7 +302,7 @@ class CyberParts:
         return b
 
     def paint_fill(self, p: QPainter, xs, ys, verts, faces, fgroup, primary: QColor, amp: float,
-                   centre=None, fade=None, cull: bool = True) -> None:
+                   centre=None, fade=None, cull: bool = True, gain: float = 1.0) -> None:
         """Half-transparent glass: lit facets, about 50% opaque, see-through middle.
 
         Only camera-facing facets are filled. Drawing the far side too would
@@ -252,6 +330,7 @@ class CyberParts:
         cw = (self.centre_w if centre is None else centre)[vis]
         alpha = 255 * (FILL_ALPHA - (FILL_ALPHA - CENTRE_ALPHA) * np.clip(cw * 1.6, 0, 1)) \
             * (0.55 + 0.45 * np.clip(bright + rim, 0, 1))
+        alpha *= gain
         if fade is not None:
             f = np.minimum(np.minimum(fade[a[vis]], fade[b[vis]]), fade[c[vis]])
             alpha *= f ** 1.2       # the min: the edge dissolves without a sawtooth
@@ -259,7 +338,7 @@ class CyberParts:
         order = np.argsort(fgroup[vis] * 1000.0 + fz, kind="stable")
         self._lut_for(primary)
         li = np.clip((bright * _LUT_N).astype(np.int32), 0, _LUT_N - 1)[order].tolist()
-        al = ((alpha[order] / 16).astype(np.int32) * 16).tolist()
+        al = ((np.minimum(alpha[order], 255) / 16).astype(np.int32) * 16).tolist()
         av, bv, cv = a[vis][order], b[vis][order], c[vis][order]
         tri = np.stack([xs[av], ys[av], xs[bv], ys[bv], xs[cv], ys[cv]], axis=1).tolist()
         p.setPen(Qt.PenStyle.NoPen)
@@ -334,17 +413,32 @@ class CyberParts:
         for x, y in pulses:
             p.drawEllipse(QPointF(x, y), 1.6 + 1.2 * amp, 1.6 + 1.2 * amp)
 
-    def paint_hair(self, p: QPainter, hair_xy: np.ndarray, hair_z: np.ndarray, primary: QColor) -> None:
+    def paint_hair(self, p: QPainter, hair_xy: np.ndarray, hair_z: np.ndarray, primary: QColor,
+                   scale: float = 1.0) -> None:
+        """Thin bright strands; the cap underneath gives the hair its body."""
         path = QPainterPath()
         for strand, zs in zip(hair_xy.tolist(), hair_z.tolist()):
-            if sum(zs) / len(zs) < -0.35:
+            if sum(zs) / len(zs) < -0.30:
                 continue
             path.moveTo(strand[0][0], strand[0][1])
             for k in range(1, len(strand) - 1, 2):
                 path.quadTo(strand[k][0], strand[k][1], strand[k + 1][0], strand[k + 1][1])
         p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QPen(_c(primary.lighter(165), 165), 1.0))
+        p.setPen(QPen(_c(primary.lighter(170), 175), max(0.8, 0.95 * scale)))
         p.drawPath(path)
+
+    def paint_ears(self, p: QPainter, ear_xy: np.ndarray, primary: QColor) -> None:
+        """Translucent ear shells with a bright rim and a fainter inner fold."""
+        for curves in ear_xy.tolist():
+            rim = QPolygonF([QPointF(x, y) for x, y in curves[0]])
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(_c(primary, 70))
+            p.drawPolygon(rim)
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(_c(primary.lighter(160), 200), 1.1))
+            p.drawPolygon(rim)
+            p.setPen(QPen(_c(primary.lighter(140), 120), 0.8))
+            p.drawPolyline(QPolygonF([QPointF(x, y) for x, y in curves[1][3:-6]]))
 
     def paint_eye_glow(self, p: QPainter, centre: QPointF, rad: float, accent: QColor, k: float) -> None:
         g = QRadialGradient(centre, rad * 3.2)

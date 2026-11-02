@@ -104,9 +104,12 @@ class CyberAvatarTests(unittest.TestCase):
         dark, r = _render(cyber, bg=QColor(0, 0, 0))
         light, _ = _render(MeshHoloAvatar(style="cyber"), bg=QColor(255, 255, 255))
         x, y = 200 + int(r * 0.33), int(400 * 0.04 + r + r * 0.25)   # a cheek
-        d, w = dark.pixelColor(x, y), light.pixelColor(x, y)
-        self.assertGreater(d.blue(), 30)                       # something is drawn
-        self.assertGreater(w.red() - d.red(), 40)              # and it is not opaque
+        # Average a patch so a wire crossing one pixel cannot decide the test.
+        patch = [(x + i, y + j) for i in range(-4, 5) for j in range(-4, 5)]
+        d_blue = sum(dark.pixelColor(*q).blue() for q in patch) / len(patch)
+        gap = sum(light.pixelColor(*q).red() - dark.pixelColor(*q).red() for q in patch) / len(patch)
+        self.assertGreater(d_blue, 30)                         # something is drawn
+        self.assertGreater(gap, 40)                            # and it is not opaque
 
     def test_cyber_paints_when_turned(self):
         img, _ = _render(MeshHoloAvatar(style="cyber"), yaw=-0.6)
@@ -122,6 +125,17 @@ class CyberAvatarTests(unittest.TestCase):
         eyes = set(mesh["landmarks"]["eye_l"].tolist()) | set(mesh["landmarks"]["eye_r"].tolist())
         for trace in parts.traces:
             self.assertFalse(eyes & set(trace.tolist()))
+
+    def test_sculpted_head_has_a_square_jaw(self):
+        from core.avatar_mesh import get_head_mesh
+        plain, sculpt = get_head_mesh(), get_head_mesh(sculpt=True)
+
+        def jaw_width(mesh):
+            v = mesh["verts"][:mesh["n_face"]]
+            band = (v[:, 1] < -0.70) & (v[:, 1] > -0.85)
+            return float(abs(v[band, 0]).max())
+        self.assertGreater(jaw_width(sculpt), jaw_width(plain) * 1.12)
+        self.assertEqual(len(plain["verts"]), len(sculpt["verts"]))   # same topology
 
 
 if __name__ == "__main__":

@@ -209,5 +209,19 @@ class HybridLLMRouterTests(unittest.TestCase):
         self.assertEqual(result["provider"], "openai")
         self.assertIn("openai", router.provider_performance())
 
+
+    def test_failed_fallback_is_demoted_until_it_recovers(self):
+        router = HybridLLMRouter(
+            preferred_provider="gemini",
+            api_keys={"gemini": "g", "groq": "r", "openai": "o"},
+            online_check=False,
+        )
+        router._provider_failures["groq"] = 1
+        order = router._provider_order(online=True)
+        self.assertEqual(order[0], "gemini")
+        self.assertLess(order.index("openai"), order.index("groq"))
+        router._provider_failures["groq"] = 0
+        self.assertEqual(router._provider_failures["groq"], 0)
+
 if __name__ == "__main__":
     unittest.main()

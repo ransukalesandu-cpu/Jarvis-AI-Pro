@@ -39,3 +39,17 @@ python -m pytest tests -q
 
 Windows laptop validation is still required for real audio devices, desktop
 permissions, Supabase credentials and measured process memory.
+
+
+## AgentService integration
+
+The application facade exposes protected operations for `save_workflow`,
+`list_workflows`, `suggest_workflows` and `run_workflow`. Each operation
+rechecks the existing autonomy-enabled, owner-authorized and Privacy Lock
+conditions. The `run_workflow` path passes only the saved objective and
+acceptance criteria to `AgentService.start`; the planner creates a new plan
+and all steps pass through the normal policy and approval gates. Saved commands
+are never replayed.
+
+The workflow library is imported lazily and uses the existing agent data
+directory, keeping its startup and memory cost negligible.

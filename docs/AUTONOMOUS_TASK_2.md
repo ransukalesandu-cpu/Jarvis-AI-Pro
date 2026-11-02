@@ -69,7 +69,7 @@ The database tables `jarvis_agent_tasks`, `jarvis_agent_task_events` and
 `jarvis_agent_workflows` have RLS enabled and deny direct client-role access.
 Only the server-side Edge Function accesses them with the service role after
 resolving the caller's Supabase Auth identity. Task history is bounded to 40
-records per user; events are bounded when read. Saved workflow templates keep
+records per user; events are capped at 200 per task. Saved workflow templates keep
 only the user-approved name, objective, criteria and step title/kind summaries;
 reuse always creates a fresh plan through AgentService and its existing
 owner-authentication, Privacy Lock, policy and approval gates.

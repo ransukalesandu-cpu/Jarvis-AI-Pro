@@ -520,7 +520,7 @@ def _redact_cloud_payload(value: Any, depth: int = 0, field_name: str = "") -> A
         from agent.store import redact
         limit = 12_000 if field_name == "content" else 4_000 if field_name == "command" else 1_400
         return redact(value, limit)
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return [_redact_cloud_payload(item, depth + 1) for item in value[:96]]
     if isinstance(value, dict):
         return {
@@ -529,13 +529,27 @@ def _redact_cloud_payload(value: Any, depth: int = 0, field_name: str = "") -> A
         }
     if value is None or isinstance(value, (bool, int, float)):
         return value
-    return str(value)[:500]
+    from agent.store import redact
+    return redact(str(value), 500)
 
 
 def save_cloud_agent_task(task_data: dict[str, Any]) -> None:
     if not isinstance(task_data, dict):
         raise ValueError("Task snapshot must be an object")
     clean = _redact_cloud_payload(task_data)
+    original_steps = task_data.get("steps")
+    clean_steps = clean.get("steps") if isinstance(clean, dict) else None
+    executable_fields = ("kind", "command", "path", "content", "target")
+    if isinstance(original_steps, list):
+        if not isinstance(clean_steps, list) or len(clean_steps) != len(original_steps):
+            raise ValueError("Task checkpoint changed its executable step structure")
+        for original, sanitized in zip(original_steps, clean_steps):
+            if not isinstance(original, dict) or not isinstance(sanitized, dict):
+                raise ValueError("Task checkpoint contains an invalid executable step")
+            if any(original.get(key) != sanitized.get(key) for key in executable_fields):
+                raise ValueError(
+                    "Task checkpoint redaction would change executable step content; create a fresh plan"
+                )
     task_id = str(clean.get("id") or "")
     objective = str(clean.get("objective") or "")
     state = str(clean.get("state") or "")
@@ -571,11 +585,17 @@ def append_cloud_agent_event(task_id: str, event: dict[str, Any]) -> None:
     clean = _redact_cloud_payload(event)
     if len(json.dumps(clean, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) > 9_500:
         from agent.store import redact
+        summary = redact(str(event), 5000)
         clean = {
             "kind": str(event.get("kind") or "event")[:80],
             "truncated": True,
-            "summary": redact(str(event), 5000),
+            "summary": summary,
         }
+        while len(json.dumps(clean, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) > 9_500:
+            if not summary:
+                raise ValueError("Cloud event metadata exceeds the persistence limit")
+            summary = summary[: max(0, len(summary) // 2)]
+            clean["summary"] = summary
     _request_personal_memory({
         "operation": "agent_event_append", "task_id": str(task_id),
         "event_data": clean,

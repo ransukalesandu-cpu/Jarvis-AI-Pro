@@ -526,7 +526,7 @@ class ComputerUseTests(unittest.TestCase):
         self.assertTrue(result.retryable)
         self.assertIs(result.verified, False)
         self.assertIsNotNone(vision.verify_before)
-        self.assertIn("before clicking", vision.verify_before.description.casefold())
+        self.assertEqual(vision.verify_before.description, "The dialog is still open.")
 
     def test_backend_failure_is_retryable(self):
         class BrokenInput(FakeInput):

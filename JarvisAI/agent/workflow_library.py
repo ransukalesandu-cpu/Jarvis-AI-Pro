@@ -39,7 +39,7 @@ def _safe_text(value: str, limit: int) -> str:
     """Redact secrets and absolute local paths before persisting user text."""
     cleaned = redact(str(value or ""), limit * 4)
     cleaned = re.sub(r"(?i)(?:[a-z]:\\|\\\\)[^\s\"'<>|]+", "[local-path]", cleaned)
-    cleaned = re.sub(r"(?<![\w:])/(?:[^\s/]+/)*[^\s/]+", "[local-path]", cleaned)
+    cleaned = re.sub(r"(?<![\w:/])/(?!/)(?:[^\s/]+/)*[^\s/]+", "[local-path]", cleaned)
     return cleaned[:limit]
 
 

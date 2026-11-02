@@ -45,5 +45,16 @@ class PerformanceMonitorTests(unittest.TestCase):
         self.assertEqual(result["samples"], 2)
 
 
+
+
+    def test_waiting_attempt_does_not_pollute_terminal_duration_samples(self):
+        monitor = PerformanceMonitor()
+        monitor.record(duration_s=4.0, state="waiting")
+        self.assertEqual(monitor.snapshot()["samples"], 0)
+        self.assertEqual(monitor.snapshot()["completed"], 0)
+        monitor.record(duration_s=2.0, state="completed")
+        self.assertEqual(monitor.snapshot()["samples"], 1)
+        self.assertEqual(monitor.snapshot()["last_duration_s"], 2.0)
+
 if __name__ == "__main__":
     unittest.main()

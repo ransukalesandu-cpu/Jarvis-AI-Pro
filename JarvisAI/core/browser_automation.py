@@ -51,6 +51,7 @@ class BrowserAutomation:
         self._playwright = None
         self._browser = None
         self._page = None
+        self._cdp = None
         self._last_url = ""
 
     def open(self) -> None:
@@ -72,15 +73,22 @@ class BrowserAutomation:
                 service_workers="block",
             )
             context.set_default_timeout(self.timeout_ms)
-            context.route("**/*", self._guard_request)
             self._page = context.new_page()
+            # CDP response-stage interception validates each redirect before Chromium follows it.
+            self._cdp = self._browser.new_browser_cdp_session(self._page)
+            self._cdp.on("Fetch.requestPaused", self._guard_cdp_request)
+            self._cdp.send("Fetch.enable", {"patterns": [
+                {"urlPattern": "*", "requestStage": "Request"},
+                {"urlPattern": "*", "requestStage": "Response"},
+            ]})
             if self._last_url:
-                target = validate_public_url(self._last_url)
-                self._page.goto(
-                    target,
-                    wait_until="domcontentloaded",
-                    timeout=self.timeout_ms,
-                )
+                try:
+                    target = validate_public_url(self._last_url)
+                    self._page.goto(target, wait_until="domcontentloaded", timeout=self.timeout_ms)
+                    self._last_url = validate_public_url(self._page.url)
+                except Exception:
+                    # A stale saved page must not prevent a later explicit navigation.
+                    self._last_url = ""
         except Exception:
             self.close()
             raise
@@ -99,11 +107,26 @@ class BrowserAutomation:
         else:
             route.continue_()
 
+    def _guard_cdp_request(self, event: dict) -> None:
+        request_id = event.get("requestId")
+        request = event.get("request") or {}
+        try:
+            if str(request.get("method", "GET")).upper() not in {"GET", "HEAD"}:
+                raise BrowserAutomationError("Write-capable browser requests are blocked.")
+            validate_public_url(request.get("url", ""))
+            redirect_url = event.get("redirectUrl")
+            if redirect_url:
+                validate_public_url(redirect_url)
+        except BrowserAutomationError:
+            self._cdp.send("Fetch.failRequest", {"requestId": request_id, "errorReason": "BlockedByClient"})
+            return
+        self._cdp.send("Fetch.continueRequest", {"requestId": request_id})
+
     def navigate(self, url: str) -> dict[str, str]:
         target = validate_public_url(url)
         self.open()
         self._page.goto(target, wait_until="domcontentloaded", timeout=self.timeout_ms)
-        self._last_url = target
+        self._last_url = validate_public_url(self._page.url)
         return self.read_page()
 
     def search_web(self, query: str) -> dict[str, str]:
@@ -134,6 +157,11 @@ class BrowserAutomation:
 
     def close(self) -> None:
         try:
+            if self._cdp is not None:
+                self._cdp.detach()
+        except Exception:
+            failsoft.suppress('core.browser_automation:BrowserAutomation.close')
+        try:
             if self._browser is not None:
                 self._browser.close()
         except Exception:
@@ -143,7 +171,7 @@ class BrowserAutomation:
                 self._playwright.stop()
         except Exception:
             failsoft.suppress('core.browser_automation:BrowserAutomation.close')
-        self._page = self._browser = self._playwright = None
+        self._page = self._cdp = self._browser = self._playwright = None
 
     def __enter__(self):
         self.open()

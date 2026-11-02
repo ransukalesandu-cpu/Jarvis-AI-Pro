@@ -12,9 +12,8 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import replace
-from collections import deque
-from dataclasses import dataclass, field
+from dataclasses from collections import deque
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable
 
 from agent.models import Task, TaskReport, TaskState

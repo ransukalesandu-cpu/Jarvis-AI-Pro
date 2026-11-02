@@ -347,7 +347,9 @@ class Task:
 
     # -- planning ----------------------------------------------------------
     def set_plan(self, steps: Iterable[TaskStep], criteria: Iterable[str] | None = None) -> None:
-        ordered = list(steps)
+        from agent.dependency_graph import topological_sort_steps
+
+        ordered = topological_sort_steps(list(steps))
         for position, step in enumerate(ordered):
             step.index = position
         self.steps = ordered

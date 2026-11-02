@@ -228,6 +228,11 @@ class ProviderTests(unittest.TestCase):
     def setUp(self):
         mail_calendar.reset_for_tests()
 
+    def tearDown(self):
+        # Listing mail marks untrusted content for the turn; don't leak it.
+        from core import security
+        security.mark_user_turn_started()
+
     def test_email_tool_hidden_without_provider_and_fenced_with_one(self):
         from actions import email_tool
         self.assertFalse(email_tool.TOOL["available"]())

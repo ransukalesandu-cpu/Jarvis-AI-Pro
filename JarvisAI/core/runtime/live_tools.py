@@ -105,7 +105,20 @@ class ToolDispatchMixin:
             raise
         action_log.record(name, args, result, status=status, risk=risk, device=device,
                           duration_ms=timer.ms)
+        calls = self.__dict__.setdefault("_session_tool_calls", [])
+        calls.append({"tool": name, "args": dict(args), "status": status, "risk": risk})
+        del calls[:-200]
         return response
+
+    def _dispatch_tool_sync(self, name: str, args: dict, timeout: float = 600.0) -> str:
+        """Run a tool from a worker thread (routines) through the full registry layer."""
+        loop = getattr(self, "_loop", None)
+        if loop is None or not loop.is_running():
+            return "JARVIS is not connected right now."
+        call = SimpleNamespace(id=None, name=str(name), args=dict(args or {}))
+        future = asyncio.run_coroutine_threadsafe(self._execute_tool(call), loop)
+        response = future.result(timeout)
+        return str((getattr(response, "response", None) or {}).get("result", ""))
 
     def _recall_memory_context(self, query: str) -> str:
         """Build compact recall context with provenance labels and privacy filtering."""
@@ -398,6 +411,8 @@ class ToolDispatchMixin:
                     )
                 _ctx = {"player": self.ui, "speak": self.speak,
                         "cancel_event": getattr(fc, "cancel_event", None),
+                        "dispatch": self._dispatch_tool_sync,
+                        "session_calls": list(self.__dict__.get("_session_tool_calls", [])),
                         "response": None, "session_memory": None,
                         "apply_personality": self._on_voice_personality_change,
                         "apply_voice_change": self._on_voice_change}

@@ -79,6 +79,11 @@ class BrowserAutomation:
 
     @staticmethod
     def _guard_request(route) -> None:
+        # This workflow only follows links and reads pages. Even if a page or
+        # future browser feature attempts a write-capable request, fail closed.
+        if str(route.request.method or "").upper() not in {"GET", "HEAD"}:
+            route.abort()
+            return
         try:
             validate_public_url(route.request.url)
         except BrowserAutomationError:

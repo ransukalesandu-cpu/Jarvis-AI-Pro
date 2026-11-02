@@ -146,6 +146,17 @@ class SecurityTierTests(unittest.TestCase):
         self.assertEqual(tier_for("autonomous_task", {"action": "status"}), TIER_SENSITIVE)
         self.assertEqual(tier_for("autonomous_task", {"action": "pause"}), TIER_SENSITIVE)
         self.assertEqual(tier_for("autonomous_task", {"action": "run"}), TIER_DANGEROUS)
+
+    def test_workflow_library_actions_keep_appropriate_risk_tiers(self):
+        from core.security import TIER_DANGEROUS, TIER_SENSITIVE, tier_for
+
+        for action in ("save_workflow", "list_workflows", "suggest_workflows"):
+            with self.subTest(action=action):
+                self.assertEqual(tier_for("autonomous_task", {"action": action}), TIER_SENSITIVE)
+        self.assertEqual(
+            tier_for("autonomous_task", {"action": "run_workflow"}),
+            TIER_DANGEROUS,
+        )
         # Unknown operations fail closed.
         self.assertEqual(tier_for("autonomous_task", {"action": "surprise"}),
                          TIER_DANGEROUS)

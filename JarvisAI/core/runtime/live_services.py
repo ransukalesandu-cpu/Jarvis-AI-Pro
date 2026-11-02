@@ -189,6 +189,17 @@ class BackgroundServicesMixin:
         while not self._shutdown_requested:
             await asyncio.sleep(TRIGGER_TICK_SECONDS)
             try:
+                announcements = self.__dict__.get("_announcements")
+                if announcements and not self._proactive_turn_blocker():
+                    # Background job results (core/jobs.py) go first.
+                    text = announcements.popleft()
+                    if not self._awake:
+                        self.wake(reason="background job finished")
+                    await self.session.send_client_content(
+                        turns={"role": "user", "parts": [{"text": text}]},
+                        turn_complete=True,
+                    )
+                    continue
                 due = registry.due(quiet_hours=get_quiet_hours())
                 if not due:
                     continue

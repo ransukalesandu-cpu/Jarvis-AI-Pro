@@ -51,6 +51,7 @@ from core.ui_coordinator import HeadlessJarvisUI
 from core.audio_callback_guard import enqueue_audio_frame, guarded_audio_callback
 from core.playback_interrupt import interrupt_playback
 from core.barge_in import CONFIRM_WINDOW_SECONDS, HeldAudio
+from core.tool_runtime import with_device_parameter
 from core.voice_ui_control import has_wake_name_prefix, parse_voice_ui_command
 from core.audio_capture import (
     open_input_stream_with_fallback,
@@ -1515,9 +1516,11 @@ class JarvisLive(
         # the host, the capability list from the registries that were just
         # discovered. Rename the assistant, add a plugin or move to another OS
         # and this follows without anyone editing a prompt.
-        _all_decls = (TOOL_DECLARATIONS
-                      + self._action_registry.get_tool_declarations()
-                      + self._plugin_registry.get_tool_declarations())
+        # Every tool also takes the optional `device` argument (core/tool_runtime.py).
+        _all_decls = [with_device_parameter(d) for d in (
+            TOOL_DECLARATIONS
+            + self._action_registry.get_tool_declarations()
+            + self._plugin_registry.get_tool_declarations())]
         _names = {(d.get("name") if isinstance(d, dict) else getattr(d, "name", ""))
                   for d in _all_decls}
         sys_prompt = _render_prompt(sys_prompt, {

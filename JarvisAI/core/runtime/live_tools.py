@@ -9,10 +9,16 @@ session object, so every attribute they use is set up in ``JarvisLive.__init__``
 import asyncio
 import json
 import traceback
+from collections import deque
+from types import SimpleNamespace
 from actions.background_monitor import add_monitor, list_monitors, remove_monitor
 from actions.screen_processor import _capture_camera, _capture_screen
 from actions.system_monitor import get_system_status
-from core import failsoft, security, undo as undo_stack
+from core import action_log, failsoft, security, undo as undo_stack
+from core.jobs import get_job_manager
+from core.tool_runtime import (
+    ToolMeta, infer_risk, result_status, take_device, timeout_message,
+)
 from google.genai import types
 from memory.config_manager import get_memory_provider_access_enabled
 from memory.memory_manager import redact_sensitive_content
@@ -20,6 +26,86 @@ from memory.memory_manager import redact_sensitive_content
 
 class ToolDispatchMixin:
     """Gemini function-call dispatch for the live-session tools."""
+
+    # ── Registry layer: every call passes through here (core/tool_runtime.py) ──
+
+    def _tool_meta(self, name: str) -> ToolMeta:
+        for registry_name in ("_action_registry", "_plugin_registry"):
+            registry = getattr(self, registry_name, None)
+            meta_fn = getattr(registry, "meta", None)
+            if callable(meta_fn):
+                meta = meta_fn(name)
+                if isinstance(meta, ToolMeta):
+                    return meta
+        return ToolMeta()
+
+    def _job_manager(self):
+        manager = get_job_manager()
+        manager.set_on_done(self._on_job_done)
+        return manager
+
+    def _on_job_done(self, job) -> None:
+        """Queue the result; the trigger scheduler speaks it when it is polite to."""
+        queue = self.__dict__.setdefault("_announcements", deque(maxlen=20))
+        queue.append(
+            f"[Background job {job.id} ({job.name}) finished: {job.status}. "
+            f"Result: {str(job.result)[:800]}] Tell the owner the result in one or two sentences."
+        )
+
+    def _start_tool_job(self, call, meta: ToolMeta):
+        async def work(job):
+            call.cancel_event = job.cancel_event
+            response = await self._execute_tool_impl(call)
+            return (getattr(response, "response", None) or {}).get("result", "")
+        return self._job_manager().start(call.name, work, description=call.name)
+
+    async def _execute_tool(self, fc) -> types.FunctionResponse:
+        """Run one Gemini function call: device check, timeout, jobs, action log."""
+        name = fc.name
+        args = dict(fc.args or {})
+        device, device_error = take_device(args)
+        meta = self._tool_meta(name)
+        risk = meta.risk or infer_risk(name, args)
+        call = SimpleNamespace(id=getattr(fc, "id", None), name=name, args=args,
+                               cancel_event=None)
+        timer = action_log.Timer()
+        if device_error:
+            action_log.record(name, args, device_error, status="error", risk=risk,
+                              device=device, duration_ms=timer.ms)
+            return types.FunctionResponse(id=call.id, name=name,
+                                          response={"result": device_error})
+        if meta.long_running:
+            job = self._start_tool_job(call, meta)
+            message = (f"Started background job {job.id} for {name.replace('_', ' ')}. "
+                       "I'll tell you when it is done.")
+            action_log.record(name, args, message, status="job_started", risk=risk,
+                              device=device, job_id=job.id, duration_ms=timer.ms)
+            return types.FunctionResponse(id=call.id, name=name, response={"result": message})
+        try:
+            try:
+                has_loop = asyncio.current_task() is not None
+            except RuntimeError:       # driven by hand (unit tests): no timer available
+                has_loop = False
+            if has_loop:
+                response = await asyncio.wait_for(self._execute_tool_impl(call),
+                                                  timeout=meta.timeout)
+            else:
+                response = await self._execute_tool_impl(call)
+            result = (getattr(response, "response", None) or {}).get("result", "")
+            status = result_status(result)
+        except asyncio.TimeoutError:
+            result = timeout_message(name, meta.timeout)
+            status = "timeout"
+            response = types.FunctionResponse(id=call.id, name=name, response={"result": result})
+            if not self.ui.muted:
+                self.ui.set_state("LISTENING")
+        except asyncio.CancelledError:
+            action_log.record(name, args, "Cancelled.", status="cancelled", risk=risk,
+                              device=device, duration_ms=timer.ms)
+            raise
+        action_log.record(name, args, result, status=status, risk=risk, device=device,
+                          duration_ms=timer.ms)
+        return response
 
     def _recall_memory_context(self, query: str) -> str:
         """Build compact recall context with provenance labels and privacy filtering."""
@@ -32,7 +118,7 @@ class ToolDispatchMixin:
         context = metacognitive_context(query, provider_safe=True)
         return redact_sensitive_content(context.strip())
 
-    async def _execute_tool(self, fc) -> types.FunctionResponse:
+    async def _execute_tool_impl(self, fc) -> types.FunctionResponse:
         name = fc.name
         args = dict(fc.args or {})
 
@@ -311,6 +397,7 @@ class ToolDispatchMixin:
                         lambda: self._action_registry.run(name, args, _ctx),
                     )
                 _ctx = {"player": self.ui, "speak": self.speak,
+                        "cancel_event": getattr(fc, "cancel_event", None),
                         "response": None, "session_memory": None,
                         "apply_personality": self._on_voice_personality_change,
                         "apply_voice_change": self._on_voice_change}

@@ -4861,8 +4861,11 @@ class MainWindow(QMainWindow):
         if key == "web":
             current_url = self._workspace._url_entry.text().casefold()
             active = "music" if "music.youtube.com" in current_url else "media"
+        selected_title = self._workspace.tabs.tabText(index).strip()
+        if not selected_title:
+            selected_title = self._workspace._view_title.text()
         self._workspace_header.set_context(
-            active, title=self._workspace._view_title.text(), status="ACTIVE"
+            active, title=selected_title, status="ACTIVE"
         )
 
     def _open_bento_dashboard(self) -> None:

@@ -871,6 +871,9 @@ class JarvisLive(
             logger=lambda msg: print(f"[Plugins] {msg}"),
             notify=lambda msg: self.ui.write_log(f"SYS: {msg}"),
         )
+        # Owner rules fire through this session (core/events.py, Module 6).
+        from core import events as _events
+        _events.set_rule_executor(self._execute_rule_action)
         # Status line for Full Access (core/full_access.py); the setting itself
         # lives in memory/config_manager.get_full_access.
         from core.full_access import full_access_enabled
@@ -1568,6 +1571,14 @@ class JarvisLive(
         parts.append(sys_prompt)
         # Owner-vs-content rule and, when on, Full Access (core/full_access.py).
         parts.append(session_rules_prompt())
+        try:
+            from core.owner_store import session_context
+            owner_context = session_context()
+        except Exception as exc:
+            owner_context = ""
+            print(f"[OwnerStore] Context unavailable: {type(exc).__name__}: {exc}")
+        if owner_context:
+            parts.append(owner_context)
         parts.append(build_brain_protocol())
         if self._live_switch_context:
             parts.append(

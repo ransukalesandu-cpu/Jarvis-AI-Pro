@@ -7,6 +7,7 @@ the normal tool registry. Stored in the owner's SQLite store.
 from __future__ import annotations
 
 from core.routines import get_routine_store, replay, steps_from_session
+from core.tool_runtime import json_object_arg
 
 _session_marker = {"index": 0}
 
@@ -29,8 +30,9 @@ def routine(parameters: dict, dispatch=None, session_calls=None, cancel_event=No
         if r is None:
             return f"No routine named '{name}'."
         return "\n".join(f"{i}. {s['tool']} {s['args']}" for i, s in enumerate(r["steps"], 1))
-    if action == "save":
-        steps = p.get("steps")
+    if action in ("save", "edit"):
+        steps = [{"tool": s.get("tool"), "args": json_object_arg(s.get("args"))}
+                 for s in (p.get("steps") or []) if isinstance(s, dict)]
         if not steps:
             calls = list(session_calls or [])
             steps = steps_from_session(calls, _session_marker["index"])
@@ -59,12 +61,12 @@ TOOL = {
         "made since the last save (or pass steps=[{tool, args}]); action=run replays "
         "a routine by name; list, show and delete manage them."),
     "parameters": {"type": "OBJECT", "properties": {
-        "action": {"type": "STRING", "description": "save | run | list | show | delete"},
+        "action": {"type": "STRING", "description": "save | edit | run | list | show | delete"},
         "name": {"type": "STRING"},
         "description": {"type": "STRING"},
         "steps": {"type": "ARRAY", "items": {"type": "OBJECT", "properties": {
             "tool": {"type": "STRING"},
-            "args": {"type": "OBJECT", "properties": {}},
+            "args": {"type": "STRING", "description": "JSON object of the tool's arguments"},
         }}},
     }, "required": ["action"]},
     "handler": routine,

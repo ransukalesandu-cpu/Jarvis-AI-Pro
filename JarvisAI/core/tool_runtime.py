@@ -60,6 +60,21 @@ def meta_from_declaration(decl: dict) -> ToolMeta:
     )
 
 
+def json_object_arg(value) -> dict:
+    """A free-form object argument. Declarations use a JSON *string* for these
+    because Gemini rejects nested OBJECT schemas that have no properties."""
+    if isinstance(value, dict):
+        return dict(value)
+    text = str(value or "").strip()
+    if not text:
+        return {}
+    import json
+    parsed = json.loads(text)
+    if not isinstance(parsed, dict):
+        raise ValueError("expected a JSON object")
+    return parsed
+
+
 def with_device_parameter(declaration: dict) -> dict:
     """A copy of a function declaration with the optional ``device`` argument."""
     decl = copy.deepcopy(declaration)

@@ -181,6 +181,9 @@ class BackgroundServicesMixin:
         )
         self.ui.write_log(f"SYS: Trigger '{trigger.name}' fired.")
         print(f"[Triggers] Fired {trigger.name}.")
+        # Owner rules can react to the schedule too (core/events.py).
+        from core import events
+        await asyncio.to_thread(events.emit, "schedule", {"name": trigger.name, "prompt": prompt})
 
     async def _run_trigger_scheduler(self) -> None:
         """Background task: inject due triggers as turns so JARVIS speaks first."""
@@ -200,7 +203,9 @@ class BackgroundServicesMixin:
                         turn_complete=True,
                     )
                     continue
-                due = registry.due(quiet_hours=get_quiet_hours())
+                # Off the event loop: condition triggers (email/file watchers)
+                # may touch the network or disk.
+                due = await asyncio.to_thread(registry.due, quiet_hours=get_quiet_hours())
                 if not due:
                     continue
                 if self._proactive_turn_blocker():

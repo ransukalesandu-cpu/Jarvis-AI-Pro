@@ -249,3 +249,29 @@ class ProviderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DeclarationSchemaTests(unittest.TestCase):
+    """Every declaration Gemini receives must be a valid FunctionDeclaration."""
+
+    def _nested_empty_objects(self, schema, path="") -> list[str]:
+        bad = []
+        if isinstance(schema, dict):
+            if schema.get("type") == "OBJECT" and path and not schema.get("properties"):
+                bad.append(path)
+            for key, value in (schema.get("properties") or {}).items():
+                bad += self._nested_empty_objects(value, f"{path}.{key}")
+            if "items" in schema:
+                bad += self._nested_empty_objects(schema["items"], f"{path}[]")
+        return bad
+
+    def test_all_action_declarations_validate(self):
+        from google.genai import types
+        reg = discover_actions(JARVIS_DIR / "actions", logger=lambda _m: None)
+        for decl in reg.get_tool_declarations():
+            decl = with_device_parameter(decl)
+            with self.subTest(tool=decl["name"]):
+                types.FunctionDeclaration(**{k: v for k, v in decl.items()
+                                             if k in ("name", "description", "parameters", "behavior")})
+                self.assertEqual(self._nested_empty_objects(decl["parameters"]), [])
+                self.assertIn("device", decl["parameters"]["properties"])

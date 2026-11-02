@@ -7,6 +7,7 @@ start as jobs on their own.
 from __future__ import annotations
 
 from core.jobs import get_job_manager
+from core.tool_runtime import json_object_arg
 
 
 def start_job(parameters: dict, start_background=None, **_ctx) -> str:
@@ -16,7 +17,7 @@ def start_job(parameters: dict, start_background=None, **_ctx) -> str:
         return "Which tool should run in the background?"
     if start_background is None:
         return "Background jobs need a live session."
-    job_id = start_background(tool, dict(p.get("args") or {}))
+    job_id = start_background(tool, json_object_arg(p.get("args")))
     return f"Started job {job_id} ({tool}). I'll tell you when it is done."
 
 
@@ -41,7 +42,7 @@ TOOLS = [
         "description": "Run any tool in the background (tool + args) so the conversation continues.",
         "parameters": {"type": "OBJECT", "properties": {
             "tool": {"type": "STRING"},
-            "args": {"type": "OBJECT", "properties": {}},
+            "args": {"type": "STRING", "description": "JSON object of the tool's arguments"},
         }, "required": ["tool"]},
         "handler": start_job, "risk": "write", "timeout": 15,
     },

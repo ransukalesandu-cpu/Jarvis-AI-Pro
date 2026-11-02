@@ -361,7 +361,8 @@ class TaskRunner:
             parallel_steps = self._parallel_read_layer(task, index)
             if len(parallel_steps) > 1:
                 parallel_outcomes = self._run_parallel_read_layer(task, parallel_steps)
-                stop_after_layer = False
+                cancelled_layer = False
+                loop_detected = False
                 for parallel_step, parallel_outcome in parallel_outcomes:
                     self._record(task, parallel_step, parallel_outcome)
                     if parallel_outcome.blocked:
@@ -381,18 +382,18 @@ class TaskRunner:
                                    step={"index": parallel_step.index,
                                          "title": parallel_step.title})
                         if parallel_outcome.cancelled:
-                            self._close_cancelled(task)
-                            stop_after_layer = True
-                            break
-                        if self._loop_detected(parallel_step, parallel_outcome):
+                            cancelled_layer = True
+                        elif self._loop_detected(parallel_step, parallel_outcome):
                             task.blockers.append(
                                 f"Loop detected: '{parallel_step.title}' failed the same way "
                                 f"{self.config.loop_detection_repeats} times."
                             )
-                            task.transition(TaskState.FAILED, "repeated identical failure")
-                            stop_after_layer = True
-                            break
-                if stop_after_layer:
+                            loop_detected = True
+                if cancelled_layer:
+                    self._close_cancelled(task)
+                    break
+                if loop_detected:
+                    task.transition(TaskState.FAILED, "repeated identical failure")
                     break
                 continue
 

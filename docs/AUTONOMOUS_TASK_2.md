@@ -16,7 +16,7 @@ This phase builds on the existing agent engine rather than replacing it.
 ## Explicit workflow library
 
 The new agent workflow library stores only workflows the user explicitly saves
-after a task reaches COMPLETED. It is local and bounded to 40 templates.
+after a task reaches COMPLETED. It is stored in Supabase and bounded to 40 templates per user.
 
 A template stores its label, objective, criteria and step titles/kinds. It does
 not store commands, paths, file contents, screen targets, tool output or evidence.
@@ -51,8 +51,8 @@ acceptance criteria to `AgentService.start`; the planner creates a new plan
 and all steps pass through the normal policy and approval gates. Saved commands
 are never replayed.
 
-The workflow library is imported lazily and uses the existing agent data
-directory, keeping its startup and memory cost negligible.
+The workflow library is imported lazily and uses the existing Supabase Auth session,
+keeping startup and local memory cost negligible.
 
 
 ## Cloud-only persistence (current architecture)

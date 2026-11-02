@@ -563,9 +563,9 @@ class ScreenVision:
             # The prior observation is context, not proof: the provider must judge
             # the current screenshot and explicitly compare the visible state.
             before_context = (
-                "\\n\\nPrevious screen state (before the action):\\n"
+                "\n\nPrevious screen state (before the action):\n"
                 + before.summary(max_chars=500)
-                + "\\nCompare this with the current screenshot. Do not assume the "
+                + "\nCompare this with the current screenshot. Do not assume the "
                   "action succeeded merely because the previous state differed."
             )
         prompt = (

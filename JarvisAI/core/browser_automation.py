@@ -51,6 +51,7 @@ class BrowserAutomation:
         self._playwright = None
         self._browser = None
         self._page = None
+        self._last_url = ""
 
     def open(self) -> None:
         if self._page is not None:
@@ -73,6 +74,13 @@ class BrowserAutomation:
             context.set_default_timeout(self.timeout_ms)
             context.route("**/*", self._guard_request)
             self._page = context.new_page()
+            if self._last_url:
+                target = validate_public_url(self._last_url)
+                self._page.goto(
+                    target,
+                    wait_until="domcontentloaded",
+                    timeout=self.timeout_ms,
+                )
         except Exception:
             self.close()
             raise
@@ -95,6 +103,7 @@ class BrowserAutomation:
         target = validate_public_url(url)
         self.open()
         self._page.goto(target, wait_until="domcontentloaded", timeout=self.timeout_ms)
+        self._last_url = target
         return self.read_page()
 
     def search_web(self, query: str) -> dict[str, str]:

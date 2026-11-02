@@ -81,12 +81,9 @@ except Exception:
 
 
 class HUDMainWindow(QMainWindow):
-    """Futuristic Neural Wireframe Hologram HUD Main Window."""
-
-    # Keep navigation motion deliberate and consistent across glass surfaces.
-    WORKSPACE_TRANSITION_MS = 300
-    MENU_TRANSITION_MS = 190
-    PANEL_FOCUS_DELAY_MS = 340
+    """
+    Futuristic Neural Wireframe Hologram HUD Main Window.
+    """
 
     sig_state_changed = pyqtSignal(str)
     sig_mode_changed = pyqtSignal()
@@ -375,7 +372,7 @@ class HUDMainWindow(QMainWindow):
         self._right_menu_animation = QPropertyAnimation(
             self._right_menu_opacity, b"opacity", self
         )
-        self._right_menu_animation.setDuration(self.MENU_TRANSITION_MS)
+        self._right_menu_animation.setDuration(150)
         self._right_menu_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._right_menu_animation.finished.connect(self._finish_right_menu_transition)
         self._right_menu_hide_after_fade = False
@@ -418,7 +415,7 @@ class HUDMainWindow(QMainWindow):
         self._workspace_animation = QPropertyAnimation(
             self._dashboard_opacity_effect, b"opacity", self
         )
-        self._workspace_animation.setDuration(self.WORKSPACE_TRANSITION_MS)
+        self._workspace_animation.setDuration(220)
         self._workspace_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._workspace_animation.finished.connect(self._finish_workspace_transition)
         self._transition_target = None
@@ -680,7 +677,7 @@ class HUDMainWindow(QMainWindow):
         self._hide_right_menu()
         if self._workspace_stack.currentWidget() is not self._dashboard:
             self._show_dashboard_page()
-        QTimer.singleShot(self.PANEL_FOCUS_DELAY_MS, lambda index=panel_index: self._focus_dashboard_panel(index))
+        QTimer.singleShot(280, lambda index=panel_index: self._focus_dashboard_panel(index))
 
     def _focus_dashboard_panel(self, panel_index: int):
         """Scroll to the selected panel when a navigation shortcut is used."""
@@ -697,7 +694,7 @@ class HUDMainWindow(QMainWindow):
             return
         if self._workspace_stack.currentWidget() is not self._dashboard:
             self._show_dashboard_page()
-        QTimer.singleShot(self.PANEL_FOCUS_DELAY_MS, self._dashboard.open_extra)
+        QTimer.singleShot(280, self._dashboard.open_extra)
 
     def _stop_agent_task(self):
         """Immediate stop for a running autonomous task (no confirmation)."""

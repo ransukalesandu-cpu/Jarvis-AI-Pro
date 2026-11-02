@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from core.hybrid_llm_router import HybridLLMRouter, resolve_preferred_provider
+from core.provider_protocol import ProviderResult, TextProviderRouter
 
 
 _FALLBACK_PROMPT_RULES = (
@@ -54,8 +55,8 @@ def query_text_fallback(
     *,
     config_path: str | Path,
     base_system_prompt: str,
-    router_factory: Callable[..., Any] | None = None,
-) -> tuple[dict[str, Any], str]:
+    router_factory: Callable[..., TextProviderRouter] | None = None,
+) -> tuple[ProviderResult, str]:
     """Run provider-routed text fallback and return results plus provider names.
 
     The second return value contains provider names only, never credentials.

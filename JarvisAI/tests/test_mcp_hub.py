@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from plugins.mcp_hub import MCPPluginHub, mcp_hub  # noqa: E402
+from core.mcp_hub import MCPPluginHub, mcp_hub  # noqa: E402
 
 
 class MCPPluginHubTests(unittest.TestCase):

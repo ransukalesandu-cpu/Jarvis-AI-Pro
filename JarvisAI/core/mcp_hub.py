@@ -1,5 +1,8 @@
 """
-Jarvis AI Pro - Model Context Protocol (MCP) Standard Plugin Engine
+Jarvis AI Pro - Model Context Protocol (MCP) tool hub.
+
+A helper library, not a plugin: it lives in core/ so the plugin loader does not
+try to load it (it has no PLUGIN dict) and warn on every start.
 Enables dynamic tool discovery and execution conforming to the standard MCP schema.
 """
 

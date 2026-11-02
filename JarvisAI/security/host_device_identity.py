@@ -105,7 +105,7 @@ def sign_request(body: bytes) -> dict[str, str]:
     timestamp = str(int(time.time()))
     nonce = secrets.token_urlsafe(24)
     digest = hashlib.sha256(body).hexdigest()
-    message = f"JARVIS-HOST-V1\\n{timestamp}\\n{nonce}\\n{digest}".encode("utf-8")
+    message = f"JARVIS-HOST-V1\n{timestamp}\n{nonce}\n{digest}".encode("utf-8")
     signature = _private_key().sign(message)
     return {
         "X-Jarvis-Host-Timestamp": timestamp,

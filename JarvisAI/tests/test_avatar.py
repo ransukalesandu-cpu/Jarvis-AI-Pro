@@ -140,3 +140,47 @@ class CyberAvatarTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ImageHologramTests(unittest.TestCase):
+    def _portrait(self, path):
+        # A light checkerboard "transparent" background around an outlined face.
+        img = QImage(QSize(200, 260), QImage.Format.Format_RGB32)
+        for y in range(260):
+            for x in range(200):
+                v = 254 if ((x // 10 + y // 10) % 2) else 232
+                img.setPixelColor(x, y, QColor(v, v, v))
+        p = QPainter(img)
+        p.setPen(QColor(0, 0, 0))
+        p.setBrush(QColor(230, 180, 140))
+        p.drawEllipse(40, 30, 120, 170)
+        p.end()
+        img.save(str(path))
+
+    def test_picture_becomes_a_cut_out_hologram(self):
+        import tempfile
+        from pathlib import Path
+
+        from core.avatar_image import ImageHologram, find_face
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "hologram_face.png"
+            self._portrait(path)
+            self.assertEqual(find_face(Path(d)), path)
+            holo = ImageHologram(path)
+            self.assertAlmostEqual(holo.aspect, 121 / 171, delta=0.05)   # cropped to the face
+            self.assertEqual(float(holo._alpha[0, 0]), 0.0)              # background is gone
+            out = QImage(QSize(300, 300), QImage.Format.Format_ARGB32_Premultiplied)
+            out.fill(QColor(0, 0, 0))
+            painter = QPainter(out)
+            try:
+                holo.paint(painter, 150, 20, 260, QColor(40, 215, 255), QColor(200, 252, 255),
+                           t=1.0, mouth=0.8, amp=0.5, blink=0.0)
+            finally:
+                painter.end()
+            self.assertGreater(out.pixelColor(150, 150).blue(), 40)
+
+    def test_image_style_falls_back_without_a_picture(self):
+        from unittest import mock
+        with mock.patch("core.avatar_image.find_face", return_value=None):
+            avatar = MeshHoloAvatar(style="image")
+        self.assertEqual(avatar.look, "volume")

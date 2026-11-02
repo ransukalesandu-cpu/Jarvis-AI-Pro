@@ -139,6 +139,17 @@ class HoloAvatar:
     def __init__(self, style: str | None = None) -> None:
         if style is not None:
             self.style = style
+        self._img = None
+        if self.style == "image":
+            # The owner's own face picture; without one, the volume look.
+            try:
+                from core.avatar_image import ImageHologram, find_face
+                path = find_face()
+                self._img = ImageHologram(path) if path else None
+            except Exception:
+                self._img = None
+            if self._img is None:
+                self.style = "volume"
         mesh = get_head_mesh(sculpt=self.look in _BUST_LOOKS)
         self._v0 = mesh["verts"]
         self._n0 = mesh["normals"]
@@ -166,6 +177,8 @@ class HoloAvatar:
         self._cyber = None
         self._rot = np.eye(3, dtype=np.float32)
         self._vol = None
+        if self._img is not None:
+            self.SPAN = 2.75                     # the picture: head, neck, hair
         if self.look == "volume":
             self.SPAN += _VOL_HEADROOM           # room for the hair above the crown
         if self.look == "cyber":                 # the volume look has no shoulders
@@ -248,7 +261,7 @@ class HoloAvatar:
         return self.style or ("shaded" if self.shaded else "glass")
 
     def _base_colors(self) -> tuple[QColor, QColor]:
-        if self.look == "volume":
+        if self.look in ("volume", "image"):
             from core.avatar_volume import VOLUME_ACCENT, VOLUME_PRIMARY
             return VOLUME_PRIMARY, VOLUME_ACCENT
         return _CYBER_PRIMARY, _CYBER_ACCENT
@@ -707,6 +720,10 @@ class HoloAvatar:
             primary = self._base_colors()[0]
         primary, accent = self._adapt_colors(0.016, primary, accent)
         amp = self._glow
+        if self._img is not None:
+            self._img.paint(p, cx, cy - r, self.SPAN * r, primary, accent, self._t,
+                            self._mouth, amp, self._blink)
+            return
         verts, norms = self._pose()
         if self.look == "volume":
             # Callers place the crown at the top of SPAN; the hair needs room.

@@ -21,9 +21,14 @@ from core.personal_cloud_memory import (
 
 logger = logging.getLogger("Jarvis.CloudTaskStore")
 
+_CLOUD_ROOT_LABEL = "Supabase Cloud (no local task persistence)"
+
 
 class CloudTaskStore:
     """TaskStore-compatible adapter backed exclusively by the user's Supabase rows."""
+
+    # Status exposes a descriptive label, never a local filesystem path.
+    root = _CLOUD_ROOT_LABEL
 
     def save(self, task: Task) -> None:
         save_cloud_agent_task(task.to_dict())

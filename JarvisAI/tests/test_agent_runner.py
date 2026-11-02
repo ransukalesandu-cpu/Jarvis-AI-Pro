@@ -122,6 +122,28 @@ class RunnerExecutionTests(unittest.TestCase):
         self.assertEqual(len(executor.calls), 2)
         self.assertTrue(all(step.state is StepState.COMPLETED for step in task.steps))
 
+    def test_parallel_cancellation_preserves_other_completed_results(self):
+        def cancel_one(step, ctx):
+            if step.title == "cancel":
+                ctx.cancel.set()
+                return StepResult.stopped()
+            return StepResult.success("read completed")
+
+        steps = [
+            TaskStep(title="cancel", kind=StepKind.READ_FILE, path="one.txt"),
+            TaskStep(title="complete", kind=StepKind.READ_FILE, path="two.txt"),
+        ]
+        runner, executor, _ = make_runner(
+            self, steps=steps, outcomes=[cancel_one, cancel_one],
+            config=RunnerConfig(max_parallel_read_steps=2),
+        )
+        task = runner.submit("cancel parallel reads")
+        runner.run_task(task)
+        self.assertIs(task.state, TaskState.CANCELLED)
+        states = {step.title: step.state for step in task.steps}
+        self.assertIs(states["cancel"], StepState.SKIPPED)
+        self.assertIs(states["complete"], StepState.COMPLETED)
+
     def test_parallel_read_layer_stops_at_dependency_or_mutating_step(self):
         steps = [
             TaskStep(title="read one", kind=StepKind.READ_FILE, path="one.txt"),

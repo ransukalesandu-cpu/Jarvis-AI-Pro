@@ -156,10 +156,6 @@ class AgentService:
             self.capture.close()
         except Exception:
             failsoft.suppress("agent.integration:shutdown")
-        try:
-            self.browser.close()
-        except Exception:
-            failsoft.suppress("agent.integration:shutdown")
 
     def attach_speaker(self, speak: Callable[[str], None] | None) -> None:
         """Give the agent the voice layer's speak function (from the tool ctx)."""

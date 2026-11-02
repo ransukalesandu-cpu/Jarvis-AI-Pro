@@ -53,6 +53,8 @@ class Hub:
         self.tools = HubToolRegistry(self)
         register_core_tools(self.tools)
         self.extensions: list = []          # objects with optional start()/stop()
+        self.live = None                    # HubJarvisLive when the Gemini session runs
+        self.router = None                  # hub.audio_router.AudioRouter
         self.app = self._build_app()
         self._runners: list[web.AppRunner] = []
         self._tasks: list[asyncio.Task] = []

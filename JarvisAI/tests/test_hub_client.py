@@ -108,6 +108,9 @@ class BrowserTests(unittest.TestCase):
         cls.hub = _make_hub(port=cls.port, bind=["127.0.0.1"], heartbeat_seconds=1.0)
         cls.messages: list[dict] = []
         cls.hub.clients.on_message.append(lambda conn, msg: cls.messages.append(msg))
+        from hub.audio_router import AudioRouter
+        cls.mic_frames: list[bytes] = []
+        cls.router = AudioRouter(cls.hub, on_mic=cls.mic_frames.append)
         cls.loop = asyncio.new_event_loop()
         cls.thread = threading.Thread(target=cls.loop.run_forever, daemon=True)
         cls.thread.start()
@@ -168,6 +171,42 @@ class BrowserTests(unittest.TestCase):
         print(f"\n[browser] headless Chromium: default tier {tier_default} {fps_default:.0f} fps; "
               f"minimal {fps_minimal:.0f} fps")
         self.assertGreater(fps_minimal, 10)
+
+
+class BrowserAudioTests(BrowserTests):
+    """The real AudioWorklets with Chromium's fake microphone."""
+
+    def test_client_runs_and_every_control_works_in_minimal_tier(self):
+        self.skipTest("covered by BrowserTests")
+
+    def test_mic_frames_reach_the_hub_and_playback_flushes(self):
+        from playwright.sync_api import sync_playwright
+        url = f"http://localhost:{self.port}/"
+        with sync_playwright() as p:
+            browser = p.chromium.launch(executable_path=_chromium(), args=[
+                "--no-sandbox", "--use-fake-ui-for-media-stream",
+                "--use-fake-device-for-media-stream", "--autoplay-policy=no-user-gesture-required"])
+            ctx = browser.new_context()
+            ctx.add_cookies([{"name": COOKIE, "value": self.token, "url": url}])
+            ctx.grant_permissions(["microphone"], origin=url.rstrip("/"))
+            page = ctx.new_page()
+            page.goto(url)
+            page.wait_for_function("document.getElementById('state-label').textContent === 'Tap to talk'",
+                                   timeout=10000)
+            page.wait_for_function("window.jarvis.audio !== null", timeout=5000)
+            page.click("#orb")                                  # tap to talk
+            page.wait_for_timeout(1500)
+            frames = list(self.mic_frames)
+            self.assertEqual(self.router.active, "tablet")
+            self.assertGreater(len(frames), 30)                  # ~50 per second
+            self.assertTrue(all(len(f) == 640 for f in frames))  # 20 ms of 16 kHz PCM16
+            # Hub -> client speech, then an instant flush.
+            for _ in range(40):
+                self._run(self.router.send_audio(b"\x10\x00" * 2400))     # 100 ms each
+            page.wait_for_function("window.jarvis.audio.bufferedMs > 500", timeout=5000)
+            self._run(self.router.flush())
+            page.wait_for_function("window.jarvis.audio.bufferedMs < 50", timeout=2000)
+            browser.close()
 
 
 if __name__ == "__main__":

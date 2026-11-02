@@ -858,6 +858,7 @@ class JarvisLive(
             actions_dir=_base_dir / "actions",
             reserved_names=_inline_names,
             logger=lambda msg: print(f"[Actions] {msg}"),
+            include=self._include_action_file,
         )
 
         # Plugins must not collide with either an inline tool or a discovered action.
@@ -1410,6 +1411,13 @@ class JarvisLive(
         if not self.ui.muted:
             self.ui.set_state("LISTENING")
 
+    # Hooks a hub-mode subclass (hub/live.py) overrides; desktop mode keeps all.
+    _include_action_file = None          # callable(Path) -> bool, or None for every file
+    _dashboard_enabled = True
+
+    def _keep_declaration(self, declaration: dict) -> bool:
+        return True
+
     def _held_audio_state(self) -> HeldAudio:
         """Held-audio state, created on first use (tests build hosts via __new__)."""
         held = self.__dict__.get("_held_audio")
@@ -1549,7 +1557,8 @@ class JarvisLive(
         _all_decls = [with_device_parameter(d) for d in (
             TOOL_DECLARATIONS
             + self._action_registry.get_tool_declarations()
-            + self._plugin_registry.get_tool_declarations())]
+            + self._plugin_registry.get_tool_declarations())
+            if self._keep_declaration(d)]
         _names = {(d.get("name") if isinstance(d, dict) else getattr(d, "name", ""))
                   for d in _all_decls}
         sys_prompt = _render_prompt(sys_prompt, {
@@ -2717,7 +2726,10 @@ class JarvisLive(
         audio_devices.prefetch()
 
         # Start dashboard (optional — needs: pip install fastapi "uvicorn[standard]" cryptography)
+        # Desktop mode only: the hub (hub/live.py) serves its own web client.
         try:
+            if not self._dashboard_enabled:
+                raise RuntimeError("not used in hub mode")
             from dashboard.server import DashboardServer
             self._dashboard = DashboardServer()
             self._dashboard.set_connect_callback(self._on_phone_connected)

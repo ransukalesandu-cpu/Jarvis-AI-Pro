@@ -78,9 +78,14 @@ class App {
   async loadAudio() {
     try {
       const mod = await import("./audio.js");
+      let lastReport = 0;
       this.audio = new mod.AudioLink({
         onMicFrame: (pcm) => this.sendBinary(pcm),
         onLevel: (v) => this.orb.setLevel(v),
+        onBuffered: (ms) => {          // lets the hub know when speech really ended
+          const now = performance.now();
+          if (now - lastReport > 250) { lastReport = now; this.send({ type: "playback", buffered_ms: Math.round(ms) }); }
+        },
       });
     } catch (err) {
       console.warn("Audio unavailable", err);

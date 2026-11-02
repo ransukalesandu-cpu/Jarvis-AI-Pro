@@ -216,7 +216,8 @@ def _collect_triggers(module, filename: str, logger: Callable[[str], None]) -> N
 
 
 def discover_actions(actions_dir: Path, reserved_names: set[str] | None = None,
-                     logger: Callable[[str], None] = print) -> ActionRegistry:
+                     logger: Callable[[str], None] = print,
+                     include: Callable[[Path], bool] | None = None) -> ActionRegistry:
     """
     Scans actions_dir for *.py files (skips files starting with '_'). A file is
     only treated as an action if it exposes a module-level TOOL dict; files
@@ -233,6 +234,8 @@ def discover_actions(actions_dir: Path, reserved_names: set[str] | None = None,
     for path in files:
         if path.name.startswith("_"):
             continue
+        if include is not None and not include(path):
+            continue          # e.g. the hub skips laptop-only tools (they run in the agent)
         try:
             module_name = f"actions.{path.stem}"
             # Reuse the already-imported module when present so handlers are the

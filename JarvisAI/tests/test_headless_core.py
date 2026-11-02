@@ -39,11 +39,13 @@ class HeadlessCoreAndIngestionTests(unittest.TestCase):
         with (
             patch.object(jmain.sys, "argv", ["main.py", "--headless"]),
             patch.object(jmain, "JarvisLive") as live_cls,
-            patch.object(jmain.asyncio, "run") as run_async,
+            patch.object(jmain, "HeadlessJarvisUI") as ui_cls,
+            patch.object(jmain, "run_headless") as run_headless,
         ):
             jmain.main()
-            live_cls.assert_called_once()
-            run_async.assert_called_once()
+            run_headless.assert_called_once()
+            self.assertIs(run_headless.call_args.kwargs["ui_factory"], ui_cls)
+            self.assertIs(run_headless.call_args.kwargs["live_factory"], live_cls)
 
     def test_dashboard_upload_endpoint_and_ai_ingestion(self):
         server = DashboardServer()

@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info, x-jarvis-host-timestamp, x-jarvis-host-nonce",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info, x-jarvis-host-timestamp, x-jarvis-host-nonce, x-jarvis-host-key, x-jarvis-host-signature",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const jsonResponse = (body: unknown, status = 200) =>
@@ -23,6 +23,51 @@ async function consumeRequest(baseUrl: string, serviceKey: string, userId: strin
   if (!response.ok) return "error";
   return await response.json();
 }
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  // Copy into an ArrayBuffer-backed view for the stricter Deno BufferSource types.
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
+async function verifyEnrolledDevice(
+  rawBody: Uint8Array,
+  userId: string,
+  baseUrl: string,
+  serviceKey: string,
+  timestamp: string,
+  nonce: string,
+  keyHeader: string,
+  signatureHeader: string,
+): Promise<boolean> {
+  if (!keyHeader || !signatureHeader) return false;
+  let publicKey: Uint8Array;
+  let signature: Uint8Array;
+  try {
+    publicKey = Uint8Array.from(atob(keyHeader), (ch) => ch.charCodeAt(0));
+    signature = Uint8Array.from(atob(signatureHeader), (ch) => ch.charCodeAt(0));
+  } catch { return false; }
+  if (publicKey.length !== 32 || signature.length !== 64) return false;
+
+  const deviceResponse = await adminRequest(
+    baseUrl, serviceKey,
+    "/rest/v1/jarvis_host_devices?user_id=eq." + encodeURIComponent(userId) +
+      "&select=public_key_b64,revoked_at&limit=1",
+  );
+  if (!deviceResponse.ok) return false;
+  const devices = await deviceResponse.json().catch(() => null);
+  if (!Array.isArray(devices) || devices.length !== 1) return false;
+  if (devices[0]?.revoked_at || devices[0]?.public_key_b64 !== keyHeader) return false;
+
+  const digest = await crypto.subtle.digest("SHA-256", toArrayBuffer(rawBody));
+  const digestHex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  const message = new TextEncoder().encode(`JARVIS-HOST-V1\n${timestamp}\n${nonce}\n${digestHex}`);
+  try {
+    const imported = await crypto.subtle.importKey("raw", toArrayBuffer(publicKey), { name: "Ed25519" }, false, ["verify"]);
+    return await crypto.subtle.verify({ name: "Ed25519" }, imported, toArrayBuffer(signature), toArrayBuffer(message));
+  } catch { return false; }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
@@ -30,15 +75,27 @@ Deno.serve(async (req: Request) => {
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   if (!baseUrl || !anonKey || !serviceKey) return jsonResponse({ error: "server_not_configured" }, 503);
-  // Owner and Guest modes use a valid per-installation anonymous Auth session.
-  // Local owner signing is intentionally not required for this read-only profile.
+  // Owner and Guest modes use a valid per-installation Auth session plus proof
+  // from a device that was enrolled previously. This endpoint never enrolls it.
   const userId = await getUserId(req, baseUrl, anonKey).catch(() => null);
   if (!userId) return jsonResponse({ error: "authentication_required" }, 401);
+  const rawBody = new Uint8Array(await req.arrayBuffer());
+  if (rawBody.length > 1024) return jsonResponse({ error: "request_too_large" }, 413);
   const nonce = req.headers.get("X-Jarvis-Host-Nonce") || "";
   const timestampHeader = req.headers.get("X-Jarvis-Host-Timestamp") || "";
   if (!/^\d{10}$/.test(timestampHeader) || nonce.length < 16 || nonce.length > 128) return jsonResponse({ error: "request_nonce_required" }, 400);
   const timestamp = Number(timestampHeader);
   if (!Number.isSafeInteger(timestamp) || Math.abs(Date.now() / 1000 - timestamp) > 300) return jsonResponse({ error: "request_timestamp_invalid" }, 400);
+
+  // Shared private profile reads require the already-enrolled device key.
+  // This endpoint deliberately never enrolls devices as a side effect.
+  const deviceVerified = await verifyEnrolledDevice(
+    rawBody, userId, baseUrl, serviceKey, timestampHeader, nonce,
+    req.headers.get("X-Jarvis-Host-Key") || "",
+    req.headers.get("X-Jarvis-Host-Signature") || "",
+  ).catch(() => false);
+  if (!deviceVerified) return jsonResponse({ error: "enrolled_device_required" }, 403);
+
   const usage = await consumeRequest(baseUrl, serviceKey, userId, nonce, timestamp);
   if (usage === "replay") return jsonResponse({ error: "replay_detected" }, 409);
   if (usage === "quota") return jsonResponse({ error: "daily_quota_exceeded" }, 429);

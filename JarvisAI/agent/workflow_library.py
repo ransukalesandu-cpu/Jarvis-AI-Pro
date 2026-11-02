@@ -52,9 +52,9 @@ class WorkflowLibrary:
         objective = _safe_text(task.objective, 500)
         if not label or not objective:
             raise ValueError("A workflow name and objective are required.")
-        criteria = [_safe_text(item, 160) for item in task.criteria[:6]]
+        criteria = [_safe_text(item, 100) for item in task.criteria[:6]]
         steps = [
-            {"title": _safe_text(step.title, 100), "kind": step.kind.value}
+            {"title": _safe_text(step.title, 60), "kind": step.kind.value}
             for step in task.steps[:16]
         ]
         record = save_cloud_agent_workflow({

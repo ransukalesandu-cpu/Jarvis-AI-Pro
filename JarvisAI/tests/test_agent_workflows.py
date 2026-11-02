@@ -110,7 +110,8 @@ class CloudTaskStoreTests(unittest.TestCase):
         store = CloudTaskStore()
         store.save(task)
         save_cloud.assert_called_once_with(task.to_dict())
-        self.assertFalse(hasattr(store, "root"))
+        self.assertIn("Supabase Cloud", store.root)
+        self.assertFalse(hasattr(store, "tasks_dir"))
         self.assertFalse(hasattr(store, "tasks_dir"))
 
     @patch("agent.cloud_store.load_cloud_agent_task")

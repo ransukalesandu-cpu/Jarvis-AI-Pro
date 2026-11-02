@@ -32,3 +32,15 @@ One value per key is kept, so a later directly stated correction replaces the pr
 5. Run the Python tests and the Deno validation tests. Run Supabase security advisors and verify the tables, RLS state, and jarvis-personal-memory deployment status after applying the migration.
 
 The Edge Function uses the existing per-user nonce/replay protection and cloud daily quota. Its database calls use the authenticated user ID; client input never chooses a different user ID.
+
+
+## Cloud-only autonomous task data
+
+The autonomous agent's task snapshots, checkpoints, event history, reports and
+saved workflow templates are also persisted in Supabase, scoped to the same
+stable Auth identity. They are not written to local JSON, SQLite or the
+`memory/agent` directory. If cloud persistence is unavailable, JARVIS must
+report the failure rather than silently saving the data locally.
+
+Only the refresh token needed to authenticate to Supabase remains in the
+operating system credential vault. The service-role key stays server-side.

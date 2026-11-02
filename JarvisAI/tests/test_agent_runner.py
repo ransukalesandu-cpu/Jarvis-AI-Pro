@@ -101,6 +101,65 @@ def make_runner(testcase, *, steps, outcomes=(), config=None, workspace=None,
 
 
 class RunnerExecutionTests(unittest.TestCase):
+    def test_independent_read_file_steps_run_in_parallel(self):
+        barrier = threading.Barrier(2)
+
+        def concurrent_read(step, ctx):
+            barrier.wait(timeout=3)
+            return StepResult.success(step.path)
+
+        steps = [
+            TaskStep(title="read one", kind=StepKind.READ_FILE, path="one.txt"),
+            TaskStep(title="read two", kind=StepKind.READ_FILE, path="two.txt"),
+        ]
+        runner, executor, _ = make_runner(
+            self, steps=steps, outcomes=[concurrent_read, concurrent_read],
+            config=RunnerConfig(max_parallel_read_steps=2),
+        )
+        task = runner.submit("read independent files")
+        runner.run_task(task)
+        self.assertIs(task.state, TaskState.COMPLETED)
+        self.assertEqual(len(executor.calls), 2)
+        self.assertTrue(all(step.state is StepState.COMPLETED for step in task.steps))
+
+    def test_parallel_cancellation_preserves_other_completed_results(self):
+        def cancel_one(step, ctx):
+            if step.title == "cancel":
+                ctx.cancel.set()
+                return StepResult.stopped()
+            return StepResult.success("read completed")
+
+        steps = [
+            TaskStep(title="cancel", kind=StepKind.READ_FILE, path="one.txt"),
+            TaskStep(title="complete", kind=StepKind.READ_FILE, path="two.txt"),
+        ]
+        runner, executor, _ = make_runner(
+            self, steps=steps, outcomes=[cancel_one, cancel_one],
+            config=RunnerConfig(max_parallel_read_steps=2),
+        )
+        task = runner.submit("cancel parallel reads")
+        runner.run_task(task)
+        self.assertIs(task.state, TaskState.CANCELLED)
+        states = {step.title: step.state for step in task.steps}
+        self.assertIs(states["cancel"], StepState.SKIPPED)
+        self.assertIs(states["complete"], StepState.COMPLETED)
+
+    def test_parallel_read_layer_stops_at_dependency_or_mutating_step(self):
+        steps = [
+            TaskStep(title="read one", kind=StepKind.READ_FILE, path="one.txt"),
+            TaskStep(title="read dependent", kind=StepKind.READ_FILE, path="two.txt",
+                     depends_on=[0]),
+            TaskStep(title="write", kind=StepKind.WRITE_FILE, path="out.txt", content="x"),
+            TaskStep(title="read after write", kind=StepKind.READ_FILE, path="out.txt"),
+        ]
+        runner, executor, _ = make_runner(self, steps=steps)
+        task = runner.submit("respect read/write dependencies")
+        runner.run_task(task)
+        self.assertIs(task.state, TaskState.COMPLETED)
+        self.assertEqual([step.state for step in task.steps],
+                         [StepState.COMPLETED] * 4)
+        self.assertEqual(len(executor.calls), 4)
+
     def test_successful_run_completes_and_persists(self):
         steps = [
             TaskStep(title="inspect", kind=StepKind.INSPECT, command="git status"),

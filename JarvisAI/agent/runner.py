@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -31,6 +32,7 @@ from agent import policy as policy_module
 from agent.events import EventBus, event_from_task
 from agent.executor import ExecutionContext, StepExecutor, StepResult
 from agent.models import (
+    StepKind,
     StepState,
     Task,
     TaskReport,
@@ -52,6 +54,7 @@ class RunnerConfig:
     progress_min_interval_s: float = 2.0
     loop_detection_repeats: int = 3
     max_steps: int = 16
+    max_parallel_read_steps: int = 3
     resume_unfinished: bool = True
 
 
@@ -355,6 +358,45 @@ class TaskRunner:
                 })
                 continue
 
+            parallel_steps = self._parallel_read_layer(task, index)
+            if len(parallel_steps) > 1:
+                parallel_outcomes = self._run_parallel_read_layer(task, parallel_steps)
+                cancelled_layer = False
+                loop_detected = False
+                for parallel_step, parallel_outcome in parallel_outcomes:
+                    self._record(task, parallel_step, parallel_outcome)
+                    if parallel_outcome.blocked:
+                        task.blockers.append(
+                            f"{parallel_step.title}: {parallel_outcome.blocked_reason}"
+                        )
+                        self._emit("blocked", task, message=parallel_outcome.blocked_reason,
+                                   step={"index": parallel_step.index,
+                                         "title": parallel_step.title})
+                    elif parallel_outcome.ok:
+                        self._emit("step_done", task, message=parallel_step.title,
+                                   step={"index": parallel_step.index,
+                                         "title": parallel_step.title,
+                                         "kind": parallel_step.kind.value})
+                    else:
+                        self._emit("step_failed", task, message=parallel_outcome.error,
+                                   step={"index": parallel_step.index,
+                                         "title": parallel_step.title})
+                        if parallel_outcome.cancelled:
+                            cancelled_layer = True
+                        elif self._loop_detected(parallel_step, parallel_outcome):
+                            task.blockers.append(
+                                f"Loop detected: '{parallel_step.title}' failed the same way "
+                                f"{self.config.loop_detection_repeats} times."
+                            )
+                            loop_detected = True
+                if cancelled_layer:
+                    self._close_cancelled(task)
+                    break
+                if loop_detected:
+                    task.transition(TaskState.FAILED, "repeated identical failure")
+                    break
+                continue
+
             self._emit("step_started", task, message=step.title,
                        step={"index": index, "title": step.title,
                              "kind": step.kind.value})
@@ -424,6 +466,55 @@ class TaskRunner:
                 "configured before I change code."
             )
 
+    def _parallel_read_layer(self, task: Task, start_index: int) -> list[TaskStep]:
+        """Select a contiguous layer of independent, non-consequential file reads."""
+        limit = max(1, min(int(self.config.max_parallel_read_steps), 4))
+        selected: list[TaskStep] = []
+        for step in task.steps[start_index:]:
+            if len(selected) >= limit:
+                break
+            if step.state is not StepState.PENDING or step.kind is not StepKind.READ_FILE:
+                break
+            if step.consequential:
+                break
+            if any(
+                dependency < 0
+                or dependency >= len(task.steps)
+                or task.steps[dependency].state is not StepState.COMPLETED
+                for dependency in step.depends_on
+            ):
+                break
+            if any(dependency == prior.index for dependency in step.depends_on
+                   for prior in selected):
+                break
+            selected.append(step)
+        return selected
+
+    def _run_parallel_read_layer(
+        self, task: Task, steps: list[TaskStep]
+    ) -> list[tuple[TaskStep, StepResult]]:
+        """Run only independent READ_FILE steps concurrently through normal guards."""
+        for step in steps:
+            self._emit(
+                "step_started", task, message=step.title,
+                step={"index": step.index, "title": step.title, "kind": step.kind.value},
+            )
+        results: dict[int, StepResult] = {}
+        with ThreadPoolExecutor(max_workers=min(len(steps), 4)) as pool:
+            futures = {
+                pool.submit(self._run_with_retries, task, step, self._context(task)): step
+                for step in steps
+            }
+            for future in as_completed(futures):
+                step = futures[future]
+                try:
+                    results[step.index] = future.result()
+                except Exception as exc:
+                    results[step.index] = StepResult.failure(
+                        f"Parallel read failed: {redact(exc, 300)}"
+                    )
+        return [(step, results[step.index]) for step in steps]
+
     def _context(self, task: Task) -> ExecutionContext:
         return ExecutionContext(
             task=task,
@@ -452,8 +543,9 @@ class TaskRunner:
                     blocked_reason = "Authorization could not be revalidated; the step was blocked."
                 if blocked_reason:
                     return StepResult.blocked_result(str(blocked_reason))
-            step.mark_running()
-            self.store.save(task)
+            with self._lock:
+                step.mark_running()
+                self.store.save(task)
             result = self.executor.execute(step, ctx)
             if result.cancelled:
                 # A step interrupted by the owner is not a failure: recording it
@@ -465,14 +557,17 @@ class TaskRunner:
                 return result
             if attempt > step.max_retries:
                 return result
-            if task.retries_used >= task.retry_budget:
+            with self._lock:
+                retry_exhausted = task.retries_used >= task.retry_budget
+                if not retry_exhausted:
+                    task.retries_used += 1
+            if retry_exhausted:
                 result.blocked_reason = (
                     result.error + " (retry budget exhausted)"
                     if result.error else "Retry budget exhausted."
                 )
                 result.blocked = True
                 return result
-            task.retries_used += 1
             delay = min(
                 self.config.max_retry_backoff_s,
                 self.config.retry_backoff_s * (2 ** (attempt - 1)),

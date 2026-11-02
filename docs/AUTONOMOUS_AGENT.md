@@ -31,13 +31,23 @@ actions/autonomous_task.py ──► agent/integration.py (AgentService)
 | Capability | Where | Notes |
 | --- | --- | --- |
 | Plan an objective | `agent/planner.py` | The configured text model (`core/hybrid_llm_router.py`) produces a validated JSON plan; without a model a deterministic engineering plan is used and any step that genuinely needs a model is reported as blocked. |
-| Run steps with recovery | `agent/runner.py` | Retries only transient failures, exponential backoff, per-step and per-task retry budgets, wall-clock deadline, loop detection. |
+| Run steps with recovery | `agent/runner.py` | Retries only transient failures, exponential backoff, per-step and per-task retry budgets, wall-clock deadline, loop detection, and bounded parallel layers for independent read-only file steps. |
 | Persist and resume | `agent/store.py` | Atomic JSON snapshot + fsynced JSONL journal per task; a crash or restart resumes at the step cursor. |
 | Pause / resume / stop | runner + HUD + Dynamic Island | Stop is immediate and is classified `SAFE`, so it is never gated. |
 | Read the screen | `agent/screen_capture.py`, `agent/screen_vision.py` | On-demand capture (mss, Pillow fallback), downscaled JPEG, mouse/keyboard-free OCR (Tesseract), Gemini/OpenAI vision, accessibility tree lookup. |
 | Act on the desktop | `agent/computer_use.py`, `agent/accessibility.py` | Click/type/keys/scroll/focus by *named target*; validated bounds and confidence; re-observation after every action; dry-run mode. |
 | Speak progress | `agent/voice.py` | Milestones only (plan, blocker, pause, completion), throttled to at most one sentence every ten seconds; step chatter stays silent. |
 | Show progress | `ui/panels/autonomous_panel.py`, `ui/dynamic_island.py` | Bento card on the existing dashboard page; compact island when the HUD is minimised. |
+
+### Bounded parallel reads
+
+The runner can execute up to three contiguous, independent `READ_FILE` steps
+at once (hard cap: four). Each step still passes the normal owner revalidation
+and policy checks, uses the shared cancellation context, and records its result
+through the normal task journal. A step with an unmet dependency, a consequential
+flag, or any mutating/screen-action kind breaks the parallel layer; those actions
+remain ordered and sequential. This avoids concurrent desktop interaction or
+file mutation while allowing independent repository reads to overlap.
 
 ### Triggering it
 

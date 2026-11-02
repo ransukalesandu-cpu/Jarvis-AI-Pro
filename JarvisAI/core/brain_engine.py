@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from core.agent_protocol import AgentResponse
 from core.brain_protocol import (
     RequestProfile, build_brain_protocol, profile_guidance, profile_request,
     render_text_fallback_prompt,
@@ -240,7 +241,7 @@ class BrainEngine:
         memory_enabled: bool | None = None,
         assistant_names: Iterable[str] | None = None,
         assistant_name: str = "JARVIS",
-    ) -> dict[str, Any]:
+    ) -> AgentResponse:
         """Answer a request using bounded history and optional provider-safe memory.
 
         Memory access is explicitly controllable per call. This engine does not

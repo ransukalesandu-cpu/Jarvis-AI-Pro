@@ -11,6 +11,7 @@ import logging
 import os
 import socket
 import time
+import threading
 import urllib.request
 from typing import Any
 
@@ -81,6 +82,46 @@ class HybridLLMRouter:
             "claude": self._call_claude,
             "ollama": self._call_ollama,
         }
+        self._health_lock = threading.Lock()
+        self._provider_health: dict[str, dict[str, float | int]] = {
+            name: {"latency_ms": 0.0, "successes": 0, "failures": 0}
+            for name in _PROVIDER_ORDER
+        }
+
+    def _record_provider_success(self, provider: str, latency_ms: float) -> None:
+        with self._health_lock:
+            state = self._provider_health[provider]
+            previous = float(state["latency_ms"])
+            state["latency_ms"] = (
+                max(0.0, float(latency_ms)) if not state["successes"]
+                else previous * 0.7 + max(0.0, float(latency_ms)) * 0.3
+            )
+            state["successes"] = int(state["successes"]) + 1
+            state["failures"] = 0
+
+    def _record_provider_failure(self, provider: str) -> None:
+        with self._health_lock:
+            state = self._provider_health[provider]
+            state["failures"] = int(state["failures"]) + 1
+
+    def provider_health(self) -> dict[str, dict[str, float | int]]:
+        """Return aggregate provider timings only; never expose prompts or keys."""
+        with self._health_lock:
+            return {name: dict(values) for name, values in self._provider_health.items()}
+
+    def _rank_fallbacks(self, providers: list[str]) -> list[str]:
+        with self._health_lock:
+            snapshot = {name: dict(values) for name, values in self._provider_health.items()}
+        original_order = {name: index for index, name in enumerate(_PROVIDER_ORDER)}
+
+        def score(name: str) -> tuple[float, int]:
+            state = snapshot[name]
+            latency = float(state["latency_ms"]) if state["successes"] else 1000.0
+            # One recent failure is enough to prefer a healthy alternative.
+            return (int(state["failures"]) * 10000.0 + latency,
+                    original_order[name])
+
+        return sorted(providers, key=score)
 
     def _key(self, provider: str) -> str:
         return self.api_keys.get(provider, "") or os.getenv(_KEY_ENV.get(provider, ""), "").strip()
@@ -136,16 +177,19 @@ class HybridLLMRouter:
 
         started = time.monotonic()
         online = not self.online_check or self.is_online()
-        order = [self.preferred_provider] + [
-            provider for provider in _PROVIDER_ORDER if provider != self.preferred_provider
+        fallback = [
+            provider for provider in _PROVIDER_ORDER
+            if provider != self.preferred_provider
         ]
+        fallback = self._rank_fallbacks(fallback)
+        order = [self.preferred_provider] + fallback
         if not online:
             # Connectivity probes can be false negatives on restricted networks.
-            # Prefer local Ollama when the probe says offline, but retain configured
-            # cloud providers as fallback if local inference is unavailable or fails.
-            order = ["ollama"] + [
-                provider for provider in order if provider != "ollama"
-            ]
+            # Prefer local Ollama when offline, then use health-ranked configured
+            # cloud providers if the local service is unavailable.
+            order = ["ollama"] + self._rank_fallbacks([
+                provider for provider in _PROVIDER_ORDER if provider != "ollama"
+            ])
 
         failures: list[str] = []
         for provider in order:
@@ -157,10 +201,13 @@ class HybridLLMRouter:
             provider_kwargs = dict(kwargs)
             if provider != self.preferred_provider:
                 provider_kwargs.pop("model", None)
+            provider_started = time.monotonic()
             try:
                 result = self._validate_result(
                     self.providers[provider](prompt, system_prompt, **provider_kwargs), provider
                 )
+                provider_latency = (time.monotonic() - provider_started) * 1000.0
+                self._record_provider_success(provider, provider_latency)
                 result.update({
                     "provider": provider,
                     "mode": "local-offline" if provider == "ollama" and not online
@@ -173,6 +220,7 @@ class HybridLLMRouter:
                 )
                 return result
             except Exception as exc:
+                self._record_provider_failure(provider)
                 # Exception text can contain request details; log only the type.
                 failures.append(f"{provider}:{type(exc).__name__}")
                 logger.warning("Provider %s failed (%s); trying configured fallback",

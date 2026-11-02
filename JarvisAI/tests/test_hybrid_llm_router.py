@@ -174,6 +174,50 @@ class HybridLLMRouterTests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertEqual(result["provider"], "ollama")
 
+
+    def test_fallback_order_learns_from_recent_provider_failures(self):
+        router = HybridLLMRouter(
+            api_keys={
+                "gemini": "test-gemini",
+                "groq": "test-groq",
+                "openai": "test-openai",
+            },
+            online_check=False,
+        )
+        calls = []
+
+        def fail_gemini(*args, **kwargs):
+            calls.append("gemini")
+            raise TimeoutError()
+
+        def fail_groq(*args, **kwargs):
+            calls.append("groq")
+            raise ConnectionError()
+
+        def answer_openai(*args, **kwargs):
+            calls.append("openai")
+            return {"text": "healthy fallback"}
+
+        router.providers["gemini"] = fail_gemini
+        router.providers["groq"] = fail_groq
+        router.providers["openai"] = answer_openai
+
+        first = router.query("first request")
+        self.assertEqual(first["provider"], "openai")
+        self.assertEqual(calls, ["gemini", "groq", "openai"])
+
+        calls.clear()
+        second = router.query("second request")
+        self.assertEqual(second["provider"], "openai")
+        self.assertEqual(calls, ["gemini", "openai"])
+
+        health = router.provider_health()
+        self.assertGreaterEqual(health["gemini"]["failures"], 2)
+        self.assertGreaterEqual(health["groq"]["failures"], 1)
+        self.assertGreaterEqual(health["openai"]["successes"], 2)
+        self.assertNotIn("first request", repr(health))
+        self.assertNotIn("test-openai", repr(health))
+
     def test_connectivity_check_does_not_change_global_socket_timeout(self):
         with patch("core.hybrid_llm_router.socket.create_connection", side_effect=OSError) as connect:
             self.assertFalse(HybridLLMRouter.is_online(timeout=0.2))

@@ -650,5 +650,53 @@ class StepAuthorizationRevalidationTests(unittest.TestCase):
         self.assertTrue(any("Owner verification expired" in item for item in task.blockers))
 
 
+
+class RunnerQueueAndRetryTests(unittest.TestCase):
+    def test_queue_rejects_submissions_after_configured_bound(self):
+        runner, _, _ = make_runner(
+            self, steps=[], config=RunnerConfig(max_queue_size=1)
+        )
+        first = runner.submit("first task")
+        self.assertIsNotNone(first)
+        with self.assertRaisesRegex(RuntimeError, "queue is full"):
+            runner.submit("second task")
+        self.assertEqual(runner.status()["queue_count"], 1)
+        self.assertEqual(runner.status()["queue_limit"], 1)
+
+    def test_retry_creates_fresh_task_for_read_only_completed_work(self):
+        runner, _, _ = make_runner(self, steps=[])
+        original = Task(objective="inspect project", criteria=["tests pass"])
+        original.set_plan([
+            TaskStep(title="inspect", kind=StepKind.INSPECT)
+        ])
+        original.steps[0].mark(StepState.COMPLETED, output="clean")
+        original.transition(TaskState.PLANNING, "queued")
+        original.transition(TaskState.RUNNING, "worker started")
+        original.transition(TaskState.FAILED, "verification failed")
+        runner.store.save(original)
+
+        retried = runner.retry_task(original.id, background=False)
+
+        self.assertNotEqual(retried.id, original.id)
+        self.assertEqual(retried.objective, original.objective)
+        self.assertEqual(retried.criteria, original.criteria)
+        self.assertEqual(retried.source, "retry")
+
+    def test_retry_refuses_to_repeat_completed_side_effects(self):
+        runner, _, _ = make_runner(self, steps=[])
+        original = Task(objective="modify a project")
+        original.set_plan([
+            TaskStep(title="write config", kind=StepKind.WRITE_FILE)
+        ])
+        original.steps[0].mark(StepState.COMPLETED, output="written")
+        original.transition(TaskState.PLANNING, "queued")
+        original.transition(TaskState.RUNNING, "worker started")
+        original.transition(TaskState.FAILED, "later verification failed")
+        runner.store.save(original)
+
+        with self.assertRaisesRegex(ValueError, "side effects"):
+            runner.retry_task(original.id, background=False)
+
+
 if __name__ == "__main__":
     unittest.main()

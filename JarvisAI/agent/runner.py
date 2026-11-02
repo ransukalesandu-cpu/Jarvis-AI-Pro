@@ -40,6 +40,7 @@ from agent.models import (
 )
 from agent.planner import PlanError, TaskPlanner
 from agent.parallel_engine import ParallelStepEngine
+from agent.performance import PerformanceMonitor
 from agent.store import redact
 from agent.cloud_store import CloudTaskStore
 
@@ -55,7 +56,8 @@ class RunnerConfig:
     progress_min_interval_s: float = 2.0
     loop_detection_repeats: int = 3
     max_steps: int = 16
-    max_parallel_read_steps: int = 3
+    max_parallel_read_steps: int = 2
+    max_queue_size: int = 8
     resume_unfinished: bool = True
 
 
@@ -91,6 +93,7 @@ class TaskRunner:
         self.parallel_engine = ParallelStepEngine(
             max_workers=self.config.max_parallel_read_steps
         )
+        self.performance = PerformanceMonitor()
         self.engine = policy_engine or policy_module.PolicyEngine(
             policy_module.ExecutionPolicy(
                 workspace_root=str(self.workspace),
@@ -149,11 +152,27 @@ class TaskRunner:
             retry_budget=int(self.config.retry_budget),
         )
         task.transition(TaskState.PLANNING, "queued")
-        self.store.save(task)
-        self.store.append_event(task.id, {"kind": "submitted", "objective": task.objective})
         with self._lock:
+            queue_limit = max(1, min(int(self.config.max_queue_size), 64))
+            occupied = len(self._queue) + (1 if self._active and not self._active.state.terminal else 0)
+            if occupied >= queue_limit:
+                raise RuntimeError(
+                    f"JARVIS task queue is full ({queue_limit}). "
+                    "Wait for a task to finish before submitting another."
+                )
+            # Reserve the slot and persist while holding the same lock so
+            # concurrent submitters cannot exceed the configured queue bound.
             self._remember(task)
             self._queue.append(task.id)
+            try:
+                self.store.save(task)
+                self.store.append_event(task.id, {
+                    "kind": "submitted", "objective": task.objective
+                })
+            except Exception:
+                self._queue.remove(task.id)
+                self._tasks.pop(task.id, None)
+                raise
         self._emit("queued", task, message=f"Queued: {task.objective[:100]}")
         return task
 
@@ -186,6 +205,46 @@ class TaskRunner:
             with self._lock:
                 if task.id not in self._queue:
                     self._queue.insert(0, task.id)
+            self._ensure_worker()
+        return task
+
+    def retry_task(self, task_id: str, *, background: bool = True) -> Task:
+        """Create a fresh retry task only when repeating completed work is safe.
+
+        A failed task may already have completed writes, commands, or desktop
+        actions. Replaying those automatically could duplicate side effects, so
+        retries are refused unless every completed step was read-only.
+        """
+        original = self.store.load(str(task_id))
+        if original is None:
+            raise ValueError(f"Task {task_id} was not found.")
+        if original.state is not TaskState.FAILED:
+            raise ValueError("Only failed tasks can be retried.")
+        replay_safe = {
+            StepKind.INSPECT, StepKind.READ_FILE, StepKind.BROWSER_SEARCH,
+            StepKind.BROWSER_NAVIGATE, StepKind.BROWSER_READ,
+            StepKind.BROWSER_FOLLOW_LINK, StepKind.VERIFY, StepKind.NOTE,
+        }
+        unsafe = [
+            step.title for step in original.steps
+            if step.state is StepState.COMPLETED and step.kind not in replay_safe
+        ]
+        if unsafe:
+            raise ValueError(
+                "Automatic retry was blocked because completed steps may have "
+                "side effects: " + ", ".join(unsafe[:3])
+            )
+        task = self.submit(
+            original.objective,
+            criteria=list(original.criteria),
+            source="retry",
+        )
+        task.note(f"retry of task {original.id}")
+        self.store.save(task)
+        self.store.append_event(task.id, {
+            "kind": "retry_created", "original_task_id": original.id
+        })
+        if background:
             self._ensure_worker()
         return task
 
@@ -249,10 +308,13 @@ class TaskRunner:
         return {
             "active": task.to_dict() if task else None,
             "queued": queued,
+            "queue_count": len(queued),
+            "queue_limit": max(1, min(int(self.config.max_queue_size), 64)),
             "paused": self._pause.is_set(),
             "cancel_requested": self._cancel.is_set(),
             "vision": bool(self.vision is not None),
             "desktop_control": bool(self.computer is not None),
+            "performance": self.performance.snapshot(),
         }
 
     # ── worker ------------------------------------------------------------
@@ -710,6 +772,7 @@ class TaskRunner:
             duration = max(0.0, self._clock() - float(task.started_at))
         elif started_monotonic is not None:
             duration = 0.0
+        self.performance.record(duration_s=duration, state=task.state.value)
         report = TaskReport(
             task_id=task.id,
             objective=task.objective,

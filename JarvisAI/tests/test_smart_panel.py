@@ -41,27 +41,27 @@ class TestSmartPanelHeaderSignals(unittest.TestCase):
         )
         self.app.processEvents()
 
-        self.assertEqual(requested.count(), 1)
+        self.assertEqual(len(requested), 1)
         self.assertEqual(requested.at(0)[0], "timers")
 
     def test_close_command_emits_close_signal(self):
         closed = QSignalSpy(self.header.close_requested)
         self.header._route_link(QUrl("jarvis://close"))
-        self.assertEqual(closed.count(), 1)
+        self.assertEqual(len(closed), 1)
 
     def test_external_url_is_ignored(self):
         requested = QSignalSpy(self.header.view_requested)
         closed = QSignalSpy(self.header.close_requested)
         self.header._route_link(QUrl("https://example.com/"))
-        self.assertEqual(requested.count(), 0)
-        self.assertEqual(closed.count(), 0)
+        self.assertEqual(len(requested), 0)
+        self.assertEqual(len(closed), 0)
 
     def test_unknown_local_command_is_ignored(self):
         requested = QSignalSpy(self.header.view_requested)
         closed = QSignalSpy(self.header.close_requested)
         self.header._route_link(QUrl("jarvis://view/not-allowed"))
-        self.assertEqual(requested.count(), 0)
-        self.assertEqual(closed.count(), 0)
+        self.assertEqual(len(requested), 0)
+        self.assertEqual(len(closed), 0)
 
 
 if __name__ == "__main__":

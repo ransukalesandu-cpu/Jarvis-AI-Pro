@@ -10,8 +10,6 @@ import logging
 from typing import Any
 
 from agent.models import Task, TaskReport
-logger = logging.getLogger("Jarvis.CloudTaskStore")
-
 from core.personal_cloud_memory import (
     append_cloud_agent_event,
     delete_cloud_agent_task,
@@ -20,6 +18,8 @@ from core.personal_cloud_memory import (
     load_cloud_agent_task,
     save_cloud_agent_task,
 )
+
+logger = logging.getLogger("Jarvis.CloudTaskStore")
 
 
 class CloudTaskStore:

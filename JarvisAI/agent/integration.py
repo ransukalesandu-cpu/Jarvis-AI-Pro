@@ -263,6 +263,44 @@ class AgentService:
         task = self._latest_task()
         return task.report.to_dict() if task and task.report else None
 
+    # ── reusable workflows ------------------------------------------------
+    def _workflow_library(self):
+        """Load the small workflow library only when a workflow feature is used."""
+        library = getattr(self, "_workflow_library_instance", None)
+        if library is None:
+            from agent.store import agent_data_dir
+            from agent.workflow_library import WorkflowLibrary
+
+            library = WorkflowLibrary(agent_data_dir() / "workflows.json")
+            self._workflow_library_instance = library
+        return library
+
+    def save_workflow(self, task_id: str, name: str) -> dict[str, Any]:
+        """Save a completed task summary after rechecking the normal access gates."""
+        self._ensure_can_continue()
+        task = self.store.load(str(task_id or ""))
+        if task is None:
+            raise ValueError("The requested task was not found.")
+        return self._workflow_library().save(task, name)
+
+    def list_workflows(self) -> list[dict[str, Any]]:
+        self._ensure_can_continue()
+        return self._workflow_library().list()
+
+    def suggest_workflows(self, objective: str) -> list[dict[str, Any]]:
+        self._ensure_can_continue()
+        return self._workflow_library().suggest(objective)
+
+    def run_saved_workflow(self, workflow_id: str) -> Task:
+        """Re-plan a saved template; never replay stored commands or actions."""
+        self._ensure_can_continue()
+        request = self._workflow_library().build_fresh_request(workflow_id)
+        return self.start(
+            request["objective"],
+            criteria=request["criteria"],
+            source="saved_workflow",
+        )
+
     # ── tool entry point ---------------------------------------------------
     def handle_tool(self, params: dict[str, Any], speak: Callable[[str], None] | None = None) -> str:
         """Action-handler facade. Always returns a sentence the model can say."""
@@ -294,6 +332,29 @@ class AgentService:
                 resumed = self.resume_last()
                 return ("Resumed the last unfinished task." if resumed
                         else "There is no paused or unfinished task.")
+            if action == "save_workflow":
+                task_id = str(params.get("task_id") or "").strip()
+                name = str(params.get("name") or "").strip()
+                saved = self.save_workflow(task_id, name)
+                return f"Saved workflow '{saved['name']}'. It will be freshly planned whenever reused."
+            if action == "list_workflows":
+                workflows = self.list_workflows()
+                if not workflows:
+                    return "There are no saved workflows yet."
+                return "Saved workflows: " + "; ".join(
+                    f"{item['name']} ({item['step_count']} steps)" for item in workflows[:8]
+                )
+            if action == "suggest_workflows":
+                suggestions = self.suggest_workflows(objective)
+                if not suggestions:
+                    return "No matching saved workflows were found."
+                return "Possible workflow templates: " + "; ".join(
+                    item["name"] for item in suggestions
+                )
+            if action == "run_workflow":
+                workflow_id = str(params.get("workflow_id") or "").strip()
+                task = self.run_saved_workflow(workflow_id)
+                return f"Re-planning saved workflow as a new task: {task.objective[:140]}."
             if action in {"report", "result"}:
                 report = self.report_text()
                 return report or "The task has not produced a report yet."

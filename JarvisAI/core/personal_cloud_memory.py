@@ -540,7 +540,7 @@ def save_cloud_agent_task(task_data: dict[str, Any]) -> None:
     state = str(clean.get("state") or "")
     if not task_id or not objective or not state:
         raise ValueError("Task snapshot is missing required metadata")
-    if len(json.dumps(clean, ensure_ascii=False, separators=(",", ":"))) > 60_000:
+    if len(json.dumps(clean, ensure_ascii=False, separators=(",", ":"))) > 50_000:
         raise ValueError("Task snapshot exceeds the cloud persistence limit")
     _request_personal_memory({
         "operation": "agent_task_save", "task_id": task_id,
@@ -568,7 +568,7 @@ def delete_cloud_agent_task(task_id: str) -> None:
 
 def append_cloud_agent_event(task_id: str, event: dict[str, Any]) -> None:
     clean = _redact_cloud_payload(event)
-    if len(json.dumps(clean, ensure_ascii=False, separators=(",", ":"))) > 10_500:
+    if len(json.dumps(clean, ensure_ascii=False, separators=(",", ":"))) > 9_500:
         clean = {
             "kind": str(event.get("kind") or "event")[:80],
             "truncated": True,

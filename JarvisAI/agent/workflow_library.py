@@ -67,7 +67,10 @@ class WorkflowLibrary:
         return self._public(record)
 
     def get(self, workflow_id: str) -> dict[str, Any] | None:
-        row = get_cloud_agent_workflow(str(workflow_id))
+        key = str(workflow_id)
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", key):
+            return None
+        row = get_cloud_agent_workflow(key)
         return self._public(row) if row else None
 
     def suggest(self, objective: str, *, limit: int = 3) -> list[dict[str, Any]]:

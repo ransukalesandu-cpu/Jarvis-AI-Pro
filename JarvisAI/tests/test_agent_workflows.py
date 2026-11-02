@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from agent.integration import AgentService
+from actions.autonomous_task import TOOL, autonomous_task
 
 from agent.models import StepKind, StepState, Task, TaskState, TaskStep
 from agent.workflow_library import WorkflowLibrary
@@ -166,6 +167,35 @@ class AgentWorkflowIntegrationTests(unittest.TestCase):
             criteria=task.criteria,
             source="saved_workflow",
         )
+
+
+
+
+class WorkflowVoiceToolTests(unittest.TestCase):
+    def test_tool_schema_exposes_workflow_actions_and_parameters(self):
+        properties = TOOL["parameters"]["properties"]
+        self.assertIn("save_workflow", properties["action"]["enum"])
+        self.assertIn("run_workflow", properties["action"]["enum"])
+        self.assertIn("list_workflows", properties["action"]["enum"])
+        self.assertIn("suggest_workflows", properties["action"]["enum"])
+        self.assertIn("task_id", properties)
+        self.assertIn("name", properties)
+        self.assertIn("workflow_id", properties)
+
+    def test_voice_tool_forwards_workflow_arguments(self):
+        service = Mock()
+        service.handle_tool.return_value = "ok"
+        with unittest.mock.patch("actions.autonomous_task.get_service", return_value=service):
+            result = autonomous_task(
+                action="save_workflow",
+                task_id="task-123",
+                name="Project checks",
+            )
+        self.assertEqual(result, "ok")
+        params = service.handle_tool.call_args.args[0]
+        self.assertEqual(params["action"], "save_workflow")
+        self.assertEqual(params["task_id"], "task-123")
+        self.assertEqual(params["name"], "Project checks")
 
 
 if __name__ == "__main__":

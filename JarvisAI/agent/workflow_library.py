@@ -22,8 +22,8 @@ _MAX_TEMPLATES = 40
 
 def _safe_text(value: str, limit: int) -> str:
     text = redact(" ".join(str(value or "").split()), limit * 4)
-    text = re.sub(r"(?i)(?:[a-z]:\\\\|\\\\\\\\)[^\\s\\\"'<>|]+", "[local-path]", text)
-    text = re.sub(r"(?<![\\w:/])/(?!/)(?:[^\\s/]+/)*[^\\s/]+", "[local-path]", text)
+    text = re.sub(r"""(?i)\b[A-Z]:\\[^\s"'<>|]+|\\\\[^\s"'<>|]+""", "[local-path]", text)
+    text = re.sub(r"(?<![\w:/])/(?!/)(?:[^\s/]+/)*[^\s/]+", "[local-path]", text)
     return text[:limit]
 
 

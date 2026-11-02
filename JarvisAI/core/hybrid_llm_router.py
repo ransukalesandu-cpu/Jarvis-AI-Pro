@@ -85,7 +85,7 @@ class HybridLLMRouter:
         self._latency_lock = threading.RLock()
         self._provider_latency_ewma: dict[str, float] = {}
         self._provider_latency_samples: dict[str, int] = {}
-        self._provider_failures: dict[str, int] = {name: 0 for name in _PROVIDER_ORDER}}
+        self._provider_failures: dict[str, int] = {name: 0 for name in _PROVIDER_ORDER}
 
     def _key(self, provider: str) -> str:
         return self.api_keys.get(provider, "") or os.getenv(_KEY_ENV.get(provider, ""), "").strip()

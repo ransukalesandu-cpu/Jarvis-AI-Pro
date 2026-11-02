@@ -145,8 +145,8 @@ class TaskPlanner:
     # -- model plan --------------------------------------------------------
     def _prompt(self, objective: str) -> str:
         return (
-            "You are planning a bounded, autonomous engineering task for JARVIS on "
-            "this repository. Return ONE JSON object, no prose, of the form:\n"
+            "You are planning a bounded task for JARVIS using this repository and "
+            "approved public-web tools. Return ONE JSON object, no prose, of the form:\n"
             '{"criteria": [str], "steps": [{"title": str, "kind": one of '
             '["inspect","run_command","run_tests","read_file","write_file",'
             '"observe_screen","screen_action","browser_search","browser_navigate",'

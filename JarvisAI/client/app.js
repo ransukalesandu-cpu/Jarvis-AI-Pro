@@ -276,7 +276,15 @@ class App {
     else if (mime.startsWith("video/") || mime.startsWith("audio/")) {
       el = document.createElement(mime.startsWith("video/") ? "video" : "audio");
       el.src = msg.url; el.controls = true; el.playsInline = true;
-    } else if (mime === "application/pdf") { el = document.createElement("iframe"); el.src = msg.url; }
+    } else if (mime === "application/pdf" && !/Android/i.test(navigator.userAgent)) {
+      el = document.createElement("iframe"); el.src = msg.url;
+    } else if (mime === "application/pdf") {
+      // Android Chrome has no inline PDF viewer: hand the stream to the system viewer.
+      el = document.createElement("button");
+      el.className = "stop"; el.style.width = "auto"; el.style.borderRadius = "12px"; el.style.padding = "0 18px";
+      el.textContent = "Open PDF";
+      el.onclick = () => window.open(msg.url, "_blank");
+    }
     else if (mime.startsWith("text/") || /json|xml|csv/.test(mime)) {
       el = document.createElement("pre");
       fetch(msg.url, { headers: { Range: "bytes=0-262143" } }).then((r) => r.text()).then((t) => { el.textContent = t; });

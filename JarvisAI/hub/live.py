@@ -212,6 +212,10 @@ class LiveExtension:
         self.live._action_registry = CompositeRegistry(
             [self.live._action_registry, hub.tools, self.remote])
         set_device_resolver(self._resolve_device)
+        from hub.files import FileLinks, register_file_tools
+        self.files = FileLinks(hub)
+        hub.files = self.files
+        register_file_tools(hub, self.files)
         self._reconnect_handle = None
         self.router.on_mic = self.live.feed_mic
         self.router.on_control = self.live.on_client_control

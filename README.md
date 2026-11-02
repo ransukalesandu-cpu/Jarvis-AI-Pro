@@ -94,6 +94,69 @@ the command field, or use the matching HUD panel. Common starting requests are:
 JARVIS operates under the **Autonomous Biometric Authority & Privacy Defense Model**.
 Panels and cards provide viewing and navigation without requiring manual confirmation pop-ups for verified owners.
 
+## 📱 Multi-device setup: laptop, tablet and phone
+
+JARVIS can run as one assistant across three devices. The **hub** (`python -m hub`) owns the Gemini session and every setting; the **laptop agent** (`python -m laptop_agent`) runs the laptop's tools and drives the tablet and phone over ADB; the tablet and phone open the **web client** in Chrome and install it as an app. Desktop mode (`python main.py`) still works exactly as before.
+
+```
+ tablet (USB, adb reverse) ─┐                  ┌─ laptop agent ── ADB ── tablet / phone
+ phone  (Tailscale, HTTPS) ─┼── hub (Gemini) ──┤
+ laptop browser (localhost)─┘                  └─ (runs on the laptop today, a VM or Pi later)
+```
+
+### 1. Install Tailscale on all three devices
+1. Install Tailscale on the laptop (tailscale.com/download), the tablet and the phone (Play Store). Sign in to the **same** account on all three.
+2. In the Tailscale admin console, turn on **MagicDNS** and **HTTPS certificates**.
+3. Note the laptop's name, e.g. `my-laptop.tail1234.ts.net`.
+
+### 2. Give the hub a certificate (needed for the phone's microphone)
+Browsers only allow the microphone over HTTPS or on `localhost`. The tablet uses `localhost` over USB and needs nothing. For the phone, on the laptop run:
+```powershell
+tailscale cert my-laptop.tail1234.ts.net
+setx JARVIS_HUB_CERT "C:\path\my-laptop.tail1234.ts.net.crt"
+setx JARVIS_HUB_KEY  "C:\path\my-laptop.tail1234.ts.net.key"
+setx JARVIS_HUB_PUBLIC_URL "https://my-laptop.tail1234.ts.net:8766"
+```
+*Fallback without Tailscale certificates:* create a self-signed certificate (`openssl req -x509 -newkey rsa:2048 -nodes -days 825 -keyout hub.key -out hub.crt -subj "/CN=jarvis-hub" -addext "subjectAltName=DNS:my-laptop.tail1234.ts.net"`), copy `hub.crt` to the phone and install it under *Settings → Security → Encryption & credentials → Install a certificate → CA certificate*, and point the two variables at it.
+
+The hub listens on `localhost:8765` (plain HTTP) and on the LAN/Tailscale addresses at `:8766` (HTTPS). It never listens on a public address, and the ADB port is never exposed.
+
+### 3. Start the hub and pair the devices
+1. Put your Gemini key in the environment (`setx GEMINI_API_KEY ...`) or keep using `config/api_keys.json`.
+2. Run `scripts\start_hub.cmd` (Linux/macOS/Pi: `scripts/start_hub.sh`). The first time, it creates `devices.json` (the path is printed) and prints a **pairing URL and QR code** for each device that is not paired yet. Codes work once and expire after 15 minutes; restart the hub or run it with `--pair phone` for a fresh one.
+3. Edit `devices.json` if needed: set the phone's wireless-debugging address (`"adb": {"address": "192.168.1.50:5555", "via": "laptop"}`).
+
+### 4. Pair and start the laptop agent
+```powershell
+cd JarvisAI
+python -m laptop_agent pair "http://localhost:8765/pair?device=laptop&code=XXXX-XXXX-XXXX"
+scripts\start_agent.cmd
+python -m laptop_agent install-startup     # optional: start the agent with Windows
+```
+`scripts\start_jarvis_devices.cmd` starts the hub and the agent together. The agent keeps Windows awake while it runs (`"keep_awake": false` in `agent.json` turns that off). When the laptop is off or asleep, JARVIS says laptop, tablet and phone tools are unavailable.
+
+### 5. Tablet: USB, then install the app
+1. Install Android platform-tools (`adb`) on the laptop.
+2. On the tablet: *Settings → About → tap Build number 7 times*, then *Developer options → USB debugging* on. Plug in the USB cable and accept the prompt.
+3. The agent applies `adb reverse tcp:8765 tcp:8765` automatically, so the tablet reaches the hub at `localhost` with or without Wi-Fi.
+4. On the tablet open the tablet's pairing URL with `localhost`: `http://localhost:8765/pair?device=tablet&code=...`. After pairing, Chrome menu → **Install app**.
+5. Read its Android version and RAM: `python -m laptop_agent device-report`.
+
+### 6. Phone: wireless debugging, then install the app
+1. On the phone (Android 11+): *Developer options → Wireless debugging* on → **Pair device with pairing code**. On the laptop: `python -m laptop_agent adb-pair 192.168.1.50:37123 123456` (address and code from the phone's screen).
+2. Put the address shown under *Wireless debugging → IP address & port* into `devices.json` for the phone and restart the hub. The agent reconnects to it automatically while the phone is on the same network. (Away from home, phone *control* is unavailable until the Phase 3 phone app; talking to JARVIS from the phone still works over Tailscale.)
+3. On the phone open the phone's pairing URL (the `https://...ts.net:8766` one) and pair, then Chrome menu → **Install app**.
+
+### 7. First connection
+Tap the orb on any device and say *"Which devices are online?"*. The device you tapped becomes the active one: it streams its microphone and plays JARVIS's voice; tapping another device moves the conversation there. Turn on **Conversation mode** to keep listening after each answer. The ■ button is the same as saying *"Jarvis, stop"*.
+
+Try: *"Open YouTube on the tablet"* · *"What is on my phone screen?"* · *"Type hello into the phone"* · *"Send the latest report from my Downloads to my phone"* · *"Find last month's invoice PDF and show it on my phone"* · *"Revoke my phone"* (a lost phone loses access immediately).
+
+### Moving the hub off the laptop (later)
+1. On the new host (Oracle free-tier ARM VM, Raspberry Pi, any Linux): clone the repo, `pip install -r JarvisAI/requirements-hub.txt`, install Tailscale, run `tailscale cert`, set `GEMINI_API_KEY`, `JARVIS_HUB_CERT`, `JARVIS_HUB_KEY` and `JARVIS_HUB_PUBLIC_URL`, then run `scripts/start_hub.sh`.
+2. Re-pair the devices with the new pairing codes. On the laptop, set `"hub_url": "wss://new-host.tail1234.ts.net:8766"` and `"relay_port": 8765` in `agent.json`, so the USB tablet keeps using `localhost` through the agent.
+Nothing else changes: every hub setting comes from environment variables or `JARVIS_HUB_CONFIG`.
+
 ## 🤖 Autonomous Task Agent, Screen Vision and Computer Use
 
 JARVIS can take a single instruction such as *“inspect my project, fix the

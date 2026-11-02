@@ -55,6 +55,8 @@ class Hub:
         self.extensions: list = []          # objects with optional start()/stop()
         self.live = None                    # HubJarvisLive when the Gemini session runs
         self.router = None                  # hub.audio_router.AudioRouter
+        self.remote = None                  # hub.remote_tools.RemoteToolRegistry
+        self.files = None                   # hub.files.FileLinks
         self.app = self._build_app()
         self._runners: list[web.AppRunner] = []
         self._tasks: list[asyncio.Task] = []

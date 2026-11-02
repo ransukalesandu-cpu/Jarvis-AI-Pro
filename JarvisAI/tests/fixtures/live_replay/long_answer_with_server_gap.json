@@ -1,0 +1,26 @@
+{
+ "description": "An 8 s answer arriving at 2x realtime with a 1.5 s server pause in the middle. Every byte must play.",
+ "steps": [
+  {
+   "input_text": "tell me a story"
+  },
+  {
+   "delay": 0.02,
+   "audio_ms": 40,
+   "repeat": 100
+  },
+  {
+   "delay": 1.5,
+   "audio_ms": 40
+  },
+  {
+   "delay": 0.02,
+   "audio_ms": 40,
+   "repeat": 99
+  },
+  {
+   "delay": 0.01,
+   "turn_complete": true
+  }
+ ]
+}

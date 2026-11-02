@@ -154,6 +154,21 @@ def _validate(module, filename: str) -> ActionRecord:
                         scheduling=_opt_upper(tool.get("scheduling"), _SCHEDULING))
 
 
+def _collect_triggers(module, filename: str, logger: Callable[[str], None]) -> None:
+    """Register a module's ``TRIGGERS`` list (see core/triggers.py). Never raises."""
+    rows = getattr(module, "TRIGGERS", None)
+    if not rows:
+        return
+    from core.triggers import get_trigger_registry
+    registry = get_trigger_registry()
+    for row in rows if isinstance(rows, (list, tuple)) else [rows]:
+        try:
+            trig = registry.register(dict(row), source="file")
+            logger(f"Trigger registered: {trig.name} ({filename})")
+        except Exception as exc:
+            logger(f"Trigger rejected in {filename}: {exc}")
+
+
 def discover_actions(actions_dir: Path, reserved_names: set[str] | None = None,
                      logger: Callable[[str], None] = print) -> ActionRegistry:
     """
@@ -189,6 +204,7 @@ def discover_actions(actions_dir: Path, reserved_names: set[str] | None = None,
                     sys.modules.pop(module_name, None)
                     raise
 
+            _collect_triggers(module, path.name, logger)
             if getattr(module, "TOOL", None) is None:
                 continue   # not an action file — a helper/capture-only module
 

@@ -1,0 +1,38 @@
+{
+ "description": "Local barge-in is confirmed by a user transcript. The held answer is dropped and the answer to the new question plays in full.",
+ "steps": [
+  {
+   "input_text": "what's the weather"
+  },
+  {
+   "delay": 0.05,
+   "turn_complete": true
+  },
+  {
+   "delay": 0.04,
+   "audio_ms": 40,
+   "repeat": 14
+  },
+  {
+   "action": "local_bargein"
+  },
+  {
+   "delay": 0.04,
+   "audio_ms": 40,
+   "repeat": 2
+  },
+  {
+   "delay": 0.3,
+   "input_text": "actually, stop"
+  },
+  {
+   "delay": 0.04,
+   "audio_ms": 40,
+   "repeat": 25
+  },
+  {
+   "delay": 0.01,
+   "turn_complete": true
+  }
+ ]
+}

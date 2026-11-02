@@ -10,8 +10,12 @@ import asyncio
 import time
 from actions.background_monitor import check_all as monitor_check_all, list_monitors
 from core import security
-from memory.config_manager import get_memory_provider_access_enabled
+from memory.config_manager import get_memory_provider_access_enabled, get_quiet_hours
 from memory.memory_manager import load_memory
+
+#: The owner must have been silent this long before JARVIS starts a turn.
+PROACTIVE_USER_QUIET_SECONDS = 4.0
+TRIGGER_TICK_SECONDS = 5.0
 
 
 class BackgroundServicesMixin:
@@ -138,6 +142,65 @@ class BackgroundServicesMixin:
                 print("[JARVIS] Proactive check-in.")
             except Exception as e:
                 print(f"[Proactive] ⚠️ {e}")
+
+    # ── Proactive triggers (core/triggers.py) ────────────────────────────────
+
+    def _proactive_turn_blocker(self) -> str:
+        """Why JARVIS may not start a turn right now ('' means it may).
+
+        Never talk over the owner: no injected turn while they are speaking or
+        have just spoken, while JARVIS is speaking, or while a turn is pending.
+        """
+        if not self.session:
+            return "no live session"
+        with self._speaking_lock:
+            if self._is_speaking:
+                return "jarvis speaking"
+        if self._assistant_turn_pending or self._briefing_active:
+            return "turn pending"
+        if self._interrupted:
+            return "interruption in progress"
+        if getattr(self, "_inflight_user_text", ""):
+            return "owner turn in progress"
+        if time.monotonic() - self._last_user_speech < PROACTIVE_USER_QUIET_SECONDS:
+            return "owner spoke recently"
+        if getattr(self, "_turn_done_event", None) is not None and self._turn_done_event.is_set():
+            return "playback finishing"
+        return ""
+
+    async def _fire_trigger(self, trigger, prompt: str) -> None:
+        text = (
+            f"[Automatic trigger '{trigger.name}' — this is JARVIS's own scheduler, "
+            "not the owner speaking. Speak to the owner now.] " + prompt
+        )
+        if not self._awake:
+            self.wake(reason=f"trigger {trigger.name}")
+        await self.session.send_client_content(
+            turns={"role": "user", "parts": [{"text": text}]},
+            turn_complete=True,
+        )
+        self.ui.write_log(f"SYS: Trigger '{trigger.name}' fired.")
+        print(f"[Triggers] Fired {trigger.name}.")
+
+    async def _run_trigger_scheduler(self) -> None:
+        """Background task: inject due triggers as turns so JARVIS speaks first."""
+        from core.triggers import get_trigger_registry
+        registry = get_trigger_registry()
+        while not self._shutdown_requested:
+            await asyncio.sleep(TRIGGER_TICK_SECONDS)
+            try:
+                due = registry.due(quiet_hours=get_quiet_hours())
+                if not due:
+                    continue
+                if self._proactive_turn_blocker():
+                    continue      # still due; retried on the next tick
+                trigger, prompt = due[0]          # one turn at a time
+                registry.mark_fired(trigger.name)
+                await self._fire_trigger(trigger, prompt)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                print(f"[Triggers] Scheduler error: {type(exc).__name__}: {exc}")
 
     # ── Phone audio relay ────────────────────────────────────────────────────────
 

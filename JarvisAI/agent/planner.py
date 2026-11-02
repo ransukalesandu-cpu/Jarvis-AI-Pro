@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from agent.models import StepKind, TaskStep
+from agent.dependency_graph import DependencyGraphError, topological_sort_steps
 from agent.store import redact
 
 MAX_STEPS = 16
@@ -161,8 +162,12 @@ class TaskPlanner:
             "contact anyone; prefer read-only inspection; include at least one "
             "'run_tests' or 'verify' step for repository changes; browser-only "
             "tasks may finish with their captured page evidence; paths are relative "
-            "to the workspace; "
-            "put a concrete verification criterion in 'expect' where possible "
+            "to the workspace. Select the narrowest suitable typed tool for each "
+            "step. Split complex objectives into small, independently verifiable "
+            "steps. Use depends_on as zero-based indexes into the original steps "
+            "array; dependencies may point forward, but must form an acyclic graph. "
+            "Independent steps should have no dependency between them. "
+            "Put a concrete verification criterion in 'expect' where possible "
             "(supported keys: exit_code, contains, not_contains, file_exists, "
             "test_failures, vision). Browser steps are READ-ONLY: use browser_search, "
             "browser_navigate (public http/https URL in detail), browser_read, or "
@@ -175,16 +180,21 @@ class TaskPlanner:
         payload = _loads(raw)
         if not isinstance(payload, dict):
             raise PlanError("The planning model did not return a JSON object.")
+        raw_criteria = payload.get("criteria") or []
+        if not isinstance(raw_criteria, (list, tuple)):
+            raise PlanError("The planning model criteria must be a JSON array.")
         criteria = [
-            str(item).strip() for item in payload.get("criteria") or []
-            if str(item).strip()
+            str(item).strip() for item in raw_criteria if str(item).strip()
         ][:6]
-        steps: list[TaskStep] = []
+        raw_steps = payload.get("steps") or []
+        if not isinstance(raw_steps, list):
+            raise PlanError("The planning model steps must be a JSON array.")
         warnings: list[str] = []
-        for index, item in enumerate(payload.get("steps") or []):
-            if len(steps) >= self.max_steps:
-                warnings.append(f"Ignored steps after the {self.max_steps}-step limit.")
-                break
+        if len(raw_steps) > self.max_steps:
+            warnings.append(f"Ignored steps after the {self.max_steps}-step limit.")
+            raw_steps = raw_steps[:self.max_steps]
+        accepted: list[tuple[int, TaskStep]] = []
+        for index, item in enumerate(raw_steps):
             if not isinstance(item, dict):
                 warnings.append(f"Dropped malformed step #{index + 1}.")
                 continue
@@ -215,7 +225,7 @@ class TaskPlanner:
                 path=path,
                 content=str(item.get("content") or ""),
                 target=redact(str(item.get("target") or ""), 120),
-                depends_on=_dependencies(item.get("depends_on"), len(steps)),
+                depends_on=_dependencies(item.get("depends_on"), len(raw_steps)),
                 expect={str(key): value for key, value in expect.items()},
                 consequential=bool(item.get("consequential", False)),
                 max_retries=max(0, min(3, _as_int(item.get("max_retries"), 1))),
@@ -240,12 +250,43 @@ class TaskPlanner:
                         StepKind.BROWSER_READ, StepKind.BROWSER_FOLLOW_LINK) and step.consequential:
                 warnings.append(f"Dropped step #{index + 1}: read-only browser steps cannot be marked consequential.")
                 continue
+            accepted.append((index, step))
+
+        # Preserve references to original model indexes even when malformed
+        # steps are dropped. A dependent step is dropped rather than silently
+        # executing without its prerequisite.
+        kept = {source_index for source_index, _ in accepted}
+        changed = True
+        while changed:
+            changed = False
+            for source_index, step in accepted:
+                if source_index in kept and any(dep not in kept for dep in step.depends_on):
+                    kept.remove(source_index)
+                    warnings.append(
+                        f"Dropped step #{source_index + 1}: a dependency was invalid or removed."
+                    )
+                    changed = True
+        source_to_position = {
+            source_index: position
+            for position, (source_index, _) in enumerate(
+                item for item in accepted if item[0] in kept
+            )
+        }
+        steps = []
+        for source_index, step in accepted:
+            if source_index not in kept:
+                continue
+            step.depends_on = [source_to_position[dep] for dep in step.depends_on]
             steps.append(step)
         if not steps:
             raise PlanError(
                 "The planning model returned no executable steps "
                 + (f"({warnings[0]})" if warnings else ".")
             )
+        try:
+            steps = topological_sort_steps(steps)
+        except DependencyGraphError as exc:
+            raise PlanError(f"The planning model returned an invalid dependency graph: {exc}") from exc
         plan_bytes = len(json.dumps(
             [step.to_dict() for step in steps],
             ensure_ascii=False,
@@ -270,7 +311,7 @@ class TaskPlanner:
         # Deterministic browser intents keep basic public-web reading available
         # even when no planning provider/API key is configured.
         search_match = re.search(
-            r"\bsearch (?:the )?(?:web|internet) for\s+(.+)$",
+            r"\b(?:search (?:the )?(?:web|internet) for|research|investigate|look up)\s+(.+)$",
             str(objective or "").strip(), re.IGNORECASE,
         )
         navigate_match = re.search(
@@ -449,15 +490,18 @@ def _loads(raw: str) -> Any:
 
 
 def _dependencies(value: Any, count: int) -> list[int]:
-    if not isinstance(value, (list, tuple)):
+    if value is None:
         return []
+    if not isinstance(value, (list, tuple)):
+        raise PlanError("Step dependencies must be an array of zero-based step indexes.")
     out: list[int] = []
     for item in value:
-        try:
-            index = int(item)
-        except (TypeError, ValueError):
-            continue
-        if 0 <= index < count and index not in out:
+        if isinstance(item, bool) or not isinstance(item, int):
+            raise PlanError("Step dependency indexes must be integers.")
+        index = item
+        if not 0 <= index < count:
+            raise PlanError(f"Step dependency index {index} is outside the plan.")
+        if index not in out:
             out.append(index)
     return out
 

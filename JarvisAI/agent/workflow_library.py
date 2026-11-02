@@ -25,8 +25,6 @@ _MAX_OBJECTIVE = 500
 _MAX_CRITERIA = 6
 _MAX_STEPS = 16
 
-# Instances that point at the same file must serialize their entire
-# read-modify-write transaction, not merely their own instance operations.
 _LOCKS_GUARD = threading.Lock()
 _PATH_LOCKS: dict[str, threading.RLock] = {}
 
@@ -40,10 +38,8 @@ def _lock_for(path: Path) -> threading.RLock:
 def _safe_text(value: str, limit: int) -> str:
     """Redact secrets and absolute local paths before persisting user text."""
     cleaned = redact(str(value or ""), limit * 4)
-    # Windows drive paths and UNC paths.
-    cleaned = re.sub(r"(?i)(?:[a-z]:\\\\|\\\\\\\\)[^\\s\"'<>|]+", "[local-path]", cleaned)
-    # POSIX absolute paths, excluding URL schemes.
-    cleaned = re.sub(r"(?<![\\w:])/(?:[^\\s/]+/)*[^\\s/]+", "[local-path]", cleaned)
+    cleaned = re.sub(r"(?i)(?:[a-z]:\\|\\\\)[^\s\"'<>|]+", "[local-path]", cleaned)
+    cleaned = re.sub(r"(?<![\w:])/(?:[^\s/]+/)*[^\s/]+", "[local-path]", cleaned)
     return cleaned[:limit]
 
 
@@ -58,7 +54,7 @@ def _atomic_write(path: Path, payload: str) -> None:
             os.chmod(temporary, 0o600)
         except OSError:
             pass
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\\n") as stream:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
@@ -204,11 +200,12 @@ class WorkflowLibrary:
                 row.get("saved_at"), (int, float)
             ):
                 continue
-            # Sanitize old/hand-edited entries at read time as well.
             safe = dict(row)
             safe["name"] = _safe_text(row["name"], _MAX_NAME)
             safe["objective"] = _safe_text(row["objective"], _MAX_OBJECTIVE)
-            safe["criteria"] = [_safe_text(item, 160) for item in row["criteria"][:_MAX_CRITERIA]]
+            safe["criteria"] = [
+                _safe_text(item, 160) for item in row["criteria"][:_MAX_CRITERIA]
+            ]
             safe["steps"] = [
                 {"title": _safe_text(step["title"], 100), "kind": step["kind"]}
                 for step in row["steps"][:_MAX_STEPS]

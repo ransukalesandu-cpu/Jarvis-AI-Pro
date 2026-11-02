@@ -147,5 +147,50 @@ class SmartHybridBrowserTests(unittest.TestCase):
         browser.close()
 
 
+    def test_cdp_guard_validates_redirect_before_continuing(self):
+        browser = BrowserAutomation()
+        browser._cdp = Mock()
+        event = {
+            "requestId": "redirect-1",
+            "request": {"url": "https://public.example/start", "method": "GET"},
+            "redirectUrl": "https://public.example/final",
+        }
+        with patch("core.browser_automation.validate_public_url", side_effect=lambda value: value):
+            browser._guard_cdp_request(event)
+        browser._cdp.send.assert_called_once_with(
+            "Fetch.continueRequest", {"requestId": "redirect-1"}
+        )
+
+    def test_cdp_guard_blocks_private_redirect_before_continuing(self):
+        browser = BrowserAutomation()
+        browser._cdp = Mock()
+        event = {
+            "requestId": "redirect-2",
+            "request": {"url": "https://public.example/start", "method": "GET"},
+            "redirectUrl": "http://127.0.0.1/admin",
+        }
+        def validate(value):
+            if "127.0.0.1" in value:
+                raise BrowserAutomationError("Private destination")
+            return value
+        with patch("core.browser_automation.validate_public_url", side_effect=validate):
+            browser._guard_cdp_request(event)
+        browser._cdp.send.assert_called_once_with(
+            "Fetch.failRequest",
+            {"requestId": "redirect-2", "errorReason": "BlockedByClient"},
+        )
+
+    def test_navigation_persists_final_validated_url(self):
+        browser = BrowserAutomation()
+        browser._page = Mock()
+        browser._page.url = "https://public.example/final"
+        browser.open = Mock()
+        browser.read_page = Mock(return_value={"title": "Final"})
+        with patch("core.browser_automation.validate_public_url", side_effect=lambda value: value):
+            result = browser.navigate("https://public.example/start")
+        self.assertEqual(result, {"title": "Final"})
+        self.assertEqual(browser._last_url, "https://public.example/final")
+
+
 if __name__ == "__main__":
     unittest.main()

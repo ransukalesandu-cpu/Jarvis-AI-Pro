@@ -4450,6 +4450,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, face_path: str):
         super().__init__()
+        self._session_started_at = time.monotonic()
         self._face_path = face_path
 
         # Load customization from config
@@ -5026,14 +5027,9 @@ class MainWindow(QMainWindow):
         try:
             labels["cpu"].setText(f"{psutil.cpu_percent(interval=None):.0f}%")
             labels["memory"].setText(f"{psutil.virtual_memory().percent:.0f}%")
-            session_started = getattr(self, "_session_started_at", None)
-            if session_started is None:
-                self._session_started_at = time.monotonic()
-                session_started = self._session_started_at
-            elapsed = max(0, int(time.monotonic() - session_started))
+            elapsed = max(0, int(time.monotonic() - self._session_started_at))
             hours, remainder = divmod(elapsed, 3600)
-            minutes = remainder // 60
-            labels["uptime"].setText(f"{hours:02d}:{minutes:02d}")
+            labels["uptime"].setText(f"{hours:02d}:{remainder // 60:02d}")
         except Exception:
             labels["cpu"].setText("--")
             labels["memory"].setText("--")

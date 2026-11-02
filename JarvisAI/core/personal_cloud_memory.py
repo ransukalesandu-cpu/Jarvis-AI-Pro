@@ -569,6 +569,7 @@ def delete_cloud_agent_task(task_id: str) -> None:
 def append_cloud_agent_event(task_id: str, event: dict[str, Any]) -> None:
     clean = _redact_cloud_payload(event)
     if len(json.dumps(clean, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) > 9_500:
+        from agent.store import redact
         clean = {
             "kind": str(event.get("kind") or "event")[:80],
             "truncated": True,

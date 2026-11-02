@@ -112,6 +112,16 @@ class SmartHybridBrowserTests(unittest.TestCase):
             with self.assertRaises(BrowserAutomationError):
                 validate_public_url('https://unresolved.example')
 
+    def test_browser_request_guard_rejects_write_methods(self):
+        route = Mock()
+        route.request.method = "POST"
+        route.request.url = "https://public.example/submit"
+        with patch("core.browser_automation.validate_public_url") as validate:
+            BrowserAutomation._guard_request(route)
+        route.abort.assert_called_once_with()
+        route.continue_.assert_not_called()
+        validate.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

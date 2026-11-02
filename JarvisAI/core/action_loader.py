@@ -95,7 +95,7 @@ class ActionRegistry:
     def names(self) -> set[str]:
         return set(self._actions.keys())
 
-    # -- called by main.py from _execute_tool --
+    # -- called from _execute_tool (core/runtime/live_tools.py) --
     def run(self, name: str, parameters: dict, ctx: dict | None = None) -> str:
         rec = self._actions.get(name)
         if rec is None or not rec.valid:

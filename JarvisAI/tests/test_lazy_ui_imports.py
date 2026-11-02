@@ -30,6 +30,15 @@ import unittest
 from types import ModuleType
 from unittest.mock import patch
 
+try:
+    import PyQt6.QtWidgets  # noqa: F401
+
+    QT_AVAILABLE = True
+except Exception:  # pragma: no cover - depends on the host's system libraries
+    QT_AVAILABLE = False
+
+SKIP_REASON = "Qt cannot load on this machine (missing libGL/libEGL)"
+
 #: Modules that must not be imported (or even attempted) by a HUD-only start.
 _DEFERRED_PREFIXES = (
     "PyQt6.QtWebEngine", "core.earth_globe", "core.hud_workspace", "cv2",
@@ -79,11 +88,13 @@ def _import_probe(source: str) -> tuple[list[str], list[str]]:
 
 
 class TestUIPackageIsLazy(unittest.TestCase):
+    @unittest.skipUnless(QT_AVAILABLE, SKIP_REASON)
     def test_importing_ui_does_not_touch_webengine(self):
         loaded, attempts = _import_probe("import ui")
         self.assertEqual(loaded, [], "importing ui loaded a deferred module")
         self.assertEqual(attempts, [], "importing ui attempted to load a deferred module")
 
+    @unittest.skipUnless(QT_AVAILABLE, SKIP_REASON)
     def test_importing_the_hologram_hud_does_not_touch_webengine(self):
         loaded, attempts = _import_probe("import ui.hud_main")
         self.assertEqual(loaded, [])
@@ -95,6 +106,7 @@ class TestUIPackageIsLazy(unittest.TestCase):
         self.assertEqual(loaded, [])
         self.assertEqual(attempts, [])
 
+    @unittest.skipUnless(QT_AVAILABLE, SKIP_REASON)
     def test_the_lazy_axes_are_still_reachable(self):
         """The deferral must not remove the feature, only delay it.
 
@@ -229,6 +241,7 @@ class TestWebEngineHelper(unittest.TestCase):
             self.assertEqual(self.helper._classes, {})
 
 
+@unittest.skipUnless(QT_AVAILABLE, SKIP_REASON)
 class TestUIModuleStillWorks(unittest.TestCase):
     """The lazy boundary must not disturb the classes the app and tests use."""
 

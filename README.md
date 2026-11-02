@@ -2105,6 +2105,13 @@ Create a virtual environment for the project. Follow the
 commands for your operating system **in order**. Run each command, wait for it
 to finish, then continue to the next step.
 
+> **Always install into the virtual environment, not the system Python.** On
+> some Linux distributions the system Python ships a patched `setuptools`, and
+> `pip install -r requirements.txt` there fails while building the older
+> pyautogui helper packages (`pygetwindow`, `pyrect`, `mouseinfo`,
+> `pytweening`, `python3-Xlib`) with `AttributeError: install_layout`. Inside a
+> `.venv` the same command installs cleanly.
+
 ## Windows 10/11 (recommended: the setup BAT)
 
 You need Windows 10 or 11, an internet connection, and a normal user account —

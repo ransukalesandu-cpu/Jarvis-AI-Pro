@@ -35,6 +35,7 @@ FACE_NAMES = ("hologram_face.png", "hologram_face.webp", "hologram_face.jpg",
 _MAX_H = 760                       # processed picture height in pixels
 _DEFAULT_LAYOUT = {"eyes": [[0.38, 0.475], [0.61, 0.475]], "mouth": [0.50, 0.70, 0.19]}
 EMOTIONS = ("happy", "sad", "serious", "surprised", "curious")
+_DIRECT = frozenset({"jaw", "wide", "blink", "gaze_x", "gaze_y"})
 _GRID = (16, 22)                   # warp cells across, down
 _REGION = (0.08, 0.26, 0.92, 0.985)  # warped part of the picture (u0, v0, u1, v1)
 
@@ -170,18 +171,21 @@ class ImageHologram:
         du = np.zeros_like(u)
         dv = np.zeros_like(v)
         jaw = min(1.0, f["jaw"] + 0.55 * f["surprised"])
+        spread = max(0.0, f["wide"])            # /i/ /e/: lips stretched wide and flat
+        round_ = max(0.0, -f["wide"])           # /o/ /u/: lips drawn in, opening taller
         g = self._g
-        # Jaw and lips.
-        dv += 0.042 * jaw * g(u, v, mx, my + 0.12, 0.24, 0.13)
-        dv += 0.020 * jaw * g(u, v, mx, my + 0.018, 0.08, 0.022)
-        dv -= 0.006 * jaw * g(u, v, mx, my - 0.012, 0.08, 0.018)
+        # Jaw and lips. The lower lip rides the jaw; the upper lip lifts a
+        # little on open vowels and more when the lips round.
+        dv += 0.050 * jaw * g(u, v, mx, my + 0.12, 0.24, 0.13)
+        dv += (0.028 + 0.010 * round_) * jaw * g(u, v, mx, my + 0.018, 0.08, 0.022)
+        dv -= (0.006 + 0.006 * round_) * jaw * g(u, v, mx, my - 0.012, 0.08, 0.018)
         for side in (-1.0, 1.0):
             cu = mx + side * mw / 2
             corner = g(u, v, cu, my, 0.040, 0.030)
             du += side * corner * (0.012 * f["wide"] + 0.014 * f["happy"] - 0.004 * f["sad"]
                                    - 0.006 * jaw)
             dv += corner * (-0.026 * f["happy"] + 0.018 * f["sad"] + 0.004 * f["serious"]
-                            + 0.008 * jaw)
+                            + 0.008 * jaw - 0.003 * spread)
         # Eyes, lids, brows, cheeks.
         for i, (ex, ey) in enumerate(ly["eyes"]):
             side = -1.0 if ex < mx else 1.0
@@ -221,9 +225,12 @@ class ImageHologram:
         if cur is None:
             cur = self._expr = {k: 0.0 for k in target}
         for k, v in target.items():
-            # Faces move fast (jaw, lids) but moods settle slowly.
-            tau = 0.05 if k in ("jaw", "blink", "wide", "gaze_x", "gaze_y") else 0.35
-            a = 1.0 - math.exp(-dt / tau) if dt > 0 else 1.0
+            if k in _DIRECT:
+                # Already timed and smoothed by the avatar against the audio
+                # being played; any more smoothing here would make the lips lag.
+                cur[k] = v
+                continue
+            a = 1.0 - math.exp(-dt / 0.35) if dt > 0 else 1.0   # moods settle slowly
             cur[k] = cur.get(k, 0.0) + (v - cur.get(k, 0.0)) * a
         return cur
 
@@ -285,15 +292,23 @@ class ImageHologram:
             return
         l, r = pts["l"], pts["r"]
         top_y = (l.y() + r.y()) / 2 - gap * 0.15
-        path = QPainterPath(l)
+        path = QPainterPath()
+        spread = max(0.0, f["wide"])
+        round_ = max(0.0, -f["wide"])
+        # Rounded lips leave a taller, narrower hole; spread lips a flat slot.
+        depth = gap * (1.6 + 0.6 * round_ - 0.4 * spread)
+        inset = (r.x() - l.x()) * 0.14 * round_
+        l, r = QPointF(l.x() + inset, l.y()), QPointF(r.x() - inset, r.y())
+        path.moveTo(l)
         path.quadTo(QPointF((l.x() + r.x()) / 2, top_y - gap * 0.25), r)
-        path.quadTo(QPointF((l.x() + r.x()) / 2, top_y + gap * 1.6), l)
+        path.quadTo(QPointF((l.x() + r.x()) / 2, top_y + depth), l)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor(0, 10, 24, 225))
         p.drawPath(path)
-        teeth = QRectF((l.x() * 0.7 + r.x() * 0.3), top_y - gap * 0.05,
-                       (r.x() - l.x()) * 0.4, gap * 0.28)
-        p.setBrush(QColor(210, 245, 255, 120))
+        # Upper teeth show most on spread vowels, barely when rounded.
+        tw = (r.x() - l.x()) * (0.36 + 0.24 * spread - 0.16 * round_)
+        teeth = QRectF((l.x() + r.x()) / 2 - tw / 2, top_y - gap * 0.05, tw, gap * 0.26)
+        p.setBrush(QColor(210, 245, 255, int(90 + 60 * spread)))
         p.drawRoundedRect(teeth, 2, 2)
 
     # ── frame ───────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 # Smart Hybrid Browser Automation
 
 ## Design
-This feature is an isolated foundation for browser-vs-chat intent routing. It does not replace the existing Gemini Live audio/session path or security/action dispatcher.
+This feature provides a read-only browser service and typed browser steps for the autonomous task engine. It does not replace the existing Gemini Live audio/session path or security/action dispatcher.
 
 - `core/smart_intent_router.py`: asks the existing HybridLLMRouter with Gemini preferred to classify a request as CHAT or BROWSER. Invalid output/provider errors fail closed to CHAT.
 - `core/browser_automation.py`: visible Chromium via Playwright, with only explicit navigate/search/click/read operations. HTTP(S) only; embedded URL credentials and hosts resolving to any private/non-public address are rejected on navigation and routed requests. Following a link navigates its validated href without invoking onclick handlers. Downloads are disabled.

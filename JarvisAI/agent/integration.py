@@ -137,6 +137,9 @@ class AgentService:
             on_milestone=self._on_milestone,
             logger=self._log,
         )
+        self._last_task_snapshot: Task | None = None
+        self._history_refresh_lock = threading.Lock()
+        self._history_refresh_started = False
         self.bus.subscribe(self._on_event)
 
     # ── lifecycle ─────────────────────────────────────────────────────────
@@ -175,6 +178,7 @@ class AgentService:
         task = self.runner.start(text, criteria=criteria, source=source)
         with self._lock:
             self._last_task_id = task.id
+            self._last_task_snapshot = task
         return task
 
     def stop(self, reason: str = "Stopped by the owner.") -> bool:
@@ -232,7 +236,8 @@ class AgentService:
 
     def status(self) -> dict[str, Any]:
         state = self.runner.status()
-        task = self.runner.active_task or self._latest_task()
+        task = self.runner.active_task or self._cached_latest_task()
+        self._schedule_history_refresh()
         state["task"] = task.to_dict() if task else None
         state["settings"] = self.settings.as_dict()
         state["capabilities"] = self.capabilities()
@@ -525,9 +530,42 @@ class AgentService:
     # ── internal -----------------------------------------------------------
     def _on_event(self, event: AgentEvent) -> None:
         try:
+            task = self.runner.active_task
+            if task is not None:
+                with self._lock:
+                    self._last_task_snapshot = task
+                    self._last_task_id = task.id
             self._announcer.announce(event)
         except Exception:
             failsoft.suppress("agent.integration:_on_event")
+
+    def _cached_latest_task(self) -> Task | None:
+        with self._lock:
+            return self._last_task_snapshot
+
+    def _schedule_history_refresh(self) -> None:
+        """Refresh the initial cloud history snapshot away from the Qt polling path."""
+        with self._history_refresh_lock:
+            if self._history_refresh_started or self._cached_latest_task() is not None:
+                return
+            self._history_refresh_started = True
+        threading.Thread(
+            target=self._refresh_latest_task_snapshot,
+            daemon=True,
+            name="JarvisAgentHistoryRefresh",
+        ).start()
+
+    def _refresh_latest_task_snapshot(self) -> None:
+        try:
+            entries = self.store.list_tasks(limit=1)
+            task_id = str(entries[0].get("id") or "") if entries else ""
+            task = self.store.load(task_id) if task_id else None
+            if task is not None:
+                with self._lock:
+                    self._last_task_id = task.id
+                    self._last_task_snapshot = task
+        except Exception as exc:
+            logger.warning("Initial cloud task history refresh failed (%s)", type(exc).__name__)
 
     def _on_milestone(self, message: str) -> None:
         # The announcer already handles rate limiting; this exists for callers
@@ -538,6 +576,9 @@ class AgentService:
             self._announcer.say(message)
 
     def _latest_task(self) -> Task | None:
+        cached = self._cached_latest_task()
+        if cached is not None:
+            return cached
         with self._lock:
             task_id = getattr(self, "_last_task_id", "")
         if not task_id:
@@ -545,7 +586,11 @@ class AgentService:
             task_id = str(entries[0].get("id") or "") if entries else ""
         if not task_id:
             return None
-        return self.store.load(task_id)
+        task = self.store.load(task_id)
+        if task is not None:
+            with self._lock:
+                self._last_task_snapshot = task
+        return task
 
 
 def get_service() -> AgentService:

@@ -87,7 +87,7 @@ Deno.serve(async (req: Request) => {
   const operation = String(body.operation || "").toLowerCase();
   const cloudAgentOperation = operation.startsWith("agent_") || operation.startsWith("workflow_");
   const usage = await consumeRequest(
-    baseUrl, serviceKey, userId, nonce, timestamp, cloudAgentOperation ? 1200 : 100,
+    baseUrl, serviceKey, userId, nonce, timestamp, cloudAgentOperation ? 1000 : 100,
   );
   if (usage === "replay") return jsonResponse({ error: "replay_detected" }, 409);
   if (usage === "quota") return jsonResponse({ error: "daily_quota_exceeded" }, 429);

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import threading
 import time
+from dataclasses import replace
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -32,6 +33,7 @@ class AgentEvent:
     message: str = ""
     at: float = field(default_factory=time.time)
     data: dict[str, Any] = field(default_factory=dict)
+    sequence: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -42,6 +44,7 @@ class AgentEvent:
             "message": self.message,
             "at": self.at,
             "data": dict(self.data),
+            "sequence": self.sequence,
         }
 
 
@@ -64,6 +67,8 @@ class EventBus:
         self._subscribers: list[Callable[[AgentEvent], None]] = []
         self._history: deque[AgentEvent] = deque(maxlen=max(8, int(history)))
         self._lock = threading.RLock()
+        self._changed = threading.Condition(self._lock)
+        self._sequence = 0
 
     def subscribe(self, callback: Callable[[AgentEvent], None]) -> Callable[[], None]:
         with self._lock:
@@ -82,9 +87,12 @@ class EventBus:
                 pass
 
     def publish(self, event: AgentEvent) -> None:
-        with self._lock:
+        with self._changed:
+            self._sequence += 1
+            event = replace(event, sequence=self._sequence)
             self._history.append(event)
             subscribers = list(self._subscribers)
+            self._changed.notify_all()
         for callback in subscribers:
             try:
                 callback(event)
@@ -109,6 +117,26 @@ class EventBus:
         with self._lock:
             items = list(self._history)
         return items[-max(1, int(limit)):]
+
+    def events_since(
+        self, sequence: int = 0, *, timeout: float = 0.0, limit: int = 32
+    ) -> list[AgentEvent]:
+        """Read a replayable progress stream after a cursor, optionally waiting.
+
+        The cursor is monotonic for this EventBus lifetime. If the requested
+        cursor predates the bounded history, the oldest retained events are
+        returned; consumers can detect the gap from the first sequence number.
+        """
+        cursor = max(0, int(sequence))
+        wait_s = max(0.0, min(float(timeout), 30.0))
+        with self._changed:
+            if not any(item.sequence > cursor for item in self._history) and wait_s:
+                self._changed.wait_for(
+                    lambda: any(item.sequence > cursor for item in self._history),
+                    timeout=wait_s,
+                )
+            items = [item for item in self._history if item.sequence > cursor]
+            return items[:max(1, min(int(limit), 128))]
 
     def latest(self) -> AgentEvent | None:
         with self._lock:

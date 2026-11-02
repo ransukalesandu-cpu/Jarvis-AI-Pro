@@ -454,6 +454,16 @@ class RunnerExecutionTests(unittest.TestCase):
         self.assertTrue(any("Planning failed" in reason for reason in task.blockers))
 
 
+    def test_background_queue_has_a_configured_capacity(self):
+        runner, _, _ = make_runner(
+            self, steps=[], config=RunnerConfig(max_queue_size=1)
+        )
+        first = runner.submit("first queued task")
+        with self.assertRaises(RuntimeError):
+            runner.submit("second queued task")
+        self.assertEqual(runner.status()["queue_depth"], 1)
+        self.assertEqual(runner.status()["queued"], [first.id])
+
 class ExecutorTests(unittest.TestCase):
     def _context(self, task=None, **kwargs) -> ExecutionContext:
         task = task or Task(objective="t")

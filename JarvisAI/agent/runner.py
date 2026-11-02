@@ -56,6 +56,7 @@ class RunnerConfig:
     loop_detection_repeats: int = 3
     max_steps: int = 16
     max_parallel_read_steps: int = 3
+    max_queue_size: int = 32
     resume_unfinished: bool = True
 
 
@@ -149,9 +150,18 @@ class TaskRunner:
             retry_budget=int(self.config.retry_budget),
         )
         task.transition(TaskState.PLANNING, "queued")
-        self.store.save(task)
-        self.store.append_event(task.id, {"kind": "submitted", "objective": task.objective})
         with self._lock:
+            queue_limit = max(1, min(int(self.config.max_queue_size), 128))
+            if len(self._queue) >= queue_limit:
+                raise RuntimeError(
+                    f"JARVIS task queue is full ({queue_limit} pending tasks)."
+                )
+            # Persist and enqueue under one lock so concurrent submitters cannot
+            # exceed the configured queue bound or leave orphaned queue records.
+            self.store.save(task)
+            self.store.append_event(task.id, {
+                "kind": "submitted", "objective": task.objective
+            })
             self._remember(task)
             self._queue.append(task.id)
         self._emit("queued", task, message=f"Queued: {task.objective[:100]}")
@@ -219,15 +229,30 @@ class TaskRunner:
         self._cancel.set()
         self._resume.set()
         with self._lock:
-            queued = bool(self._queue)
+            queued_ids = list(self._queue)
+            self._queue.clear()
         if task is not None:
             task.cancel_reason = str(reason)
             task.note(f"cancel requested: {reason}")
             self.store.append_event(task.id, {"kind": "cancel_requested", "reason": reason})
             self._announce("Stopping.")
-        with self._lock:
-            self._queue.clear()
-        return task is not None or queued
+        # Clearing the in-memory queue must also settle its durable task records;
+        # otherwise tasks discarded by cancel() remain stuck in PLANNING forever.
+        for queued_id in queued_ids:
+            if task is not None and queued_id == task.id:
+                continue
+            queued_task = self._tasks.get(queued_id) or self.store.load(queued_id)
+            if queued_task is None or queued_task.state.terminal:
+                continue
+            queued_task.cancel_reason = str(reason)
+            queued_task.transition(TaskState.CANCELLED, "removed from queue")
+            queued_task.note(f"queued task cancelled: {reason}")
+            self.store.save(queued_task)
+            self.store.append_event(queued_id, {
+                "kind": "cancelled", "reason": reason, "source": "queue"
+            })
+            self._emit("finished", queued_task, message="Queued task cancelled.")
+        return task is not None or bool(queued_ids)
 
     def wait(self, timeout: float | None = None) -> Task | None:
         """Block until the worker stops (tests and shutdown use this)."""
@@ -249,6 +274,8 @@ class TaskRunner:
         return {
             "active": task.to_dict() if task else None,
             "queued": queued,
+            "queue_depth": len(queued),
+            "queue_capacity": max(1, min(int(self.config.max_queue_size), 128)),
             "paused": self._pause.is_set(),
             "cancel_requested": self._cancel.is_set(),
             "vision": bool(self.vision is not None),

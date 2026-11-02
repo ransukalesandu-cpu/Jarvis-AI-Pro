@@ -19,8 +19,12 @@ of their inputs, which is what makes planning testable without an API key.
 
 from __future__ import annotations
 
+import copy
 import json
 import re
+import threading
+import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -109,11 +113,50 @@ class TaskPlanner:
         workspace: Path | str = "",
         max_steps: int = 12,
         model_name: str = "",
+        cache_size: int = 32,
+        cache_ttl_s: float = 300.0,
     ):
         self._ask = ask
         self.workspace = Path(workspace) if workspace else Path.cwd()
         self.max_steps = max(3, min(int(max_steps), MAX_STEPS))
         self.model_name = model_name
+        self._cache_size = max(0, min(int(cache_size), 128))
+        self._cache_ttl_s = max(0.0, min(float(cache_ttl_s), 3600.0))
+        self._cache: OrderedDict[tuple[Any, ...], tuple[float, Plan]] = OrderedDict()
+        self._cache_lock = threading.RLock()
+
+    def _cache_key(self, objective: str, criteria: list[str]) -> tuple[Any, ...]:
+        return (
+            objective.casefold(),
+            tuple(item.casefold() for item in criteria),
+            str(self.workspace.resolve()),
+            self.max_steps,
+            self.model_name,
+        )
+
+    def _cache_get(self, key: tuple[Any, ...]) -> Plan | None:
+        if not self._cache_size or not self._cache_ttl_s:
+            return None
+        now = time.monotonic()
+        with self._cache_lock:
+            entry = self._cache.get(key)
+            if entry is None:
+                return None
+            created, plan = entry
+            if now - created > self._cache_ttl_s:
+                self._cache.pop(key, None)
+                return None
+            self._cache.move_to_end(key)
+            return copy.deepcopy(plan)
+
+    def _cache_put(self, key: tuple[Any, ...], plan: Plan) -> None:
+        if not self._cache_size or not self._cache_ttl_s:
+            return
+        with self._cache_lock:
+            self._cache[key] = (time.monotonic(), copy.deepcopy(plan))
+            self._cache.move_to_end(key)
+            while len(self._cache) > self._cache_size:
+                self._cache.popitem(last=False)
 
     # -- entry point -------------------------------------------------------
     def plan(self, objective: str, criteria: Iterable[str] | None = None) -> Plan:
@@ -121,6 +164,10 @@ class TaskPlanner:
         if not text:
             raise PlanError("No objective was given.")
         explicit = [str(item).strip() for item in (criteria or []) if str(item).strip()]
+        cache_key = self._cache_key(text, explicit)
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
 
         if self._ask is not None:
             try:
@@ -128,6 +175,7 @@ class TaskPlanner:
                 plan = self.parse(raw, text)
                 if plan.steps:
                     plan.criteria = explicit or plan.criteria or _default_criteria(text)
+                    self._cache_put(cache_key, plan)
                     return plan
             except Exception as exc:
                 # A provider failure is a warning, not the end of the task.
@@ -141,6 +189,8 @@ class TaskPlanner:
 
         plan = self.heuristic(text)
         plan.criteria = explicit or plan.criteria
+        if self._ask is None:
+            self._cache_put(cache_key, plan)
         return plan
 
     # -- model plan --------------------------------------------------------

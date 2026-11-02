@@ -180,5 +180,34 @@ class HybridLLMRouterTests(unittest.TestCase):
         connect.assert_called_once_with(("1.1.1.1", 443), timeout=0.2)
 
 
+    def test_fallback_order_uses_latency_but_keeps_preference_first(self):
+        router = HybridLLMRouter(
+            preferred_provider="gemini",
+            api_keys={"gemini": "g", "groq": "r", "openai": "o"},
+            online_check=False,
+        )
+        router.is_online = lambda: True
+        router._record_provider_latency("groq", 80.0)
+        router._record_provider_latency("openai", 10.0)
+        calls = []
+
+        def fail(*args, **kwargs):
+            calls.append("gemini")
+            raise TimeoutError()
+
+        def fast(*args, **kwargs):
+            calls.append("openai")
+            return {"text": "fast fallback"}
+
+        router.providers["gemini"] = fail
+        router.providers["openai"] = fast
+        router.providers["groq"] = lambda *a, **k: (
+            calls.append("groq") or {"text": "slow fallback"}
+        )
+        result = router.query("hello")
+        self.assertEqual(calls, ["gemini", "openai"])
+        self.assertEqual(result["provider"], "openai")
+        self.assertIn("openai", router.provider_performance())
+
 if __name__ == "__main__":
     unittest.main()

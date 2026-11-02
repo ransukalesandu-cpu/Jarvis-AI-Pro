@@ -51,6 +51,37 @@ async function memoryConsent(baseUrl: string, serviceKey: string, userId: string
   return Array.isArray(rows) && rows.length > 0 && rows[0]?.enabled === true;
 }
 
+class RequestTooLargeError extends Error {}
+
+async function readBodyLimited(req: Request, maxBytes: number): Promise<Uint8Array> {
+  const reader = req.body?.getReader();
+  if (!reader) return new Uint8Array();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new RequestTooLargeError();
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
@@ -64,9 +95,14 @@ Deno.serve(async (req: Request) => {
   if (!userId) return jsonResponse({ error: "authentication_required" }, 401);
 
   let rawBody: Uint8Array;
-  try { rawBody = new Uint8Array(await req.arrayBuffer()); }
-  catch { return jsonResponse({ error: "invalid_body" }, 400); }
-  if (rawBody.length > 90_000) return jsonResponse({ error: "request_too_large" }, 413);
+  try {
+    rawBody = await readBodyLimited(req, 90_000);
+  } catch (error) {
+    if (error instanceof RequestTooLargeError) {
+      return jsonResponse({ error: "request_too_large" }, 413);
+    }
+    return jsonResponse({ error: "invalid_body" }, 400);
+  }
 
   let body: Record<string, unknown>;
   try {

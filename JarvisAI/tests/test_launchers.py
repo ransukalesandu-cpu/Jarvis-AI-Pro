@@ -32,10 +32,12 @@ class TestLaunchersAndImports(unittest.TestCase):
             "unavailable",
         )
 
-    def test_desktop_launcher_uses_original_jarvis_ui(self):
+    def test_desktop_launcher_delegates_to_original_jarvis_ui(self):
         source = (ROOT / "JarvisAI" / "main.py").read_text(encoding="utf-8")
-        self.assertIn('ui = JarvisUI("face.png")', source)
-        self.assertNotIn("HologramHUDUI", source)
+        runtime = (ROOT / "JarvisAI" / "core" / "runtime" / "application.py").read_text(encoding="utf-8")
+        self.assertIn("ui_class=JarvisUI", source)
+        self.assertIn('ui = ui_class("face.png")', runtime)
+        self.assertNotIn("HologramHUDUI", source + runtime)
 
     def test_content_workspace_opens_in_glass_side_panel_beside_hologram(self):
         source = (ROOT / "JarvisAI" / "ui" / "__init__.py").read_text(encoding="utf-8")
@@ -48,10 +50,10 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertNotIn('self._hud_cam_stack.setCurrentWidget(self._workspace)', source)
 
     def test_desktop_startup_uses_code_drawn_splash_not_video(self):
-        source = (ROOT / "JarvisAI" / "main.py").read_text(encoding="utf-8")
+        runtime = (ROOT / "JarvisAI" / "core" / "runtime" / "application.py").read_text(encoding="utf-8")
         splash = (ROOT / "JarvisAI" / "core" / "startup_sequence.py").read_text(encoding="utf-8")
-        self.assertIn("StartupSequenceSplash", source)
-        self.assertIn("splash.finished.connect(launch_jarvis)", source)
+        self.assertIn("StartupSequenceSplash", runtime)
+        self.assertIn("splash.finished.connect(launch_jarvis)", runtime)
         self.assertIn("TITLE_HOLD_MS = 1000", splash)
         self.assertIn('"JARVIS"', splash)
         self.assertNotIn("QMediaPlayer", splash)

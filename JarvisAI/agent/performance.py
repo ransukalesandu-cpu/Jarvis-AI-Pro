@@ -20,12 +20,14 @@ class PerformanceMonitor:
     def record(self, *, duration_s: float, state: str) -> None:
         duration = max(0.0, min(float(duration_s), 86400.0))
         with self._lock:
+            if state not in {"completed", "failed", "cancelled"}:
+                return
             self._durations.append(duration)
             if state == "completed":
                 self._completed += 1
             elif state == "failed":
                 self._failed += 1
-            elif state == "cancelled":
+            else:
                 self._cancelled += 1
 
     def snapshot(self) -> dict[str, Any]:

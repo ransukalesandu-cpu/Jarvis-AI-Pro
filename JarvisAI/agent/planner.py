@@ -159,7 +159,9 @@ class TaskPlanner:
             f"Rules: at most {self.max_steps} steps; every command must be safe to "
             "run unattended and must not delete data, install packages, push, or "
             "contact anyone; prefer read-only inspection; include at least one "
-            "'run_tests' or 'verify' step; paths are relative to the workspace; "
+            "'run_tests' or 'verify' step for repository changes; browser-only "
+            "tasks may finish with their captured page evidence; paths are relative "
+            "to the workspace; "
             "put a concrete verification criterion in 'expect' where possible "
             "(supported keys: exit_code, contains, not_contains, file_exists, "
             "test_failures, vision). Browser steps are READ-ONLY: use browser_search, "
@@ -297,7 +299,7 @@ class TaskPlanner:
                 kind=StepKind.BROWSER_FOLLOW_LINK,
                 target=follow_match.group(1).strip()[:120],
             ))
-        elif re.search(r"\b(read|summari[sz]e) (?:the )?(?:current )?page\\b",
+        elif re.search(r"\b(read|summari[sz]e) (?:the )?(?:current )?page\b",
                        str(objective or ""), re.IGNORECASE):
             steps.append(TaskStep(
                 title="Read the current browser page",

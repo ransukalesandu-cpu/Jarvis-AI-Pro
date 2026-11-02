@@ -67,6 +67,10 @@ class Hub:
         app.router.add_get("/ws/client", self._ws_client)
         app.router.add_get("/ws/agent", self._ws_agent)
         app.router.add_get("/", self._index)
+        # The PWA's manifest and service worker must sit at the root scope.
+        app.router.add_get("/manifest.webmanifest", self._root_file("manifest.webmanifest",
+                                                                   "application/manifest+json"))
+        app.router.add_get("/sw.js", self._root_file("sw.js", "application/javascript"))
         if CLIENT_DIR.exists():
             app.router.add_static("/static/", CLIENT_DIR, show_index=False)
         return app
@@ -93,6 +97,15 @@ class Hub:
         if self.paired_device(request) is None:
             raise web.HTTPFound("/pair")
         return web.FileResponse(index, headers={"Cache-Control": "no-cache"})
+
+    def _root_file(self, name: str, content_type: str):
+        async def handler(_request: web.Request):
+            path = CLIENT_DIR / name
+            if not path.exists():
+                raise web.HTTPNotFound()
+            return web.FileResponse(path, headers={"Content-Type": content_type,
+                                                   "Cache-Control": "no-cache"})
+        return handler
 
     async def _pair_page(self, request: web.Request):
         page = CLIENT_DIR / "pair.html"
@@ -237,12 +250,24 @@ class Hub:
             print("[Hub] No TLS certificate configured: only localhost clients can use the "
                   "microphone. See README (tailscale cert).")
         self._tasks.append(asyncio.create_task(self._sweeper()))
+        from core import action_log
+        action_log.add_listener(self._action_entry)
         for ext in self.extensions:
             starter = getattr(ext, "start", None)
             if starter is not None:
                 await starter()
 
+    def _action_entry(self, entry: dict) -> None:
+        """Stream every action-log entry to the clients (from any thread)."""
+        loop = self.loop
+        if loop is None or not loop.is_running():
+            return
+        loop.call_soon_threadsafe(lambda: asyncio.ensure_future(
+            self.clients.broadcast({"type": "action", "entry": entry})))
+
     async def stop(self) -> None:
+        from core import action_log
+        action_log.remove_listener(self._action_entry)
         for ext in reversed(self.extensions):
             stopper = getattr(ext, "stop", None)
             if stopper is not None:

@@ -1,0 +1,27 @@
+/* JARVIS client theme — every color, size and font in one place.
+   A later polish pass restyles the client by editing this file and theme.js;
+   no logic lives here. */
+:root {
+  --bg: #04060c;
+  --bg-2: #070b16;
+  --panel: rgba(10, 18, 34, 0.78);
+  --panel-solid: #0a1222;
+  --line: rgba(80, 160, 255, 0.18);
+  --text: #dce8ff;
+  --muted: #7f95bd;
+  --accent: #39c6ff;
+  --accent-2: #8a7dff;
+  --warn: #ffb547;
+  --danger: #ff5d6c;
+  --ok: #3ee69a;
+  --offline: #4a5670;
+
+  --font: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Menlo, monospace;
+  --radius: 14px;
+  --gap: 14px;
+  --strip-h: 44px;
+  --feed-w: min(34vw, 380px);
+  --stop-size: 64px;
+  --toast-ms: 4200ms;
+}

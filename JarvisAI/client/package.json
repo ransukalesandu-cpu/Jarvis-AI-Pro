@@ -1,0 +1,1 @@
+{"type": "module", "private": true, "description": "Marks client/*.js as ES modules for the dev-only node tests; nothing is installed."}

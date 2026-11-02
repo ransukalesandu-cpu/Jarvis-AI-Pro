@@ -44,6 +44,8 @@ _CAM_D = 4.6
 # Wireframe opacity buckets, so the whole lattice draws in a handful of batched
 # drawLines() calls instead of one call per line.
 _BUCKETS = 4
+_CYBER_PRIMARY = QColor(30, 150, 255)
+_CYBER_ACCENT = QColor(150, 240, 255)
 _MIN_ALPHA = 0.05
 
 # Resolution of the surface-shading colour ramp. Banding across a filled facet
@@ -126,8 +128,13 @@ class HoloAvatar:
     # Look: True paints a lit, solid head with a wireframe over it; False is a
     # see-through glass wireframe. Flip here, or per instance.
     shaded = True
+    # "cyber" is the half-transparent blue circuit bust (core/avatar_cyber.py);
+    # empty means "shaded" or "glass" from the flag above.
+    style = ""
 
-    def __init__(self) -> None:
+    def __init__(self, style: str | None = None) -> None:
+        if style is not None:
+            self.style = style
         mesh = get_head_mesh()
         self._v0 = mesh["verts"]
         self._n0 = mesh["normals"]
@@ -151,6 +158,11 @@ class HoloAvatar:
         # Crown (+1.0) down to the bottom of the neck, in head-half-heights.
         # Callers size the head to the room they have with this.
         self.SPAN = mesh["span"][0] - mesh["span"][1]
+        self._mesh = mesh
+        self._cyber = None
+        self._rot = np.eye(3, dtype=np.float32)
+        if self.look == "cyber":
+            self.SPAN = mesh["span"][0] - float(self._cyber_parts().bust_v[:, 1].min())
 
         self._lut_cache: list = []
         self._lut_key = None
@@ -220,6 +232,19 @@ class HoloAvatar:
         self._mood_primary = QColor(113, 212, 194)
         self._mood_accent = QColor(217, 138, 89)
         self._state_str = "IDLE"
+        if self.look == "cyber":
+            self._mood_primary = QColor(_CYBER_PRIMARY)
+            self._mood_accent = QColor(_CYBER_ACCENT)
+
+    @property
+    def look(self) -> str:
+        return self.style or ("shaded" if self.shaded else "glass")
+
+    def _cyber_parts(self):
+        if self._cyber is None:
+            from core.avatar_cyber import CyberParts
+            self._cyber = CyberParts.build(self._mesh)
+        return self._cyber
 
     def react_to_text(self, text: str) -> None:
         """Choose a brief facial expression and head gesture from spoken words."""
@@ -569,6 +594,7 @@ class HoloAvatar:
         roll = np.array([[cr, -sr, 0.0], [sr, cr, 0.0], [0.0, 0.0, 1.0]],
                         dtype=np.float32)
         m = roll @ m
+        self._rot = m
 
         return v @ m.T, self._n0 @ m.T
 
@@ -660,9 +686,18 @@ class HoloAvatar:
         if bg is None:
             bg = QColor(0, 0, 0)
 
+        cyber = self.look == "cyber"
+        if cyber and primary.rgb() == accent.rgb():
+            # Idle: the reference's electric blue with ice-white highlights.
+            primary, accent = _CYBER_PRIMARY, _CYBER_ACCENT
+        elif cyber:
+            primary = _CYBER_PRIMARY
         primary, accent = self._adapt_colors(0.016, primary, accent)
         amp = self._glow
         verts, norms = self._pose()
+        if cyber:
+            self._paint_cyber(p, cx, cy, r, verts, norms, primary, accent, bg, amp)
+            return
 
         # ── aura ────────────────────────────────────────────────────────────
         ar = r * 1.95
@@ -684,6 +719,50 @@ class HoloAvatar:
         if self.shaded:
             self._paint_surface(p, xs, ys, norms, verts, primary, bg, amp)
         self._paint_wire(p, xs, ys, norms, verts, primary, bg, amp)
+        self._paint_features(p, cx, cy, xs, ys, norms, r, primary, accent, bg, amp)
+
+    def _project(self, pts, cx: float, cy: float, r: float):
+        w = np.maximum(_CAM_D - pts[..., 2], 0.35)
+        k = (_CAM_D / w) * r
+        return cx + pts[..., 0] * k, cy - pts[..., 1] * k
+
+    def _paint_cyber(self, p: QPainter, cx: float, cy: float, r: float, verts, norms,
+                     primary: QColor, accent: QColor, bg: QColor, amp: float) -> None:
+        """Half-transparent circuit bust: shoulders, glass head, traces, hair."""
+        cp = self._cyber_parts()
+        t = self._t
+
+        # Aura, centred a little low so it also lights the shoulders.
+        ar = r * 2.1
+        grad = QRadialGradient(cx, cy + r * 0.25, ar)
+        grad.setColorAt(0.00, _c(primary, 40 + 60 * amp))
+        grad.setColorAt(0.45, _c(primary, 16 + 30 * amp))
+        grad.setColorAt(1.00, _c(primary, 0))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawEllipse(QRectF(cx - ar, cy + r * 0.25 - ar, ar * 2, ar * 2))
+
+        # Shoulders stay put; only the head turns on the neck.
+        bxs, bys = self._project(cp.bust_v, cx, cy, r)
+        zero = np.zeros(len(cp.bust_faces), dtype=np.float32)
+        cp.paint_fill(p, bxs, bys, cp.bust_v, cp.bust_faces, zero, primary, amp,
+                      centre=zero, fade=cp.bust_fade, cull=False)
+        cp.paint_edges(p, bxs, bys, cp.bust_n, cp.bust_edges[:, 0], cp.bust_edges[:, 1],
+                       cp.bust_fade, primary, amp)
+        cp.paint_traces(p, bxs, bys, cp.bust_n, cp.bust_traces, cp.trace_phase, accent, t, amp)
+
+        xs, ys = self._project(verts, cx, cy, r)
+        keep = cp.face_keep
+        cp.paint_fill(p, xs, ys, verts, self._f[keep], self._fgroup[keep], primary, amp,
+                      centre=cp.centre_w[keep])
+        cp.paint_edges(p, xs, ys, norms, cp.edges[:, 0], cp.edges[:, 1], self._fade, primary, amp)
+        cp.paint_traces(p, xs, ys, norms, cp.traces, cp.trace_phase, accent, t, amp)
+
+        if cp.hair.size:
+            hp = cp.hair @ self._rot.T
+            hx, hy = self._project(hp, cx, cy, r)
+            cp.paint_hair(p, np.stack([hx, hy], axis=-1), hp[..., 2], primary)
+
         self._paint_features(p, cx, cy, xs, ys, norms, r, primary, accent, bg, amp)
 
     def _paint_surface(self, p: QPainter, xs, ys, norms, verts,
@@ -860,13 +939,15 @@ class HoloAvatar:
                 glint = QPointF(cpt.x() - rad * 0.30, cpt.y() - rad * 0.30 * vis)
                 p.setBrush(QBrush(_c(QColor(255, 255, 255), 230 * face * vis)))
                 p.drawEllipse(glint, rad * 0.18, rad * 0.18 * vis)
+                if self._cyber is not None and self.look == "cyber":
+                    self._cyber.paint_eye_glow(p, cpt, rad, accent, face * vis * (0.75 + 0.25 * amp))
 
         # ── brows ───────────────────────────────────────────────────────────
         p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QPen(_c(primary, 190 * face), 2.2))
         for key in ("brow_l", "brow_r"):
             idx = lm[key]
             poly_brow = self._ring(xs, ys, idx)
+            p.setPen(QPen(_c(primary, 190 * face), 2.2))
             p.drawPolyline(poly_brow)
             # Sculpted brow shadow line for depth
             p.setPen(QPen(_c(accent, 110 * face), 1.2))

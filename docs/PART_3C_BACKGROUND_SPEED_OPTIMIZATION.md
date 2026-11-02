@@ -56,4 +56,5 @@ Part 3A planner and Part 3B bounded parallel read engine.
 Tests cover queue backpressure, safe retry eligibility, duplicate-side-effect
 protection, bounded aggregate telemetry, provider failure-aware fallback
 ordering, and the existing task, policy, and browser regression suites.
-CI must pass on the latest PR head before Part 3C is considered complete.
+CI must pass on the latest PR head before Part 3C is considered complete. Runtime
+validation on the owner's Windows device remains a separate final check.

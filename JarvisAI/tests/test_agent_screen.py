@@ -304,6 +304,22 @@ class ScreenVisionTests(unittest.TestCase):
                                           "confidence": 0.6})
         self.assertFalse(vision.verify("the dialog is open").ok)
 
+    def test_verify_includes_before_state_for_delta_comparison(self):
+        vision, provider = self._vision(payload={"summary": "TRUE: the dialog closed.",
+                                                 "confidence": 0.9})
+        before = ScreenObservation(
+            description="A browser dialog is open.",
+            visible_text="Save changes?",
+            confidence=0.9,
+            uncertain=False,
+        )
+        result = vision.verify("the dialog is closed", before=before)
+        self.assertTrue(result.ok)
+        prompt = provider.prompts[-1]
+        self.assertIn("Previous screen state", prompt)
+        self.assertIn("Save changes?", prompt)
+        self.assertIn("compare it with the current screenshot", prompt)
+
     def test_verify_without_provider_uses_ocr_and_says_it_is_weak(self):
         capture, _ = make_capture()
         vision = ScreenVision(capture, providers=[],

@@ -558,10 +558,23 @@ class ScreenVision:
         except ScreenCaptureError as exc:
             return VerifyResult(False, 0.0, str(exc))
 
+        before_context = ""
+        if before is not None:
+            # The prior observation is context, not proof: the provider must judge
+            # the current screenshot and explicitly compare the visible state.
+            before_context = (
+                "\n\nPrevious screen state (before the action):\n"
+                + before.summary(max_chars=500)
+                + "\nCompare this with the current screenshot. Do not assume the "
+                  "action succeeded merely because the previous state differed."
+            )
         prompt = (
             f"Check this screenshot and decide whether the following is true: {expected!r}. "
-            "Judge only what is visible. If you cannot tell, set confidence low and "
-            "explain why. Put the answer in 'summary' prefixed with TRUE: or FALSE:."
+            "Judge only what is visible. If a previous screen state is supplied, "
+            "compare it with the current screenshot and state whether the expected "
+            "change is visible. If you cannot tell, set confidence low and explain "
+            "why. Put the answer in 'summary' prefixed with TRUE: or FALSE:."
+            + before_context
         )
         for provider in self._resolved_providers():
             if not provider.available():

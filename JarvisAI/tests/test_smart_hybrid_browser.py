@@ -122,6 +122,30 @@ class SmartHybridBrowserTests(unittest.TestCase):
         route.continue_.assert_not_called()
         validate.assert_not_called()
 
+    def test_new_browser_worker_restores_last_public_url_without_profile_state(self):
+        page = Mock()
+        context = Mock()
+        context.new_page.return_value = page
+        browser_instance = Mock()
+        browser_instance.new_context.return_value = context
+        playwright = Mock()
+        playwright.chromium.launch.return_value = browser_instance
+        manager = Mock()
+        manager.start.return_value = playwright
+        browser = BrowserAutomation()
+        browser._last_url = "https://example.com/previous"
+
+        with patch("playwright.sync_api.sync_playwright", return_value=manager), \
+             patch("core.browser_automation.validate_public_url", return_value=browser._last_url):
+            browser.open()
+
+        page.goto.assert_called_once_with(
+            "https://example.com/previous",
+            wait_until="domcontentloaded",
+            timeout=15000,
+        )
+        browser.close()
+
 
 if __name__ == "__main__":
     unittest.main()

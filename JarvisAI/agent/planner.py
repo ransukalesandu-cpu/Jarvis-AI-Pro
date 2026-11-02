@@ -127,8 +127,8 @@ class TaskPlanner:
 
     def _cache_key(self, objective: str, criteria: list[str]) -> tuple[Any, ...]:
         return (
-            objective.casefold(),
-            tuple(item.casefold() for item in criteria),
+            objective,
+            tuple(criteria),
             str(self.workspace.resolve()),
             self.max_steps,
             self.model_name,

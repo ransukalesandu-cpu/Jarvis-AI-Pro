@@ -40,10 +40,16 @@ async def run_agent(config=None) -> None:
             pass
     if local_audio is not None:
         local_audio.start(client)
+    relay = None
+    if config.relay_port:
+        from laptop_agent.relay import start_relay
+        relay = await start_relay(config.hub_url, int(config.relay_port))
     try:
         await client.run()
     finally:
         client.stop_event.set()
+        if relay is not None:
+            relay.close()
         for item in extras:
             if hasattr(item, "release"):
                 item.release()

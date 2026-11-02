@@ -233,7 +233,7 @@ class Hub:
     async def start(self) -> None:
         self.loop = asyncio.get_running_loop()
         addrs = netbind.bind_addresses(self.config.bind or None)
-        runner = web.AppRunner(self.app, access_log=None)
+        runner = web.AppRunner(self.app, access_log=None, shutdown_timeout=3.0)
         await runner.setup()
         self._runners.append(runner)
         for host in addrs["plain"]:
@@ -277,6 +277,11 @@ class Hub:
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
+        # Close sockets first so clients and agents reconnect at once instead
+        # of the server waiting out their idle connections.
+        for conns in (self.clients, self.agents):
+            for name in list(conns.devices()):
+                await conns.close_device(name, 1001, "hub stopping")
         for runner in self._runners:
             await runner.cleanup()
 

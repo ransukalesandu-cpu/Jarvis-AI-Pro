@@ -1,24 +1,35 @@
 from __future__ import annotations
-import tempfile, unittest
+
+import json
+import tempfile
+import threading
+import unittest
 from pathlib import Path
+
 from agent.models import StepKind, StepState, Task, TaskState, TaskStep
 from agent.workflow_library import WorkflowLibrary
 
+
 class WorkflowLibraryTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
         self.path = Path(self.tmp.name) / "workflows.json"
         self.library = WorkflowLibrary(self.path)
 
     def _completed_task(self, objective="inspect project and run tests"):
         task = Task(objective=objective, criteria=["tests pass"])
         task.set_plan([
-            TaskStep(title="Inspect files", kind=StepKind.INSPECT, command="git status --short"),
+            TaskStep(title="Inspect files", kind=StepKind.INSPECT,
+                     command="git status --short"),
             TaskStep(title="Run tests", kind=StepKind.RUN_TESTS,
-                     command="python -m pytest -q", path="JarvisAI/tests", content="must not persist"),
+                     command="python -m pytest -q", path="JarvisAI/tests",
+                     content="must not persist"),
         ])
-        task.transition(TaskState.PLANNING); task.transition(TaskState.RUNNING)
-        for step in task.steps: step.mark(StepState.COMPLETED, output="completed")
+        task.transition(TaskState.PLANNING)
+        task.transition(TaskState.RUNNING)
+        for step in task.steps:
+            step.mark(StepState.COMPLETED, output="completed")
         task.transition(TaskState.COMPLETED)
         return task
 
@@ -26,42 +37,92 @@ class WorkflowLibraryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.library.save(Task(objective="unfinished"), "unfinished")
 
-
     def test_rejects_task_with_unverified_step(self):
         task = self._completed_task()
         task.steps[0].state = StepState.FAILED
         with self.assertRaises(ValueError):
             self.library.save(task, "incomplete")
 
-    def test_saved_template_excludes_executable_details(self):
-        task = self._completed_task()
+    def test_saved_template_excludes_executable_details_and_paths(self):
+        task = self._completed_task(
+            "inspect C:\\Users\\Acer\\secret and run tests"
+        )
+        task.criteria = ["check /home/user/private/file.txt"]
+        task.steps[0].title = "Inspect C:\\Users\\Acer\\project"
         task.steps[0].command = "echo api_key=secret"
-        saved = self.library.save(task, "Project checks")
+        saved = self.library.save(task, "Project checks /home/user/private")
         raw = self.path.read_text(encoding="utf-8")
-        self.assertNotIn("command", raw); self.assertNotIn("content", raw)
+        self.assertNotIn("command", raw)
+        self.assertNotIn("content", raw)
         self.assertNotIn("api_key=secret", raw)
+        self.assertNotIn("C:\\Users\\Acer", raw)
+        self.assertNotIn("/home/user/private", raw)
         self.assertTrue(saved["requires_fresh_plan"])
         self.assertEqual(saved["steps"][1]["kind"], "run_tests")
 
     def test_suggest_and_fresh_request_never_include_actions(self):
-        task = self._completed_task(); self.library.save(task, "Project checks")
-        self.assertEqual(len(self.library.suggest("inspect project and run tests")), 1)
+        task = self._completed_task()
+        self.library.save(task, "Project checks")
+        self.assertEqual(
+            len(self.library.suggest("inspect project and run tests")), 1
+        )
         request = self.library.build_fresh_request(task.id)
         self.assertEqual(request["objective"], task.objective)
         self.assertTrue(request["requires_fresh_plan"])
-        self.assertNotIn("steps", request); self.assertNotIn("command", request)
+        self.assertNotIn("steps", request)
+        self.assertNotIn("command", request)
 
     def test_delete_and_missing_workflow(self):
-        task = self._completed_task(); self.library.save(task, "Project checks")
-        self.assertTrue(self.library.delete(task.id)); self.assertFalse(self.library.delete(task.id))
-        with self.assertRaises(KeyError): self.library.build_fresh_request(task.id)
+        task = self._completed_task()
+        self.library.save(task, "Project checks")
+        self.assertTrue(self.library.delete(task.id))
+        self.assertFalse(self.library.delete(task.id))
+        with self.assertRaises(KeyError):
+            self.library.build_fresh_request(task.id)
 
     def test_bounded_history_and_corrupt_file_recovery(self):
         self.path.write_text("not json", encoding="utf-8")
         self.assertEqual(self.library.list(), [])
         for index in range(45):
-            task = self._completed_task(f"task {index}"); task.id = f"task-{index}"
+            task = self._completed_task(f"task {index}")
+            task.id = f"task-{index}"
             self.library.save(task, f"workflow {index}")
         self.assertEqual(len(self.library.list()), 40)
 
-if __name__ == "__main__": unittest.main()
+    def test_rejects_partial_records_missing_required_fields(self):
+        self.path.write_text(json.dumps([
+            {"id": "valid-ish", "objective": "incomplete"},
+            {"id": "missing-time", "name": "x", "objective": "y",
+             "criteria": [], "steps": [], "saved_at": "yesterday"},
+            {"id": "valid", "name": "ok", "objective": "test",
+             "criteria": [], "steps": [], "saved_at": 1.0},
+        ]), encoding="utf-8")
+        self.assertEqual([row["id"] for row in self.library.list()], ["valid"])
+
+    def test_multiple_instances_share_lock_and_preserve_writes(self):
+        libraries = [WorkflowLibrary(self.path) for _ in range(4)]
+        errors = []
+
+        def save_many(index):
+            try:
+                for item in range(8):
+                    task = self._completed_task(f"task-{index}-{item}")
+                    task.id = f"task-{index}-{item}"
+                    libraries[index].save(task, f"workflow-{index}-{item}")
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [
+            threading.Thread(target=save_many, args=(index,))
+            for index in range(len(libraries))
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(errors, [])
+        self.assertEqual(len(self.library.list()), 32)
+
+
+if __name__ == "__main__":
+    unittest.main()

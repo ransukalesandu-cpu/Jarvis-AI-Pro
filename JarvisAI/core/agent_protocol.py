@@ -6,7 +6,7 @@ ActionDispatcher checks remain mandatory at the application call site.
 """
 from __future__ import annotations
 
-from typing import Any, NotRequired, Protocol, TypedDict, runtime_checkable
+from typing import Any, Iterable, NotRequired, Protocol, TypedDict, runtime_checkable
 
 
 class AgentResponse(TypedDict):
@@ -28,7 +28,17 @@ class AgentResponse(TypedDict):
 class ReasoningAgent(Protocol):
     """Interface for agents that produce answers but do not execute actions."""
 
-    def respond(self, user_text: str, **kwargs: Any) -> AgentResponse:
+    def respond(
+        self,
+        user_text: str,
+        *,
+        base_system_prompt: str = "",
+        conversation_history: Iterable[Any] | None = None,
+        project: str = "",
+        memory_enabled: bool | None = None,
+        assistant_names: Iterable[str] | None = None,
+        assistant_name: str = "JARVIS",
+    ) -> AgentResponse:
         ...
 
 

@@ -380,6 +380,10 @@ class TaskRunner:
                         self._emit("step_failed", task, message=parallel_outcome.error,
                                    step={"index": parallel_step.index,
                                          "title": parallel_step.title})
+                        if parallel_outcome.cancelled:
+                            self._close_cancelled(task)
+                            stop_after_layer = True
+                            break
                         if self._loop_detected(parallel_step, parallel_outcome):
                             task.blockers.append(
                                 f"Loop detected: '{parallel_step.title}' failed the same way "

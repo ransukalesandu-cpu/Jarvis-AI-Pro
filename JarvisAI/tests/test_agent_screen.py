@@ -405,6 +405,7 @@ class FakeVisionForUse:
         ]
         self.verify_ok = verify_ok
         self.observations = 0
+        self.verify_before = None
 
     def find(self, label, **kwargs):
         return list(self.targets)
@@ -415,6 +416,7 @@ class FakeVisionForUse:
                                  provider="fake", confidence=0.7, uncertain=False)
 
     def verify(self, expectation, **kwargs):
+        self.verify_before = kwargs.get("before")
         return VerifyResult(self.verify_ok, 0.8, "checked")
 
 
@@ -523,6 +525,8 @@ class ComputerUseTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertTrue(result.retryable)
         self.assertIs(result.verified, False)
+        self.assertIsNotNone(vision.verify_before)
+        self.assertIn("before clicking", vision.verify_before.description.casefold())
 
     def test_backend_failure_is_retryable(self):
         class BrokenInput(FakeInput):

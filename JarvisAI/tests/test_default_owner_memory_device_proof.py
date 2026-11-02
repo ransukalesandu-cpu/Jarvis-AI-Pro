@@ -34,10 +34,10 @@ class DefaultOwnerMemoryDeviceProofTests(unittest.TestCase):
         opener = MagicMock()
         opener.open.return_value = response
 
-        with patch.dict(os.environ, env, clear=True), \\
-             patch("core.supabase_cloud_provider._get_access_token", return_value="auth-jwt"), \\
-             patch("core.supabase_cloud_provider.has_persistent_auth_session", return_value=True), \\
-             patch("security.host_device_identity._private_key", return_value=private_key), \\
+        with patch.dict(os.environ, env, clear=True), \
+             patch("core.supabase_cloud_provider._get_access_token", return_value="auth-jwt"), \
+             patch("core.supabase_cloud_provider.has_persistent_auth_session", return_value=True), \
+             patch("security.host_device_identity._private_key", return_value=private_key), \
              patch("urllib.request.build_opener", return_value=opener) as build_opener:
             result = _request_default_owner_memory(timeout=3)
 
@@ -54,7 +54,7 @@ class DefaultOwnerMemoryDeviceProofTests(unittest.TestCase):
         nonce = request.get_header("X-jarvis-host-nonce")
         signature = base64.b64decode(request.get_header("X-jarvis-host-signature"))
         digest = hashlib.sha256(b"{}").hexdigest()
-        signed_message = f"JARVIS-HOST-V1\\n{timestamp}\\n{nonce}\\n{digest}".encode("utf-8")
+        signed_message = f"JARVIS-HOST-V1\n{timestamp}\n{nonce}\n{digest}".encode("utf-8")
         private_key.public_key().verify(signature, signed_message)
 
     def test_http_supabase_url_is_rejected_before_credentials_are_requested(self):
@@ -62,7 +62,7 @@ class DefaultOwnerMemoryDeviceProofTests(unittest.TestCase):
             "SUPABASE_URL": "http://example.supabase.co",
             "SUPABASE_ANON_KEY": "public-test-key",
         }
-        with patch.dict(os.environ, env, clear=True), \\
+        with patch.dict(os.environ, env, clear=True), \
              patch("core.supabase_cloud_provider._get_access_token") as get_token:
             with self.assertRaisesRegex(RuntimeError, "HTTPS"):
                 _request_default_owner_memory()

@@ -33,7 +33,7 @@ what was **verified in the repository**, what was **measured**, and what still
 | Cloud AI proxy | `supabase/functions/jarvis-cloud-ai/index.ts` | server-side provider multiplexing with host-key signature auth |
 | Cloud memory | `core/personal_cloud_memory.py`, `supabase/functions/jarvis-personal-memory`, migration `202610270001_jarvis_personal_memory.sql` | RLS enabled on both tables, consent gated, allowlisted fact keys, local+server validators |
 | Screen intelligence | `agent/screen_vision.py`, `agent/computer_use.py`, `actions/screen_processor.py` | accessibility tree → OCR → cloud vision, cheapest first |
-| Autonomous tasks | `agent/` (`planner`, `runner`, `journal`) | retries, deadlines, loop detection, resumable JSON/journal |
+| Autonomous tasks | `agent/cloud_store.py`, `core/personal_cloud_memory.py`, `supabase/functions/jarvis-personal-memory` | cloud-only snapshots, checkpoints, events, reports and saved workflows; owner-scoped Supabase Auth identity |
 | Security | `core/security.py`, `security/`, `core/confirm.py` | rate limits, dangerous-action windows, owner voice ID + PIN, Privacy Lock |
 | UI | `ui/hud_main.py` (Hologram HUD), `ui/__init__.py` (legacy 5k-line UI), `ui/hologram/*` | copper wireframe face, heart/orb, Bihansa mode, task panels |
 
@@ -206,3 +206,14 @@ To verify cloud memory on your machine (read-only checks first):
 * No dependency removal: `cv2`, `playwright`, `QtWebEngine` are all still declared
   and still used — they are simply no longer imported until needed.
 * No change to authentication, memory schema, prompts, or the hologram renderers.
+
+
+## Cloud-only persistence update
+
+Autonomous task state and saved workflow templates now use Supabase tables
+`jarvis_agent_tasks`, `jarvis_agent_task_events` and `jarvis_agent_workflows`.
+The desktop app does not persist task history or workflow templates to local
+JSON/SQLite files. Direct client-role access is revoked and RLS is enabled;
+server-side Edge Function operations scope every query to the authenticated
+user ID. The only local persistence is the Supabase refresh token in the OS
+credential vault, required to maintain the cloud identity.

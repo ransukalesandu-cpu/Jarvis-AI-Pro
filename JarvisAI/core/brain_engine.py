@@ -18,6 +18,7 @@ from core.brain_protocol import (
 )
 from core.provider_fallback import query_text_fallback
 from core.provider_protocol import ProviderResult, TextProviderRouter
+from core.agent_protocol import AgentResponse
 
 logger = logging.getLogger("Jarvis.BrainEngine")
 
@@ -240,7 +241,7 @@ class BrainEngine:
         memory_enabled: bool | None = None,
         assistant_names: Iterable[str] | None = None,
         assistant_name: str = "JARVIS",
-    ) -> dict[str, Any]:
+    ) -> AgentResponse:
         """Answer a request using bounded history and optional provider-safe memory.
 
         Memory access is explicitly controllable per call. This engine does not

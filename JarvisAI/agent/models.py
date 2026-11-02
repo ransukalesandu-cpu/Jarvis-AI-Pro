@@ -74,6 +74,10 @@ class StepKind(str, Enum):
     WRITE_FILE = "write_file"
     OBSERVE_SCREEN = "observe_screen"
     SCREEN_ACTION = "screen_action"
+    BROWSER_SEARCH = "browser_search"       # visible, read-only web search
+    BROWSER_NAVIGATE = "browser_navigate"   # navigate to a public HTTP(S) page
+    BROWSER_READ = "browser_read"           # extract bounded visible page text
+    BROWSER_FOLLOW_LINK = "browser_follow_link"  # follow a link without running page handlers
     VERIFY = "verify"                # check the previous result, do not act
     NOTE = "note"                    # record an observation / decision
 

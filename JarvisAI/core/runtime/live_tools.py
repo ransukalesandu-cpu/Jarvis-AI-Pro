@@ -110,6 +110,30 @@ class ToolDispatchMixin:
         del calls[:-200]
         return response
 
+    def _queue_vision(self, data: bytes, mime: str, question: str, source: str) -> None:
+        """Show a captured frame to the model right after the current tool result."""
+        security.mark_untrusted_seen()     # text in a picture is content, not commands
+        self._pending_vision = (data, mime, question, source)
+
+    def _start_background_sync(self, name: str, args: dict) -> str:
+        """Start any tool as a background job from a worker thread; returns the job id."""
+        loop = getattr(self, "_loop", None)
+        if loop is None or not loop.is_running():
+            raise RuntimeError("JARVIS is not connected right now")
+        args = dict(args or {})
+        _device, device_error = take_device(args)
+        if device_error:
+            raise RuntimeError(device_error)
+
+        async def _start() -> str:
+            call = SimpleNamespace(id=None, name=str(name), args=args, cancel_event=None)
+            job = self._start_tool_job(call, self._tool_meta(str(name)))
+            action_log.record(str(name), args, f"Started job {job.id}", status="job_started",
+                              risk=self._tool_meta(str(name)).risk or infer_risk(str(name), args),
+                              job_id=job.id)
+            return job.id
+        return asyncio.run_coroutine_threadsafe(_start(), loop).result(10)
+
     def _dispatch_tool_sync(self, name: str, args: dict, timeout: float = 600.0) -> str:
         """Run a tool from a worker thread (routines) through the full registry layer."""
         loop = getattr(self, "_loop", None)
@@ -412,6 +436,8 @@ class ToolDispatchMixin:
                 _ctx = {"player": self.ui, "speak": self.speak,
                         "cancel_event": getattr(fc, "cancel_event", None),
                         "dispatch": self._dispatch_tool_sync,
+                        "show_image": self._queue_vision,
+                        "start_background": self._start_background_sync,
                         "session_calls": list(self.__dict__.get("_session_tool_calls", [])),
                         "response": None, "session_memory": None,
                         "apply_personality": self._on_voice_personality_change,

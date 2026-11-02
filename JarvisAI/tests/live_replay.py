@@ -212,6 +212,11 @@ def build_host():
     if host is None:
         host = main.JarvisLive(HeadlessJarvisUI())
         _HOST_CACHE["host"] = host
+        _HOST_CACHE["registries"] = (host._action_registry, host._plugin_registry)
+    # A test may swap in its own registry; every scenario starts from the real one.
+    host._action_registry, host._plugin_registry = _HOST_CACHE["registries"]
+    host.__dict__.pop("_announcements", None)
+    host.__dict__.pop("_session_tool_calls", None)
     host._loop = asyncio.get_running_loop()
     host.audio_in_queue = asyncio.Queue()
     host.out_queue = asyncio.Queue(maxsize=200)

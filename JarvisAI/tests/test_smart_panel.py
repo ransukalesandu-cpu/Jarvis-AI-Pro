@@ -42,7 +42,7 @@ class TestSmartPanelHeaderSignals(unittest.TestCase):
         self.app.processEvents()
 
         self.assertEqual(len(requested), 1)
-        self.assertEqual(requested.at(0)[0], "timers")
+        self.assertEqual(requested[0][0], "timers")
 
     def test_close_command_emits_close_signal(self):
         closed = QSignalSpy(self.header.close_requested)

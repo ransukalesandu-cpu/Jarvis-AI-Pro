@@ -40,6 +40,7 @@ from agent.models import (
 )
 from agent.planner import PlanError, TaskPlanner
 from agent.parallel_engine import ParallelStepEngine
+from agent.performance import PerformanceMonitor
 from agent.store import redact
 from agent.cloud_store import CloudTaskStore
 
@@ -55,7 +56,8 @@ class RunnerConfig:
     progress_min_interval_s: float = 2.0
     loop_detection_repeats: int = 3
     max_steps: int = 16
-    max_parallel_read_steps: int = 3
+    max_parallel_read_steps: int = 2
+    max_queue_size: int = 8
     resume_unfinished: bool = True
 
 
@@ -91,6 +93,7 @@ class TaskRunner:
         self.parallel_engine = ParallelStepEngine(
             max_workers=self.config.max_parallel_read_steps
         )
+        self.performance = PerformanceMonitor()
         self.engine = policy_engine or policy_module.PolicyEngine(
             policy_module.ExecutionPolicy(
                 workspace_root=str(self.workspace),
@@ -126,6 +129,7 @@ class TaskRunner:
         self._last_emit = 0.0
         self._failure_signatures: list[str] = []
         self._queue: list[str] = []
+        self._queue_reservations: set[str] = set()
         # Live task objects, so the caller that called submit()/start() sees the
         # same instance the worker is updating (the store keeps the durable copy).
         self._tasks: dict[str, Task] = {}
@@ -137,7 +141,7 @@ class TaskRunner:
 
     def submit(self, objective: str, *, criteria: list[str] | None = None,
                source: str = "voice") -> Task:
-        """Create a pending task and make it durable before anything runs."""
+        """Create a pending task, reserving bounded capacity before cloud I/O."""
         text = str(objective or "").strip()
         if not text:
             raise ValueError("An autonomous task needs an objective.")
@@ -149,9 +153,30 @@ class TaskRunner:
             retry_budget=int(self.config.retry_budget),
         )
         task.transition(TaskState.PLANNING, "queued")
-        self.store.save(task)
-        self.store.append_event(task.id, {"kind": "submitted", "objective": task.objective})
         with self._lock:
+            queue_limit = max(1, min(int(self.config.max_queue_size), 128))
+            active_count = 1 if self._active and not self._active.state.terminal else 0
+            occupied = len(self._queue) + len(self._queue_reservations) + active_count
+            if occupied >= queue_limit:
+                raise RuntimeError(
+                    f"JARVIS task queue is full ({queue_limit}). "
+                    "Wait for a task to finish before submitting another."
+                )
+            self._queue_reservations.add(task.id)
+        try:
+            # CloudTaskStore performs synchronous network I/O; never hold the
+            # runner lock while persisting so status/cancel remain responsive.
+            self.store.save(task)
+            self.store.append_event(task.id, {
+                "kind": "submitted", "objective": task.objective
+            })
+        except Exception:
+            with self._lock:
+                self._queue_reservations.discard(task.id)
+                self._tasks.pop(task.id, None)
+            raise
+        with self._lock:
+            self._queue_reservations.discard(task.id)
             self._remember(task)
             self._queue.append(task.id)
         self._emit("queued", task, message=f"Queued: {task.objective[:100]}")
@@ -165,12 +190,26 @@ class TaskRunner:
         return task
 
     def resume_task(self, task_id: str, *, background: bool = True) -> Task:
-        """Load an interrupted task and queue it to continue from its cursor."""
+        """Load an interrupted task and queue it without exceeding capacity."""
         task = self.store.load(task_id)
         if task is None:
             raise ValueError(f"Task {task_id} was not found.")
         if task.state.terminal:
             raise ValueError(f"Task {task_id} already finished ({task.state.value}).")
+        enqueue = False
+        if background:
+            with self._lock:
+                if task.id not in self._queue and task.id not in self._queue_reservations:
+                    queue_limit = max(1, min(int(self.config.max_queue_size), 128))
+                    active_count = 1 if self._active and not self._active.state.terminal else 0
+                    occupied = len(self._queue) + len(self._queue_reservations) + active_count
+                    if occupied >= queue_limit:
+                        raise RuntimeError(
+                            f"JARVIS task queue is full ({queue_limit}). "
+                            "Wait for a task to finish before resuming another."
+                        )
+                    self._queue_reservations.add(task.id)
+                    enqueue = True
         if task.state in (TaskState.PAUSED, TaskState.WAITING):
             task.state = TaskState.PENDING
         if task.state is TaskState.PENDING:
@@ -178,14 +217,53 @@ class TaskRunner:
         else:
             task.note(f"resumed from {task.state.value}")
         task.resume_count += 1
-        self.store.save(task)
-        self.store.append_event(task.id, {"kind": "resumed", "cursor": task.cursor})
+        try:
+            self.store.save(task)
+            self.store.append_event(task.id, {"kind": "resumed", "cursor": task.cursor})
+        except Exception:
+            if enqueue:
+                with self._lock:
+                    self._queue_reservations.discard(task.id)
+            raise
         with self._lock:
             self._remember(task)
+            if enqueue:
+                self._queue_reservations.discard(task.id)
+                self._queue.insert(0, task.id)
         if background:
-            with self._lock:
-                if task.id not in self._queue:
-                    self._queue.insert(0, task.id)
+            self._ensure_worker()
+        return task
+
+    def retry_task(self, task_id: str, *, background: bool = True) -> Task:
+        """Create a fresh task only if every attempted step is safe to replay."""
+        original = self.store.load(str(task_id))
+        if original is None:
+            raise ValueError(f"Task {task_id} was not found.")
+        if original.state is not TaskState.FAILED:
+            raise ValueError("Only failed tasks can be retried.")
+        replay_safe = {
+            StepKind.INSPECT, StepKind.READ_FILE, StepKind.BROWSER_SEARCH,
+            StepKind.BROWSER_NAVIGATE, StepKind.BROWSER_READ,
+            StepKind.BROWSER_FOLLOW_LINK, StepKind.VERIFY, StepKind.NOTE,
+        }
+        unsafe = [
+            step.title for step in original.steps
+            if step.kind not in replay_safe and step.attempts > 0
+        ]
+        if unsafe:
+            raise ValueError(
+                "Automatic retry was blocked because attempted steps may have "
+                "side effects: " + ", ".join(unsafe[:3])
+            )
+        task = self.submit(
+            original.objective, criteria=list(original.criteria), source="retry"
+        )
+        task.note(f"retry of task {original.id}")
+        self.store.save(task)
+        self.store.append_event(task.id, {
+            "kind": "retry_created", "original_task_id": original.id
+        })
+        if background:
             self._ensure_worker()
         return task
 
@@ -219,15 +297,46 @@ class TaskRunner:
         self._cancel.set()
         self._resume.set()
         with self._lock:
-            queued = bool(self._queue)
+            queued_ids = list(self._queue)
+            self._queue.clear()
         if task is not None:
             task.cancel_reason = str(reason)
             task.note(f"cancel requested: {reason}")
             self.store.append_event(task.id, {"kind": "cancel_requested", "reason": reason})
             self._announce("Stopping.")
-        with self._lock:
-            self._queue.clear()
-        return task is not None or queued
+        # Settle each durable record independently. A failed cloud write must
+        # not discard its queue ID or prevent later tasks from being cancelled.
+        for queued_id in queued_ids:
+            if task is not None and queued_id == task.id:
+                continue
+            queued_task = self._tasks.get(queued_id) or self.store.load(queued_id)
+            if queued_task is None or queued_task.state.terminal:
+                continue
+            previous_state = queued_task.state
+            previous_reason = queued_task.cancel_reason
+            queued_task.cancel_reason = str(reason)
+            queued_task.transition(TaskState.CANCELLED, "removed from queue")
+            queued_task.note(f"queued task cancelled: {reason}")
+            try:
+                self.store.save(queued_task)
+            except Exception:
+                # Restore the live object to match its still-uncancelled durable
+                # snapshot before returning the ID to the queue.
+                queued_task.state = previous_state
+                queued_task.cancel_reason = previous_reason
+                with self._lock:
+                    if queued_id not in self._queue:
+                        self._queue.append(queued_id)
+                failsoft.suppress("agent.runner:cancel_queue_save")
+                continue
+            try:
+                self.store.append_event(queued_id, {
+                    "kind": "cancelled", "reason": reason, "source": "queue"
+                })
+            except Exception:
+                failsoft.suppress("agent.runner:cancel_queue_event")
+            self._emit("finished", queued_task, message="Queued task cancelled.")
+        return task is not None or bool(queued_ids)
 
     def wait(self, timeout: float | None = None) -> Task | None:
         """Block until the worker stops (tests and shutdown use this)."""
@@ -249,6 +358,10 @@ class TaskRunner:
         return {
             "active": task.to_dict() if task else None,
             "queued": queued,
+            "queue_depth": len(queued),
+            "queue_capacity": max(1, min(int(self.config.max_queue_size), 128)),
+            "queue_reservations": len(self._queue_reservations),
+            "performance": self.performance.snapshot(),
             "paused": self._pause.is_set(),
             "cancel_requested": self._cancel.is_set(),
             "vision": bool(self.vision is not None),
@@ -710,6 +823,7 @@ class TaskRunner:
             duration = max(0.0, self._clock() - float(task.started_at))
         elif started_monotonic is not None:
             duration = 0.0
+        self.performance.record(duration_s=duration, state=task.state.value)
         report = TaskReport(
             task_id=task.id,
             objective=task.objective,

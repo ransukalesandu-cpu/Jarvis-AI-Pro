@@ -108,5 +108,49 @@ class IntelligentPlannerTests(unittest.TestCase):
         )
 
 
+    def test_successful_plan_is_cached_and_returned_as_a_copy(self):
+        calls = []
+        response = json.dumps({
+            "criteria": ["done"],
+            "steps": [{"title": "cached plan", "kind": "note"}],
+        })
+        planner = TaskPlanner(
+            ask=lambda prompt: calls.append(prompt) or response,
+            workspace=Path.cwd(),
+            cache_size=4,
+        )
+
+        first = planner.plan("prepare a plan")
+        first.steps[0].title = "mutated by caller"
+        second = planner.plan("prepare a plan")
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(second.steps[0].title, "cached plan")
+
+    def test_plan_cache_key_includes_acceptance_criteria(self):
+        calls = []
+        response = json.dumps({"steps": [{"title": "note", "kind": "note"}]})
+        planner = TaskPlanner(
+            ask=lambda prompt: calls.append(prompt) or response,
+            workspace=Path.cwd(),
+        )
+
+        planner.plan("same objective", ["criterion A"])
+        planner.plan("same objective", ["criterion B"])
+
+        self.assertEqual(len(calls), 2)
+
+
+    def test_plan_cache_preserves_case_sensitive_url_paths(self):
+        calls = []
+        response = json.dumps({"steps": [{"title": "case-specific", "kind": "note"}]})
+        planner = TaskPlanner(
+            ask=lambda prompt: calls.append(prompt) or response,
+            workspace=Path.cwd(),
+        )
+        planner.plan("inspect https://example.com/Docs/Readme")
+        planner.plan("inspect https://example.com/docs/readme")
+        self.assertEqual(len(calls), 2)
+
 if __name__ == "__main__":
     unittest.main()

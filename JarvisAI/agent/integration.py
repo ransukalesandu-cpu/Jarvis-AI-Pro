@@ -231,7 +231,7 @@ class AgentService:
         if command.action == "run":
             try:
                 task = self.start(command.objective, criteria=command.criteria)
-            except (PermissionError, ValueError) as exc:
+            except (PermissionError, ValueError, RuntimeError) as exc:
                 return str(exc)
             return (f"On it. I've queued a {len(task.steps) or 'new'} step task; "
                     "I'll report back when it matters.")

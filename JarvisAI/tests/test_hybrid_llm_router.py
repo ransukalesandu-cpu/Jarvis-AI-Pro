@@ -180,5 +180,48 @@ class HybridLLMRouterTests(unittest.TestCase):
         connect.assert_called_once_with(("1.1.1.1", 443), timeout=0.2)
 
 
+    def test_fallback_order_uses_latency_but_keeps_preference_first(self):
+        router = HybridLLMRouter(
+            preferred_provider="gemini",
+            api_keys={"gemini": "g", "groq": "r", "openai": "o"},
+            online_check=False,
+        )
+        router.is_online = lambda: True
+        router._record_provider_latency("groq", 80.0)
+        router._record_provider_latency("openai", 10.0)
+        calls = []
+
+        def fail(*args, **kwargs):
+            calls.append("gemini")
+            raise TimeoutError()
+
+        def fast(*args, **kwargs):
+            calls.append("openai")
+            return {"text": "fast fallback"}
+
+        router.providers["gemini"] = fail
+        router.providers["openai"] = fast
+        router.providers["groq"] = lambda *a, **k: (
+            calls.append("groq") or {"text": "slow fallback"}
+        )
+        result = router.query("hello")
+        self.assertEqual(calls, ["gemini", "openai"])
+        self.assertEqual(result["provider"], "openai")
+        self.assertIn("openai", router.provider_performance())
+
+
+    def test_failed_fallback_is_demoted_until_it_recovers(self):
+        router = HybridLLMRouter(
+            preferred_provider="gemini",
+            api_keys={"gemini": "g", "groq": "r", "openai": "o"},
+            online_check=False,
+        )
+        router._provider_failures["groq"] = 1
+        order = router._provider_order(online=True)
+        self.assertEqual(order[0], "gemini")
+        self.assertLess(order.index("openai"), order.index("groq"))
+        router._provider_failures["groq"] = 0
+        self.assertEqual(router._provider_failures["groq"], 0)
+
 if __name__ == "__main__":
     unittest.main()

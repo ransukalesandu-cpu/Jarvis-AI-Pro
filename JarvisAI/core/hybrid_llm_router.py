@@ -11,6 +11,7 @@ import logging
 import os
 import socket
 import time
+import threading
 import urllib.request
 from typing import Any
 
@@ -81,6 +82,10 @@ class HybridLLMRouter:
             "claude": self._call_claude,
             "ollama": self._call_ollama,
         }
+        self._latency_lock = threading.RLock()
+        self._provider_latency_ewma: dict[str, float] = {}
+        self._provider_latency_samples: dict[str, int] = {}
+        self._provider_failures: dict[str, int] = {name: 0 for name in _PROVIDER_ORDER}
 
     def _key(self, provider: str) -> str:
         return self.api_keys.get(provider, "") or os.getenv(_KEY_ENV.get(provider, ""), "").strip()
@@ -110,6 +115,42 @@ class HybridLLMRouter:
         except (OSError, ValueError, TypeError):
             return False
 
+    def provider_performance(self) -> dict[str, dict[str, float | int]]:
+        """Return latency aggregates only; never expose provider credentials."""
+        with self._latency_lock:
+            return {
+                provider: {
+                    "latency_ewma_ms": round(self._provider_latency_ewma[provider], 2),
+                    "samples": self._provider_latency_samples.get(provider, 0),
+                }
+                for provider in self._provider_latency_ewma
+            }
+
+    def _record_provider_latency(self, provider: str, latency_ms: float) -> None:
+        with self._latency_lock:
+            previous = self._provider_latency_ewma.get(provider)
+            self._provider_latency_ewma[provider] = (
+                latency_ms if previous is None else previous * 0.7 + latency_ms * 0.3
+            )
+            self._provider_latency_samples[provider] = (
+                self._provider_latency_samples.get(provider, 0) + 1
+            )
+
+    def _provider_order(self, online: bool) -> list[str]:
+        preferred = self.preferred_provider
+        if not online:
+            preferred = "ollama"
+        fallbacks = [provider for provider in _PROVIDER_ORDER if provider != preferred]
+        with self._latency_lock:
+            rank = {provider: index for index, provider in enumerate(fallbacks)}
+            fallbacks.sort(key=lambda provider: (
+                self._provider_failures.get(provider, 0),
+                self._provider_latency_ewma.get(provider) is None,
+                self._provider_latency_ewma.get(provider, float("inf")),
+                rank[provider],
+            ))
+        return [preferred, *fallbacks]
+
     @staticmethod
     def _validate_result(result: Any, provider: str) -> ProviderResult:
         if not isinstance(result, dict):
@@ -136,16 +177,10 @@ class HybridLLMRouter:
 
         started = time.monotonic()
         online = not self.online_check or self.is_online()
-        order = [self.preferred_provider] + [
-            provider for provider in _PROVIDER_ORDER if provider != self.preferred_provider
-        ]
-        if not online:
-            # Connectivity probes can be false negatives on restricted networks.
-            # Prefer local Ollama when the probe says offline, but retain configured
-            # cloud providers as fallback if local inference is unavailable or fails.
-            order = ["ollama"] + [
-                provider for provider in order if provider != "ollama"
-            ]
+        # Keep the owner's configured preference first. Rank only fallback
+        # providers by observed successful latency, preserving static order for
+        # providers with no measurements. Offline mode still prioritizes Ollama.
+        order = self._provider_order(online)
 
         failures: list[str] = []
         for provider in order:
@@ -155,14 +190,20 @@ class HybridLLMRouter:
             # Reusing (for example) a Gemini model name during Groq/OpenAI/Claude
             # failover makes otherwise healthy fallback providers reject requests.
             provider_kwargs = dict(kwargs)
+            provider_started = time.monotonic()
             if provider != self.preferred_provider:
                 provider_kwargs.pop("model", None)
             try:
                 result = self._validate_result(
                     self.providers[provider](prompt, system_prompt, **provider_kwargs), provider
                 )
+                provider_latency_ms = (time.monotonic() - provider_started) * 1000
+                self._record_provider_latency(provider, provider_latency_ms)
+                with self._latency_lock:
+                    self._provider_failures[provider] = 0
                 result.update({
                     "provider": provider,
+                    "provider_latency_ms": round(provider_latency_ms, 2),
                     "mode": "local-offline" if provider == "ollama" and not online
                             else ("local" if provider == "ollama" else "cloud"),
                     "latency_ms": round((time.monotonic() - started) * 1000, 2),
@@ -173,6 +214,11 @@ class HybridLLMRouter:
                 )
                 return result
             except Exception as exc:
+                # Demote failed providers on subsequent calls until one succeeds.
+                with self._latency_lock:
+                    self._provider_failures[provider] = (
+                        self._provider_failures.get(provider, 0) + 1
+                    )
                 # Exception text can contain request details; log only the type.
                 failures.append(f"{provider}:{type(exc).__name__}")
                 logger.warning("Provider %s failed (%s); trying configured fallback",

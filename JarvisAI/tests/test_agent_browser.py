@@ -135,6 +135,13 @@ class AgentBrowserStepTests(unittest.TestCase):
         self.assertIs(navigate.steps[0].kind, StepKind.BROWSER_NAVIGATE)
         self.assertEqual(navigate.steps[0].detail, "https://example.com/docs")
 
+        read_page = planner.plan("read current page")
+        self.assertIs(read_page.steps[0].kind, StepKind.BROWSER_READ)
+
+        follow = planner.plan("follow link named About")
+        self.assertIs(follow.steps[0].kind, StepKind.BROWSER_FOLLOW_LINK)
+        self.assertEqual(follow.steps[0].target, "About")
+
 
 if __name__ == "__main__":
     unittest.main()

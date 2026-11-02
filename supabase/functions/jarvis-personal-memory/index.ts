@@ -178,6 +178,20 @@ Deno.serve(async (req: Request) => {
         body: JSON.stringify({ user_id: userId, task_id: taskId, event_data: eventData }),
       });
     if (!response.ok) return jsonResponse({ error: "task_event_cloud_save_failed" }, 503);
+    const oldEvents = await adminRequest(baseUrl, serviceKey,
+      "/rest/v1/jarvis_agent_task_events?user_id=eq." + encodeURIComponent(userId) +
+      "&task_id=eq." + encodeURIComponent(taskId) +
+      "&select=event_id&order=event_id.desc&offset=200");
+    if (oldEvents.ok) {
+      const rows = await oldEvents.json().catch(() => []);
+      const ids = Array.isArray(rows) ? rows.map((row) => Number(row.event_id))
+        .filter((id) => Number.isSafeInteger(id) && id > 0) : [];
+      if (ids.length) await adminRequest(baseUrl, serviceKey,
+        "/rest/v1/jarvis_agent_task_events?user_id=eq." + encodeURIComponent(userId) +
+        "&task_id=eq." + encodeURIComponent(taskId) +
+        "&event_id=in.(" + ids.join(",") + ")",
+        { method: "DELETE", headers: { Prefer: "return=minimal" } });
+    }
     return jsonResponse({ ok: true });
   }
 
@@ -221,6 +235,17 @@ Deno.serve(async (req: Request) => {
       });
     if (!response.ok) return jsonResponse({ error: "workflow_cloud_save_failed" }, 503);
     const rows = await response.json().catch(() => []);
+    const oldRows = await adminRequest(baseUrl, serviceKey,
+      "/rest/v1/jarvis_agent_workflows?user_id=eq." + encodeURIComponent(userId) +
+      "&select=workflow_id&order=updated_at.desc&offset=40");
+    if (oldRows.ok) {
+      const stale = await oldRows.json().catch(() => []);
+      const ids = Array.isArray(stale) ? stale.map((row) => String(row.workflow_id || "")).filter(Boolean) : [];
+      if (ids.length) await adminRequest(baseUrl, serviceKey,
+        "/rest/v1/jarvis_agent_workflows?user_id=eq." + encodeURIComponent(userId) +
+        "&workflow_id=in.(" + ids.map(encodeURIComponent).join(",") + ")",
+        { method: "DELETE", headers: { Prefer: "return=minimal" } });
+    }
     return jsonResponse({ ok: true, workflow: Array.isArray(rows) ? rows[0] ?? null : null });
   }
 

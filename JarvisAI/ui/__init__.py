@@ -5026,8 +5026,14 @@ class MainWindow(QMainWindow):
         try:
             labels["cpu"].setText(f"{psutil.cpu_percent(interval=None):.0f}%")
             labels["memory"].setText(f"{psutil.virtual_memory().percent:.0f}%")
-            labels["uptime"].setText(getattr(self, "_uptime_lbl", None).text().replace("UP  ", "")
-                                     if getattr(self, "_uptime_lbl", None) else "--")
+            session_started = getattr(self, "_session_started_at", None)
+            if session_started is None:
+                self._session_started_at = time.monotonic()
+                session_started = self._session_started_at
+            elapsed = max(0, int(time.monotonic() - session_started))
+            hours, remainder = divmod(elapsed, 3600)
+            minutes = remainder // 60
+            labels["uptime"].setText(f"{hours:02d}:{minutes:02d}")
         except Exception:
             labels["cpu"].setText("--")
             labels["memory"].setText("--")
@@ -6112,7 +6118,9 @@ class MainWindow(QMainWindow):
             )
         )
         settings_action = self._right_menu.addAction("⚙  Settings & Controls")
-        settings_action.triggered.connect(self._toggle_drawer)
+        settings_action.triggered.connect(
+            lambda _checked=False: self._drawer_btn.click()
+        )
         self._right_menu.addSeparator()
         jarvis_action = self._right_menu.addAction("JARVIS Mode")
         jarvis_action.triggered.connect(lambda: self._mode_btn.setCurrentIndex(0))

@@ -24,12 +24,14 @@ from agent.integration import get_service
 
 
 def autonomous_task(action: str = "status", objective: str = "", criteria=None,
+                     task_id: str = "", name: str = "", workflow_id: str = "",
                      speak=None, **_ignored) -> str:
     """Run `action` against the autonomous task engine and return a spoken reply."""
     service = get_service()
     return service.handle_tool(
         {"action": str(action or "status"), "objective": objective,
-         "criteria": criteria or []},
+         "criteria": criteria or [], "task_id": task_id,
+         "name": name, "workflow_id": workflow_id},
         speak=speak,
     )
 
@@ -51,7 +53,10 @@ TOOL = {
         "properties": {
             "action": {
                 "type": "STRING",
-                "enum": ["run", "status", "pause", "resume", "stop", "report", "pending"],
+                "enum": [
+                    "run", "status", "pause", "resume", "stop", "report", "pending",
+                    "save_workflow", "list_workflows", "suggest_workflows", "run_workflow",
+                ],
                 "description": "Start a task, steer it, or read its state.",
             },
             "objective": {
@@ -65,6 +70,18 @@ TOOL = {
                 "type": "ARRAY",
                 "items": {"type": "STRING"},
                 "description": "Optional explicit completion criteria.",
+            },
+            "task_id": {
+                "type": "STRING",
+                "description": "Completed task ID for action=save_workflow.",
+            },
+            "name": {
+                "type": "STRING",
+                "description": "User-approved workflow name for action=save_workflow.",
+            },
+            "workflow_id": {
+                "type": "STRING",
+                "description": "Saved workflow ID for action=run_workflow.",
             },
         },
         "required": ["action"],

@@ -309,7 +309,10 @@ class TaskPlanner:
         if steps:
             return Plan(
                 steps=steps,
-                criteria=criteria,
+                criteria=[
+                    "The requested public page or search results were retrieved.",
+                    "The page title, URL, and visible text are recorded as task evidence.",
+                ],
                 source="heuristic",
                 rationale="Used a deterministic, read-only browser action.",
                 warnings=warnings,

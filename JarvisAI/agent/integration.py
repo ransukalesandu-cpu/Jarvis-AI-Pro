@@ -236,7 +236,7 @@ class AgentService:
         state["task"] = task.to_dict() if task else None
         state["settings"] = self.settings.as_dict()
         state["capabilities"] = self.capabilities()
-        state["store_dir"] = str(self.store.root)
+        state["storage_backend"] = str(getattr(self.store, "root", "injected"))
         return state
 
     def capabilities(self) -> dict[str, Any]:

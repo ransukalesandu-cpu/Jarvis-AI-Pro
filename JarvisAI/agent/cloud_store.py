@@ -92,7 +92,14 @@ class CloudTaskStore:
             if row["state"] in {"completed", "cancelled", "failed"}:
                 continue
             task = self.load(row["id"])
-            if task is not None and not task.state.terminal:
+            if (
+                task is not None
+                and not task.state.terminal
+                and any(
+                    step.state.value in {"pending", "running", "failed"}
+                    for step in task.steps
+                )
+            ):
                 tasks.append(task)
         return tasks
 

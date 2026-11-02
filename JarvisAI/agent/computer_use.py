@@ -306,6 +306,15 @@ class ComputerUseController:
                                 detail="No screen vision is configured, so the target "
                                        "cannot be located safely.")
 
+        # Keep a fresh pre-action observation when the caller supplied an
+        # expectation. Verification can then compare the actual before/after
+        # states instead of judging the final screenshot in isolation.
+        before = None
+        if expectation:
+            before = self._observe(
+                f"Record the current screen state before clicking {label!r}."
+            )
+
         try:
             targets = self.vision.find(label)
         except Exception as exc:
@@ -348,7 +357,9 @@ class ComputerUseController:
         verified: bool | None = None
         if expectation and self.vision is not None:
             try:
-                verified = bool(self.vision.verify(expectation).ok)
+                verified = bool(
+                    self.vision.verify(expectation, before=before).ok
+                )
             except Exception:
                 verified = None
         return self._finish(ActionResult(

@@ -1428,8 +1428,8 @@ class HudWorkspace(QWidget):
 
     def _select(self, key: str, title: str | None = None):
         index = self._page_index.get(key, self._page_index["system"])
-        self.tabs.setCurrentIndex(index)
         self._view_title.setText((title or key.replace("_", " ")).upper()[:45])
+        self.tabs.setCurrentIndex(index)
 
     def show_view(self, key: str, title: str | None = None, focus: str | None = None):
         if key == "system":

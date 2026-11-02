@@ -26,13 +26,17 @@ from pathlib import Path
 
 import numpy as np
 from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import QBrush, QColor, QImage, QPainter, QPen, QRadialGradient
+from PyQt6.QtGui import (QBrush, QColor, QImage, QPainter, QPainterPath, QPen, QPolygonF,
+                         QRadialGradient, QTransform)
 
 FACE_DIR = Path(__file__).resolve().parent.parent / "config"
 FACE_NAMES = ("hologram_face.png", "hologram_face.webp", "hologram_face.jpg",
               "hologram_face.jpeg")
 _MAX_H = 760                       # processed picture height in pixels
 _DEFAULT_LAYOUT = {"eyes": [[0.38, 0.475], [0.61, 0.475]], "mouth": [0.50, 0.70, 0.19]}
+EMOTIONS = ("happy", "sad", "serious", "surprised", "curious")
+_GRID = (16, 22)                   # warp cells across, down
+_REGION = (0.08, 0.26, 0.92, 0.985)  # warped part of the picture (u0, v0, u1, v1)
 
 
 def find_face(directory: Path = FACE_DIR) -> Path | None:
@@ -150,9 +154,161 @@ class ImageHologram:
             self._tint_key = key
         return self._tinted
 
+    # ── expression ──────────────────────────────────────────────────────────
+    def _g(self, u, v, cu, cv, su, sv):
+        return np.exp(-((u - cu) / su) ** 2 - ((v - cv) / sv) ** 2)
+
+    def _field(self, u, v, f: dict):
+        """Displacement (du, dv) of picture points for the current expression.
+
+        Each move is a gaussian around a facial landmark: the jaw and lower lip
+        drop, lip corners spread/round, lift (smile) or fall (sad), brows rise
+        and knit, lids close, and the iris area slides with the gaze.
+        """
+        ly = self.layout
+        mx, my, mw = ly["mouth"]
+        du = np.zeros_like(u)
+        dv = np.zeros_like(v)
+        jaw = min(1.0, f["jaw"] + 0.55 * f["surprised"])
+        g = self._g
+        # Jaw and lips.
+        dv += 0.042 * jaw * g(u, v, mx, my + 0.12, 0.24, 0.13)
+        dv += 0.020 * jaw * g(u, v, mx, my + 0.018, 0.08, 0.022)
+        dv -= 0.006 * jaw * g(u, v, mx, my - 0.012, 0.08, 0.018)
+        for side in (-1.0, 1.0):
+            cu = mx + side * mw / 2
+            corner = g(u, v, cu, my, 0.040, 0.030)
+            du += side * corner * (0.012 * f["wide"] + 0.014 * f["happy"] - 0.004 * f["sad"]
+                                   - 0.006 * jaw)
+            dv += corner * (-0.026 * f["happy"] + 0.018 * f["sad"] + 0.004 * f["serious"]
+                            + 0.008 * jaw)
+        # Eyes, lids, brows, cheeks.
+        for i, (ex, ey) in enumerate(ly["eyes"]):
+            side = -1.0 if ex < mx else 1.0
+            lift = -0.012 * f["brow"] - 0.022 * f["surprised"]
+            if i == 1:
+                lift -= 0.026 * f["curious"]
+            else:
+                lift += 0.004 * f["curious"]
+            brow_all = g(u, v, ex, ey - 0.065, 0.075, 0.030)
+            inner = g(u, v, ex - side * 0.045, ey - 0.062, 0.035, 0.025)
+            outer = g(u, v, ex + side * 0.055, ey - 0.058, 0.035, 0.025)
+            dv += brow_all * lift
+            dv += inner * (-0.014 * f["sad"] + 0.013 * f["serious"])
+            du += inner * (-side) * 0.007 * f["serious"]
+            dv += outer * (0.005 * f["sad"])
+            lid_up = g(u, v, ex, ey - 0.014, 0.040, 0.016)
+            lid_lo = g(u, v, ex, ey + 0.016, 0.035, 0.012)
+            dv += lid_up * (0.026 * f["blink"] - 0.006 * f["surprised"])
+            dv += lid_lo * (-0.004 * f["blink"] - 0.006 * f["happy"])
+            dv += g(u, v, ex + side * 0.01, ey + 0.10, 0.06, 0.05) * (-0.014 * f["happy"])
+            iris = g(u, v, ex, ey, 0.022, 0.010)
+            du += iris * 0.007 * f["gaze_x"]
+            dv += iris * 0.004 * f["gaze_y"]
+        # Fade to nothing at the edge of the warped region, so it joins the rest.
+        u0, v0, u1, v1 = _REGION
+        edge = np.minimum(np.minimum(u - u0, u1 - u), np.minimum(v - v0, v1 - v))
+        w = np.clip(edge / 0.06, 0.0, 1.0)
+        w = w * w * (3 - 2 * w)
+        return du * w, dv * w
+
+    def expression(self, target: dict, t: float) -> dict:
+        """Smooth the expression towards `target` (each 0..1, wide -1..1)."""
+        last = getattr(self, "_last_t", t)
+        self._last_t = t
+        dt = max(0.0, min(0.1, t - last))
+        cur = getattr(self, "_expr", None)
+        if cur is None:
+            cur = self._expr = {k: 0.0 for k in target}
+        for k, v in target.items():
+            # Faces move fast (jaw, lids) but moods settle slowly.
+            tau = 0.05 if k in ("jaw", "blink", "wide", "gaze_x", "gaze_y") else 0.35
+            a = 1.0 - math.exp(-dt / tau) if dt > 0 else 1.0
+            cur[k] = cur.get(k, 0.0) + (v - cur.get(k, 0.0)) * a
+        return cur
+
+    def _warped(self, img: QImage, f: dict) -> QImage:
+        """The picture with the expression applied (in picture pixels)."""
+        if max(abs(f[k]) for k in f) < 0.01:
+            return img
+        iw, ih = img.width(), img.height()
+        nx, ny = _GRID
+        u0, v0, u1, v1 = _REGION
+        gu, gv = np.meshgrid(np.linspace(u0, u1, nx + 1), np.linspace(v0, v1, ny + 1))
+        du, dv = self._field(gu, gv, f)
+        sx, sy = gu * iw, gv * ih
+        dx, dy = (gu + du) * iw, (gv + dv) * ih
+        buf = getattr(self, "_buf", None)
+        if buf is None or buf.size() != img.size():
+            buf = self._buf = QImage(img.size(), QImage.Format.Format_ARGB32_Premultiplied)
+        buf.fill(0)
+        bp = QPainter(buf)
+        try:
+            bp.drawImage(0, 0, img)
+            # Replace (not blend) inside the region: each cell lands exactly once.
+            bp.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+            bp.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+            sxl, syl, dxl, dyl = sx.tolist(), sy.tolist(), dx.tolist(), dy.tolist()
+            tr = QTransform()
+            for j in range(ny):
+                for i in range(nx):
+                    src = QPolygonF([QPointF(sxl[j][i], syl[j][i]), QPointF(sxl[j][i + 1], syl[j][i + 1]),
+                                     QPointF(sxl[j + 1][i + 1], syl[j + 1][i + 1]),
+                                     QPointF(sxl[j + 1][i], syl[j + 1][i])])
+                    dst = QPolygonF([QPointF(dxl[j][i], dyl[j][i]), QPointF(dxl[j][i + 1], dyl[j][i + 1]),
+                                     QPointF(dxl[j + 1][i + 1], dyl[j + 1][i + 1]),
+                                     QPointF(dxl[j + 1][i], dyl[j + 1][i])])
+                    if not QTransform.quadToQuad(src, dst, tr):
+                        continue
+                    bp.setTransform(tr)
+                    bp.setClipRect(src.boundingRect().adjusted(-0.5, -0.5, 0.5, 0.5))
+                    bp.drawImage(QPointF(0, 0), img)
+                    bp.setClipping(False)
+            bp.resetTransform()
+            bp.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+            self._paint_mouth(bp, iw, ih, f)
+        finally:
+            bp.end()
+        return buf
+
+    def _paint_mouth(self, p: QPainter, iw: int, ih: int, f: dict) -> None:
+        """The opening between the lips, shaped by the displaced lip corners."""
+        mx, my, mw = self.layout["mouth"]
+        pts = {}
+        for name, (u, v) in {"l": (mx - mw / 2, my), "r": (mx + mw / 2, my),
+                             "up": (mx, my - 0.012), "lo": (mx, my + 0.018)}.items():
+            uu, vv = np.array([u]), np.array([v])
+            du, dv = self._field(uu, vv, f)
+            pts[name] = QPointF((u + du[0]) * iw, (v + dv[0]) * ih)
+        gap = pts["lo"].y() - pts["up"].y() - (0.030 * ih)
+        if gap < 1.0:
+            return
+        l, r = pts["l"], pts["r"]
+        top_y = (l.y() + r.y()) / 2 - gap * 0.15
+        path = QPainterPath(l)
+        path.quadTo(QPointF((l.x() + r.x()) / 2, top_y - gap * 0.25), r)
+        path.quadTo(QPointF((l.x() + r.x()) / 2, top_y + gap * 1.6), l)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(0, 10, 24, 225))
+        p.drawPath(path)
+        teeth = QRectF((l.x() * 0.7 + r.x() * 0.3), top_y - gap * 0.05,
+                       (r.x() - l.x()) * 0.4, gap * 0.28)
+        p.setBrush(QColor(210, 245, 255, 120))
+        p.drawRoundedRect(teeth, 2, 2)
+
+    # ── frame ───────────────────────────────────────────────────────────────
     def paint(self, p: QPainter, cx: float, top: float, height: float, primary: QColor,
-              accent: QColor, t: float, mouth: float, amp: float, blink: float) -> None:
-        img = self._image_for(primary)
+              accent: QColor, t: float, mouth: float, amp: float, blink: float,
+              face: dict | None = None) -> None:
+        """`face` carries the expression targets (see EMOTIONS plus jaw, wide,
+        brow, blink, gaze_x, gaze_y); without it only the jaw and blink move."""
+        target = {"jaw": max(0.0, min(1.0, mouth)), "wide": 0.0, "brow": 0.0,
+                  "blink": max(0.0, min(1.0, blink)), "gaze_x": 0.0, "gaze_y": 0.0}
+        target.update({k: 0.0 for k in EMOTIONS})
+        if face:
+            target.update({k: float(v) for k, v in face.items() if k in target})
+        f = self.expression(target, t)
+        img = self._warped(self._image_for(primary), f)
         h = height * (1.0 + 0.006 * math.sin(t * 1.3))          # breathing
         w = h * self.aspect
         top += 2.0 * math.sin(t * 0.9)                         # float
@@ -168,36 +324,21 @@ class ImageHologram:
 
         p.save()
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-        mx, my, mw = self.layout["mouth"]
-        drop = h * 0.028 * max(0.0, min(1.0, mouth))
-        iw, ih = img.width(), img.height()
-        split = my * ih
-        # Above the lips: as drawn. Below: stretched down by the jaw drop, so the
-        # chin and neck follow without a seam.
-        p.drawImage(QRectF(left, top, w, h * my), img, QRectF(0, 0, iw, split))
-        p.drawImage(QRectF(left, top + h * my, w, h * (1 - my) + drop), img,
-                    QRectF(0, split, iw, ih - split))
-        if drop > 0.6:
-            mouth_rect = QRectF(left + w * (mx - mw / 2) + w * mw * 0.12, top + h * my - drop * 0.2,
-                                w * mw * 0.76, drop * 1.3)
-            p.setBrush(QColor(0, 12, 26, 210))
-            p.drawEllipse(mouth_rect)
-            p.setBrush(QColor(accent.red(), accent.green(), accent.blue(), int(60 + 90 * amp)))
-            p.drawEllipse(mouth_rect.adjusted(mouth_rect.width() * 0.25, mouth_rect.height() * 0.35,
-                                              -mouth_rect.width() * 0.25, -mouth_rect.height() * 0.1))
+        p.drawImage(QRectF(left, top, w, h), img)
         p.restore()
 
-        # Glowing eyes; a blink dims them.
-        k = max(0.0, 1.0 - blink)
-        rad = w * 0.035
+        # Glowing eyes that follow the gaze; a blink dims them, joy brightens.
+        k = max(0.0, 1.0 - f["blink"] * 1.1) * (1.0 + 0.25 * f["happy"] + 0.3 * f["surprised"])
+        rad = w * 0.035 * (1.0 + 0.25 * f["surprised"] - 0.15 * f["serious"])
         for ex, ey in self.layout["eyes"]:
-            c = QPointF(left + ex * w, top + ey * h)
-            g = QRadialGradient(c, rad * 2.6)
-            g.setColorAt(0.0, QColor(235, 252, 255, int(200 * k)))
-            g.setColorAt(0.3, QColor(accent.red(), accent.green(), accent.blue(), int(150 * k)))
+            c = QPointF(left + (ex + 0.007 * f["gaze_x"]) * w, top + (ey + 0.004 * f["gaze_y"]) * h)
+            # Soft enough that the drawn iris still shows through the glow.
+            g = QRadialGradient(c, rad * 2.0)
+            g.setColorAt(0.0, QColor(235, 252, 255, int(min(255, 125 * k))))
+            g.setColorAt(0.35, QColor(accent.red(), accent.green(), accent.blue(), int(min(255, 80 * k))))
             g.setColorAt(1.0, QColor(accent.red(), accent.green(), accent.blue(), 0))
             p.setBrush(QBrush(g))
-            p.drawEllipse(c, rad * 2.6, rad * 2.6)
+            p.drawEllipse(c, rad * 2.0, rad * 2.0)
 
         # One sweep of light down the face.
         sy = top + ((t * 0.16) % 1.0) * h

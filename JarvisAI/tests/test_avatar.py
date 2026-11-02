@@ -184,3 +184,28 @@ class ImageHologramTests(unittest.TestCase):
         with mock.patch("core.avatar_image.find_face", return_value=None):
             avatar = MeshHoloAvatar(style="image")
         self.assertEqual(avatar.look, "volume")
+
+    def test_expressions_move_the_picture(self):
+        import tempfile
+        from pathlib import Path
+
+        from core.avatar_image import EMOTIONS, ImageHologram
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "hologram_face.png"
+            self._portrait(path)
+            holo = ImageHologram(path)
+            base = {"jaw": 0.0, "wide": 0.0, "brow": 0.0, "blink": 0.0, "gaze_x": 0.0,
+                    "gaze_y": 0.0, **{k: 0.0 for k in EMOTIONS}}
+            neutral = holo._warped(holo._image_for(QColor(40, 215, 255)), base)
+            for name in ("happy", "sad", "surprised"):
+                moved = holo._warped(holo._image_for(QColor(40, 215, 255)), {**base, name: 1.0})
+                self.assertNotEqual(moved.copy(), neutral.copy(), name)
+
+    def test_set_emotion_drives_the_face_targets(self):
+        avatar = MeshHoloAvatar(style="volume")
+        avatar.set_emotion("sad", hold=2.0)
+        self.assertEqual(avatar._face_targets()["sad"], 1.0)
+        avatar.react_to_text("Wow, that is amazing!")
+        self.assertEqual(avatar._emotion, "surprised")
+        avatar._t += 5.0
+        self.assertEqual(avatar._face_targets()["surprised"], 0.0)   # it wears off

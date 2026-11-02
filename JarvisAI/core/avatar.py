@@ -252,6 +252,7 @@ class HoloAvatar:
         self._mood_primary = QColor(113, 212, 194)
         self._mood_accent = QColor(217, 138, 89)
         self._state_str = "IDLE"
+        self._emotion = ""         # happy / sad / serious / surprised / curious
         if self.look in _BUST_LOOKS:
             self._mood_primary = QColor(self._base_colors()[0])
             self._mood_accent = QColor(self._base_colors()[1])
@@ -296,23 +297,37 @@ class HoloAvatar:
             " glad to help ", " happy to help ", " you're welcome ", " you are welcome ",
             " thank you ", " thanks ",
         ))
+        surprise = any(term in words for term in (
+            " wow ", " amazing ", " incredible ", " really ", " oh ", " unbelievable ",
+            " no way ", " whoa ",
+        ))
         if greeting:
+            self._emotion = "happy"
             self._smile_tgt, self._gesture = 0.92, "nod"
             self._gesture_strength = 1.0
             hold = 3.0
         elif serious:
+            self._emotion = "serious"
             self._smile_tgt, self._gesture = 0.0, "focus"
             self._gesture_strength = 0.75
             hold = 2.4
         elif apology:
+            self._emotion = "sad"
             self._smile_tgt, self._gesture = 0.0, "tilt"
             self._gesture_strength = 0.70
             hold = 2.5
+        elif surprise:
+            self._emotion = "surprised"
+            self._smile_tgt, self._gesture = 0.3, "nod"
+            self._gesture_strength = 0.6
+            hold = 2.0
         elif acknowledgement:
+            self._emotion = "happy"
             self._smile_tgt, self._gesture = 0.72, "nod"
             self._gesture_strength = 0.72
             hold = 2.5
         elif question:
+            self._emotion = "curious"
             self._smile_tgt, self._gesture = 0.12, "tilt"
             self._gesture_strength = 0.48
             hold = 1.6
@@ -722,7 +737,7 @@ class HoloAvatar:
         amp = self._glow
         if self._img is not None:
             self._img.paint(p, cx, cy - r, self.SPAN * r, primary, accent, self._t,
-                            self._mouth, amp, self._blink)
+                            self._mouth, amp, self._blink, self._face_targets())
             return
         verts, norms = self._pose()
         if self.look == "volume":
@@ -755,6 +770,32 @@ class HoloAvatar:
             self._paint_surface(p, xs, ys, norms, verts, primary, bg, amp)
         self._paint_wire(p, xs, ys, norms, verts, primary, bg, amp)
         self._paint_features(p, cx, cy, xs, ys, norms, r, primary, accent, bg, amp)
+
+    def set_emotion(self, emotion: str, hold: float = 2.5) -> None:
+        """Show an emotion for `hold` seconds: happy, sad, serious, surprised or
+        curious (empty clears it)."""
+        self._emotion = emotion if emotion in ("happy", "sad", "serious", "surprised",
+                                               "curious") else ""
+        self._smile_tgt = 0.85 if emotion == "happy" else 0.0
+        self._smile_until = self._t + max(0.1, float(hold))
+
+    def _face_targets(self) -> dict:
+        """Expression targets for the picture look, from the live face state."""
+        active = self._t < self._smile_until
+        emo = self._emotion if active else ""
+        st = self._state_str
+        f = {"jaw": self._mouth, "wide": self._wide if self._mouth > 0.02 else 0.0,
+             "brow": max(-0.4, min(1.0, self._brow)), "blink": self._blink,
+             "gaze_x": self._gaze[0], "gaze_y": self._gaze[1],
+             "happy": max(self._smile, 1.0 if emo == "happy" else 0.0),
+             "sad": 1.0 if emo == "sad" else 0.0,
+             "serious": 1.0 if emo == "serious" else (0.35 if st in ("THINKING", "PROCESSING")
+                                                      else 0.0),
+             "surprised": 1.0 if emo == "surprised" else 0.0,
+             "curious": 1.0 if emo == "curious" else (0.4 if st == "LISTENING" else 0.0)}
+        if st in ("SLEEPING", "STANDBY"):
+            f["blink"] = max(f["blink"], 0.85)
+        return f
 
     def _project(self, pts, cx: float, cy: float, r: float):
         w = np.maximum(_CAM_D - pts[..., 2], 0.35)

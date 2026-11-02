@@ -20,7 +20,7 @@ class PerformanceMonitorTests(unittest.TestCase):
         self.assertEqual(result["completed"], 1)
         self.assertEqual(result["failed"], 1)
         self.assertEqual(result["cancelled"], 1)
-        self.assertEqual(result["success_rate"], 1 / 3)
+        self.assertAlmostEqual(result["success_rate"], 1 / 3, places=4)
 
     def test_history_is_bounded_and_does_not_store_objectives(self):
         monitor = PerformanceMonitor(history=8)

@@ -124,6 +124,17 @@ class AgentBrowserStepTests(unittest.TestCase):
                 "steps": [{"title": "Search", "kind": "browser_search"}]
             }))
 
+    def test_deterministic_planner_supports_browser_without_api_key(self):
+        planner = TaskPlanner(workspace=Path.cwd())
+        search = planner.plan("search the web for Python documentation")
+        self.assertEqual(search.source, "heuristic")
+        self.assertIs(search.steps[0].kind, StepKind.BROWSER_SEARCH)
+        self.assertEqual(search.steps[0].detail, "Python documentation")
+
+        navigate = planner.plan("open https://example.com/docs")
+        self.assertIs(navigate.steps[0].kind, StepKind.BROWSER_NAVIGATE)
+        self.assertEqual(navigate.steps[0].detail, "https://example.com/docs")
+
 
 if __name__ == "__main__":
     unittest.main()

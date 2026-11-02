@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pair with JARVIS</title>
+<link rel="stylesheet" href="/static/theme.css">
+<style>
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+         background: var(--bg, #05070d); color: var(--text, #dce8ff);
+         font-family: var(--font, system-ui, sans-serif); }
+  .card { width: min(92vw, 420px); padding: 28px; border-radius: 16px;
+          background: var(--panel, #0c1220); border: 1px solid var(--line, #1d2a44); }
+  h1 { margin: 0 0 6px; font-size: 22px; }
+  p { color: var(--muted, #8aa0c8); line-height: 1.5; }
+  input, button { width: 100%; box-sizing: border-box; font-size: 18px; padding: 12px;
+                  border-radius: 10px; margin-top: 10px; }
+  input { background: #050912; color: inherit; border: 1px solid var(--line, #1d2a44);
+          letter-spacing: 2px; text-transform: uppercase; }
+  button { background: var(--accent, #39c6ff); color: #00131d; border: 0; font-weight: 600; }
+  .err { color: var(--danger, #ff6b6b); min-height: 1.4em; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Pair this device</h1>
+  <p>Enter the pairing code the hub printed. This device then stays paired until you revoke it.</p>
+  <label>Device <input id="device" autocomplete="off"></label>
+  <label>Code <input id="code" autocomplete="off" placeholder="XXXX-XXXX-XXXX"></label>
+  <button id="go">Pair</button>
+  <p class="err" id="err"></p>
+</div>
+<script>
+const q = new URLSearchParams(location.search);
+document.getElementById("device").value = q.get("device") || "";
+document.getElementById("code").value = q.get("code") || "";
+async function pair() {
+  const err = document.getElementById("err");
+  err.textContent = "";
+  const res = await fetch("/api/pair", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({device: document.getElementById("device").value.trim().toLowerCase(),
+                          code: document.getElementById("code").value.trim()})});
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) { err.textContent = body.error || "Pairing failed."; return; }
+  try { localStorage.setItem("jarvis.token", body.token); localStorage.setItem("jarvis.device", body.device); } catch (e) {}
+  location.replace("/");
+}
+document.getElementById("go").onclick = pair;
+if (q.get("code") && q.get("device")) pair();
+</script>
+</body>
+</html>

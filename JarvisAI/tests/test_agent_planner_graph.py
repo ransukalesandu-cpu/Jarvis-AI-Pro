@@ -140,5 +140,17 @@ class IntelligentPlannerTests(unittest.TestCase):
 
         self.assertEqual(len(calls), 2)
 
+
+    def test_plan_cache_preserves_case_sensitive_url_paths(self):
+        calls = []
+        response = json.dumps({"steps": [{"title": "case-specific", "kind": "note"}]})
+        planner = TaskPlanner(
+            ask=lambda prompt: calls.append(prompt) or response,
+            workspace=Path.cwd(),
+        )
+        planner.plan("inspect https://example.com/Docs/Readme")
+        planner.plan("inspect https://example.com/docs/readme")
+        self.assertEqual(len(calls), 2)
+
 if __name__ == "__main__":
     unittest.main()

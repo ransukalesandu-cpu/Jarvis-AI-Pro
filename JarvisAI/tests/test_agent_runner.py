@@ -122,6 +122,33 @@ class RunnerExecutionTests(unittest.TestCase):
         self.assertEqual(len(executor.calls), 2)
         self.assertTrue(all(step.state is StepState.COMPLETED for step in task.steps))
 
+    def test_parallel_reads_skip_waiting_dependency_and_run_later_independent_read(self):
+        barrier = threading.Barrier(2)
+
+        def concurrent_read(step, ctx):
+            if step.title in {"first", "independent"}:
+                barrier.wait(timeout=3)
+            return StepResult.success(step.title)
+
+        steps = [
+            TaskStep(title="first", kind=StepKind.READ_FILE, path="one.txt"),
+            TaskStep(title="waits for first", kind=StepKind.READ_FILE, path="two.txt",
+                     depends_on=[0]),
+            TaskStep(title="independent", kind=StepKind.READ_FILE, path="three.txt"),
+        ]
+        runner, executor, _ = make_runner(
+            self, steps=steps, outcomes=[concurrent_read] * 3,
+            config=RunnerConfig(max_parallel_read_steps=3),
+        )
+
+        task = runner.submit("run ready independent reads together")
+        runner.run_task(task)
+
+        self.assertIs(task.state, TaskState.COMPLETED)
+        self.assertEqual([step.state for step in task.steps],
+                         [StepState.COMPLETED] * 3)
+        self.assertEqual(len(executor.calls), 3)
+
     def test_parallel_cancellation_preserves_other_completed_results(self):
         def cancel_one(step, ctx):
             if step.title == "cancel":

@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -40,6 +39,7 @@ from agent.models import (
     TaskStep,
 )
 from agent.planner import PlanError, TaskPlanner
+from agent.parallel_engine import ParallelStepEngine
 from agent.store import redact
 from agent.cloud_store import CloudTaskStore
 
@@ -88,6 +88,9 @@ class TaskRunner:
         self.store = store if store is not None else CloudTaskStore()
         self.bus = bus or EventBus()
         self.config = config or RunnerConfig()
+        self.parallel_engine = ParallelStepEngine(
+            max_workers=self.config.max_parallel_read_steps
+        )
         self.engine = policy_engine or policy_module.PolicyEngine(
             policy_module.ExecutionPolicy(
                 workspace_root=str(self.workspace),
@@ -478,53 +481,57 @@ class TaskRunner:
             )
 
     def _parallel_read_layer(self, task: Task, start_index: int) -> list[TaskStep]:
-        """Select a contiguous layer of independent, non-consequential file reads."""
-        limit = max(1, min(int(self.config.max_parallel_read_steps), 4))
+        """Select ready, independent file reads without crossing a mutation barrier."""
         selected: list[TaskStep] = []
         for step in task.steps[start_index:]:
-            if len(selected) >= limit:
+            if len(selected) >= self.parallel_engine.max_workers:
                 break
-            if step.state is not StepState.PENDING or step.kind is not StepKind.READ_FILE:
+            # A write, command, browser action, or consequential operation is a
+            # strict ordering barrier. Never run reads across it speculatively.
+            if step.kind is not StepKind.READ_FILE or step.consequential:
                 break
-            if step.consequential:
+            if step.state is not StepState.PENDING:
+                if step.state is StepState.COMPLETED:
+                    continue
                 break
-            if any(
-                dependency < 0
-                or dependency >= len(task.steps)
-                or task.steps[dependency].state is not StepState.COMPLETED
+            dependencies_ready = all(
+                0 <= dependency < len(task.steps)
+                and task.steps[dependency].state is StepState.COMPLETED
                 for dependency in step.depends_on
-            ):
-                break
-            if any(dependency == prior.index for dependency in step.depends_on
-                   for prior in selected):
-                break
+            )
+            # A dependency-blocked read is left for the main scheduler to skip
+            # after its prerequisite settles; independent later reads may proceed.
+            if not dependencies_ready:
+                continue
             selected.append(step)
         return selected
 
     def _run_parallel_read_layer(
         self, task: Task, steps: list[TaskStep]
     ) -> list[tuple[TaskStep, StepResult]]:
-        """Run only independent READ_FILE steps concurrently through normal guards."""
+        """Run independent READ_FILE steps with bounded, cancellation-aware workers."""
         for step in steps:
             self._emit(
                 "step_started", task, message=step.title,
                 step={"index": step.index, "title": step.title, "kind": step.kind.value},
             )
-        results: dict[int, StepResult] = {}
-        with ThreadPoolExecutor(max_workers=min(len(steps), 4)) as pool:
-            futures = {
-                pool.submit(self._run_with_retries, task, step, self._context(task)): step
-                for step in steps
-            }
-            for future in as_completed(futures):
-                step = futures[future]
-                try:
-                    results[step.index] = future.result()
-                except Exception as exc:
-                    results[step.index] = StepResult.failure(
-                        f"Parallel read failed: {redact(exc, 300)}"
-                    )
-        return [(step, results[step.index]) for step in steps]
+
+        outcomes = self.parallel_engine.run(
+            steps,
+            lambda step: self._run_with_retries(task, step, self._context(task)),
+            cancel_event=self._cancel,
+            on_error=lambda step, exc: StepResult.failure(
+                f"Parallel read failed: {redact(exc, 300)}"
+            ),
+            on_cancel=lambda _step: StepResult.stopped(),
+        )
+        return outcomes
+
+    def _append_worker_event(self, task_id: str, kind: str,
+                             data: dict[str, Any]) -> None:
+        """Serialize worker journal writes so concurrent workers cannot race."""
+        with self._lock:
+            self.store.append_event(task_id, {"kind": kind, **data})
 
     def _context(self, task: Task) -> ExecutionContext:
         return ExecutionContext(
@@ -540,7 +547,7 @@ class TaskRunner:
             request_approval=self._approval,
             sleep=self._sleep,
             clock=self._monotonic,
-            emit=lambda kind, data: self.store.append_event(task.id, {"kind": kind, **data}),
+            emit=lambda kind, data: self._append_worker_event(task.id, kind, data),
         )
 
     def _run_with_retries(self, task: Task, step: TaskStep,
@@ -735,13 +742,14 @@ class TaskRunner:
     # ── notifications -----------------------------------------------------
     def _emit(self, kind: str, task: Task, *, message: str = "",
               **data: Any) -> None:
-        now = self._monotonic()
-        milestone = kind in {"started", "planned", "blocked", "finished", "paused",
-                             "step_failed"}
-        if not milestone and (now - self._last_emit) < self.config.progress_min_interval_s:
-            return
-        self._last_emit = now
-        event = event_from_task(kind, task, message=message, **data)
+        with self._lock:
+            now = self._monotonic()
+            milestone = kind in {"started", "planned", "blocked", "finished", "paused",
+                                 "step_failed"}
+            if not milestone and (now - self._last_emit) < self.config.progress_min_interval_s:
+                return
+            self._last_emit = now
+            event = event_from_task(kind, task, message=message, **data)
         self.bus.publish(event)
 
     def _milestone_safe(self, message: str) -> None:

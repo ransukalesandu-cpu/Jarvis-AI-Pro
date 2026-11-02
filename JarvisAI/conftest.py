@@ -12,7 +12,7 @@ Two jobs:
 
 2. **Skip the GUI tests gracefully when Qt's system libraries are missing.**
    ``PyQt6`` installs fine on a bare Linux server or container but importing it
-   fails without ``libGL``/``libEGL``. Without this guard, four GUI test modules
+   fails without ``libGL``/``libEGL``. Without this guard, the GUI test modules
    abort collection and no tests run at all. They are reported as skipped with a
    clear reason instead; on a desktop or the CI runner (which installs those
    libraries) they run normally.
@@ -53,6 +53,8 @@ _QT_TEST_MODULES = (
     "tests/test_avatar.py",
     "tests/test_bihansa_integration.py",
     "tests/test_pr68_fixes.py",
+    "tests/test_skeleton_loader_lifecycle.py",
+    "tests/test_smart_panel.py",
     "tests/test_ui_hologram.py",
 )
 

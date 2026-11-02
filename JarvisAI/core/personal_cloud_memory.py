@@ -261,7 +261,6 @@ def _request_personal_memory(
         raise RuntimeError("Supabase personal memory configuration is incomplete")
 
     from core.supabase_cloud_provider import _get_access_token, has_persistent_auth_session
-    from security.host_device_identity import public_key_b64, sign_request
 
     access_token = _get_access_token(base_url, public_key, timeout)
     if not has_persistent_auth_session():
@@ -425,6 +424,7 @@ def _request_default_owner_memory(*, timeout: float = 8.0) -> dict[str, Any]:
         raise RuntimeError("Supabase default owner memory configuration is incomplete")
 
     from core.supabase_cloud_provider import _get_access_token, has_persistent_auth_session
+    from security.host_device_identity import public_key_b64, sign_request
 
     access_token = _get_access_token(base_url, public_key, timeout)
     if not has_persistent_auth_session():

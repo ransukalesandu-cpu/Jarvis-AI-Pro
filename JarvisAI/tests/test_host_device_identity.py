@@ -51,7 +51,7 @@ class HostDeviceIdentityTests(unittest.TestCase):
         fake_keyring.get_password = lambda service, account: values.get((service, account))
         fake_keyring.set_password = lambda service, account, value: values.__setitem__((service, account), value)
 
-        with patch.dict(sys.modules, {"keyring": fake_keyring}), \\
+        with patch.dict(sys.modules, {"keyring": fake_keyring}), \
              patch.object(identity.sys, "platform", "darwin"):
             first = identity._keyring_private_key()
             second = identity._keyring_private_key()

@@ -22,7 +22,7 @@ class HostDeviceIdentityTests(unittest.TestCase):
         fake_keyring.get_password = lambda service, account: values.get((service, account))
         fake_keyring.set_password = lambda service, account, value: values.__setitem__((service, account), value)
 
-        with patch.dict(sys.modules, {"keyring": fake_keyring}), \\
+        with patch.dict(sys.modules, {"keyring": fake_keyring}), \
              patch.object(identity.sys, "platform", "linux"):
             first = identity._keyring_private_key()
             second = identity._keyring_private_key()
@@ -44,7 +44,7 @@ class HostDeviceIdentityTests(unittest.TestCase):
         backend = type("PlaintextBackend", (), {"__module__": "keyring.backends.fail"})()
         fake_keyring = types.ModuleType("keyring")
         fake_keyring.get_keyring = lambda: backend
-        with patch.dict(sys.modules, {"keyring": fake_keyring}), \\
+        with patch.dict(sys.modules, {"keyring": fake_keyring}), \
              patch.object(identity.sys, "platform", "linux"):
             with self.assertRaisesRegex(RuntimeError, "native OS credential store"):
                 identity._keyring_private_key()

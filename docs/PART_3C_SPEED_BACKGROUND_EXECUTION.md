@@ -8,8 +8,8 @@ It builds on the existing task runner rather than adding another runtime.
 
 - The existing start/submit/resume/pause/cancel/status API remains the single
   background task entry point.
-- Pending queue capacity is configurable and hard-bounded (default 32, maximum
-  128); queue saturation returns an explicit error instead of consuming memory.
+- Pending queue capacity is configurable and hard-bounded (default 8, maximum
+  128), including resumed tasks and in-flight cloud-persistence reservations; queue saturation returns an explicit error instead of consuming memory.
 - Queue status includes depth and configured capacity.
 - Removing queued work during cancellation also transitions and persists those
   tasks as CANCELLED, so they cannot remain indefinitely in PLANNING.
@@ -28,8 +28,8 @@ It builds on the existing task runner rather than adding another runtime.
 ## Validated plan cache
 
 - Successful plans are cached in memory with a bounded LRU and TTL.
-- Cache keys include normalized objective, acceptance criteria, workspace,
-  model identity, and step limit.
+- Cache keys preserve the exact objective and acceptance-criteria text (including
+  case-sensitive URL paths), plus workspace, model identity, and step limit.
 - Cached plans are deep-copied on read/write so caller mutations cannot corrupt
   later tasks.
 - Model-failure fallback plans are not cached, allowing the provider to recover.
@@ -39,7 +39,9 @@ It builds on the existing task runner rather than adding another runtime.
 ## Provider latency-aware fallback
 
 - The configured preferred provider is always attempted first.
-- Only configured fallback providers are ranked by observed successful latency.
+- Only configured fallback providers are ranked by recent failure count first,
+  then observed successful latency; a successful call clears that provider's
+  failure demotion.
 - Unknown providers retain the original stable provider order until measured.
 - Offline mode still prioritizes local Ollama, then uses measured fallback order.
 - Provider performance reports latency aggregates and sample counts only; no
@@ -63,3 +65,21 @@ consequential-action approval, and existing retry authorization checks are
 unchanged. Cache entries contain validated plans only. The queue and event
 history are bounded to protect low-memory devices. No new third-party package
 or always-on worker is introduced.
+
+
+## Task performance and safe retry
+
+- A bounded in-memory monitor reports aggregate task duration, p95, completed,
+  failed, cancelled, and success-rate metrics. Waiting/blocked attempts are not
+  counted as completed-task duration samples.
+- The monitor never stores task objectives, prompts, outputs, credentials, or
+  personal content. The default parallel read worker count is two for
+  low-memory Windows laptops.
+- A failed task can be retried as a fresh plan only when no attempted
+  side-effecting step could be replayed. A failed command is treated as
+  potentially side-effecting even if it ended with a nonzero exit code.
+- Retries continue through the existing owner authorization, PolicyEngine,
+  Privacy Lock, and consequential-action approval gates.
+- Gemini Live audio routing remains unchanged; these fallback changes apply to
+  text requests only.
+

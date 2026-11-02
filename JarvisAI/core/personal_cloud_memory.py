@@ -424,20 +424,27 @@ def _request_default_owner_memory(*, timeout: float = 8.0) -> dict[str, Any]:
         raise RuntimeError("Supabase default owner memory configuration is incomplete")
 
     from core.supabase_cloud_provider import _get_access_token, has_persistent_auth_session
+    from security.host_device_identity import public_key_b64, sign_request
 
     access_token = _get_access_token(base_url, public_key, timeout)
     if not has_persistent_auth_session():
         raise RuntimeError("Default owner memory needs a stable OS-protected Supabase session")
 
+    # Guest mode may read this shared profile on the enrolled installation, but
+    # an arbitrary anonymous Supabase account must not be able to retrieve it.
+    # Device proof is independent of Owner-mode PIN/Voice ID so Guest mode remains
+    # usable on this already-enrolled device.
+    body = b"{}"
+    signed_headers = sign_request(body)
+    signed_headers["X-Jarvis-Host-Key"] = public_key_b64()
     request = urllib.request.Request(
         base_url + "/functions/v1/jarvis-default-owner-memory",
-        data=b"{}",
+        data=body,
         headers={
             "Content-Type": "application/json",
             "apikey": public_key,
             "Authorization": "Bearer " + access_token,
-            "X-Jarvis-Host-Timestamp": str(int(time.time())),
-            "X-Jarvis-Host-Nonce": secrets.token_urlsafe(24),
+            **signed_headers,
         },
         method="POST",
     )

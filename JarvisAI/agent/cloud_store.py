@@ -92,14 +92,9 @@ class CloudTaskStore:
             if row["state"] in {"completed", "cancelled", "failed"}:
                 continue
             task = self.load(row["id"])
-            if (
-                task is not None
-                and not task.state.terminal
-                and any(
-                    step.state.value in {"pending", "running", "failed"}
-                    for step in task.steps
-                )
-            ):
+            # A paused or waiting task remains resumable even when all of
+            # its current steps are settled (for example, a plan awaiting approval).
+            if task is not None and not task.state.terminal:
                 tasks.append(task)
         return tasks
 

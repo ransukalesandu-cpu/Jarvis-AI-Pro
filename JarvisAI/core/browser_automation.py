@@ -65,7 +65,11 @@ class BrowserAutomation:
         self._playwright = sync_playwright().start()
         try:
             self._browser = self._playwright.chromium.launch(headless=False)
-            context = self._browser.new_context(accept_downloads=False)
+            context = self._browser.new_context(
+                accept_downloads=False,
+                java_script_enabled=False,
+                service_workers="block",
+            )
             context.set_default_timeout(self.timeout_ms)
             context.route("**/*", self._guard_request)
             self._page = context.new_page()

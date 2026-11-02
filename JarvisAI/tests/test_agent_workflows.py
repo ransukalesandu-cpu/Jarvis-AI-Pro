@@ -8,6 +8,7 @@ from agent.cloud_store import CloudTaskStore
 from agent.integration import AgentService
 from agent.models import StepKind, StepState, Task, TaskState, TaskStep
 from agent.workflow_library import WorkflowLibrary
+from core.personal_cloud_memory import _redact_cloud_payload
 
 
 def completed_task(objective="inspect project and run tests"):
@@ -89,6 +90,20 @@ class WorkflowLibraryTests(unittest.TestCase):
 
 
 class CloudTaskStoreTests(unittest.TestCase):
+    def test_task_payload_redacts_credentials_before_cloud_upload(self):
+        clean = _redact_cloud_payload({
+            "objective": "run test",
+            "output": "api_key=super-secret",
+        })
+        self.assertNotIn("super-secret", str(clean))
+        self.assertIn("[REDACTED]", str(clean))
+
+    @patch("agent.cloud_store.save_cloud_agent_task", side_effect=RuntimeError("cloud unavailable"))
+    def test_cloud_failure_does_not_fall_back_to_local_storage(self, _save_cloud):
+        task = completed_task()
+        with self.assertRaises(RuntimeError):
+            CloudTaskStore().save(task)
+
     @patch("agent.cloud_store.save_cloud_agent_task")
     def test_snapshot_is_sent_to_cloud_not_a_local_path(self, save_cloud):
         task = completed_task()

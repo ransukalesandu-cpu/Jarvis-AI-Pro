@@ -14,6 +14,7 @@ import secrets
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 from pathlib import Path
 from typing import Any, Callable
 
@@ -411,17 +412,30 @@ def capture_user_personal_facts(user_text: str) -> int:
         return 0
 
 
-def _request_default_owner_memory(*, timeout: float = 8.0) -> dict[str, Any]:
-    """Fetch the shared default owner profile for Owner and Guest modes.
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Never forward Supabase credentials or device proofs through redirects."""
 
-    This uses the installation's stable anonymous Supabase Auth session and a
-    replay-protected, quota-limited Edge Function. It deliberately does not
-    require the local owner signature; sensitive actions remain separately gated.
-    """
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _request_default_owner_memory(*, timeout: float = 8.0) -> dict[str, Any]:
+    """Fetch the shared default owner profile over HTTPS with enrolled-device proof."""
     base_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
     public_key = os.getenv("SUPABASE_ANON_KEY", "").strip()
     if not base_url or not public_key:
         raise RuntimeError("Supabase default owner memory configuration is incomplete")
+
+    parsed_url = urlsplit(base_url)
+    if (
+        parsed_url.scheme.lower() != "https"
+        or not parsed_url.hostname
+        or parsed_url.username
+        or parsed_url.password
+        or parsed_url.query
+        or parsed_url.fragment
+    ):
+        raise RuntimeError("Supabase URL must be a valid HTTPS origin for default owner memory")
 
     from core.supabase_cloud_provider import _get_access_token, has_persistent_auth_session
     from security.host_device_identity import public_key_b64, sign_request
@@ -430,7 +444,6 @@ def _request_default_owner_memory(*, timeout: float = 8.0) -> dict[str, Any]:
     if not has_persistent_auth_session():
         raise RuntimeError("Default owner memory needs a stable OS-protected Supabase session")
 
-    # Guest mode may read this shared profile only from the previously enrolled host.
     body = b"{}"
     signed_headers = sign_request(body)
     signed_headers["X-Jarvis-Host-Key"] = public_key_b64()
@@ -446,7 +459,8 @@ def _request_default_owner_memory(*, timeout: float = 8.0) -> dict[str, Any]:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        opener = urllib.request.build_opener(_NoRedirectHandler())
+        with opener.open(request, timeout=timeout) as response:
             decoded = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         raise RuntimeError(f"Default owner memory request failed with HTTP {exc.code}") from None
@@ -459,7 +473,6 @@ def _request_default_owner_memory(*, timeout: float = 8.0) -> dict[str, Any]:
     if not isinstance(profile, dict):
         raise RuntimeError("Default owner memory returned an invalid profile")
     return profile
-
 
 def format_default_owner_memory_context(profile: dict[str, Any]) -> str:
     """Render only the known default-owner fields as bounded reference data."""

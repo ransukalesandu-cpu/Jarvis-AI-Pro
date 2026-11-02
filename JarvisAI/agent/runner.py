@@ -40,7 +40,8 @@ from agent.models import (
     TaskStep,
 )
 from agent.planner import PlanError, TaskPlanner
-from agent.store import TaskStore, redact
+from agent.store import redact
+from agent.cloud_store import CloudTaskStore
 
 from core import failsoft
 
@@ -64,7 +65,7 @@ class TaskRunner:
     def __init__(
         self,
         *,
-        store: TaskStore | None = None,
+        store: Any | None = None,
         planner: TaskPlanner | None = None,
         executor: StepExecutor | None = None,
         policy_engine: policy_module.PolicyEngine | None = None,
@@ -83,7 +84,7 @@ class TaskRunner:
         wait_cancel: Callable[[float], bool] | None = None,
     ):
         self.workspace = Path(workspace).resolve() if workspace else _default_workspace()
-        self.store = store or TaskStore()
+        self.store = store if store is not None else CloudTaskStore()
         self.bus = bus or EventBus()
         self.config = config or RunnerConfig()
         self.engine = policy_engine or policy_module.PolicyEngine(

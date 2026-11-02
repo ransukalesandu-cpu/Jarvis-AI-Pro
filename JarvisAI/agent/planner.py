@@ -222,6 +222,16 @@ class TaskPlanner:
                 "The planning model returned no executable steps "
                 + (f"({warnings[0]})" if warnings else ".")
             )
+        plan_bytes = len(json.dumps(
+            [step.to_dict() for step in steps],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8"))
+        if plan_bytes > 32_000:
+            raise PlanError(
+                "The proposed plan exceeds the safe cloud checkpoint budget; "
+                "reduce the amount of generated file content and try again."
+            )
         return Plan(steps=steps, criteria=criteria, source="model",
                     rationale=f"Planned for: {objective}".strip(), warnings=warnings)
 

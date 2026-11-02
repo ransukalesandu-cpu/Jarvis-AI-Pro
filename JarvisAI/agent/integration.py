@@ -197,7 +197,11 @@ class AgentService:
         if not candidates:
             return None
         self._ensure_can_continue()
-        return self.runner.resume_task(candidates[0].id)
+        task = self.runner.resume_task(candidates[0].id)
+        with self._lock:
+            self._last_task_id = task.id
+            self._last_task_snapshot = task
+        return task
 
     def handle_voice(self, text: str) -> str | None:
         """Handle a bare voice sentence. Returns a reply, or None if unrelated."""

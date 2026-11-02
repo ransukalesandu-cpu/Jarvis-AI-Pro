@@ -31,7 +31,7 @@ THE LEDGER
 HOW TO WIRE THIS IN — see INTEGRATION_GUIDE.md for exact diffs. Summary:
     1. main.py: `security.bind(logger=self.ui.write_log)` next to the
        existing `confirm_gate.bind(...)` call.
-    2. main.py: in `_execute_tool`, wrap every dispatch (the hardcoded
+    2. core/runtime/live_tools.py: in `_execute_tool`, wrap every dispatch (the hardcoded
        branches AND `self._action_registry.run` / `self._plugin_registry.run`)
        with `security.guard(name, args, run=lambda: ...)`.
 """

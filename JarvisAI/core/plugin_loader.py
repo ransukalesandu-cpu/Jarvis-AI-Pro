@@ -83,7 +83,7 @@ class PluginRegistry:
         rec = self._plugins.get(name)
         return rec.scheduling if rec else None
 
-    # -- called by main.py from _execute_tool's else branch --
+    # -- called from _execute_tool's else branch (core/runtime/live_tools.py) --
     def run(self, name: str, parameters: dict, player=None, session_memory=None) -> str:
         rec = self._plugins.get(name)
         if rec is None or not rec.valid:

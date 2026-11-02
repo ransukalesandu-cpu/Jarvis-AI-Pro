@@ -535,7 +535,10 @@ _DANGEROUS_ACTIONS: dict[str, set[str]] = {
 }
 
 
-_AUTONOMOUS_SAFE_ACTIONS = {"status", "report", "pending", "pause", "resume", "stop"}
+_AUTONOMOUS_SAFE_ACTIONS = {
+    "status", "report", "pending", "pause", "resume", "stop",
+    "save_workflow", "list_workflows", "suggest_workflows",
+}
 
 
 def tier_for(name: str, params: dict | None = None) -> str:

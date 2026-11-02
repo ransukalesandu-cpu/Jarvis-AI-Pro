@@ -5,6 +5,10 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+from agent.integration import AgentService
 
 from agent.models import StepKind, StepState, Task, TaskState, TaskStep
 from agent.workflow_library import WorkflowLibrary
@@ -122,6 +126,46 @@ class WorkflowLibraryTests(unittest.TestCase):
             thread.join()
         self.assertEqual(errors, [])
         self.assertEqual(len(self.library.list()), 32)
+
+
+
+
+class AgentWorkflowIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.service = AgentService.__new__(AgentService)
+        self.service.settings = SimpleNamespace(enabled=True)
+        self.service._sync_capture_access = Mock(return_value=False)
+        self.service._owner_authorized = Mock(return_value=True)
+        self.service.store = Mock()
+        self.service._workflow_library_instance = WorkflowLibrary(
+            Path(self.tmp.name) / "workflows.json"
+        )
+
+    def test_service_saves_only_after_owner_and_privacy_gates(self):
+        task = WorkflowLibraryTests()._completed_task()
+        self.service.store.load.return_value = task
+        saved = self.service.save_workflow(task.id, "Protected workflow")
+        self.assertEqual(saved["name"], "Protected workflow")
+        self.service._owner_authorized.assert_called()
+        self.service._sync_capture_access.assert_called()
+
+    def test_service_refuses_workflow_operations_when_privacy_locked(self):
+        self.service._sync_capture_access.return_value = True
+        with self.assertRaises(PermissionError):
+            self.service.list_workflows()
+
+    def test_reuse_starts_a_fresh_task_instead_of_replaying_steps(self):
+        task = WorkflowLibraryTests()._completed_task()
+        self.service._workflow_library_instance.save(task, "Project checks")
+        self.service.start = Mock(return_value=task)
+        self.service.run_saved_workflow(task.id)
+        self.service.start.assert_called_once_with(
+            task.objective,
+            criteria=task.criteria,
+            source="saved_workflow",
+        )
 
 
 if __name__ == "__main__":

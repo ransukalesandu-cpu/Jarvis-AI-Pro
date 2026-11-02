@@ -198,6 +198,8 @@ class HubVoiceCoreTests(unittest.IsolatedAsyncioTestCase):
                       (live._receive_audio(), live._play_audio(), live._listen_audio())]
 
     async def asyncTearDown(self):
+        from core.tool_runtime import set_device_resolver
+        set_device_resolver(None)          # LiveExtension installs the hub's resolver
         self.live._shutdown_requested = True
         for t in self.tasks:
             t.cancel()

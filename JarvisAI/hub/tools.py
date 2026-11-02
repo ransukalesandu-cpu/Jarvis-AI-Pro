@@ -54,6 +54,26 @@ def register_core_tools(registry: HubToolRegistry) -> None:
     def list_devices(_params, _ctx):
         return hub.registry.describe()
 
+    def notify_device(params, ctx):
+        device = str(ctx.get("device") or params.get("target") or "").strip().lower()
+        text = str(params.get("text") or "").strip()
+        if not text:
+            return "What should I show?"
+        conn = hub.clients.get(device)
+        if conn is None:
+            return f"The {device} has no JARVIS screen open right now."
+        ok = registry.run_on_loop(conn.send({"type": "notify", "text": text,
+                                             "speak": bool(params.get("speak"))}))
+        return f"Shown on the {device}." if ok else f"Could not reach the {device}."
+
+    registry.register({
+        "name": "notify_device",
+        "description": ("Show a message on one device's JARVIS screen (device = tablet, phone...), "
+                        "optionally spoken there with speak=true."),
+        "parameters": {"type": "OBJECT", "properties": {
+            "text": {"type": "STRING"}, "speak": {"type": "BOOLEAN"}}, "required": ["text"]},
+    }, notify_device, ToolMeta(risk="write", timeout=10))
+
     registry.register({
         "name": "list_devices",
         "description": "Which of the owner's devices (laptop, tablet, phone...) are online right now.",

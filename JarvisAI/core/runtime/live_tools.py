@@ -68,7 +68,7 @@ class ToolDispatchMixin:
         meta = self._tool_meta(name)
         risk = meta.risk or infer_risk(name, args)
         call = SimpleNamespace(id=getattr(fc, "id", None), name=name, args=args,
-                               cancel_event=None)
+                               cancel_event=None, device=device)
         timer = action_log.Timer()
         if device_error:
             action_log.record(name, args, device_error, status="error", risk=risk,
@@ -525,6 +525,7 @@ class ToolDispatchMixin:
                     )
                 _ctx = {"player": self.ui, "speak": self.speak,
                         "cancel_event": getattr(fc, "cancel_event", None),
+                        "device": getattr(fc, "device", "laptop"),
                         "dispatch": self._dispatch_tool_sync,
                         "show_image": self._queue_vision,
                         "start_background": self._start_background_sync,

@@ -203,16 +203,51 @@ class LiveExtension:
         self.hub = hub
         self.router = AudioRouter(hub)
         self.live = _build_class()(hub, self.router)
+        # Tools: hub-side actions, hub-native tools, then whatever agents announce.
+        from core.tool_runtime import set_device_resolver
+        from hub.remote_tools import CompositeRegistry, RemoteToolRegistry
+        self.remote = RemoteToolRegistry(hub)
+        self.remote.on_tools_changed = self._tools_changed
+        hub.remote = self.remote
+        self.live._action_registry = CompositeRegistry(
+            [self.live._action_registry, hub.tools, self.remote])
+        set_device_resolver(self._resolve_device)
+        self._reconnect_handle = None
         self.router.on_mic = self.live.feed_mic
         self.router.on_control = self.live.on_client_control
         hub.live = self.live
         hub.router = self.router
         self.task: asyncio.Task | None = None
 
+    def _resolve_device(self, device: str) -> str:
+        if self.hub.registry.get(device) is not None:
+            return ""
+        return (f"I don't know a device called '{device}'. "
+                f"I know: {', '.join(self.hub.registry.names())}.")
+
+    def _tools_changed(self) -> None:
+        """An agent came or went: rebuild the Gemini session's tool list.
+
+        The Live API fixes tools at connect time; session resumption keeps the
+        conversation across the reconnect. Debounced so a burst is one reconnect.
+        """
+        loop = self.hub.loop
+        if loop is None or not loop.is_running() or self.live.session is None:
+            return
+
+        def fire():
+            self._reconnect_handle = None
+            self.live.request_reconnect()
+        if self._reconnect_handle is not None:
+            self._reconnect_handle.cancel()
+        self._reconnect_handle = loop.call_later(1.0, fire)
+
     async def start(self) -> None:
         self.task = asyncio.create_task(self.live.run())
 
     async def stop(self) -> None:
+        from core.tool_runtime import set_device_resolver
+        set_device_resolver(None)
         self.live.request_shutdown()
         if self.task is not None:
             try:

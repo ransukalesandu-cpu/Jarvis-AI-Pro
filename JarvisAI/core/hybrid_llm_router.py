@@ -85,6 +85,7 @@ class HybridLLMRouter:
         self._latency_lock = threading.RLock()
         self._provider_latency_ewma: dict[str, float] = {}
         self._provider_latency_samples: dict[str, int] = {}
+        self._provider_failures: dict[str, int] = {name: 0 for name in _PROVIDER_ORDER}}
 
     def _key(self, provider: str) -> str:
         return self.api_keys.get(provider, "") or os.getenv(_KEY_ENV.get(provider, ""), "").strip()
@@ -143,6 +144,7 @@ class HybridLLMRouter:
         with self._latency_lock:
             rank = {provider: index for index, provider in enumerate(fallbacks)}
             fallbacks.sort(key=lambda provider: (
+                self._provider_failures.get(provider, 0),
                 self._provider_latency_ewma.get(provider) is None,
                 self._provider_latency_ewma.get(provider, float("inf")),
                 rank[provider],
@@ -197,6 +199,8 @@ class HybridLLMRouter:
                 )
                 provider_latency_ms = (time.monotonic() - provider_started) * 1000
                 self._record_provider_latency(provider, provider_latency_ms)
+                with self._latency_lock:
+                    self._provider_failures[provider] = 0
                 result.update({
                     "provider": provider,
                     "provider_latency_ms": round(provider_latency_ms, 2),
@@ -210,6 +214,11 @@ class HybridLLMRouter:
                 )
                 return result
             except Exception as exc:
+                # Demote failed providers on subsequent calls until one succeeds.
+                with self._latency_lock:
+                    self._provider_failures[provider] = (
+                        self._provider_failures.get(provider, 0) + 1
+                    )
                 # Exception text can contain request details; log only the type.
                 failures.append(f"{provider}:{type(exc).__name__}")
                 logger.warning("Provider %s failed (%s); trying configured fallback",

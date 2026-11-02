@@ -660,5 +660,67 @@ class StepAuthorizationRevalidationTests(unittest.TestCase):
         self.assertTrue(any("Owner verification expired" in item for item in task.blockers))
 
 
+
+
+class Part3CRegressionTests(unittest.TestCase):
+    def test_resume_obeys_the_same_queue_limit_as_submit(self):
+        runner, _, _ = make_runner(self, steps=[], config=RunnerConfig(max_queue_size=1))
+        runner.submit("occupy queue")
+        waiting = Task(objective="resume me")
+        runner.store.save(waiting)
+        with self.assertRaisesRegex(RuntimeError, "queue is full"):
+            runner.resume_task(waiting.id, background=True)
+
+    def test_retry_rejects_attempted_side_effect_even_when_step_failed(self):
+        runner, _, _ = make_runner(self, steps=[])
+        step = TaskStep(title="partially changed files", kind=StepKind.RUN_COMMAND)
+        step.mark_running()
+        step.mark(StepState.FAILED, error="command exited after writing")
+        original = Task(objective="modify project")
+        original.set_plan([step])
+        original.transition(TaskState.PLANNING, "queued")
+        original.transition(TaskState.RUNNING, "worker started")
+        original.transition(TaskState.FAILED, "command failed")
+        runner.store.save(original)
+        with self.assertRaisesRegex(ValueError, "side effects"):
+            runner.retry_task(original.id, background=False)
+
+    def test_status_is_not_blocked_by_slow_cloud_persistence(self):
+        runner, _, _ = make_runner(self, steps=[])
+        original_save = runner.store.save
+        entered = threading.Event()
+        release = threading.Event()
+        def slow_save(task):
+            entered.set()
+            release.wait(timeout=2)
+            return original_save(task)
+        with mock.patch.object(runner.store, "save", side_effect=slow_save):
+            thread = threading.Thread(target=lambda: runner.submit("slow cloud write"))
+            thread.start()
+            self.assertTrue(entered.wait(timeout=1))
+            started = time.monotonic()
+            state = runner.status()
+            elapsed = time.monotonic() - started
+            release.set()
+            thread.join(timeout=2)
+        self.assertLess(elapsed, 0.5)
+        self.assertIn("queue_reservations", state)
+
+    def test_cancel_preserves_only_tasks_whose_durable_save_failed(self):
+        runner, _, _ = make_runner(self, steps=[])
+        first = runner.submit("first queued task")
+        second = runner.submit("second queued task")
+        original_save = runner.store.save
+        def flaky_save(task):
+            if task.id == first.id:
+                raise OSError("temporary cloud outage")
+            return original_save(task)
+        with mock.patch.object(runner.store, "save", side_effect=flaky_save):
+            runner.cancel("test cancellation")
+        self.assertIn(first.id, runner.status()["queued"])
+        self.assertNotIn(second.id, runner.status()["queued"])
+        self.assertIs(first.state, TaskState.PLANNING)
+
+
 if __name__ == "__main__":
     unittest.main()

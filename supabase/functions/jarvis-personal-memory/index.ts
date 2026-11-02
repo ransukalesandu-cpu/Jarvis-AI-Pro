@@ -100,7 +100,7 @@ Deno.serve(async (req: Request) => {
     const taskData = body.task_data;
     if (!/^[A-Za-z0-9_-]{1,100}$/.test(taskId) ||
         !taskData || typeof taskData !== "object" || Array.isArray(taskData) ||
-        JSON.stringify(taskData).length > 65_000) {
+        new TextEncoder().encode(JSON.stringify(taskData)).byteLength > 60_000) {
       return jsonResponse({ error: "invalid_task_snapshot" }, 400);
     }
     const state = typeof body.state === "string" ? body.state.slice(0, 40) : "";
@@ -168,7 +168,7 @@ Deno.serve(async (req: Request) => {
     const eventData = body.event_data;
     if (!/^[A-Za-z0-9_-]{1,100}$/.test(taskId) ||
         !eventData || typeof eventData !== "object" || Array.isArray(eventData) ||
-        JSON.stringify(eventData).length > 11_000) {
+        new TextEncoder().encode(JSON.stringify(eventData)).byteLength > 10_000) {
       return jsonResponse({ error: "invalid_task_event" }, 400);
     }
     const response = await adminRequest(baseUrl, serviceKey,

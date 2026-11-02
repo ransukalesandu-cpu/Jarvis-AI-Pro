@@ -283,7 +283,7 @@ def _sculpt(verts: np.ndarray) -> np.ndarray:
 
     # Lower face: widen from the mouth down, so the jaw is square, not a V.
     lower = np.clip((-2.6 - y) / 5.6, 0.0, 1.0) ** 0.9
-    v[:, 0] *= 1.0 + 0.20 * lower
+    v[:, 0] *= 1.0 + 0.28 * lower
     # A defined jaw angle: the gonion goes out and a little down.
     g = _bump(v, 6.3, -5.9, 1.7, 1.5, mirror=True)
     v[:, 0] += side * 0.55 * g
@@ -296,9 +296,11 @@ def _sculpt(verts: np.ndarray) -> np.ndarray:
     # Nose: a straighter, higher bridge, a firmer tip and broader wings.
     v[:, 2] += 0.40 * np.exp(-(x / 0.95) ** 2) * np.exp(-((y - 1.4) / 2.0) ** 2) * front
     v[:, 2] += 0.22 * _bump(v, 0.0, -0.8, 1.0, 0.9)
-    v[:, 0] += side * 0.32 * _bump(v, 1.8, -0.9, 0.9, 0.8, mirror=True)
+    v[:, 0] += side * 0.45 * _bump(v, 1.8, -0.9, 0.9, 0.8, mirror=True)
+    v[:, 1] -= 0.30 * _bump(v, 0.0, -1.0, 1.6, 1.2)            # a longer nose
 
-    # Brow ridge over deeper-set eyes.
+    # Heavy, low brows over deeper-set eyes.
+    v[:, 1] -= 0.35 * np.exp(-((y - 4.8) / 1.2) ** 2) * np.exp(-(x / 5.0) ** 4) * front
     v[:, 2] += 0.60 * np.exp(-((y - 4.5) / 1.0) ** 2) * np.exp(-(x / 4.6) ** 4) * front
     v[:, 2] -= 0.22 * _bump(v, 3.1, 2.6, 1.6, 0.9, mirror=True)
 
@@ -308,7 +310,8 @@ def _sculpt(verts: np.ndarray) -> np.ndarray:
     v[:, 2] += 0.22 * cb * front
     v[:, 2] -= 0.28 * _bump(v, 4.3, -2.8, 1.2, 1.2, mirror=True) * front
 
-    # Fuller lips.
+    # A wide mouth.
+    v[:, 0] *= 1.0 + 0.08 * np.exp(-((y + 4.3) / 1.4) ** 2) * front
     v[:, 2] += 0.24 * np.exp(-(x / 2.2) ** 2) * np.exp(-((y + 4.3) / 1.0) ** 2) * front
     return v
 
@@ -324,7 +327,7 @@ def build_head(sculpt: bool = False) -> dict:
     n_face = len(verts)
     verts, faces = _add_cranium(verts, faces)
     n_head = len(verts)
-    verts, faces, fade = _add_neck(verts, faces, 1.14 if sculpt else 1.0)
+    verts, faces, fade = _add_neck(verts, faces, 1.32 if sculpt else 1.0)
 
     # ── normalise: crown → +1, chin → -1, eyes land on y ≈ 0 ────────────────
     head_y = verts[:n_head, 1]

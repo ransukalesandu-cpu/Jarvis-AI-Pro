@@ -519,9 +519,9 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
         self._avatar = None
         if enable_avatar and HoloAvatar is not None:
             try:
-                # The owner's chosen identity: the half-transparent blue
-                # circuit bust (core/avatar_cyber.py).
-                self._avatar = HoloAvatar(style="cyber")
+                # The owner's chosen identity: the smooth cyan volume
+                # hologram, no wires (core/avatar_volume.py).
+                self._avatar = HoloAvatar(style="volume")
             except TypeError:          # the synthetic fallback has no styles
                 self._avatar = HoloAvatar()
             except Exception:

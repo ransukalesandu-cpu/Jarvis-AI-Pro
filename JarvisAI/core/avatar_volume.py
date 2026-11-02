@@ -31,7 +31,7 @@ def _c(col: QColor, a: float) -> QColor:
 
 
 def grow_tufts(cap_v: np.ndarray, cap_f: np.ndarray, centre: np.ndarray, rng,
-               count: int = 110) -> np.ndarray:
+               count: int = 140) -> np.ndarray:
     """Spiky hair tufts as (T, 5, 3): base-left, base-right, tip, and two
     control points that bow the sides. Roots favour the front and the top."""
     if len(cap_f) == 0:
@@ -43,17 +43,17 @@ def grow_tufts(cap_v: np.ndarray, cap_f: np.ndarray, centre: np.ndarray, rng,
     pick = rng.choice(len(cap_f), size=count, p=weight / weight.sum())
     up = np.array([0.0, 1.0, 0.0], dtype=np.float32)
     tufts = []
-    for f in pick:
+    for f in pick[:count]:
         w = rng.dirichlet((1.0, 1.0, 1.0)).astype(np.float32)
         root = (tri[f] * w[:, None]).sum(0)
         n = root - centre
         n /= np.linalg.norm(n) or 1.0
         x, y, z = (float(c) for c in root)
         across = np.array([1.0 if x > -0.15 else -1.0, 0.0, 0.0], dtype=np.float32)
-        if z > 0.25 and y < 0.80 and rng.random() < 0.45:
+        if z > 0.12 and y < 0.85 and rng.random() < 0.6:
             # A lock falling across the forehead.
             d = across * 0.7 - up * 0.55 + n * 0.25
-            length = 0.13 + 0.08 * rng.random()
+            length = 0.16 + 0.10 * rng.random()
         elif abs(x) > 0.55 and y < 0.55:
             # Short at the sides, swept back.
             d = n * 0.45 - up * 0.5 + np.array([0, 0, -0.6], dtype=np.float32)
@@ -149,21 +149,23 @@ class VolumePainter:
             p.drawPolygon(QPolygonF((QPointF(q[0], q[1]), QPointF(q[2], q[3]), QPointF(q[4], q[5]))))
 
     def tufts(self, p: QPainter, pts: np.ndarray, depth: np.ndarray, normal_z: np.ndarray,
-              hair: QColor, light: QColor) -> None:
-        """Filled, tapered hair spikes, far ones first."""
+              hair: QColor, light: QColor, grey=None) -> None:
+        """Filled, tapered hair spikes, far ones first. `grey` marks the
+        temple tufts, drawn paler (the grey at the sides)."""
         order = np.argsort(depth)
         body = _c(hair, 150)
+        pale = _c(QColor(205, 235, 245), 150)
         edge = QPen(_c(light, 120), 0.8)
         for k in order.tolist():
             if normal_z[k] < -0.15:
                 continue
+            p.setBrush(pale if grey is not None and grey[k] else body)
             (lx, ly), (rx, ry), (tx, ty), (clx, cly), (crx, cry) = pts[k].tolist()
             path = QPainterPath(QPointF(lx, ly))
             path.quadTo(clx, cly, tx, ty)
             path.quadTo(crx, cry, rx, ry)
             path.closeSubpath()
             p.setPen(edge)
-            p.setBrush(body)
             p.drawPath(path)
 
     def compose(self, target: QPainter, rect: QRectF, draw) -> None:
@@ -213,6 +215,31 @@ class VolumePainter:
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(col)
         p.drawPolygon(poly)
+
+    @staticmethod
+    def character(p: QPainter, xs, ys, lm: dict, r: float, col: QColor, stubble_xy) -> None:
+        """The lines that give the face its age and weight: bags under the eyes,
+        folds from the nose to the mouth, and stubble over the jaw."""
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(_c(col, 110), max(1.0, r * 0.006)))
+        for key in ("eye_l", "eye_r"):
+            idx = lm[key]
+            lower = idx[1:8]                         # the lower-lid half of the ring
+            pts = [QPointF(float(xs[i]), float(ys[i]) + r * 0.045) for i in lower]
+            p.drawPolyline(QPolygonF(pts))
+        for alar, corner, side in ((129, 61, -1.0), (358, 291, 1.0)):
+            a = QPointF(float(xs[alar]) + side * r * 0.02, float(ys[alar]))
+            c = QPointF(float(xs[corner]) + side * r * 0.06, float(ys[corner]) + r * 0.02)
+            ctrl = QPointF(a.x() + side * r * 0.07, (a.y() + c.y()) / 2)
+            path = QPainterPath(a)
+            path.quadTo(ctrl, c)
+            p.drawPath(path)
+        if stubble_xy is not None and len(stubble_xy):
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(_c(col, 70))
+            d = max(0.6, r * 0.0045)
+            for x, y in stubble_xy.tolist():
+                p.drawEllipse(QPointF(x, y), d, d)
 
     @staticmethod
     def scanline(p: QPainter, rect: QRectF, t: float, col: QColor) -> None:

@@ -48,7 +48,8 @@ _CYBER_PRIMARY = QColor(30, 150, 255)
 _CYBER_ACCENT = QColor(150, 240, 255)
 _HAIR = QColor(70, 120, 210)          # deeper and denser than the skin glass
 _VOL_HAIR = QColor(20, 150, 200)      # the volume look's hair: deeper cyan
-_BUST_LOOKS = ("cyber", "volume")     # sculpted head on shoulders
+_BUST_LOOKS = ("cyber", "volume")
+_VOL_HEADROOM = 0.30     # sculpted head on shoulders
 _MIN_ALPHA = 0.05
 
 # Resolution of the surface-shading colour ramp. Banding across a filled facet
@@ -165,7 +166,9 @@ class HoloAvatar:
         self._cyber = None
         self._rot = np.eye(3, dtype=np.float32)
         self._vol = None
-        if self.look in _BUST_LOOKS:
+        if self.look == "volume":
+            self.SPAN += _VOL_HEADROOM           # room for the hair above the crown
+        if self.look == "cyber":                 # the volume look has no shoulders
             self.SPAN = mesh["span"][0] - float(self._cyber_parts().bust_v[:, 1].min())
 
         self._lut_cache: list = []
@@ -706,6 +709,8 @@ class HoloAvatar:
         amp = self._glow
         verts, norms = self._pose()
         if self.look == "volume":
+            # Callers place the crown at the top of SPAN; the hair needs room.
+            cy += _VOL_HEADROOM * r
             self._paint_volume(p, cx, cy, r, verts, norms, primary, accent, bg, amp)
             return
         if bust:
@@ -750,6 +755,14 @@ class HoloAvatar:
             self._tufts = grow_tufts(cp.cap_v, cp.cap_f, cp.hair_centre, rng)
             n = self._tufts[:, :2].mean(axis=1) - cp.hair_centre
             self._tuft_n = n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
+            root = self._tufts[:, :2].mean(axis=1)
+            self._tuft_grey = (np.abs(root[:, 0]) > 0.50) & (root[:, 1] < 0.55)
+            # Stubble: fixed points over the jaw, chin and upper lip, off the lips.
+            v0 = self._v0[:self._mesh["n_face"]]
+            lips = set(self._lm["lips_out"].tolist()) | set(self._lm["lips_in"].tolist())
+            zone = np.flatnonzero((v0[:, 1] < -0.45) & (v0[:, 2] > 0.05))
+            zone = np.array([i for i in zone if i not in lips], dtype=np.int64)
+            self._stubble = rng.choice(zone, size=min(220, len(zone)), replace=False)
         vol = self._vol
         rot = self._rot
 
@@ -763,20 +776,17 @@ class HoloAvatar:
         p.drawEllipse(QRectF(cx - ar, cy + r * 0.1 - ar, ar * 2, ar * 2))
 
         xs, ys = self._project(verts, cx, cy, r)
-        bxs, bys = self._project(cp.bust_v, cx, cy, r)
-        bottom = float(bys.max()) + 4.0
-        rect = QRectF(cx - r * 2.1, cy - r * 1.45, r * 4.2, bottom - (cy - r * 1.45))
+        bottom = float(ys.max()) + 4.0
+        rect = QRectF(cx - r * 1.6, cy - r * 1.45, r * 3.2, bottom - (cy - r * 1.45))
 
         def body(bp: QPainter) -> None:
-            zero_b = np.zeros(len(cp.bust_faces), dtype=np.float32)
-            vol.fill(bp, bxs, bys, cp.bust_v, cp.bust_n, cp.bust_faces, zero_b, primary, amp,
-                     fade=cp.bust_fade, cull=False, gain=0.9)
             if cp.ears.size:
                 ev = cp.ears @ rot.T
                 ex, ey = self._project(ev, cx, cy, r)
                 cp.paint_ears(bp, np.stack([ex, ey], axis=-1), primary)
             keep = cp.face_keep
-            vol.fill(bp, xs, ys, verts, norms, self._f[keep], self._fgroup[keep], primary, amp)
+            vol.fill(bp, xs, ys, verts, norms, self._f[keep], self._fgroup[keep], primary, amp,
+                     fade=self._fade)
             if len(cp.cap_f):
                 cv = cp.cap_v @ rot.T
                 gx, gy = self._project(cv, cx, cy, r)
@@ -789,7 +799,7 @@ class HoloAvatar:
                 tx, ty = self._project(tv, cx, cy, r)
                 tn = self._tuft_n @ rot.T
                 vol.tufts(bp, np.stack([tx, ty], axis=-1), tv[:, 2, 2], tn[:, 2],
-                          _VOL_HAIR, primary.lighter(150))
+                          _VOL_HAIR, primary.lighter(150), self._tuft_grey)
 
         vol.compose(p, rect, body)
         vol.scanline(p, rect, self._t, primary.lighter(140))
@@ -797,9 +807,13 @@ class HoloAvatar:
         self._paint_features(p, cx, cy, xs, ys, norms, r, primary, accent, bg, amp)
         face = max(0.0, math.cos(self._yaw) * math.cos(self._pitch)) ** 2
         if face > 0.02:
-            brow_col = _c(primary.lighter(160), 215 * face)
+            brow_col = _c(primary.lighter(125), 165 * face)
             for key in ("brow_l", "brow_r"):
-                vol.brow(p, xs, ys, self._lm[key], r * 0.055, brow_col)
+                vol.brow(p, xs, ys, self._lm[key], r * 0.075, brow_col)
+            st = self._stubble
+            vis = st[norms[st, 2] > 0.1]
+            vol.character(p, xs, ys, self._lm, r, primary.lighter(170),
+                          np.stack([xs[vis], ys[vis]], axis=1))
 
     def _paint_cyber(self, p: QPainter, cx: float, cy: float, r: float, verts, norms,
                      primary: QColor, accent: QColor, bg: QColor, amp: float) -> None:

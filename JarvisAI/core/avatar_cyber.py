@@ -161,13 +161,13 @@ def _ears(v: np.ndarray, n_head: int) -> np.ndarray:
     out = []
     for side in (-1.0, 1.0):
         curves = []
-        for scale, depth in ((1.0, 0.035), (0.58, 0.015)):
+        for scale, depth in ((1.25, 0.035), (0.72, 0.015)):
             # A "C" that is wider at the top than at the lobe.
             yy = 0.035 + scale * (0.17 * np.sin(t) * np.where(np.sin(t) > 0, 1.0, 1.15))
             zz = -0.36 + scale * 0.085 * np.cos(t) * (1.0 + 0.25 * np.sin(t))
             zz -= 0.10 * (yy - 0.035)                    # lean back
             # The rim stands off the skull, most at the back and the top.
-            xx = side * (half_w * 0.95 + depth + 0.055 * (1 - np.cos(t)) + 0.03 * np.clip(np.sin(t), 0, 1))
+            xx = side * (half_w * 0.95 + depth + 0.085 * (1 - np.cos(t)) + 0.03 * np.clip(np.sin(t), 0, 1))
             curves.append(np.stack([xx, yy, zz], axis=1))
         out.append(curves)
     return np.array(out, dtype=np.float32)

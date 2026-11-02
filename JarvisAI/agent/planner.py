@@ -268,15 +268,15 @@ class TaskPlanner:
         # Deterministic browser intents keep basic public-web reading available
         # even when no planning provider/API key is configured.
         search_match = re.search(
-            r"\\bsearch (?:the )?(?:web|internet) for\\s+(.+)$",
+            r"\bsearch (?:the )?(?:web|internet) for\s+(.+)$",
             str(objective or "").strip(), re.IGNORECASE,
         )
         navigate_match = re.search(
-            r"\\b(?:open|visit|go to|navigate to)\\s+(https?://\\S+)",
+            r"\b(?:open|visit|go to|navigate to)\s+(https?://\S+)",
             str(objective or "").strip(), re.IGNORECASE,
         )
         follow_match = re.search(
-            r"\\bfollow (?:the )?link(?: named)?\\s+(.+)$",
+            r"\bfollow (?:the )?link(?: named)?\s+(.+)$",
             str(objective or "").strip(), re.IGNORECASE,
         )
         if search_match:
@@ -297,7 +297,7 @@ class TaskPlanner:
                 kind=StepKind.BROWSER_FOLLOW_LINK,
                 target=follow_match.group(1).strip()[:120],
             ))
-        elif re.search(r"\\b(read|summari[sz]e) (?:the )?(?:current )?page\\b",
+        elif re.search(r"\b(read|summari[sz]e) (?:the )?(?:current )?page\\b",
                        str(objective or ""), re.IGNORECASE):
             steps.append(TaskStep(
                 title="Read the current browser page",

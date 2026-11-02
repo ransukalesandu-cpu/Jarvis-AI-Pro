@@ -61,15 +61,18 @@ class WorkflowLibraryTests(unittest.TestCase):
         self.assertNotIn("C:\\Users\\Acer", str(payload))
         self.assertTrue(saved["requires_fresh_plan"])
 
+    @patch("agent.workflow_library.get_cloud_agent_workflow")
     @patch("agent.workflow_library.list_cloud_agent_workflows")
-    def test_suggestions_and_fresh_plan_are_cloud_backed(self, list_cloud):
-        list_cloud.return_value = [{
+    def test_suggestions_and_fresh_plan_are_cloud_backed(self, list_cloud, get_cloud):
+        record = {
             "workflow_id": "task-1", "name": "Project checks",
             "objective": "inspect project and run tests",
             "criteria": ["tests pass"],
             "steps": [{"title": "Run tests", "kind": "run_tests"}],
             "updated_at": "2026-11-02T00:00:00Z",
-        }]
+        }
+        list_cloud.return_value = [record]
+        get_cloud.return_value = record
         self.assertEqual(len(self.library.suggest("inspect project tests")), 1)
         request = self.library.build_fresh_request("task-1")
         self.assertEqual(request["objective"], "inspect project and run tests")

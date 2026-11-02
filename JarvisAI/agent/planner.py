@@ -265,6 +265,54 @@ class TaskPlanner:
         steps: list[TaskStep] = []
         warnings: list[str] = []
 
+        # Deterministic browser intents keep basic public-web reading available
+        # even when no planning provider/API key is configured.
+        search_match = re.search(
+            r"\\bsearch (?:the )?(?:web|internet) for\\s+(.+)$",
+            str(objective or "").strip(), re.IGNORECASE,
+        )
+        navigate_match = re.search(
+            r"\\b(?:open|visit|go to|navigate to)\\s+(https?://\\S+)",
+            str(objective or "").strip(), re.IGNORECASE,
+        )
+        follow_match = re.search(
+            r"\\bfollow (?:the )?link(?: named)?\\s+(.+)$",
+            str(objective or "").strip(), re.IGNORECASE,
+        )
+        if search_match:
+            steps.append(TaskStep(
+                title="Search the public web",
+                kind=StepKind.BROWSER_SEARCH,
+                detail=search_match.group(1).strip()[:500],
+            ))
+        elif navigate_match:
+            steps.append(TaskStep(
+                title="Open the public web page",
+                kind=StepKind.BROWSER_NAVIGATE,
+                detail=navigate_match.group(1).strip()[:800],
+            ))
+        elif follow_match:
+            steps.append(TaskStep(
+                title="Follow the named page link",
+                kind=StepKind.BROWSER_FOLLOW_LINK,
+                target=follow_match.group(1).strip()[:120],
+            ))
+        elif re.search(r"\\b(read|summari[sz]e) (?:the )?(?:current )?page\\b",
+                       str(objective or ""), re.IGNORECASE):
+            steps.append(TaskStep(
+                title="Read the current browser page",
+                kind=StepKind.BROWSER_READ,
+                detail="Read the visible text from the current browser page.",
+            ))
+        if steps:
+            return Plan(
+                steps=steps,
+                criteria=criteria,
+                source="heuristic",
+                rationale="Used a deterministic, read-only browser action.",
+                warnings=warnings,
+            )
+
         python = _python_executable()
         steps.append(TaskStep(
             title="Inspect the working tree and recent history",

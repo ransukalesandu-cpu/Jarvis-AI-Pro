@@ -6,9 +6,12 @@ than silently falling back to disk.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from agent.models import Task, TaskReport
+logger = logging.getLogger("Jarvis.CloudTaskStore")
+
 from core.personal_cloud_memory import (
     append_cloud_agent_event,
     delete_cloud_agent_task,
@@ -38,7 +41,12 @@ class CloudTaskStore:
         delete_cloud_agent_task(str(task_id))
 
     def append_event(self, task_id: str, event: dict[str, Any]) -> None:
-        append_cloud_agent_event(str(task_id), event)
+        try:
+            append_cloud_agent_event(str(task_id), event)
+        except Exception as exc:
+            # Event journaling is best-effort, matching the legacy store. The
+            # authoritative task snapshot still must succeed before progress.
+            logger.warning("Cloud task event was not persisted (%s)", type(exc).__name__)
 
     def read_events(self, task_id: str, limit: int = 200) -> list[dict[str, Any]]:
         rows = list_cloud_agent_events(str(task_id), limit)

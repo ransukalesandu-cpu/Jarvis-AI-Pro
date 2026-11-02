@@ -95,6 +95,12 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
     rather than reading an English string verbatim."""
     global _pending
 
+    # Full Access (core/full_access.py): no confirmation questions — run it now.
+    from core.full_access import full_access_enabled
+    if full_access_enabled():
+        _log(f"SYS: Full Access — running without confirmation: {title}")
+        return run()
+
     if _show_cb is None:
         # No interface bound (headless, or a very early call). Refuse rather
         # than silently performing something irreversible.

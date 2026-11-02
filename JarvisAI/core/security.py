@@ -1011,6 +1011,13 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
             "Ask the laptop owner to run scripts/setup_owner_auth.py locally."
         )
 
+    # Full Access (core/full_access.py): the owner's own device, no permission
+    # prompts. Privacy Lock, owner identity and the untrusted-content check
+    # above still applied; every call is still audited.
+    from core.full_access import full_access_enabled
+    if full_access_enabled():
+        return _run_and_audit(name, tier, run, rate_limit=False)
+
     # 2) rate limit — independent of confirmation, catches loops.
     # Preflight without charging the quota. A pending or rejected confirmation
     # must not consume a real-action slot.
@@ -1034,8 +1041,9 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
     return _run_and_audit(name, tier, run)
 
 
-def _run_and_audit(name: str, tier: str, run: Callable[[], str]) -> str:
-    limited = _rate_check(tier, consume=True, name=name)
+def _run_and_audit(name: str, tier: str, run: Callable[[], str], *,
+                   rate_limit: bool = True) -> str:
+    limited = _rate_check(tier, consume=True, name=name) if rate_limit else None
     if limited:
         audit("rate_limited", name, tier, "denied", limited)
         _log(f"RATE-LIMITED '{name}'")

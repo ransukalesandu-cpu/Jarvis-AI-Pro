@@ -8,6 +8,7 @@ session object, so every attribute they use is set up in ``JarvisLive.__init__``
 
 import asyncio
 import json
+import threading
 import traceback
 from collections import deque
 from types import SimpleNamespace
@@ -87,18 +88,12 @@ class ToolDispatchMixin:
             except RuntimeError:       # driven by hand (unit tests): no timer available
                 has_loop = False
             if has_loop:
-                response = await asyncio.wait_for(self._execute_tool_impl(call),
-                                                  timeout=meta.timeout)
+                response, status = await self._run_cancellable(call, meta)
             else:
                 response = await self._execute_tool_impl(call)
+                status = ""
             result = (getattr(response, "response", None) or {}).get("result", "")
-            status = result_status(result)
-        except asyncio.TimeoutError:
-            result = timeout_message(name, meta.timeout)
-            status = "timeout"
-            response = types.FunctionResponse(id=call.id, name=name, response={"result": result})
-            if not self.ui.muted:
-                self.ui.set_state("LISTENING")
+            status = status or result_status(result)
         except asyncio.CancelledError:
             action_log.record(name, args, "Cancelled.", status="cancelled", risk=risk,
                               device=device, duration_ms=timer.ms)
@@ -109,6 +104,56 @@ class ToolDispatchMixin:
         calls.append({"tool": name, "args": dict(args), "status": status, "risk": risk})
         del calls[:-200]
         return response
+
+    async def _run_cancellable(self, call, meta: ToolMeta):
+        """Run one call; return early on timeout or when the stop word fires.
+
+        Returns (FunctionResponse, status). Gemini always gets a response, even
+        when the tool is stopped, so the conversation never hangs on a call.
+        """
+        cancel = threading.Event()        # seen by the tool's worker thread
+        stopped = asyncio.Event()         # seen by this coroutine
+        call.cancel_event = cancel
+        token = (cancel, stopped)
+        active = self.__dict__.setdefault("_active_tool_cancels", set())
+        active.add(token)
+        work = asyncio.ensure_future(self._execute_tool_impl(call))
+        stop_wait = asyncio.ensure_future(stopped.wait())
+        try:
+            done, _ = await asyncio.wait({work, stop_wait}, timeout=meta.timeout,
+                                         return_when=asyncio.FIRST_COMPLETED)
+            if work in done:
+                return work.result(), ""
+            if stopped.is_set():
+                try:
+                    # A cooperative tool (run_command, file search, UI loop)
+                    # notices cancel_event within a fraction of a second.
+                    return await asyncio.wait_for(asyncio.shield(work), 1.0), "cancelled"
+                except asyncio.TimeoutError:
+                    work.cancel()
+                    result = "Stopped on the owner's request."
+                    status = "cancelled"
+            else:
+                cancel.set()
+                work.cancel()
+                result = timeout_message(call.name, meta.timeout)
+                status = "timeout"
+            if not self.ui.muted:
+                self.ui.set_state("LISTENING")
+            return (types.FunctionResponse(id=call.id, name=call.name,
+                                           response={"result": result}), status)
+        finally:
+            stop_wait.cancel()
+            active.discard(token)
+
+    def _stop_everything(self) -> tuple[int, int]:
+        """Cancel running tool calls and background jobs. Returns (calls, jobs)."""
+        active = list(self.__dict__.get("_active_tool_cancels", ()))
+        for cancel, stopped in active:
+            cancel.set()
+            stopped.set()
+        jobs_cancelled = self._job_manager().cancel_all()
+        return len(active), jobs_cancelled
 
     def _queue_vision(self, data: bytes, mime: str, question: str, source: str) -> None:
         """Show a captured frame to the model right after the current tool result."""

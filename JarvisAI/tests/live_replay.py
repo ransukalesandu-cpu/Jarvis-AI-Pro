@@ -48,6 +48,8 @@ class Step:
     # Local action to run at this point instead of (or before) the event,
     # for example a false local barge-in: ``action="local_interrupt"``.
     action: str = ""
+    # A Gemini function call in this event: {"name": ..., "args": {...}}.
+    tool_call: dict | None = None
 
 
 def steps_from_fixture(name: str) -> list[Step]:
@@ -82,8 +84,16 @@ def _event(step: Step, marker: int):
         turn_complete=step.turn_complete,
         generation_complete=step.generation_complete,
     )
-    return SimpleNamespace(server_content=sc, tool_call=None, session_resumption_update=None,
-                           data=None)
+    tool_call = None
+    if step.tool_call:
+        tool_call = SimpleNamespace(function_calls=[SimpleNamespace(
+            id=f"call-{marker}", name=step.tool_call["name"],
+            args=dict(step.tool_call.get("args") or {}))])
+    if not (step.audio_ms or step.output_text or step.input_text or step.interrupted
+            or step.turn_complete or step.generation_complete):
+        sc = None
+    return SimpleNamespace(server_content=sc, tool_call=tool_call,
+                           session_resumption_update=None, data=None)
 
 
 class FakeSession:
@@ -118,6 +128,8 @@ class FakeSession:
                 marker += 1
             if step.interrupted:
                 self.marks.setdefault("server_interrupted", time.monotonic())
+            if step.input_text:
+                self.marks.setdefault(f"input:{step.input_text}", time.monotonic())
             yield _event(step, marker)
         self.done.set()
         # Keep the receiver parked like a live socket with no traffic.
@@ -127,6 +139,7 @@ class FakeSession:
         self.sent.append({"client_content": kwargs})
 
     async def send_tool_response(self, **kwargs):
+        self.marks.setdefault("tool_response", time.monotonic())
         self.sent.append({"tool_response": kwargs})
 
     async def send_realtime_input(self, **kwargs):
@@ -251,6 +264,7 @@ class ReplayResult:
     marks: dict[str, float] = field(default_factory=dict)
     max_write_gap_ms: float = 0.0
     elapsed: float = 0.0
+    sent: list = field(default_factory=list)
 
 
 async def run_scenario(steps: list[Step], *, settle: float = 0.6,
@@ -322,6 +336,7 @@ async def run_scenario(steps: list[Step], *, settle: float = 0.6,
         marks=dict(session.marks),
         max_write_gap_ms=max(gaps) if gaps else 0.0,
         elapsed=time.monotonic() - started,
+        sent=list(session.sent),
     )
 
 

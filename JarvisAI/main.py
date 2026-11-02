@@ -52,6 +52,8 @@ from core.audio_callback_guard import enqueue_audio_frame, guarded_audio_callbac
 from core.playback_interrupt import interrupt_playback
 from core.barge_in import CONFIRM_WINDOW_SECONDS, HeldAudio
 from core.tool_runtime import with_device_parameter
+from core.full_access import session_rules_prompt
+from core.stop_word import is_stop_command
 from core.voice_ui_control import has_wake_name_prefix, parse_voice_ui_command
 from core.audio_capture import (
     open_input_stream_with_fallback,
@@ -869,6 +871,14 @@ class JarvisLive(
             logger=lambda msg: print(f"[Plugins] {msg}"),
             notify=lambda msg: self.ui.write_log(f"SYS: {msg}"),
         )
+        # Status line for Full Access (core/full_access.py); the setting itself
+        # lives in memory/config_manager.get_full_access.
+        from core.full_access import full_access_enabled
+        if full_access_enabled():
+            self.ui.write_log(
+                "SYS: Full Access is ON — tools run without confirmation; every call is "
+                "logged. Say 'Jarvis, stop' to cancel."
+            )
         self.ui.get_plugins = self._plugin_registry.list_for_ui
         self.ui.get_plugin_settings = self._plugin_registry.settings_schemas  # ⚙ settings tab
         self.ui.request_say = self.plugin_say   # plugins: mid-task speech channel
@@ -1381,6 +1391,22 @@ class JarvisLive(
             self._turn_done_event.set()
         self.ui.write_log("SYS: Interrupted — listening...")
 
+    def _handle_stop_word(self) -> None:
+        """"Jarvis, stop": cancel tools and jobs, stop speaking, listen again."""
+        calls, jobs_cancelled = self._stop_everything()
+        self._interrupt_on_loop()                 # explicit stop: discard queued speech
+        self._stop_word_turn = True               # drop the model's reply to "stop"
+        detail = f"cancelled {calls} running tool call(s) and {jobs_cancelled} background job(s)"
+        print(f"[JARVIS] 🛑 Stop word — {detail}.")
+        self.ui.write_log(f"SYS: Stopped — {detail}. Listening.")
+        try:
+            from core import action_log
+            action_log.record("stop_word", {}, detail, status="ok", risk="read")
+        except Exception:
+            failsoft.suppress("main:JarvisLive._handle_stop_word")
+        if not self.ui.muted:
+            self.ui.set_state("LISTENING")
+
     def _held_audio_state(self) -> HeldAudio:
         """Held-audio state, created on first use (tests build hosts via __new__)."""
         held = self.__dict__.get("_held_audio")
@@ -1540,6 +1566,8 @@ class JarvisLive(
             parts.append(mem_str)
         parts.append(redact_sensitive_content(voice_personality_prompt(memory if memory_access else {})))
         parts.append(sys_prompt)
+        # Owner-vs-content rule and, when on, Full Access (core/full_access.py).
+        parts.append(session_rules_prompt())
         parts.append(build_brain_protocol())
         if self._live_switch_context:
             parts.append(
@@ -2020,6 +2048,58 @@ class JarvisLive(
             self._vision_busy = False
         return True
 
+    async def _answer_tool_calls(self, function_calls, *, voice_confirmation_consumed: bool,
+                                 voice_ui_action_consumed: bool,
+                                 holo_open_request_pending: bool) -> None:
+        """Run one tool_call batch and send its responses (own task; see _receive_audio)."""
+        try:
+            fn_responses = []
+            for fc in function_calls:
+                print(f"[JARVIS] 📞 {fc.name}")
+                if self.__dict__.get("_stop_word_turn"):
+                    fr = types.FunctionResponse(
+                        id=fc.id, name=fc.name,
+                        response={"result": (
+                            "The owner said stop. Do nothing and say nothing about it."
+                        )},
+                    )
+                elif voice_confirmation_consumed:
+                    fr = types.FunctionResponse(
+                        id=fc.id, name=fc.name,
+                        response={"result": (
+                            "The user's voice confirmation was handled locally. "
+                            "Do not repeat or initiate an action for that phrase."
+                        )},
+                    )
+                elif voice_ui_action_consumed:
+                    fr = types.FunctionResponse(
+                        id=fc.id, name=fc.name,
+                        response={"result": (
+                            "The user's visible UI command was routed locally. "
+                            "Do not perform a second action for that input."
+                        )},
+                    )
+                elif holo_open_request_pending:
+                    fr = types.FunctionResponse(
+                        id=fc.id, name=fc.name,
+                        response={"result": (
+                            "The news page was opened locally in the native Holo display. "
+                            "Do not open an external browser or repeat the action."
+                        )},
+                    )
+                else:
+                    fr = await self._execute_tool(fc)
+                fn_responses.append(fr)
+            if self.session is None:
+                return
+            await self.session.send_tool_response(function_responses=fn_responses)
+            await self._flush_pending_vision()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            print(f"[JARVIS] ❌ Tool batch failed: {type(exc).__name__}: {exc}")
+            traceback.print_exc()
+
     async def _receive_audio(self):
         print("[JARVIS] 👂 Recv started")
         print("[AudioTrace 3/LIVE] Receiver running; waiting for Gemini Live events.")
@@ -2097,9 +2177,9 @@ class JarvisLive(
                             held_pcm = _take_playback_pcm(audio_fragment_buffer)
                             for _i in range(0, len(held_pcm), _PLAYBACK_SLICE_BYTES):
                                 self._held_audio_state().hold(held_pcm[_i : _i + _PLAYBACK_SLICE_BYTES])
-                        elif self._interrupted:
+                        elif self._interrupted or self.__dict__.get("_stop_word_turn"):
                             # Never let a fragment from a cancelled assistant turn
-                            # leak into the next user's response.
+                            # leak into the next user's response (or reply to a stop).
                             audio_fragment_buffer.clear()
                         else:
                             receive_diagnostics.record_output_audio_bytes(event_bytes)
@@ -2219,6 +2299,22 @@ class JarvisLive(
                                 if self._interrupted:
                                     self._interrupted = False
                                     out_buf = []
+                                # "Jarvis, stop" is handled here, locally, never by the
+                                # model — so it works mid-tool-call (core/stop_word.py).
+                                # Check the newest chunk with up to two before it: a stop
+                                # said during a tool call follows the unfinished request.
+                                stop_name = getattr(self, "_asst_name", "")
+                                if (not voice_ui_action_consumed and any(
+                                        is_stop_command(" ".join([*in_buf[-k:], txt]) if k else txt,
+                                                        stop_name)
+                                        for k in (0, 1, 2))):
+                                    self._handle_stop_word()
+                                    voice_ui_action_consumed = True
+                                    in_buf.clear()
+                                    out_buf = []
+                                    self._inflight_user_text = ""
+                                    self._inflight_user_tool_started = False
+                                    continue
                                 # A confirmed user transcript means the cancelled
                                 # output can no longer own the shared turn state.
                                 # Preserve this transcript through a late
@@ -2315,7 +2411,7 @@ class JarvisLive(
                                     audio_fragment_buffer, final=True
                                 ))
                                 self._held_audio_state().mark_turn_complete()
-                            elif not self._interrupted:
+                            elif not self._interrupted and not self.__dict__.get("_stop_word_turn"):
                                 final_pcm = _take_playback_pcm(
                                     audio_fragment_buffer, final=True
                                 )
@@ -2359,6 +2455,8 @@ class JarvisLive(
                                 for event in self._vocal_plan.after:
                                     self._enqueue_vocal_event(event)
                             self._assistant_turn_pending = False
+                            # The reply to a stop word is over; speak normally again.
+                            self._stop_word_turn = False
                             with self._voice_id_audio_lock:
                                 self._voice_id_audio_turn_active = False
                             if self._turn_done_event:
@@ -2472,41 +2570,19 @@ class JarvisLive(
                     if response.tool_call:
                         if self._inflight_user_text:
                             self._inflight_user_tool_started = True
-                        fn_responses = []
-                        for fc in response.tool_call.function_calls:
-                            print(f"[JARVIS] 📞 {fc.name}")
-                            if voice_confirmation_consumed:
-                                fr = types.FunctionResponse(
-                                    id=fc.id, name=fc.name,
-                                    response={"result": (
-                                        "The user's voice confirmation was handled locally. "
-                                        "Do not repeat or initiate an action for that phrase."
-                                    )},
-                                )
-                            elif voice_ui_action_consumed:
-                                fr = types.FunctionResponse(
-                                    id=fc.id, name=fc.name,
-                                    response={"result": (
-                                        "The user's visible UI command was routed locally. "
-                                        "Do not perform a second action for that input."
-                                    )},
-                                )
-                            elif holo_open_request_pending:
-                                fr = types.FunctionResponse(
-                                    id=fc.id, name=fc.name,
-                                    response={"result": (
-                                        "The news page was opened locally in the native Holo display. "
-                                        "Do not open an external browser or repeat the action."
-                                    )},
-                                )
-                            else:
-                                fr = await self._execute_tool(fc)
-                            fn_responses.append(fr)
-                        await self.session.send_tool_response(
-                            function_responses=fn_responses
-                        )
+                        # Tools run in their own task so this loop keeps reading
+                        # the owner's speech meanwhile — that is what lets
+                        # "Jarvis, stop" cancel a long tool call.
+                        task = asyncio.create_task(self._answer_tool_calls(
+                            list(response.tool_call.function_calls),
+                            voice_confirmation_consumed=voice_confirmation_consumed,
+                            voice_ui_action_consumed=voice_ui_action_consumed,
+                            holo_open_request_pending=holo_open_request_pending,
+                        ))
+                        tool_tasks = self.__dict__.setdefault("_tool_call_tasks", set())
+                        tool_tasks.add(task)
+                        task.add_done_callback(tool_tasks.discard)
                         holo_open_request_pending = False
-                        await self._flush_pending_vision()
 
                     # Keep the local-only suppression through any tool call
                     # emitted for the confirmation utterance; clear it only

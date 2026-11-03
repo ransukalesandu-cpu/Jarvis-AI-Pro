@@ -23,6 +23,7 @@ else:
     _WIN_HIDE: dict = {}
 
 from PyQt6.QtCore import (
+    QPointF,
     QEvent, QEasingCurve, QLineF, QPropertyAnimation, QRectF, Qt, QTimer, QUrl, pyqtSignal,
 )
 from PyQt6.QtGui import (
@@ -174,6 +175,7 @@ class _HoverMenuButton(QToolButton):
 from core.ui_tokens import BASE_COLORS as _TOK  # noqa: E402  (the one theme)
 from core import ui_state as _ui_state  # noqa: E402  (state bus + shared clock)
 from core.ui_state import bus as _ui_bus  # noqa: E402
+from ui.hologram.stage import HologramStage  # noqa: E402
 
 
 class C:
@@ -613,6 +615,8 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
         self._vis_i = None        # first schedule frame not yet handed to the mouth
         self._base_scale = 1.0    # slow "breathing" target; amp is added per-frame
         self._base_halo  = 55.0
+
+        self._stage = None        # heart, orb and energy wires (face mode)
 
         self._tmr = QTimer(self)
         self._tmr.timeout.connect(self._step)
@@ -1304,8 +1308,12 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
         if self._avatar is not None and self.hud_style == "face":
             _band_t = 12.0
             _band_h = max(60.0, _sy_status - 12.0 - _band_t)
-            _r_head = min(fw * 0.355, _band_h / (self._avatar.SPAN + 0.08))
-            _head_cy = _band_t + (_band_h - self._avatar.SPAN * _r_head) / 2.0 + _r_head
+            # The stage shares the band: the face keeps the top, the orb sits
+            # under it and the heart low on the left (ui/hologram/stage.py).
+            _face_h, _orb, _orb_r, _heart, _heart_r = HologramStage.geometry(
+                W, H, _band_t, _band_h, cx)
+            _r_head = min(fw * 0.355, _face_h / (self._avatar.SPAN + 0.08))
+            _head_cy = _band_t + (_face_h - self._avatar.SPAN * _r_head) / 2.0 + _r_head
 
             if self.muted:
                 _main = _acc = qcol(C.MUTED_C)
@@ -1319,6 +1327,13 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
                     _acc = qcol(C.GREEN)
                 else:
                     _acc = qcol(C.PRI)
+            _neck = QPointF(cx, _head_cy - _r_head + self._avatar.SPAN * _r_head * 0.97)
+            if self._stage is None:
+                self._stage = HologramStage()
+            self._stage.paint(p, neck=_neck, orb=_orb, orb_r=_orb_r, heart=_heart,
+                              heart_r=_heart_r, t=_ui_state.clock().now,
+                              level=float(_ui_bus().get(_ui_state.AUDIO_LEVEL, 0.0) or 0.0),
+                              state="MUTED" if self.muted else self.state)
             self._avatar.paint(p, cx, _head_cy, _r_head, _main, _acc, qcol(C.BG))
 
         elif self.hud_style in ("neural", "neural_orb"):
@@ -1372,12 +1387,15 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
                            QLineF(_x, _y, _x, _y + _sy * _a)))
         p.setPen(QPen(qcol(C.BORDER_A), 1.0))
         p.drawLines(_lines)
+        _clean = self.hud_style == "face"     # the stage needs the room: no labels/ticks
         p.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
         p.setPen(QPen(qcol(C.TEXT_DIM), 1.0))
-        p.drawText(QRectF(_m + 4, _m - 2, 148, 12),
-                   Qt.AlignmentFlag.AlignLeft, "OPTIC ARRAY  //  01")
-        p.drawText(QRectF(W - _m - 152, _m - 2, 148, 12),
-                   Qt.AlignmentFlag.AlignRight, "SENSOR MATRIX  //  LIVE")
+        if not _clean:
+            p.drawText(QRectF(_m + 4, _m - 2, 148, 12),
+                       Qt.AlignmentFlag.AlignLeft, "OPTIC ARRAY  //  01")
+        if not _clean:
+            p.drawText(QRectF(W - _m - 152, _m - 2, 148, 12),
+                       Qt.AlignmentFlag.AlignRight, "SENSOR MATRIX  //  LIVE")
         _ticks = []
         for _i in range(1, 8):
             _ty = _m + (H - 2 * _m) * _i / 8
@@ -1385,7 +1403,8 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
             _ticks.extend((QLineF(_m, _ty, _m + _length, _ty),
                            QLineF(W - _m - _length, _ty, W - _m, _ty)))
         p.setPen(QPen(qcol(C.BORDER), 1.0))
-        p.drawLines(_ticks)
+        if not _clean:
+            p.drawLines(_ticks)
 
         # Privacy Lock overlay is driven by the existing shared AuthManager.
         # Do not create a second security state machine in the UI.

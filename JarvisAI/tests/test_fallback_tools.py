@@ -159,10 +159,10 @@ class LoopTests(unittest.TestCase):
         loop = [_resp([_block("tool_use", id=f"t{i}", name="web_search", input={})], "tool_use")
                 for i in range(3)]
         fake = FakeClaude(loop)
-        out = answer_with_tools("write a python function to parse csv", "", box,
-                                client_factory=lambda t: fake, max_steps=3)
+        with self.assertRaises(RuntimeError):
+            answer_with_tools("write a python function to parse csv", "", box,
+                              client_factory=lambda t: fake, max_steps=3)
         self.assertEqual(fake.requests[0]["model"], "claude-sonnet-5-5")
-        self.assertIn("couldn't finish", out["text"])
         self.assertEqual(len(fake.requests), 3)
 
     def test_rules_text(self):
@@ -242,6 +242,20 @@ class FallbackIntegrationTests(unittest.TestCase):
                 tool_client_factory=broken)
         self.assertEqual(result["text"], "text-only answer")
         self.assertIn("no live tools", self.Router.made[0])          # the old honesty rule
+
+    def test_step_limit_falls_back_to_text_only(self):
+        from core.provider_fallback import query_text_fallback
+        box, _, _ = _toolbox()
+        loop = [_resp([_block("tool_use", id=f"t{i}", name="web_search", input={})], "tool_use")
+                for i in range(4)]
+        fake = FakeClaude(loop)
+        with mock.patch("core.fallback_tools.get_provider_api_key", return_value="sk-x"), \
+                mock.patch("builtins.print"):
+            result, _ = query_text_fallback(
+                "hi", config_path=self._config({"anthropic_api_key": "sk-x"}),
+                base_system_prompt="s", router_factory=self.Router, toolbox=box,
+                tool_client_factory=lambda t: fake)
+        self.assertEqual(result["text"], "text-only answer")
 
     def test_without_toolbox_or_key_nothing_changes(self):
         from core.provider_fallback import query_text_fallback

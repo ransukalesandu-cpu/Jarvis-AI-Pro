@@ -168,8 +168,8 @@ def answer_with_tools(prompt: str, system_prompt: str, toolbox: FallbackToolbox,
     """Answer with Claude, letting it call the allow-listed tools.
 
     Returns {"text", "model", "provider": "claude", "tools_ran": [...]}.
-    Raises when Claude cannot be reached, so the caller can fall back to the
-    plain text route. ``api_key`` is the key the caller selected from its
+    Raises when Claude cannot be reached or does not finish within
+    ``max_steps``, so the caller can fall back to the plain text route. ``api_key`` is the key the caller selected from its
     config; without it the shared provider settings are used.
     """
     from core.claude_usage import record_call
@@ -215,5 +215,5 @@ def answer_with_tools(prompt: str, system_prompt: str, toolbox: FallbackToolbox,
             results.append({"type": "tool_result", "tool_use_id": block.id,
                             "content": output[:8000]})
         messages.append({"role": "user", "content": results})
-    return {"text": "I couldn't finish that with the tools I have while voice is offline.",
-            "model": model, "provider": "claude", "tools_ran": list(toolbox.ran)}
+    # Out of steps: let the caller's text-only route answer instead.
+    raise RuntimeError("Claude did not finish within the tool step limit.")

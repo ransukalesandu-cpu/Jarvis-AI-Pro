@@ -158,6 +158,8 @@ def cut_background(rgba: np.ndarray) -> np.ndarray:
 
 
 class ImageHologram:
+    bloom = True          # glow pass and effects; the lite performance tier turns them off
+
     def __init__(self, path: Path):
         img = QImage(str(path))
         if img.isNull():
@@ -562,6 +564,9 @@ class ImageHologram:
         bx = target_rect.width() / img.width()
         by = target_rect.height() / img.height()
         p.drawImage(target_rect, img)
+        if not self.bloom:                      # the lite performance tier
+            p.restore()
+            return
         bloom = img.scaled(max(2, img.width() // 6), max(2, img.height() // 6),
                            Qt.AspectRatioMode.IgnoreAspectRatio,
                            Qt.TransformationMode.SmoothTransformation)

@@ -79,6 +79,8 @@ def grow_tufts(cap_v: np.ndarray, cap_f: np.ndarray, centre: np.ndarray, rng,
 class VolumePainter:
     """Renders the smooth body into a half-size buffer, then composes it."""
 
+    bloom = True          # the glow pass; the lite performance tier turns it off
+
     def __init__(self):
         self._buf: QImage | None = None
         self._lut_key = None
@@ -187,6 +189,9 @@ class VolumePainter:
         target.save()
         target.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         target.drawImage(rect, self._buf)
+        if not self.bloom:                      # the lite performance tier
+            target.restore()
+            return
         bloom = self._buf.scaled(max(2, int(w * _BLOOM)), max(2, int(h * _BLOOM)),
                                  Qt.AspectRatioMode.IgnoreAspectRatio,
                                  Qt.TransformationMode.SmoothTransformation)

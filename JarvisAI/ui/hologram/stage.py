@@ -46,6 +46,8 @@ class HologramStage:
         self.palette = palette
         self._sprites: dict = {}
         self._level = 0.0
+        self.wires = WIRES          # the performance tier lowers these
+        self.pulses = True
 
     # ── cached glow sprites ─────────────────────────────────────────────────
     def _glow(self, radius: int, rgb, core_alpha: int = 200) -> QPixmap:
@@ -136,7 +138,11 @@ class HologramStage:
         p.setBrush(Qt.BrushStyle.NoBrush)
         dots = []
         speed = 0.18 + 0.85 * lv
-        for i, (seg_a, seg_b) in enumerate(self._wire_paths(neck, heart, orb, spread)):
+        paths = self._wire_paths(neck, heart, orb, spread)
+        if self.wires < len(paths):                    # keep the middle strands
+            lo = (len(paths) - self.wires) // 2
+            paths = paths[lo:lo + max(1, self.wires)]
+        for i, (seg_a, seg_b) in enumerate(paths):
             for seg, c0, c1 in ((seg_a, cyan, heart_rgb), (seg_b, heart_rgb, cyan)):
                 path = QPainterPath(seg[0])
                 path.cubicTo(seg[1], seg[2], seg[3])
@@ -146,7 +152,7 @@ class HologramStage:
                 p.setPen(QPen(_q(col, 70 + 90 * lv), 1.0))
                 p.drawPath(path)
                 # Pulses: two per strand, faster and brighter with the voice.
-                for j in range(2):
+                for j in range(2 if self.pulses else 0):
                     f = (t * speed + i * 0.19 + j * 0.5) % 1.0
                     dots.append((_cubic(*seg, f), _mix(c0, c1, f)))
         for pt, rgb in dots:

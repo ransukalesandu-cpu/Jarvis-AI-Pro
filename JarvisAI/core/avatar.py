@@ -135,6 +135,8 @@ class HoloAvatar:
     # "cyber" is the half-transparent blue circuit bust (core/avatar_cyber.py);
     # empty means "shaded" or "glass" from the flag above.
     style = ""
+    # Glow passes (volume and picture looks); the lite performance tier sets False.
+    bloom = True
 
     def __init__(self, style: str | None = None) -> None:
         if style is not None:
@@ -736,6 +738,7 @@ class HoloAvatar:
         primary, accent = self._adapt_colors(0.016, primary, accent)
         amp = self._glow
         if self._img is not None:
+            self._img.bloom = self.bloom
             self._img.paint(p, cx, cy - r, self.SPAN * r, primary, accent, self._t,
                             self._mouth, amp, self._blink, self._face_targets())
             return
@@ -860,6 +863,7 @@ class HoloAvatar:
                 vol.tufts(bp, np.stack([tx, ty], axis=-1), tv[:, 2, 2], tn[:, 2],
                           _VOL_HAIR, primary.lighter(150), self._tuft_grey)
 
+        vol.bloom = self.bloom
         vol.compose(p, rect, body)
         vol.scanline(p, rect, self._t, primary.lighter(140))
 

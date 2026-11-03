@@ -51,6 +51,11 @@ COMMANDS: tuple[Command, ...] = (
     Command("system", "System Controls", RIGHT_SECTION, "cpu memory status system"),
     Command("activity_panel", "Activity", RIGHT_SECTION, "feed actions panel"),
     Command("telemetry", "Telemetry", RIGHT_SECTION, "metrics cpu gpu network"),
+    # Palette only.
+    Command("perf:auto", "Performance: Auto", "Performance", "speed fps tier quality"),
+    Command("perf:full", "Performance: Full", "Performance", "speed fps tier quality high"),
+    Command("perf:balanced", "Performance: Balanced", "Performance", "speed fps tier quality medium"),
+    Command("perf:lite", "Performance: Lite", "Performance", "speed fps tier quality low battery"),
 )
 
 # What the "ask:" commands say to JARVIS.

@@ -840,7 +840,16 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
 
     def paintGL(self) -> None:
         """Paint the same HUD scene into QOpenGLWidget's current framebuffer."""
+        self._timed_paint()
+
+    def _timed_paint(self) -> None:
+        """Paint, and report the paint time to the window's performance
+        governor (core/ui_perf.FrameGovernor)."""
+        t0 = time.perf_counter()
         self._paint_canvas()
+        rec = getattr(self.window(), "_record_frame_time", None)
+        if rec is not None:
+            rec((time.perf_counter() - t0) * 1000.0)
 
     def _start_neural_quick(self) -> None:
         """Start the D3D11-compatible Qt Quick neural renderer, if available."""
@@ -1274,7 +1283,7 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
         if _OPENGL_CANVAS_AVAILABLE:
             super().paintEvent(event)
         else:
-            self._paint_canvas()
+            self._timed_paint()
 
     def _paint_canvas(self):
         if (self._neural_quick_ready and self.hud_style in ("neural", "neural_orb")
@@ -1330,6 +1339,9 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
             _neck = QPointF(cx, _head_cy - _r_head + self._avatar.SPAN * _r_head * 0.97)
             if self._stage is None:
                 self._stage = HologramStage()
+                _tier = getattr(self, "_perf_tier", None)
+                if _tier is not None:
+                    self._stage.wires, self._stage.pulses = _tier.wires, _tier.pulses
             self._stage.paint(p, neck=_neck, orb=_orb, orb_r=_orb_r, heart=_heart,
                               heart_r=_heart_r, t=_ui_state.clock().now,
                               level=float(_ui_bus().get(_ui_state.AUDIO_LEVEL, 0.0) or 0.0),
@@ -1948,6 +1960,14 @@ class MainWindow(QMainWindow):
         # Quick-access drawer (floating overlay, built after central widget layout is done)
         self._quick_drawer = self._build_quick_drawer()
         QTimer.singleShot(0, self._ensure_island)   # Dynamic Island over the stage
+        try:
+            from memory.config_manager import get_perf_tier
+            self._perf_choice = get_perf_tier()
+        except Exception:
+            self._perf_choice = "auto"
+        # A bound method, not a lambda: Qt drops it if the window is deleted
+        # before the event loop runs it.
+        QTimer.singleShot(0, self._apply_saved_perf_tier)
         self._update_autostart_btn(self._check_autostart())
         from memory.config_manager import get_brief_enabled as _gbe
         self._update_brief_btn(_gbe())
@@ -5326,6 +5346,55 @@ class MainWindow(QMainWindow):
                 best = max(best, score)
         return best
 
+    # ── performance tiers (core/ui_perf.py) ────────────────────────────────
+    def set_performance_budget(self, choice: str = "auto", save: bool = False) -> str:
+        """Apply a performance tier ("auto", "full", "balanced", "lite").
+        Returns the tier in effect."""
+        from core import ui_perf
+        auto = ui_perf.auto_tier()
+        tier_name = ui_perf.resolve(choice) if choice != "auto" else auto
+        self._perf_gov = ui_perf.FrameGovernor(tier_name, ceiling=auto if choice == "auto" else tier_name,
+                                               pinned=choice != "auto")
+        self._apply_tier(tier_name)
+        if save:
+            try:
+                from memory.config_manager import save_perf_tier
+                save_perf_tier(choice)
+            except Exception as exc:
+                self._log.append_log(f"SYS: Could not save the performance setting: {exc}")
+        return tier_name
+
+    def _apply_saved_perf_tier(self) -> None:
+        self.set_performance_budget(getattr(self, "_perf_choice", "auto"))
+
+    def _apply_tier(self, tier_name: str) -> None:
+        from core import ui_perf
+        tier = ui_perf.TIERS[tier_name]
+        _ui_state.clock().fps_cap = tier.fps
+        try:
+            self.hud._tmr.setInterval(tier.interval_ms)
+            self.hud._perf_tier = tier
+            st = getattr(self.hud, "_stage", None)
+            if st is not None:
+                st.wires, st.pulses = tier.wires, tier.pulses
+            av = getattr(self.hud, "_avatar", None)
+            if av is not None and hasattr(av, "bloom"):
+                av.bloom = tier.bloom
+        except (RuntimeError, AttributeError):
+            pass
+        for gw in getattr(self, "_glass", {}).values():
+            gw.lite = not tier.glass_sheen
+            gw.update()
+        _ui_bus().set(_ui_state.PERF_TIER, tier_name)
+
+    def _record_frame_time(self, paint_ms: float) -> None:
+        gov = getattr(self, "_perf_gov", None)
+        if gov is not None:
+            new = gov.record(paint_ms)
+            if new:
+                self._apply_tier(new)
+                self._log.append_log(f"SYS: HUD performance tier now {new.upper()}.")
+
     # ── menus, palette, island (core/ui_menus.py, ui/command_palette.py) ──
     def _run_ui_command(self, cid: str) -> None:
         """Run one command from the menus or the palette."""
@@ -5378,6 +5447,9 @@ class MainWindow(QMainWindow):
                 self._load_workspace(name)
         elif cid.startswith("ws:load:"):
             self._load_workspace(cid.split(":", 2)[2])
+        elif cid.startswith("perf:"):
+            tier = self.set_performance_budget(cid.split(":", 1)[1], save=True)
+            self._log.append_log(f"SYS: Performance {cid.split(':', 1)[1].upper()} — tier {tier.upper()}.")
 
     def _ask_jarvis(self, text: str) -> None:
         if self.on_text_command:
@@ -6158,6 +6230,18 @@ class MainWindow(QMainWindow):
     def changeEvent(self, event):
         super().changeEvent(event)
         if event.type() == QEvent.Type.WindowStateChange:
+            # Minimised: stop animating altogether (shared clock and HUD timer),
+            # and pick up exactly where it was on restore.
+            try:
+                if self.isMinimized():
+                    _ui_state.clock().pause()
+                    self.hud._tmr.stop()
+                else:
+                    _ui_state.clock().resume()
+                    if not self.hud._tmr.isActive():
+                        self.hud._tmr.start()
+            except (RuntimeError, AttributeError):
+                pass
             overlay = getattr(self, "_jarvis_logo_overlay", None)
             if overlay is None:
                 return

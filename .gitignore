@@ -62,6 +62,3 @@ Jarvis_Received_Files/
 htmlcov/
 coverage.xml
 
-# The owner's hologram face picture stays on their machine
-JarvisAI/config/hologram_face.*
-config/hologram_face.*

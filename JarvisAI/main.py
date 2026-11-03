@@ -32,7 +32,7 @@ for _p in [str(_ROOT_DIR), str(_ROOT_DIR / "JarvisAI"), str(_ROOT_DIR / "voice")
 
 import sys as _sys
 
-from core import failsoft
+from core import audio_debug, failsoft
 
 for _stream in ("stdout", "stderr"):
     try:
@@ -68,7 +68,7 @@ from core.live_audio import (
     _MIN_LIVE_AUDIO_FRAME_BYTES, _PLAYBACK_SLICE_BYTES,
     _take_playback_pcm, _pcm_level, _live_audio_chunks,
     _error_text, _is_quota_error, _is_transient_live_disconnect,
-    _is_live_operation_aborted, _resumable_session_handle,
+    _duration_seconds, _is_live_operation_aborted, _resumable_session_handle,
     _turn_output_diagnostic_from_state, LiveReceiveDiagnostics,
     run_realtime_audio_sender,
 )
@@ -1389,6 +1389,9 @@ class JarvisLive(
                     drained_chunks.append(q.get_nowait())
                 except Exception:
                     break
+        audio_debug.log("local_interrupt", provisional=provisional, speaking=speaking,
+                        turn_pending=turn_pending, drained_chunks=len(drained_chunks),
+                        out_level=round(float(getattr(self, "_out_level", 0.0) or 0.0), 3))
         if provisional and self._interrupted:
             token = self._held_audio_state().begin(drained_chunks)
             print(
@@ -1444,6 +1447,7 @@ class JarvisLive(
     def _confirm_barge_in(self) -> None:
         """Gemini confirmed the user is speaking: drop any held answer audio."""
         if self._held_audio_state().active:
+            audio_debug.log("barge_in_confirmed", held_ms=round(self._held_audio_state().held_ms))
             print(f"[JARVIS] ✋ Barge-in confirmed — {self._held_audio_state().held_ms:.0f} ms of held audio discarded")
         self._held_audio_state().confirm()
 
@@ -1453,6 +1457,7 @@ class JarvisLive(
         if released is None:
             return
         chunks, turn_complete = released
+        audio_debug.log("barge_in_released", chunks=len(chunks), turn_complete=turn_complete)
         self._interrupted = False
         queue = self.audio_in_queue
         if queue is None:
@@ -1471,6 +1476,33 @@ class JarvisLive(
             f"[JARVIS] 🔊 Barge-in not confirmed — resuming {len(chunks)} held audio chunks."
         )
         self.ui.write_log("SYS: That sounded like echo — continuing.")
+
+    def _on_go_away(self, time_left) -> None:
+        """The server will close this connection soon: renew it after the
+        current answer has played (session resumption keeps the context)."""
+        seconds = _duration_seconds(time_left, default=10.0)
+        audio_debug.log("go_away", time_left_s=round(seconds, 1),
+                        speaking=self._is_speaking,
+                        turn_pending=self._assistant_turn_pending)
+        task = self.__dict__.get("_go_away_task")
+        if task is not None and not task.done():
+            return
+        print(f"[JARVIS] Live will close this connection in ~{seconds:.0f}s; "
+              "renewing after the current answer.")
+        deadline = time.monotonic() + max(0.0, seconds - 2.0)
+        self._go_away_task = asyncio.ensure_future(
+            self._renew_session_when_idle(self.session, deadline))
+
+    async def _renew_session_when_idle(self, session, deadline: float) -> None:
+        while not self._shutdown_requested and self.session is session:
+            queue = self.audio_in_queue
+            idle = (not self._is_speaking and not self._assistant_turn_pending
+                    and (queue is None or queue.empty()))
+            if idle or time.monotonic() >= deadline:
+                audio_debug.log("session_renewal", idle=idle)
+                self.request_reconnect(keep_context=True, reason="Live connection renewal")
+                return
+            await asyncio.sleep(0.1)
 
     def speak(self, text: str):
         if not self._loop or not self.session:
@@ -2175,6 +2207,15 @@ class JarvisLive(
                             print("[JARVIS] 🔗 Session resumption armed")
                         self._resume_handle = resumable_handle
 
+                    # ── Connection renewal ───────────────────────────────────
+                    # Live warns with go_away before it closes a connection.
+                    # Ignored, the socket closes mid-answer, the session
+                    # TaskGroup unwinds and the queued speech is lost: a cut
+                    # sentence. Renew once the answer has finished playing.
+                    go_away = getattr(response, "go_away", None)
+                    if go_away is not None:
+                        self._on_go_away(getattr(go_away, "time_left", None))
+
                     sc = response.server_content
                     _early_transcript = getattr(
                         getattr(sc, "output_transcription", None), "text", ""
@@ -2256,6 +2297,10 @@ class JarvisLive(
                         # Stop any audio already queued for the speakers at once;
                         # otherwise a cut-off sentence can keep playing locally.
                         if getattr(sc, "interrupted", False):
+                            audio_debug.log(
+                                "server_interrupted",
+                                queued=self.audio_in_queue.qsize() if self.audio_in_queue else 0,
+                                speaking=self._is_speaking)
                             self._confirm_barge_in()
                             # The server may report barge-in independently of the
                             # local wake-word path. Signal the playback worker to
@@ -2435,6 +2480,12 @@ class JarvisLive(
                                             self._inflight_user_tool_started = False
 
                         if sc.turn_complete:
+                            audio_debug.log(
+                                "turn_complete",
+                                queued=self.audio_in_queue.qsize() if self.audio_in_queue else 0,
+                                interrupted=self._interrupted,
+                                held=self._held_audio_state().active,
+                                fragment_bytes=len(audio_fragment_buffer))
                             # Start arrival-cadence tracking fresh for the next turn.
                             receive_diagnostics.reset_audio_timing()
                             # Flush a valid short tail only after Live confirms the
@@ -3157,6 +3208,9 @@ class JarvisLive(
                 else:
                     self._conn_backoff = 3
             finally:
+                audio_debug.log(
+                    "session_closed", speaking=self._is_speaking,
+                    queued=self.audio_in_queue.qsize() if self.audio_in_queue else 0)
                 self.session = None
                 # Only save if there was a real conversation (≥3 turns)
                 if len(self._session_log) >= 3 and not self._shutdown_requested:

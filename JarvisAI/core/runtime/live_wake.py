@@ -8,6 +8,7 @@ session object, so every attribute they use is set up in ``JarvisLive.__init__``
 
 import asyncio
 import time
+from core import failsoft
 from core.clap_wake import DoubleClapDetector
 from core.wake_word import (
     install_and_download as wake_install,
@@ -104,6 +105,13 @@ class WakeSleepMixin:
         with self._wake_interrupt_lock:
             replay = list(self._wake_interrupt_audio)
             self._wake_interrupt_audio.clear()
+        try:
+            from core import audio_debug
+            audio_debug.log("vad_barge_in", speaking=speaking,
+                            turn_pending=self._assistant_turn_pending,
+                            out_level=round(float(getattr(self, "_out_level", 0.0) or 0.0), 3))
+        except Exception:
+            failsoft.suppress("core.runtime.live_wake:_on_voice_barge_in")
         print("[Voice] User speech detected during JARVIS playback; interrupting.")
         self.ui.write_log("SYS: Voice detected — interrupting JARVIS.")
         # The microphone callback has already marshalled this handler onto

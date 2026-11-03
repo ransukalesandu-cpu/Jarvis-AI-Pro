@@ -6,6 +6,8 @@ PCM framing and Live-event/error handling can be tested independently.
 
 from __future__ import annotations
 
+import re
+
 import asyncio
 import base64
 from typing import Any
@@ -269,6 +271,16 @@ def _resumable_session_handle(response) -> str | None:
         return None
     handle = getattr(update, "new_handle", None)
     return handle if handle else None
+
+
+def _duration_seconds(value, default: float = 10.0) -> float:
+    """Seconds from a Live duration ("12s", "1.5s", "PT12S", 12); ``default``
+    when it cannot be read."""
+    if isinstance(value, (int, float)):
+        return max(0.0, float(value))
+    text = str(value or "").strip().upper()
+    match = re.fullmatch(r"(?:PT)?(\d+(?:\.\d+)?)S?", text)
+    return max(0.0, float(match.group(1))) if match else default
 
 
 def _take_playback_pcm(buffer: bytearray, *, final: bool = False) -> bytes:

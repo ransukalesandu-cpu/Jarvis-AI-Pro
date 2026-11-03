@@ -20,7 +20,7 @@ from core.live_audio import (
     _pcm_level,
 )
 
-from core import failsoft
+from core import audio_debug, failsoft
 
 
 @dataclass(frozen=True)
@@ -299,6 +299,8 @@ async def run_audio_playback(
                 if host._shutdown_requested:
                     break
                 if host._playback_interrupt_requested.is_set():
+                    audio_debug.log("playback_interrupt_consumed", stage="prebuffer",
+                                    discarded_pending=len(pending_pcm), dropped_chunk=0)
                     pending_pcm.clear()
                     playback_started = False
                     host._playback_interrupt_requested.clear()
@@ -353,6 +355,7 @@ async def run_audio_playback(
                                 playback_started = True
                             break
 
+                        audio_debug.log("playback_finished", stage="prebuffer")
                         finish_buffer_turn()
                         host.set_speaking(False)
                         host._turn_done_event.clear()
@@ -362,6 +365,9 @@ async def run_audio_playback(
                     continue
 
                 if host._playback_interrupt_requested.is_set():
+                    audio_debug.log("playback_interrupt_consumed", stage="prebuffer-chunk",
+                                    discarded_pending=len(pending_pcm),
+                                    dropped_chunk=len(next_chunk))
                     pending_pcm.clear()
                     playback_started = False
                     host._playback_interrupt_requested.clear()
@@ -405,6 +411,7 @@ async def run_audio_playback(
                         and host._turn_done_event.is_set()
                     )
                     if turn_complete and host.audio_in_queue.empty():
+                        audio_debug.log("playback_finished", stage="playing")
                         finish_buffer_turn()
                         host.set_speaking(False)
                         host._turn_done_event.clear()
@@ -423,6 +430,7 @@ async def run_audio_playback(
                         # starting playback with no reserve.
                         playback_started = False
                         prebuffer_logged = False
+                        audio_debug.log("playback_underrun", prebuffer_ms=prebuffer_target_ms)
                         if not turn_had_underrun:
                             prebuffer_target_ms = _next_prebuffer_ms(
                                 prebuffer_target_ms, underrun=True
@@ -442,6 +450,9 @@ async def run_audio_playback(
                     continue
 
                 if host._playback_interrupt_requested.is_set():
+                    audio_debug.log("playback_interrupt_consumed", stage="playing",
+                                    discarded_pending=len(pending_pcm),
+                                    dropped_chunk=len(next_chunk))
                     host._playback_interrupt_requested.clear()
                     host.set_speaking(False)
                     pending_pcm.clear()
@@ -674,6 +685,8 @@ async def run_audio_playback(
                     raise
                 except Exception as exc:
                     if host._playback_interrupt_requested.is_set():
+                        audio_debug.log("playback_interrupt_consumed", stage="write-aborted",
+                                        kept_pending=len(pending_pcm), error=type(exc).__name__)
                         host._playback_interrupt_requested.clear()
                         host.set_speaking(False)
                         try:
@@ -685,6 +698,7 @@ async def run_audio_playback(
                         continue
                     if host._shutdown_requested:
                         break
+                    audio_debug.log("speaker_write_failed", error=type(exc).__name__)
                     print(f"[AudioTrace 4/OUTPUT] Speaker write failed: {type(exc).__name__}: {exc}")
                     traceback.print_exc()
 

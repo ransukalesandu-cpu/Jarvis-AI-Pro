@@ -8,6 +8,25 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Hybrid brain: `ask_claude` tool** (`actions/ask_claude.py`): Gemini Live can
+  hand coding, planning, long reasoning and long writing to Claude (quick = fast
+  model, deep = strong model). Short spoken answer; long results saved under
+  Documents/JARVIS/Claude. Hidden until an Anthropic key is set. Claude model
+  defaults (`claude-sonnet-5-5` / `claude-haiku-5-5`) now live in one place
+  (`core/provider_settings.py`), and every Claude call is counted and logged with
+  model and token counts (`core/claude_usage.py`).
+- **Task-based routing** (`core/task_router.py`): optional `task_routing` setting
+  sends coding/planning/reasoning/writing to Claude and keeps voice, vision and
+  simple requests on Gemini; without the setting nothing changes.
+- **Text fallback with read-only tools** (`core/fallback_tools.py`): while Live is
+  down and an Anthropic key exists, Claude can call system status, battery,
+  weather, web search and (if allowed) memory recall, all through
+  `security.guard` and the action log.
+- **Live connection renewal and audio diagnostics**: JARVIS now handles Gemini
+  Live's `go_away` notice by renewing the connection after the current answer
+  instead of being cut off mid-sentence; `JARVIS_AUDIO_DEBUG=1` logs the speech
+  path's events to `logs/audio_debug.log` (`core/audio_debug.py`).
+
 - **HUD is clean by default**: the autonomous surfaces (dashboard card, `◉`
   rail button, menu entries) are opt-in via `autonomous_ui_enabled` /
   `JARVIS_AUTONOMOUS_UI=1`. With the flag off the HUD is exactly as it was, and

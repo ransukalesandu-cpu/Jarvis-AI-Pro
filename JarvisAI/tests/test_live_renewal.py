@@ -86,13 +86,58 @@ class GoAwayRenewalTests(unittest.TestCase):
         self.assertTrue(keep)                                     # context kept
         self.assertIn("renewal", reason)
         last_write = max(t for t, _n, _m in result.write_log)
-        self.assertGreaterEqual(calls[0][0], last_write - 0.05)  # not before the speech ended
+        self.assertGreaterEqual(calls[0][0], last_write)          # only after the last write
 
     def test_renewal_is_prompt_when_idle(self):
         steps = [Step(input_text="hi"), Step(audio_ms=100), Step(turn_complete=True),
                  Step(delay=0.8, go_away_s=30.0), Step(delay=0.5)]
         _result, calls = self._run(steps)
         self.assertEqual(len(calls), 1)
+
+
+class RenewalIdleTests(unittest.TestCase):
+    """The renewal waits for the speakers' tail and the prebuffered turn."""
+
+    def _host(self, **state):
+        import asyncio
+        import threading
+        from types import SimpleNamespace
+
+        import main
+        host = main.JarvisLive.__new__(main.JarvisLive)
+        session = SimpleNamespace()
+        host.__dict__.update(dict(
+            _shutdown_requested=False, session=session, audio_in_queue=asyncio.Queue(),
+            _turn_done_event=asyncio.Event(), _is_speaking=False,
+            _assistant_turn_pending=False, _tail_until=0.0,
+            _speaking_lock=threading.Lock()))
+        host.__dict__.update(state)
+        return host, session
+
+    def _renews_immediately(self, host, session):
+        import asyncio
+        calls = []
+        host.request_reconnect = lambda **kw: calls.append(kw)
+
+        async def go():
+            task = asyncio.ensure_future(host._renew_session_when_idle(session, time.monotonic() + 5))
+            await asyncio.sleep(0.25)
+            task.cancel()
+        asyncio.run(go())
+        return bool(calls)
+
+    def test_waits_for_the_echo_tail(self):
+        host, session = self._host(_tail_until=time.monotonic() + 60)
+        self.assertFalse(self._renews_immediately(host, session))
+
+    def test_waits_while_a_completed_turn_is_still_buffered(self):
+        host, session = self._host()
+        host._turn_done_event.set()
+        self.assertFalse(self._renews_immediately(host, session))
+
+    def test_renews_when_really_idle(self):
+        host, session = self._host()
+        self.assertTrue(self._renews_immediately(host, session))
 
 
 if __name__ == "__main__":

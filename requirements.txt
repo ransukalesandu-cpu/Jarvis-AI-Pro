@@ -20,7 +20,7 @@ numpy>=1.24,<3
 argon2-cffi>=23.1.0,<25  # Argon2id owner PIN/password hashing
 google-genai>=2.8.0,<3
 openai>=1.68,<3
-anthropic>=0.49,<2
+anthropic>=1.17,<2  # output_config and server-side fallbacks (ask_claude)
 
 # ── Web search & browser control ──────────────────────────────────────────────
 requests>=2.31,<3

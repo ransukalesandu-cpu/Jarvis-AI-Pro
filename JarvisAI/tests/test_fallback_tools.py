@@ -249,3 +249,55 @@ class BrainEngineContractTests(unittest.TestCase):
         self.assertIs(seen["toolbox"], box)
         self.assertEqual(out["tools_ran"], ["battery_status"])
         self.assertFalse(hasattr(brain, "run"))           # still answers only
+
+
+class RawRequestClassificationTests(unittest.TestCase):
+    """Classify the owner's request, not BrainEngine's wrapped prompt."""
+
+    def test_brain_engine_passes_the_raw_request(self):
+        from core.brain_engine import BrainEngine
+        seen = {}
+
+        def query_fn(prompt, *, config_path, base_system_prompt, task_text=None):
+            seen["prompt"], seen["task_text"] = prompt, task_text
+            return {"text": "ok"}, "gemini"
+        BrainEngine(query_fn=query_fn).respond("what time is it")
+        self.assertEqual(seen["task_text"], "what time is it")
+        self.assertNotEqual(seen["prompt"], "what time is it")      # the wrapped prompt
+
+    def test_fixed_signature_query_fn_still_works(self):
+        from core.brain_engine import BrainEngine
+
+        def query_fn(prompt, *, config_path, base_system_prompt):
+            return {"text": "ok"}, "gemini"
+        self.assertEqual(BrainEngine(query_fn=query_fn).respond("hi")["text"], "ok")
+
+    def test_simple_request_uses_the_fast_model_despite_the_wrapper(self):
+        box, _, _ = _toolbox()
+        fake = FakeClaude([_resp([_block("text", text="It is noon.")], "end_turn")])
+        wrapped = "[CURRENT USER REQUEST]\nwhat time is it\n" + "context words " * 40
+        with mock.patch("core.fallback_tools.get_provider_api_key", return_value="sk-x"):
+            answer_with_tools(wrapped, "", box, client_factory=lambda t: fake,
+                              task_text="what time is it")
+        self.assertEqual(fake.requests[0]["model"], "claude-haiku-5-5")
+
+    def test_task_routing_classifies_task_text(self):
+        from core.provider_fallback import query_text_fallback
+        made = []
+
+        class Router:
+            def __init__(self, **kw):
+                pass
+
+            def configured_key_status(self):
+                return {"gemini": True}
+
+            def query(self, text, **kw):
+                made.append(kw)
+                return {"text": "ok"}
+        path = Path(tempfile.mkdtemp()) / "api_keys.json"
+        path.write_text(json.dumps({"task_routing": {}}), encoding="utf-8")
+        wrapped = "[CURRENT USER REQUEST]\nwhat time is it\n" + "context words " * 40
+        query_text_fallback(wrapped, config_path=path, base_system_prompt="s",
+                            router_factory=Router, task_text="what time is it")
+        self.assertEqual(made[0]["task"], "simple")

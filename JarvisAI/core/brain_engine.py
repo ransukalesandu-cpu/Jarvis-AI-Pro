@@ -160,6 +160,16 @@ def format_memory_context(rows: Iterable[dict[str, Any]] | None) -> str:
     )
 
 
+def _accepts_keyword(fn: Callable[..., Any], name: str) -> bool:
+    """True when ``fn`` takes keyword ``name`` (directly or via **kwargs)."""
+    import inspect
+    try:
+        params = inspect.signature(fn).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(p.name == name or p.kind is inspect.Parameter.VAR_KEYWORD for p in params)
+
+
 def build_brain_user_prompt(
     user_text: str,
     *,
@@ -301,6 +311,10 @@ class BrainEngine:
         }
         if self.router_factory is not None:
             kwargs["router_factory"] = self.router_factory
+        # The prompt above wraps the request in history, memory and guidance;
+        # task classification (core/task_router.py) needs the request itself.
+        if _accepts_keyword(self.query_fn, "task_text"):
+            kwargs["task_text"] = request
 
         result, configured = self.query_fn(prompt, **kwargs)
         if not isinstance(result, dict):

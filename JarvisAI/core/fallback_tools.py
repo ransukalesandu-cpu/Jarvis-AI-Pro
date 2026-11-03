@@ -163,7 +163,8 @@ def _text(response: Any) -> str:
 
 def answer_with_tools(prompt: str, system_prompt: str, toolbox: FallbackToolbox, *,
                       model: str | None = None, client_factory: Callable | None = None,
-                      max_steps: int = 4, timeout: float = 45.0) -> dict:
+                      max_steps: int = 4, timeout: float = 45.0,
+                      task_text: str | None = None) -> dict:
     """Answer with Claude, letting it call the allow-listed tools.
 
     Returns {"text", "model", "provider": "claude", "tools_ran": [...]}.
@@ -177,7 +178,8 @@ def answer_with_tools(prompt: str, system_prompt: str, toolbox: FallbackToolbox,
     if not key:
         raise RuntimeError("No Anthropic key configured.")
     if model is None:
-        heavy = classify(prompt) in ("coding", "planning", "reasoning", "writing")
+        # ``task_text`` is the owner's request; ``prompt`` may wrap it.
+        heavy = classify(task_text or prompt) in ("coding", "planning", "reasoning", "writing")
         model = claude_model("strong" if heavy else "fast")
     if client_factory is None:
         import anthropic

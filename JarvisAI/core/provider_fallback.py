@@ -63,6 +63,7 @@ def query_text_fallback(
     router_factory: Callable[..., TextProviderRouter] | None = None,
     toolbox: Any = None,
     tool_client_factory: Callable | None = None,
+    task_text: str | None = None,
 ) -> tuple[ProviderResult, str]:
     """Run provider-routed text fallback and return results plus provider names.
 
@@ -75,6 +76,9 @@ def query_text_fallback(
     """
     if not isinstance(text, str) or not text.strip():
         raise ValueError("Text fallback requires a non-empty prompt.")
+    # Classify the owner's request, not a prompt that wraps it in history and
+    # guidance (BrainEngine passes the request as task_text).
+    task_text = task_text if isinstance(task_text, str) and task_text.strip() else text
 
     config = _load_provider_config(config_path)
     keys = _provider_keys(config)
@@ -84,7 +88,8 @@ def query_text_fallback(
         started = _time.monotonic()
         try:
             result = answer_with_tools(text, base_system_prompt, toolbox,
-                                       client_factory=tool_client_factory)
+                                       client_factory=tool_client_factory,
+                                       task_text=task_text)
             result.update({"mode": "cloud",
                            "latency_ms": round((_time.monotonic() - started) * 1000, 2)})
             configured = ",".join(name for name, value in keys.items() if value) or "claude"
@@ -104,7 +109,7 @@ def query_text_fallback(
         route_kwargs: dict[str, Any] = {}
     else:
         router = factory(preferred_provider=preferred, api_keys=keys, task_routing=routing)
-        route_kwargs = {"task": classify(text)}
+        route_kwargs = {"task": classify(task_text)}
     status = router.configured_key_status()
     configured = ",".join(name for name, present in status.items() if present) or "none"
     result = router.query(

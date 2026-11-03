@@ -1107,6 +1107,7 @@ class JarvisLive(
                     )
                     query_fn = functools.partial(query_text_fallback, toolbox=toolbox)
                 except Exception:
+                    failsoft.suppress('main:JarvisLive._start_hybrid_text_fallback._work')
                     query_fn = None
                 brain = BrainEngine(
                     config_path=API_CONFIG_PATH,
@@ -1496,8 +1497,15 @@ class JarvisLive(
     async def _renew_session_when_idle(self, session, deadline: float) -> None:
         while not self._shutdown_requested and self.session is session:
             queue = self.audio_in_queue
+            done = self._turn_done_event
+            # Idle means nothing left to hear: not speaking, no turn pending,
+            # nothing queued, no completed turn still in the playback worker's
+            # prebuffer (the worker clears the event once it has played it),
+            # and the speakers' own tail has finished.
             idle = (not self._is_speaking and not self._assistant_turn_pending
-                    and (queue is None or queue.empty()))
+                    and (queue is None or queue.empty())
+                    and not (done is not None and done.is_set())
+                    and not self._tail_active())
             if idle or time.monotonic() >= deadline:
                 audio_debug.log("session_renewal", idle=idle)
                 self.request_reconnect(keep_context=True, reason="Live connection renewal")

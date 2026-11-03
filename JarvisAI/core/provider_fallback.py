@@ -89,7 +89,8 @@ def query_text_fallback(
         try:
             result = answer_with_tools(text, base_system_prompt, toolbox,
                                        client_factory=tool_client_factory,
-                                       task_text=task_text)
+                                       task_text=task_text,
+                                       api_key=keys.get("claude") or None)
             result.update({"mode": "cloud",
                            "latency_ms": round((_time.monotonic() - started) * 1000, 2)})
             configured = ",".join(name for name, value in keys.items() if value) or "claude"

@@ -128,6 +128,15 @@ class AskClaudeTests(unittest.TestCase):
         self.assertIn(str(saved[0]), out)
         self.assertIn("print('x')", saved[0].read_text(encoding="utf-8"))
 
+    def test_nothing_is_saved_when_the_path_guard_fails(self):
+        from core import path_guard
+        fake = FakeClient(_response("word " * 400))
+        with mock.patch.object(path_guard, "check", side_effect=RuntimeError("broken")), \
+                mock.patch("builtins.print"):
+            out = self.run_tool({"task": "essay"}, fake)
+        self.assertEqual(list(Path(self.tmp.name).rglob("*.md")), [])
+        self.assertNotIn("saved in", out)
+
     def test_unstructured_long_answer_is_cut_and_saved(self):
         fake = FakeClient(_response("word " * 400))
         out = self.run_tool({"task": "essay"}, fake)

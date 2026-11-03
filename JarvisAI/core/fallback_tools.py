@@ -164,17 +164,18 @@ def _text(response: Any) -> str:
 def answer_with_tools(prompt: str, system_prompt: str, toolbox: FallbackToolbox, *,
                       model: str | None = None, client_factory: Callable | None = None,
                       max_steps: int = 4, timeout: float = 45.0,
-                      task_text: str | None = None) -> dict:
+                      task_text: str | None = None, api_key: str | None = None) -> dict:
     """Answer with Claude, letting it call the allow-listed tools.
 
     Returns {"text", "model", "provider": "claude", "tools_ran": [...]}.
     Raises when Claude cannot be reached, so the caller can fall back to the
-    plain text route.
+    plain text route. ``api_key`` is the key the caller selected from its
+    config; without it the shared provider settings are used.
     """
     from core.claude_usage import record_call
     from core.task_router import classify
 
-    key = get_provider_api_key("anthropic")
+    key = (api_key or "").strip() or get_provider_api_key("anthropic")
     if not key:
         raise RuntimeError("No Anthropic key configured.")
     if model is None:

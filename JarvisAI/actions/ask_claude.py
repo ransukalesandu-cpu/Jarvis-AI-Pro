@@ -78,8 +78,9 @@ def _save_full_answer(task: str, text: str) -> str:
         path_guard.check(path, write=True)
     except PermissionError:
         return ""
-    except Exception as exc:       # no guard available: plain save below
-        print(f"[ask_claude] path guard unavailable: {type(exc).__name__}")
+    except Exception as exc:       # the guard could not decide: do not write
+        print(f"[ask_claude] path guard failed ({type(exc).__name__}); not saving.")
+        return ""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"# {task.strip()[:200]}\n\n{text.strip()}\n", encoding="utf-8")

@@ -201,6 +201,33 @@ class FallbackIntegrationTests(unittest.TestCase):
         self.assertEqual((result["text"], result["provider"]), ("Hello from Claude.", "claude"))
         self.assertNotIn("sk-x", configured)
 
+    def test_uses_the_claude_key_from_the_given_config(self):
+        # Only claude_api_key in this config, and no key in the shared settings.
+        from core.provider_fallback import query_text_fallback
+        box, _, _ = _toolbox()
+        fake = FakeClaude([_resp([_block("text", text="Hello from Claude.")], "end_turn")])
+        with mock.patch("core.fallback_tools.get_provider_api_key", return_value=""), \
+                mock.patch("core.provider_fallback._env_claude_key", return_value=False):
+            result, _ = query_text_fallback(
+                "hi", config_path=self._config({"claude_api_key": "sk-cfg"}),
+                base_system_prompt="s", router_factory=self.Router, toolbox=box,
+                tool_client_factory=lambda t: fake)
+        self.assertEqual(result["provider"], "claude")
+
+    def test_explicit_key_reaches_the_client(self):
+        import anthropic
+        box, _, _ = _toolbox()
+        fake = FakeClaude([_resp([_block("text", text="ok")], "end_turn")])
+        seen = {}
+
+        def make(**kw):
+            seen.update(kw)
+            return fake
+        with mock.patch("core.fallback_tools.get_provider_api_key", return_value=""), \
+                mock.patch.object(anthropic, "Anthropic", side_effect=make):
+            answer_with_tools("hi", "", box, api_key="sk-cfg")
+        self.assertEqual(seen["api_key"], "sk-cfg")
+
     def test_falls_back_to_text_only_when_claude_fails(self):
         from core.provider_fallback import query_text_fallback
         box, _, _ = _toolbox()

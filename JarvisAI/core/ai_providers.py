@@ -9,7 +9,12 @@ import base64
 import mimetypes
 from typing import Any
 
-from core.provider_settings import get_active_provider, get_provider_api_key, get_provider_settings
+from core.provider_settings import (
+    claude_model,
+    get_active_provider,
+    get_provider_api_key,
+    get_provider_settings,
+)
 
 FAST = "fast"
 SEARCH = "search"
@@ -160,7 +165,7 @@ def _model(provider: str, tier: str) -> str:
     key = f"{provider}_model_{suffix}"
     if provider == "openai":
         return str(settings.get(key) or ("gpt-5.6-terra" if strong else "gpt-5.6-luna"))
-    return str(settings.get(key) or ("claude-sonnet-5-5" if strong else "claude-haiku-4-5-20251001"))
+    return claude_model("strong" if strong else "fast")
 
 
 def generate(contents, *, tier: str, config=None, timeout_ms: int = 10000) -> str:
@@ -226,6 +231,8 @@ def generate(contents, *, tier: str, config=None, timeout_ms: int = 10000) -> st
         if instruction:
             kwargs["system"] = instruction
         response = api.messages.create(**kwargs)
+        from core.claude_usage import record_call
+        record_call(model, getattr(response, "usage", None), source="one-shot")
         result = "\n".join(
             str(getattr(block, "text", ""))
             for block in getattr(response, "content", [])

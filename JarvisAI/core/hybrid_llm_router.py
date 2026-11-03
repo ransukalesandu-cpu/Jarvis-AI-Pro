@@ -314,7 +314,8 @@ class HybridLLMRouter:
                 timeout=self.timeout, model=kwargs.get("model"),
             )
         import anthropic
-        model = str(kwargs.get("model") or "claude-3-5-sonnet-latest")
+        from core.provider_settings import claude_model
+        model = str(kwargs.get("model") or claude_model("strong"))
         client = anthropic.Anthropic(
             api_key=self._key("claude"), timeout=self.timeout, max_retries=0
         )
@@ -324,6 +325,8 @@ class HybridLLMRouter:
             system=system_prompt,
             messages=[{"role": "user", "content": prompt}],
         )
+        from core.claude_usage import record_call
+        record_call(model, getattr(response, "usage", None), source="text-fallback")
         text = "".join(
             block.text for block in response.content if getattr(block, "type", "") == "text"
         )

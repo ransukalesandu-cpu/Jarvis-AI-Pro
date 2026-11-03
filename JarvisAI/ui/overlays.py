@@ -2533,8 +2533,9 @@ class AIProviderOverlay(_HudOverlay):
         lay.addWidget(label("ANTHROPIC API KEY", 8, C.TEXT_DIM, True))
         lay.addWidget(self._anthropic_key)
 
-        self._anthropic_fast = QLineEdit(str(self._settings.get("anthropic_model_fast", "claude-haiku-4-5-20251001")))
-        self._anthropic_strong = QLineEdit(str(self._settings.get("anthropic_model_reasoning", "claude-sonnet-5-5")))
+        from core.provider_settings import CLAUDE_FAST_MODEL, CLAUDE_STRONG_MODEL
+        self._anthropic_fast = QLineEdit(str(self._settings.get("anthropic_model_fast", CLAUDE_FAST_MODEL)))
+        self._anthropic_strong = QLineEdit(str(self._settings.get("anthropic_model_reasoning", CLAUDE_STRONG_MODEL)))
         lay.addWidget(label("CLAUDE MODEL IDS  ·  FAST / REASONING", 8, C.TEXT_DIM, True))
         row = QHBoxLayout()
         row.addWidget(self._anthropic_fast)

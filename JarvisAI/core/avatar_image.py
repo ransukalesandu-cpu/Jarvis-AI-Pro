@@ -16,8 +16,10 @@ tinting it: the background is cut away (flooding in from the border over
 light, grey pixels, so a baked-in checkerboard goes too and the drawing's
 outline stops it); the drawing's ink becomes glowing line-art (pixels darker
 than their surroundings), the shading becomes a dim translucent volume, the
-silhouette gets a rim of light, and a depth map (a smoothed dome of the
-silhouette) lets the face turn with parallax. Per frame it is composed
+silhouette gets a rim of light, and a relief (a dome that starts flat at the
+outline, plus nose, brow, lips and chin forward and eye sockets back) makes
+the picture a 3D head: it turns, nods and tilts with the avatar's head
+motion and is projected with mild perspective, far parts drawn first. Per frame it is composed
 additively, so it emits light instead of covering the HUD: bloom, scanlines,
 a sweeping scan band, flicker, the odd glitch slice, rising motes and a
 projector base with its beam. A warp grid over the whole picture carries the
@@ -40,8 +42,9 @@ FACE_NAMES = ("hologram_face.png", "hologram_face.webp", "hologram_face.jpg",
 _MAX_H = 760                       # processed picture height in pixels
 _DEFAULT_LAYOUT = {"eyes": [[0.38, 0.475], [0.61, 0.475]], "mouth": [0.50, 0.70, 0.19]}
 EMOTIONS = ("happy", "sad", "serious", "surprised", "curious")
-_DIRECT = frozenset({"jaw", "wide", "blink", "gaze_x", "gaze_y"})
-_COLS = 12                         # warp cells across; rows are denser over the face
+_DIRECT = frozenset({"jaw", "wide", "blink", "gaze_x", "gaze_y", "yaw", "pitch", "roll"})
+_MARGIN = 0.12                     # room round the picture for the turned head
+_COLS = 18                         # warp cells across; rows are denser over the face
 _PAD = 0.05                        # empty margin round the cut-out, for glow and sway
 _LINE = np.array([225.0, 255.0, 255.0], dtype=np.float32)    # the glowing line-art
 
@@ -57,6 +60,46 @@ def _box(a: np.ndarray, r: int) -> np.ndarray:
     c = np.cumsum(c, axis=1)
     c = np.hstack([c[:, k - 1:k], c[:, k:] - c[:, :-k]])
     return c / (k * k)
+
+
+def _convex(q) -> bool:
+    """True when quad q (four (x, y) corners in order) is convex, wound
+    clockwise on screen and not degenerate."""
+    sign = 0.0
+    for k in range(4):
+        ax, ay = q[k]
+        bx, by = q[(k + 1) % 4]
+        cx, cy = q[(k + 2) % 4]
+        cross = (bx - ax) * (cy - by) - (by - ay) * (cx - bx)
+        if abs(cross) < 0.05:
+            return False
+        if sign == 0.0:
+            sign = cross
+        elif (cross > 0) != (sign > 0):
+            return False
+    return sign > 0
+
+
+def _draw_triangle(p: QPainter, img: QImage, src, dst) -> None:
+    """Map one triangle of `img` onto `dst` with an affine transform."""
+    area = ((dst[1][0] - dst[0][0]) * (dst[2][1] - dst[0][1])
+            - (dst[2][0] - dst[0][0]) * (dst[1][1] - dst[0][1]))
+    if area <= 0.3:                       # facing away or edge-on
+        return
+    a = np.array([[x, y, 1.0] for x, y in src])
+    try:
+        mx = np.linalg.solve(a, np.array([d[0] for d in dst]))
+        my = np.linalg.solve(a, np.array([d[1] for d in dst]))
+    except np.linalg.LinAlgError:
+        return
+    p.setTransform(QTransform(mx[0], my[0], mx[1], my[1], mx[2], my[2]))
+    path = QPainterPath(QPointF(*src[0]))
+    path.lineTo(QPointF(*src[1]))
+    path.lineTo(QPointF(*src[2]))
+    path.closeSubpath()
+    p.setClipPath(path)
+    p.drawImage(QPointF(0, 0), img)
+    p.setClipping(False)
 
 
 def _rows() -> np.ndarray:
@@ -154,6 +197,65 @@ class ImageHologram:
         self.aspect = W / H
         self.layout = self._load_layout(path)
         self._rows = _rows()
+        self._relief = self._build_relief()
+        self._view = (0.0, 0.0, 0.0)
+        self._out_size = (int(W * (1 + 2 * _MARGIN)), int(H * (1 + 2 * _MARGIN)))
+
+    def _build_relief(self) -> np.ndarray:
+        """Depth of the face, in picture pixels towards the viewer.
+
+        A rounded dome from the silhouette (so the hair, ears and jaw curve
+        away) plus the anatomy that sticks out or sinks in: the nose and its
+        bridge, the brow ridge, the lips and chin forward, the eye sockets
+        back. Turning this surface is what makes the picture a 3D head.
+        """
+        H, W = self._depth.shape
+        u, v = np.meshgrid(np.linspace(0, 1, W, dtype=np.float32),
+                           np.linspace(0, 1, H, dtype=np.float32))
+        g = self._g
+        mx, my, _ = self.layout["mouth"]
+        eyes = self.layout["eyes"]
+        ey = sum(e[1] for e in eyes) / len(eyes)
+        tip_v = ey + 0.62 * (my - ey)
+        # The smoothed silhouette is ~0.5 right on the outline: start the dome
+        # there, so the edge of the head lies flat on the picture plane and
+        # only the inside bulges (no cliff at the outline to tear when turned).
+        rel = 0.85 * np.clip((self._depth - 0.5) / 0.5, 0, 1) ** 0.6
+        rel += 0.20 * g(u, v, mx, tip_v, 0.045, 0.055)
+        bridge = np.exp(-((u - mx) / 0.030) ** 2) * np.clip((v - ey + 0.03) / (tip_v - ey + 0.03), 0, 1)
+        rel += 0.10 * bridge * (v < tip_v + 0.02)
+        for ex, e_y in eyes:
+            rel += 0.06 * g(u, v, ex, e_y - 0.060, 0.065, 0.025)
+            rel -= 0.07 * g(u, v, ex, e_y, 0.045, 0.026)
+        rel += 0.05 * g(u, v, mx, my, 0.080, 0.030)
+        rel += 0.06 * g(u, v, mx, my + 0.12, 0.090, 0.050)
+        rel *= np.clip((self._depth - 0.5) / 0.15, 0, 1)
+        return (rel * 0.42 * W).astype(np.float32)
+
+    def _project(self, u2, v2, u0, v0):
+        """Picture points (displaced u2, v2; depth taken at u0, v0) to the
+        output buffer, through the current head turn."""
+        H, W = self._depth.shape
+        yaw, pitch, roll = self._view
+        X = (np.asarray(u2) - 0.5) * W
+        Y = (np.asarray(v2) - 0.5) * H
+        Z = self._relief[np.clip((np.asarray(v0) * (H - 1)).astype(int), 0, H - 1),
+                         np.clip((np.asarray(u0) * (W - 1)).astype(int), 0, W - 1)]
+        cy_, sy_ = math.cos(yaw), math.sin(yaw)
+        cp, sp = math.cos(pitch), math.sin(pitch)
+        cr, sr = math.cos(roll), math.sin(roll)
+        x1 = X * cy_ + Z * sy_
+        z1 = -X * sy_ + Z * cy_
+        y2 = Y * cp - z1 * sp
+        z2 = Y * sp + z1 * cp
+        x3 = x1 * cr - y2 * sr
+        y3 = x1 * sr + y2 * cr
+        # Mild perspective on the change in depth only, so the face at rest is
+        # exactly the picture.
+        d = 2.4 * H
+        k = d / np.maximum(d - (z2 - Z), d * 0.5)
+        ow, oh = self._out_size
+        return ow / 2 + x3 * k, oh / 2 + y3 * k, z2
 
     def _load_layout(self, path: Path) -> dict:
         layout = dict(_DEFAULT_LAYOUT)
@@ -257,15 +359,6 @@ class ImageHologram:
             iris = g(u, v, ex, ey, 0.022, 0.010)
             du += iris * 0.007 * f["gaze_x"]
             dv += iris * 0.004 * f["gaze_y"]
-        # Parallax: near parts (the nose, the brow) slide further than far ones
-        # (the ears, the outline), which reads as the head turning.
-        sway = f.get("sway", 0.0)
-        if sway:
-            H, W = self._depth.shape
-            d = self._depth[np.clip((v * (H - 1)).astype(int), 0, H - 1),
-                            np.clip((u * (W - 1)).astype(int), 0, W - 1)]
-            du += (d - 0.55) * sway
-            dv += (d - 0.55) * f.get("nod", 0.0)
         # Pin the picture's border, so the cut-out never tears at the edge.
         edge = np.minimum(np.minimum(u, 1.0 - u), np.minimum(v, 1.0 - v))
         w = np.clip(edge / 0.04, 0.0, 1.0)
@@ -291,46 +384,72 @@ class ImageHologram:
         return cur
 
     def _warped(self, img: QImage, f: dict) -> QImage:
-        """The picture with the expression applied (in picture pixels)."""
-        if max(abs(v) for v in f.values()) < 0.002:
-            return img
+        """The picture as a turned 3D head with the expression applied.
+
+        A grid over the picture: each vertex is displaced by the expression,
+        lifted off the page by the relief, turned with the head and projected.
+        Each cell is then re-drawn with a quad-to-quad transform, far cells
+        first so the nose covers the cheek behind it.
+        """
+        self._view = (max(-0.6, min(0.6, f.get("yaw", 0.0))),
+                      max(-0.4, min(0.4, f.get("pitch", 0.0))),
+                      max(-0.3, min(0.3, f.get("roll", 0.0))))
         iw, ih = img.width(), img.height()
         nx, ny = _COLS, len(self._rows) - 1
         gu, gv = np.meshgrid(np.linspace(0.0, 1.0, nx + 1), self._rows)
         du, dv = self._field(gu, gv, f)
         sx, sy = gu * iw, gv * ih
-        dx, dy = (gu + du) * iw, (gv + dv) * ih
-        # Never let a cell fold over: each row stays below the one above and
-        # each column right of the one before, by at least a fifth of a cell.
-        for j in range(1, dy.shape[0]):
-            dy[j] = np.maximum(dy[j], dy[j - 1] + 0.2 * (sy[j] - sy[j - 1]))
-        for i in range(1, dx.shape[1]):
-            dx[:, i] = np.maximum(dx[:, i], dx[:, i - 1] + 0.2 * (sx[:, i] - sx[:, i - 1]))
+        ex_, ey_ = (gu + du) * iw, (gv + dv) * ih
+        # The expression never folds a cell over: each row stays below the one
+        # above and each column right of the one before.
+        for j in range(1, ey_.shape[0]):
+            ey_[j] = np.maximum(ey_[j], ey_[j - 1] + 0.2 * (sy[j] - sy[j - 1]))
+        for i in range(1, ex_.shape[1]):
+            ex_[:, i] = np.maximum(ex_[:, i], ex_[:, i - 1] + 0.2 * (sx[:, i] - sx[:, i - 1]))
+        dx, dy, dz = self._project(ex_ / iw, ey_ / ih, gu, gv)
+        ow, oh = self._out_size
         buf = getattr(self, "_buf", None)
-        if buf is None or buf.size() != img.size():
-            buf = self._buf = QImage(img.size(), QImage.Format.Format_ARGB32_Premultiplied)
+        if buf is None or (buf.width(), buf.height()) != (ow, oh):
+            buf = self._buf = QImage(ow, oh, QImage.Format.Format_ARGB32_Premultiplied)
         buf.fill(0)
+        cz = (dz[:-1, :-1] + dz[1:, :-1] + dz[:-1, 1:] + dz[1:, 1:]).ravel()
+        order = np.argsort(cz, kind="stable").tolist()           # far cells first
         bp = QPainter(buf)
         try:
-            # Replace (not blend): the cells tile the picture, each pixel once.
             bp.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
             bp.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
             sxl, syl, dxl, dyl = sx.tolist(), sy.tolist(), dx.tolist(), dy.tolist()
             tr = QTransform()
-            for j in range(ny):
-                for i in range(nx):
-                    src = QPolygonF([QPointF(sxl[j][i], syl[j][i]), QPointF(sxl[j][i + 1], syl[j][i + 1]),
-                                     QPointF(sxl[j + 1][i + 1], syl[j + 1][i + 1]),
-                                     QPointF(sxl[j + 1][i], syl[j + 1][i])])
-                    dst = QPolygonF([QPointF(dxl[j][i], dyl[j][i]), QPointF(dxl[j][i + 1], dyl[j][i + 1]),
-                                     QPointF(dxl[j + 1][i + 1], dyl[j + 1][i + 1]),
-                                     QPointF(dxl[j + 1][i], dyl[j + 1][i])])
-                    if not QTransform.quadToQuad(src, dst, tr):
+            for c in order:
+                j, i = divmod(c, nx)
+                q = ((dxl[j][i], dyl[j][i]), (dxl[j][i + 1], dyl[j][i + 1]),
+                     (dxl[j + 1][i + 1], dyl[j + 1][i + 1]), (dxl[j + 1][i], dyl[j + 1][i]))
+                # A cell turned past edge-on faces away, and a twisted one would
+                # project to infinity: skip both (they sit on the silhouette).
+                sq = ((sxl[j][i], syl[j][i]), (sxl[j][i + 1], syl[j][i + 1]),
+                      (sxl[j + 1][i + 1], syl[j + 1][i + 1]), (sxl[j + 1][i], syl[j + 1][i]))
+                if not _convex(q):
+                    # Strong relief inside the cell (the nose, the outline):
+                    # draw it as two flat triangles instead of one bent quad.
+                    for a, b, c in ((0, 1, 2), (0, 2, 3)):
+                        _draw_triangle(bp, img, (sq[a], sq[b], sq[c]), (q[a], q[b], q[c]))
+                    continue
+                src = QPolygonF([QPointF(sxl[j][i], syl[j][i]), QPointF(sxl[j][i + 1], syl[j][i + 1]),
+                                 QPointF(sxl[j + 1][i + 1], syl[j + 1][i + 1]),
+                                 QPointF(sxl[j + 1][i], syl[j + 1][i])])
+                dst = QPolygonF([QPointF(x, y) for x, y in q])
+                if not QTransform.quadToQuad(src, dst, tr):
+                    continue
+                if not tr.isAffine():
+                    ws = [tr.m13() * x + tr.m23() * y + tr.m33()
+                          for x, y in ((sxl[j][i], syl[j][i]), (sxl[j + 1][i + 1], syl[j + 1][i + 1]),
+                                       (sxl[j][i + 1], syl[j][i + 1]), (sxl[j + 1][i], syl[j + 1][i]))]
+                    if min(ws) <= 0.0 or max(ws) > 4.0 * min(ws):
                         continue
-                    bp.setTransform(tr)
-                    bp.setClipRect(src.boundingRect().adjusted(-0.5, -0.5, 0.5, 0.5))
-                    bp.drawImage(QPointF(0, 0), img)
-                    bp.setClipping(False)
+                bp.setTransform(tr)
+                bp.setClipRect(src.boundingRect().adjusted(-0.5, -0.5, 0.5, 0.5))
+                bp.drawImage(QPointF(0, 0), img)
+                bp.setClipping(False)
             bp.resetTransform()
             bp.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
             self._paint_mouth(bp, iw, ih, f)
@@ -338,16 +457,23 @@ class ImageHologram:
             bp.end()
         return buf
 
+    def to_buffer(self, u: float, v: float, f: dict) -> tuple[float, float]:
+        """Where picture point (u, v) lands in the output buffer this frame."""
+        du, dv = self._field(np.array([u]), np.array([v]), f)
+        x, y, _ = self._project(np.array([u + du[0]]), np.array([v + dv[0]]),
+                                np.array([u]), np.array([v]))
+        return float(x[0]), float(y[0])
+
     def _paint_mouth(self, p: QPainter, iw: int, ih: int, f: dict) -> None:
         """The opening between the lips, shaped by the displaced lip corners."""
         mx, my, mw = self.layout["mouth"]
         pts = {}
         for name, (u, v) in {"l": (mx - mw / 2, my), "r": (mx + mw / 2, my),
                              "up": (mx, my - 0.012), "lo": (mx, my + 0.018)}.items():
-            uu, vv = np.array([u]), np.array([v])
-            du, dv = self._field(uu, vv, f)
-            pts[name] = QPointF((u + du[0]) * iw, (v + dv[0]) * ih)
-        gap = pts["lo"].y() - pts["up"].y() - (0.030 * ih)
+            pts[name] = QPointF(*self.to_buffer(u, v, f))
+        rest = self._project(np.array([mx, mx]), np.array([my - 0.012, my + 0.018]),
+                             np.array([mx, mx]), np.array([my - 0.012, my + 0.018]))[1]
+        gap = pts["lo"].y() - pts["up"].y() - float(rest[1] - rest[0])
         if gap < 1.0:
             return
         l, r = pts["l"], pts["r"]
@@ -385,15 +511,15 @@ class ImageHologram:
         """`face` carries the expression targets (see EMOTIONS plus jaw, wide,
         brow, blink, gaze_x, gaze_y); without it only the jaw and blink move."""
         target = {"jaw": max(0.0, min(1.0, mouth)), "wide": 0.0, "brow": 0.0,
-                  "blink": max(0.0, min(1.0, blink)), "gaze_x": 0.0, "gaze_y": 0.0}
+                  "blink": max(0.0, min(1.0, blink)), "gaze_x": 0.0, "gaze_y": 0.0,
+                  # Without the avatar's head motion, a slow turn of its own.
+                  "yaw": 0.26 * math.sin(t * 0.31) + 0.09 * math.sin(t * 0.73 + 1.3),
+                  "pitch": 0.05 * math.sin(t * 0.23 + 0.7), "roll": 0.0}
         target.update({k: 0.0 for k in EMOTIONS})
         if face:
             target.update({k: float(v) for k, v in face.items() if k in target})
         f = self.expression(target, t)
-        # A slow turn and nod, shown through the depth map.
-        motion = dict(f, sway=0.020 * math.sin(t * 0.37) + 0.006 * math.sin(t * 0.91),
-                      nod=0.006 * math.sin(t * 0.53))
-        img = self._warped(self._image_for(primary), motion)
+        img = self._warped(self._image_for(primary), f)
         h = height * (1.0 + 0.006 * math.sin(t * 1.3))          # breathing
         w = h * self.aspect
         top += 2.0 * math.sin(t * 0.9)                         # float
@@ -430,7 +556,11 @@ class ImageHologram:
         # Flicker: a hologram is never perfectly steady.
         flicker = 0.90 + 0.06 * math.sin(t * 13.0) * math.sin(t * 7.3) + 0.04 * amp
         p.setOpacity(max(0.0, min(1.0, flicker)))
-        target_rect = QRectF(left, top, w, h)
+        # The buffer holds the turned head with a margin all round.
+        target_rect = QRectF(left - w * _MARGIN, top - h * _MARGIN,
+                             w * (1 + 2 * _MARGIN), h * (1 + 2 * _MARGIN))
+        bx = target_rect.width() / img.width()
+        by = target_rect.height() / img.height()
         p.drawImage(target_rect, img)
         bloom = img.scaled(max(2, img.width() // 6), max(2, img.height() // 6),
                            Qt.AspectRatioMode.IgnoreAspectRatio,
@@ -446,14 +576,17 @@ class ImageHologram:
             src = QRectF(0, band * img.height(), img.width(), bh_ * img.height())
             off = (rnd - 0.5) * w * 0.06
             p.setOpacity(0.8)
-            p.drawImage(QRectF(left + off, top + band * h, w, bh_ * h), img, src)
+            tr_ = target_rect
+            p.drawImage(QRectF(tr_.left() + off, tr_.top() + band * tr_.height(), tr_.width(),
+                               bh_ * tr_.height()), img, src)
         p.setOpacity(1.0)
 
         # Glowing eyes that follow the gaze; a blink dims them, joy brightens.
         k = max(0.0, 1.0 - f["blink"] * 1.1) * (1.0 + 0.25 * f["happy"] + 0.3 * f["surprised"])
         rad = w * 0.030 * (1.0 + 0.25 * f["surprised"] - 0.15 * f["serious"])
         for ex, ey in self.layout["eyes"]:
-            c = QPointF(left + (ex + 0.007 * f["gaze_x"]) * w, top + (ey + 0.004 * f["gaze_y"]) * h)
+            ux, uy = self.to_buffer(ex + 0.007 * f["gaze_x"], ey + 0.004 * f["gaze_y"], f)
+            c = QPointF(target_rect.left() + ux * bx, target_rect.top() + uy * by)
             g = QRadialGradient(c, rad * 2.2)
             g.setColorAt(0.0, QColor(235, 252, 255, int(min(255, 150 * k))))
             g.setColorAt(0.35, QColor(accent.red(), accent.green(), accent.blue(), int(min(255, 90 * k))))

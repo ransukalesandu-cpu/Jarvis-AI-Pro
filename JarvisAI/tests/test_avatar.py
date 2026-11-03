@@ -196,10 +196,31 @@ class ImageHologramTests(unittest.TestCase):
             holo = ImageHologram(path)
             base = {"jaw": 0.0, "wide": 0.0, "brow": 0.0, "blink": 0.0, "gaze_x": 0.0,
                     "gaze_y": 0.0, **{k: 0.0 for k in EMOTIONS}}
-            neutral = holo._warped(holo._image_for(QColor(40, 215, 255)), base)
+            # _warped reuses one buffer: copy each result before the next call.
+            neutral = holo._warped(holo._image_for(QColor(40, 215, 255)), base).copy()
             for name in ("happy", "sad", "surprised"):
-                moved = holo._warped(holo._image_for(QColor(40, 215, 255)), {**base, name: 1.0})
-                self.assertNotEqual(moved.copy(), neutral.copy(), name)
+                moved = holo._warped(holo._image_for(QColor(40, 215, 255)), {**base, name: 1.0}).copy()
+                self.assertNotEqual(moved, neutral, name)
+
+    def test_head_turns_in_3d(self):
+        import tempfile
+        from pathlib import Path
+
+        from core.avatar_image import EMOTIONS, ImageHologram
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "hologram_face.png"
+            self._portrait(path)
+            holo = ImageHologram(path)
+            base = {"jaw": 0.0, "wide": 0.0, "brow": 0.0, "blink": 0.0, "gaze_x": 0.0,
+                    "gaze_y": 0.0, "yaw": 0.0, "pitch": 0.0, "roll": 0.0,
+                    **{k: 0.0 for k in EMOTIONS}}
+            img = holo._image_for(QColor(40, 215, 255))
+            front = holo._warped(img, base).copy()
+            x_front, _ = holo.to_buffer(0.5, 0.5, base)
+            turned = holo._warped(img, {**base, "yaw": 0.3}).copy()
+            x_turn, _ = holo.to_buffer(0.5, 0.5, {**base, "yaw": 0.3})
+            self.assertNotEqual(front, turned)
+            self.assertGreater(abs(x_turn - x_front), 2.0)    # the bulge moves sideways
 
     def test_set_emotion_drives_the_face_targets(self):
         avatar = MeshHoloAvatar(style="volume")

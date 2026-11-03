@@ -784,7 +784,8 @@ class HoloAvatar:
         active = self._t < self._smile_until
         emo = self._emotion if active else ""
         st = self._state_str
-        f = {"jaw": self._mouth, "wide": self._wide if self._mouth > 0.02 else 0.0,
+        f = {"yaw": self._yaw, "pitch": self._pitch, "roll": self._roll,
+             "jaw": self._mouth, "wide": self._wide if self._mouth > 0.02 else 0.0,
              "brow": max(-0.4, min(1.0, self._brow)), "blink": self._blink,
              "gaze_x": self._gaze[0], "gaze_y": self._gaze[1],
              "happy": max(self._smile, 1.0 if emo == "happy" else 0.0),

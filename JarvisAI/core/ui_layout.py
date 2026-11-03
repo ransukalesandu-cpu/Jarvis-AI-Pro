@@ -85,16 +85,19 @@ def scale_for(width: int, height: int) -> float:
 
 
 def compute_layout(width: int, height: int, *, safe_fraction: float = SAFE_FRACTION,
-                   left_open: bool = False, right_open: bool = False) -> Layout:
+                   left_open: bool = False, right_open: bool = False,
+                   header_h: float | None = None, footer_h: float | None = None) -> Layout:
     """The HUD's regions for a window of ``width`` x ``height`` pixels.
 
     Open menus widen their rail; the docks give way, never the stage.
+    ``header_h`` / ``footer_h`` take the real bar heights when a host
+    window already has its own bars.
     """
     w, h = max(320, int(width)), max(240, int(height))
     s = scale_for(w, h)
     gap = round(12 * s)
-    header_h = round(56 * s)
-    footer_h = round(64 * s)
+    header_h = round(56 * s) if header_h is None else max(0, round(header_h))
+    footer_h = round(64 * s) if footer_h is None else max(0, round(footer_h))
     rail_closed, rail_open = round(56 * s), round(232 * s)
     lr = rail_open if left_open else rail_closed
     rr = rail_open if right_open else rail_closed

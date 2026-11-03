@@ -81,13 +81,15 @@ class HologramStage:
         """Where the face, orb and heart go inside the canvas.
 
         The face keeps the top 80% of its band; the orb takes the rest below
-        it; the heart sits low on the left, clear of both.
+        it; the heart sits low on the left of the stage, clear of both.
         """
         face_h = band_h * 0.80
         orb_r = max(10.0, min(band_h * 0.085, W * 0.06))
         orb = QPointF(cx, band_top + face_h + (band_h - face_h) * 0.55)
         heart_r = max(8.0, min(W, H) * 0.045)
-        heart = QPointF(max(heart_r * 2.2, W * 0.14), band_top + band_h * 0.86)
+        # Inside the stage (core/ui_layout: the middle 40%), low on its left,
+        # so a window in the left dock never covers it.
+        heart = QPointF(max(heart_r * 2.2, cx - W * 0.165), band_top + band_h * 0.86)
         return face_h, orb, orb_r, heart, heart_r
 
     def _wire_paths(self, neck: QPointF, heart: QPointF, orb: QPointF, spread: float):

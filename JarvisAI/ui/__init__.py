@@ -3151,6 +3151,10 @@ class MainWindow(QMainWindow):
         # Quick drawer — reposition if open
         if hasattr(self, '_quick_drawer') and self._quick_drawer.isVisible():
             self._position_quick_drawer()
+        # Glass windows reflow into the new docks.
+        if getattr(self, "_wm", None) is not None:
+            self._wm.set_layout(self._window_layout())
+            self._apply_windows()
 
     def _update_metrics(self):
         snap = _metrics.snapshot()
@@ -5338,6 +5342,132 @@ class MainWindow(QMainWindow):
                 best = max(best, score)
         return best
 
+    # ── glass windows (core/window_manager.py, ui/glass_window.py) ─────────
+    def _window_layout(self):
+        """The dock layout for the area the HUD canvas occupies, so windows
+        never cover the header, the command bar or the hologram."""
+        from core.ui_layout import compute_layout
+        cw = self.centralWidget()
+        top = bottom = 0
+        try:
+            tl = self.hud.mapTo(cw, self.hud.rect().topLeft())
+            top = tl.y()
+            bottom = cw.height() - (tl.y() + self.hud.height())
+        except (RuntimeError, AttributeError):
+            pass
+        return compute_layout(cw.width(), cw.height(), header_h=top, footer_h=bottom)
+
+    def _window_manager(self):
+        wm = getattr(self, "_wm", None)
+        if wm is None:
+            from core.window_manager import WindowManager, Workspaces
+            wm = self._wm = WindowManager(self._window_layout())
+            self._glass: dict = {}
+            self._workspaces = Workspaces(CONFIG_DIR / "workspaces.json")
+        return wm
+
+    def open_glass_window(self, kind: str, side: str | None = None, payload: dict | None = None):
+        """Open (or bring back) a glass window; returns its id."""
+        from ui.glass_window import GlassWindow, make_content
+        wm = self._window_manager()
+        win = wm.open(kind, side or None, payload)
+        gw = self._glass.get(win.id)
+        if gw is None:
+            gw = GlassWindow(win.id, win.title, make_content(kind, win.payload), self.centralWidget(),
+                             lite=_ui_bus().get(_ui_state.PERF_TIER, "full") == "lite")
+            gw.close_clicked.connect(self.close_glass_window)
+            gw.minimize_clicked.connect(lambda wid: (self._wm.minimize(wid), self._apply_windows()))
+            gw.dropped.connect(lambda wid, x, y: (self._wm.drop(wid, x, y), self._apply_windows()))
+            gw.activated.connect(lambda wid: (self._wm.focus(wid), self._apply_windows()))
+            self._glass[win.id] = gw
+        elif payload:
+            self._update_glass_content(gw, kind, payload)
+        self._apply_windows()
+        return win.id
+
+    def _update_glass_content(self, gw, kind: str, payload: dict) -> None:
+        c = gw.content
+        if kind == "news" and "items" in payload:
+            c.set_items(payload["items"])
+        elif kind == "image" and payload.get("path"):
+            c.show_image(str(payload["path"]))
+        elif kind == "timer" and payload.get("seconds"):
+            c.add(int(payload["seconds"]))
+            if not c.running:
+                c.toggle()
+
+    def close_glass_window(self, wid: str) -> None:
+        wm = self._window_manager()
+        wm.close(wid)
+        gw = self._glass.pop(wid, None)
+        if gw is not None:
+            gw.hide()
+            gw.deleteLater()
+        self._apply_windows()
+
+    def _apply_windows(self) -> None:
+        wm = getattr(self, "_wm", None)
+        if wm is None:
+            return
+        geo = wm.geometry()
+        frozen = wm.frozen()
+        for wid, gw in self._glass.items():
+            r = geo.get(wid)
+            if r is None:
+                gw.hide()
+            else:
+                gw.setGeometry(*r.rounded())
+                gw.show()
+                gw.raise_()
+            gw.set_frozen(wid in frozen)
+        _ui_bus().set(_ui_state.WINDOWS, tuple(w.kind for w in wm.windows() if not w.minimized))
+
+    def _handle_window_command(self, command: VoiceUICommand) -> None:
+        from core.window_manager import KINDS
+        wm = self._window_manager()
+        act, target, side = command.action, command.target, command.desired_state or None
+        if act == "window_open" and target in KINDS:
+            self.open_glass_window(target, side)
+            self._log.append_log(f"SYS: {KINDS[target]['title'].title()} opened"
+                                 + (f" on the {side}." if side else "."))
+        elif act == "window_move" and wm.find(target) is not None:
+            wm.move(wm.find(target).id, side or "left")
+            self._apply_windows()
+        elif act == "window_close" and wm.find(target) is not None:
+            self.close_glass_window(wm.find(target).id)
+        elif act == "window_tile":
+            wm.tile()
+            self._apply_windows()
+        elif act == "workspace_save":
+            self._workspaces.save(target, wm)
+            self._log.append_log(f"SYS: Workspace '{target}' saved.")
+        elif act == "workspace_load":
+            if self._load_workspace(target):
+                self._log.append_log(f"SYS: Workspace '{target}' restored.")
+            else:
+                self._log.append_log(f"SYS: No workspace called '{target}'.")
+        else:
+            self._log.append_log(f"SYS: No {target.replace('_', ' ')} window is open.")
+
+    def _load_workspace(self, name: str) -> bool:
+        wm = self._window_manager()
+        if not self._workspaces.load(name, wm):
+            return False
+        for wid, gw in list(self._glass.items()):      # the snapshot replaces everything
+            gw.hide()
+            gw.deleteLater()
+        self._glass.clear()
+        from ui.glass_window import GlassWindow, make_content
+        for w in wm.windows():
+            gw = GlassWindow(w.id, w.title, make_content(w.kind, w.payload), self.centralWidget())
+            gw.close_clicked.connect(self.close_glass_window)
+            gw.minimize_clicked.connect(lambda wid: (self._wm.minimize(wid), self._apply_windows()))
+            gw.dropped.connect(lambda wid, x, y: (self._wm.drop(wid, x, y), self._apply_windows()))
+            gw.activated.connect(lambda wid: (self._wm.focus(wid), self._apply_windows()))
+            self._glass[w.id] = gw
+        self._apply_windows()
+        return True
+
     def _dispatch_voice_ui_command(self, command: VoiceUICommand) -> None:
         """Perform a narrowly matched command on visible JARVIS controls only."""
         if not isinstance(command, VoiceUICommand):
@@ -5368,6 +5498,10 @@ class MainWindow(QMainWindow):
                 "Use CONFIRM ACTION / CANCEL ACTION where voice approval is allowed; "
                 "manual-click-only requests must be resolved on the HUD."
             )
+            return
+
+        if command.action.startswith(("window_", "workspace_")):
+            self._handle_window_command(command)
             return
 
         # Some Qt child overlays do not set Qt's modal flag. Restrict voice

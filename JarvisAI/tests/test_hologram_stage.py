@@ -16,7 +16,8 @@ class StageTests(unittest.TestCase):
             face_h, orb, orb_r, heart, heart_r = HologramStage.geometry(w, h, 12, h * 0.85, w / 2)
             self.assertGreater(orb.y() - orb_r, 12 + face_h * 0.98)        # orb under the face
             self.assertAlmostEqual(orb.x(), w / 2)
-            self.assertLess(heart.x() + heart_r, w * 0.3)                  # heart low on the left
+            self.assertLess(heart.x() + heart_r, orb.x() - orb_r)          # left of the orb
+            self.assertGreater(heart.x() - heart_r, w * 0.30)              # inside the stage
             self.assertGreater(heart.y(), h * 0.5)
             self.assertLess(heart_r, orb_r * 1.2)                          # the heart is the small one
 

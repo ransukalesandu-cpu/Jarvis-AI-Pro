@@ -121,6 +121,10 @@ def parse_voice_ui_command(text: str) -> VoiceUICommand | None:
                   "dismiss dialog", "dismiss window", "dismiss panel"}:
         return VoiceUICommand("close_active", "", raw)
 
+    window = parse_window_command(phrase, raw)
+    if window is not None:
+        return window
+
     match = re.fullmatch(
         r"(?:go|navigate|switch)\s+to\s+(.+)",
         phrase,
@@ -204,6 +208,54 @@ def parse_voice_ui_command(text: str) -> VoiceUICommand | None:
     if len(target) > 100:
         return None
     return VoiceUICommand("click", target, raw)
+
+
+# Spoken names for the HUD's glass windows (core/window_manager.KINDS).
+WINDOW_NAMES = {
+    "youtube music": "youtube_music", "yt music": "youtube_music",
+    "music": "music", "music player": "music", "songs": "music", "song": "music",
+    "video": "video", "videos": "video", "video player": "video", "youtube": "video",
+    "image": "image", "images": "image", "photo": "image", "photos": "image",
+    "picture": "image", "pictures": "image", "gallery": "image",
+    "news": "news", "headlines": "news",
+    "downloads": "downloads", "download": "downloads", "download folder": "downloads",
+    "timer": "timer", "countdown": "timer", "stopwatch": "timer",
+}
+_WIN_NAME = "|".join(sorted((re.escape(k) for k in WINDOW_NAMES), key=len, reverse=True))
+_SIDE = r"(?:\s+(?:on|to|at|in)\s+(?:the\s+)?(left|right)(?:\s+side)?)?"
+
+
+def parse_window_command(phrase: str, raw: str = "") -> VoiceUICommand | None:
+    """Glass-window commands: open / move / close a window, workspaces.
+
+    "open music on the left", "show the news", "move video to the right",
+    "close the timer window", "save workspace as study", "load workspace study",
+    "tile windows". Only known window names match; everything else is None.
+    """
+    m = re.fullmatch(rf"(?:open|show|launch|start|bring up)\s+(?:the\s+|my\s+)?({_WIN_NAME})"
+                     rf"(?:\s+(?:window|panel|player))?{_SIDE}", phrase)
+    if m:
+        return VoiceUICommand("window_open", WINDOW_NAMES[m.group(1)], raw, m.group(2) or "")
+    m = re.fullmatch(rf"(?:move|put|send)\s+(?:the\s+)?({_WIN_NAME})(?:\s+(?:window|panel|player))?"
+                     rf"\s+(?:on|to)\s+(?:the\s+)?(left|right)(?:\s+side)?", phrase)
+    if m:
+        return VoiceUICommand("window_move", WINDOW_NAMES[m.group(1)], raw, m.group(2))
+    m = re.fullmatch(rf"(?:close|hide|dismiss)\s+(?:the\s+)?({_WIN_NAME})"
+                     rf"(?:\s+(?:window|panel|player))?", phrase)
+    if m:
+        return VoiceUICommand("window_close", WINDOW_NAMES[m.group(1)], raw)
+    m = re.fullmatch(r"save\s+(?:the\s+|this\s+)?(?:workspace|layout)(?:\s+as)?\s+([a-z0-9][a-z0-9 _-]{0,30})",
+                     phrase)
+    if m:
+        return VoiceUICommand("workspace_save", m.group(1).strip(), raw)
+    m = re.fullmatch(r"(?:load|restore|open|switch to)\s+(?:the\s+)?(?:workspace|layout)\s+"
+                     r"([a-z0-9][a-z0-9 _-]{0,30})", phrase)
+    if m:
+        return VoiceUICommand("workspace_load", m.group(1).strip(), raw)
+    if phrase in {"tile windows", "arrange windows", "tidy windows", "organise windows",
+                  "organize windows"}:
+        return VoiceUICommand("window_tile", "", raw)
+    return None
 
 
 def _clean_target(value: str) -> str:

@@ -104,6 +104,12 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Live playback after an interrupt**: when an interrupt aborted a speaker
+  write, the rest of the cancelled answer could play once the stream restarted.
+  A false (echo) barge-in no longer drops the words buffered in the playback
+  worker. A healthy high-latency speaker is no longer mistaken for a silent
+  endpoint and swapped mid-sentence.
+
 - **The hologram sat in a black rectangle.** Both renderers cleared to
   `transparent` with `CompositionMode_Clear`, which Qt composites as black on a
   plain child widget. They now clear to the HUD backdrop colour (`#080b11`) with

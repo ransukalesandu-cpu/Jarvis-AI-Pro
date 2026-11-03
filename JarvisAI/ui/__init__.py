@@ -1947,6 +1947,7 @@ class MainWindow(QMainWindow):
 
         # Quick-access drawer (floating overlay, built after central widget layout is done)
         self._quick_drawer = self._build_quick_drawer()
+        QTimer.singleShot(0, self._ensure_island)   # Dynamic Island over the stage
         self._update_autostart_btn(self._check_autostart())
         from memory.config_manager import get_brief_enabled as _gbe
         self._update_brief_btn(_gbe())
@@ -2057,6 +2058,10 @@ class MainWindow(QMainWindow):
         sc_mute.activated.connect(self._toggle_mute)
         sc_full = QShortcut(QKeySequence("F11"), self)
         sc_full.activated.connect(self._toggle_fullscreen)
+        sc_palette = QShortcut(QKeySequence("Ctrl+K"), self)
+        sc_palette.activated.connect(self._open_palette)
+        sc_ask = QShortcut(QKeySequence("Ctrl+L"), self)
+        sc_ask.activated.connect(lambda: self._run_ui_command("ask"))
         sc_intr = QShortcut(QKeySequence("Escape"), self)
         sc_intr.activated.connect(self._handle_escape)
 
@@ -3151,6 +3156,7 @@ class MainWindow(QMainWindow):
         # Quick drawer — reposition if open
         if hasattr(self, '_quick_drawer') and self._quick_drawer.isVisible():
             self._position_quick_drawer()
+        self._position_island()
         # Glass windows reflow into the new docks.
         if getattr(self, "_wm", None) is not None:
             self._wm.set_layout(self._window_layout())
@@ -3243,20 +3249,15 @@ class MainWindow(QMainWindow):
             QMenu::item:selected {{ color: {C.PRI}; background: {C.PRI_GHO}; }}
             QMenu::separator {{ height: 1px; background: {C.BORDER}; margin: 4px 6px; }}
         """)
-        for key, label in (
-            ("timers", "◷   TIMER & REMINDERS"),
-            ("music", "♫   YOUTUBE MUSIC"),
-            ("news", "◉   LIVE NEWS"),
-            ("media", "▣   MEDIA PLAYER"),
-            ("system", "⌘   SYSTEM STATUS"),
-        ):
-            action = self._nav_menu.addAction(label)
-            action.triggered.connect(
-                lambda _checked=False, view=key: self._on_workspace_shortcut(view)
-            )
-        self._nav_menu.addSeparator()
-        dashboard_action = self._nav_menu.addAction("▦   BENTO DASHBOARD")
-        dashboard_action.triggered.connect(self._open_bento_dashboard)
+        # Left hover menu: one submenu per section, from core/ui_menus.py (the
+        # same commands the right menu and the Ctrl+K palette use).
+        from core import ui_menus as _menus
+        for section in _menus.LEFT_SECTIONS:
+            sub = self._nav_menu.addMenu(section.upper())
+            sub.setStyleSheet(self._nav_menu.styleSheet())
+            for cmd in _menus.by_section(section):
+                act = sub.addAction(cmd.title + (f"\t{cmd.shortcut}" if cmd.shortcut else ""))
+                act.triggered.connect(lambda _c=False, cid=cmd.id: self._run_ui_command(cid))
         self._nav_menu_btn.setMenu(self._nav_menu)
         lay.addWidget(self._nav_menu_btn)
         lay.addWidget(_badge(APP_VERSION, C.PRI_DIM))
@@ -3371,30 +3372,13 @@ class MainWindow(QMainWindow):
         """)
         self._right_menu = QMenu(self._right_menu_btn)
         self._right_menu.setStyleSheet(self._nav_menu.styleSheet())
-        dash_action = self._right_menu.addAction("▦  Bento Dashboard")
-        dash_action.triggered.connect(self._open_bento_dashboard)
-        self._right_menu.addSeparator()
-        telemetry_action = self._right_menu.addAction("▤  Toggle Telemetry")
-        telemetry_action.triggered.connect(
-            lambda _checked=False: self._toggle_telemetry_panel(
-                not self._left_panel.isVisible()
-            )
-        )
-        activity_action = self._right_menu.addAction("☷  Toggle Activity")
-        activity_action.triggered.connect(
-            lambda _checked=False: self._toggle_activity_panel(
-                not self._right_panel.isVisible()
-            )
-        )
-        settings_action = self._right_menu.addAction("⚙  Settings & Controls")
-        settings_action.triggered.connect(
-            lambda _checked=False: self._drawer_btn.click()
-        )
-        self._right_menu.addSeparator()
-        jarvis_action = self._right_menu.addAction("JARVIS Mode")
-        jarvis_action.triggered.connect(lambda: self._mode_btn.setCurrentIndex(0))
-        bihansa_action = self._right_menu.addAction("BIHANSA Mode")
-        bihansa_action.triggered.connect(lambda: self._mode_btn.setCurrentIndex(1))
+        # Right control menu: how JARVIS itself behaves (core/ui_menus.py).
+        from core import ui_menus as _menus
+        for cmd in _menus.by_section(_menus.RIGHT_SECTION):
+            if cmd.id == "settings":
+                self._right_menu.addSeparator()
+            act = self._right_menu.addAction(cmd.title)
+            act.triggered.connect(lambda _c=False, cid=cmd.id: self._run_ui_command(cid))
         self._right_menu_btn.setMenu(self._right_menu)
         self._right_menu_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         lay.addWidget(self._right_menu_btn)
@@ -5341,6 +5325,109 @@ class MainWindow(QMainWindow):
                     score = 0
                 best = max(best, score)
         return best
+
+    # ── menus, palette, island (core/ui_menus.py, ui/command_palette.py) ──
+    def _run_ui_command(self, cid: str) -> None:
+        """Run one command from the menus or the palette."""
+        from core import ui_menus
+        if cid.startswith("open:"):
+            self.open_glass_window(cid.split(":", 1)[1])
+        elif cid == "home":
+            wm = self._window_manager()
+            for w in wm.windows():
+                wm.minimize(w.id)
+            self._apply_windows()
+        elif cid == "tile":
+            self._window_manager().tile()
+            self._apply_windows()
+        elif cid == "ask":
+            self._input.setFocus()
+            self._input.selectAll()
+        elif cid == "palette":
+            self._open_palette()
+        elif cid == "bento":
+            self._open_bento_dashboard()
+        elif cid in ui_menus.ASK_TEXT:
+            self._ask_jarvis(ui_menus.ASK_TEXT[cid])
+        elif cid in ("activity", "activity_panel"):
+            self._toggle_activity_panel(not self._right_panel.isVisible())
+        elif cid == "telemetry":
+            self._toggle_telemetry_panel(not self._left_panel.isVisible())
+        elif cid == "settings":
+            self._drawer_btn.click()
+        elif cid == "system":
+            self._on_workspace_shortcut("system")
+        elif cid in ("mode:jarvis", "mode:bihansa"):
+            self._mode_btn.setCurrentIndex(0 if cid.endswith("jarvis") else 1)
+        elif cid == "ws:save":
+            from PyQt6.QtWidgets import QInputDialog
+            name, ok = QInputDialog.getText(self, "Save workspace", "Name:")
+            if ok and name.strip():
+                self._window_manager()
+                self._workspaces.save(name.strip(), self._wm)
+                self._log.append_log(f"SYS: Workspace '{name.strip().lower()}' saved.")
+        elif cid == "ws:load":
+            from PyQt6.QtWidgets import QInputDialog
+            self._window_manager()
+            names = self._workspaces.names()
+            if not names:
+                self._log.append_log("SYS: No saved workspaces yet.")
+                return
+            name, ok = QInputDialog.getItem(self, "Load workspace", "Workspace:", names, 0, False)
+            if ok and name:
+                self._load_workspace(name)
+        elif cid.startswith("ws:load:"):
+            self._load_workspace(cid.split(":", 2)[2])
+
+    def _ask_jarvis(self, text: str) -> None:
+        if self.on_text_command:
+            threading.Thread(target=self.on_text_command, args=(text,), daemon=True).start()
+
+    def _open_palette(self) -> None:
+        from core import ui_menus
+        from ui.command_palette import CommandPalette
+        pal = getattr(self, "_palette", None)
+        if pal is None:
+            pal = self._palette = CommandPalette(self.centralWidget())
+            pal.command_chosen.connect(self._run_ui_command)
+            pal.text_submitted.connect(self._ask_jarvis)
+        self._window_manager()
+        pal.extra = [ui_menus.Command(f"ws:load:{n}", f"Workspace: {n}", "Workspaces", "load restore")
+                     for n in self._workspaces.names()]
+        pal.open()
+
+    def _ensure_island(self) -> None:
+        from ui.command_palette import IslandPill
+        if getattr(self, "_island", None) is None:
+            self._island = IslandPill(self.centralWidget())
+            self._island.clicked.connect(self._open_palette)
+            self._island_tmr = QTimer(self)
+            self._island_tmr.timeout.connect(self._update_island)
+            self._island_tmr.start(500)
+        self._position_island()
+
+    def _position_island(self) -> None:
+        isl = getattr(self, "_island", None)
+        if isl is None:
+            return
+        try:
+            tl = self.hud.mapTo(self.centralWidget(), self.hud.rect().topLeft())
+            w = max(220, min(420, int(self.hud.width() * 0.32)))
+            isl.setGeometry(tl.x() + (self.hud.width() - w) // 2, tl.y() + 8, w, 28)
+            isl.show()
+            isl.raise_()
+        except (RuntimeError, AttributeError):
+            pass
+
+    def _update_island(self) -> None:
+        text = ""
+        wm = getattr(self, "_wm", None)
+        if wm is not None:
+            t = wm.find("timer")
+            gw = self._glass.get(t.id) if t is not None else None
+            if gw is not None and gw.content.running:
+                text = gw.content._display.text()
+        self._island.set_timer(text)
 
     # ── glass windows (core/window_manager.py, ui/glass_window.py) ─────────
     def _window_layout(self):

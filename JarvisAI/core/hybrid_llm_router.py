@@ -58,9 +58,13 @@ class HybridLLMRouter:
         api_keys: dict[str, str] | None = None,
         timeout: float = 20.0,
         online_check: bool = True,
+        task_routing: dict[str, str] | None = None,
     ) -> None:
         preferred = str(preferred_provider or "gemini").strip().lower()
         self.preferred_provider = preferred if preferred in _PROVIDER_ORDER else "gemini"
+        # Optional task -> provider table (core/task_router.py). None keeps the
+        # single preferred provider for every query, as before.
+        self.task_routing = dict(task_routing) if task_routing else None
         self.api_keys = {
             str(key).strip().lower(): str(value).strip()
             for key, value in (api_keys or {}).items()
@@ -136,8 +140,18 @@ class HybridLLMRouter:
                 self._provider_latency_samples.get(provider, 0) + 1
             )
 
-    def _provider_order(self, online: bool) -> list[str]:
-        preferred = self.preferred_provider
+    def _preferred_for(self, task: str | None) -> str:
+        """The provider to try first for ``task`` (core/task_router.py); the
+        configured preferred provider when there is no task or no table."""
+        if not task or not self.task_routing:
+            return self.preferred_provider
+        from core.task_router import provider_for
+        status = self.configured_key_status()
+        chosen = provider_for(task, self.task_routing, status)
+        return chosen if chosen in _PROVIDER_ORDER else self.preferred_provider
+
+    def _provider_order(self, online: bool, preferred: str | None = None) -> list[str]:
+        preferred = preferred or self.preferred_provider
         if not online:
             preferred = "ollama"
         fallbacks = [provider for provider in _PROVIDER_ORDER if provider != preferred]
@@ -175,12 +189,16 @@ class HybridLLMRouter:
         if not system_prompt:
             system_prompt = "You are JARVIS, a capable personal AI assistant."
 
+        task = kwargs.pop("task", None)
+        first = self._preferred_for(task)
         started = time.monotonic()
         online = not self.online_check or self.is_online()
-        # Keep the owner's configured preference first. Rank only fallback
-        # providers by observed successful latency, preserving static order for
-        # providers with no measurements. Offline mode still prioritizes Ollama.
-        order = self._provider_order(online)
+        # Keep the owner's configured preference first (or the task route's
+        # choice). Rank only fallback providers by observed successful latency,
+        # preserving static order for providers with no measurements. Offline
+        # mode still prioritizes Ollama. A provider without a key is skipped
+        # below, so a task routed to it falls through this same ladder.
+        order = self._provider_order(online, first)
 
         failures: list[str] = []
         for provider in order:
@@ -191,7 +209,7 @@ class HybridLLMRouter:
             # failover makes otherwise healthy fallback providers reject requests.
             provider_kwargs = dict(kwargs)
             provider_started = time.monotonic()
-            if provider != self.preferred_provider:
+            if provider != first:
                 provider_kwargs.pop("model", None)
             try:
                 result = self._validate_result(
@@ -314,7 +332,8 @@ class HybridLLMRouter:
                 timeout=self.timeout, model=kwargs.get("model"),
             )
         import anthropic
-        model = str(kwargs.get("model") or "claude-3-5-sonnet-latest")
+        from core.provider_settings import claude_model
+        model = str(kwargs.get("model") or claude_model("strong"))
         client = anthropic.Anthropic(
             api_key=self._key("claude"), timeout=self.timeout, max_retries=0
         )
@@ -324,6 +343,8 @@ class HybridLLMRouter:
             system=system_prompt,
             messages=[{"role": "user", "content": prompt}],
         )
+        from core.claude_usage import record_call
+        record_call(model, getattr(response, "usage", None), source="text-fallback")
         text = "".join(
             block.text for block in response.content if getattr(block, "type", "") == "text"
         )

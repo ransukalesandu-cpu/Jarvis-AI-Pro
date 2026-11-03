@@ -50,6 +50,8 @@ class Step:
     action: str = ""
     # A Gemini function call in this event: {"name": ..., "args": {...}}.
     tool_call: dict | None = None
+    # A go_away notice with this many seconds left (0 = none).
+    go_away_s: float = 0.0
 
 
 def steps_from_fixture(name: str) -> list[Step]:
@@ -92,8 +94,9 @@ def _event(step: Step, marker: int):
     if not (step.audio_ms or step.output_text or step.input_text or step.interrupted
             or step.turn_complete or step.generation_complete):
         sc = None
+    go_away = SimpleNamespace(time_left=f"{step.go_away_s}s") if step.go_away_s else None
     return SimpleNamespace(server_content=sc, tool_call=tool_call,
-                           session_resumption_update=None, data=None)
+                           session_resumption_update=None, data=None, go_away=go_away)
 
 
 class FakeSession:

@@ -6,6 +6,8 @@ PCM framing and Live-event/error handling can be tested independently.
 
 from __future__ import annotations
 
+import re
+
 import asyncio
 import base64
 from typing import Any
@@ -271,6 +273,16 @@ def _resumable_session_handle(response) -> str | None:
     return handle if handle else None
 
 
+def _duration_seconds(value, default: float = 10.0) -> float:
+    """Seconds from a Live duration ("12s", "1.5s", "PT12S", 12); ``default``
+    when it cannot be read."""
+    if isinstance(value, (int, float)):
+        return max(0.0, float(value))
+    text = str(value or "").strip().upper()
+    match = re.fullmatch(r"(?:PT)?(\d+(?:\.\d+)?)S?", text)
+    return max(0.0, float(match.group(1))) if match else default
+
+
 def _take_playback_pcm(buffer: bytearray, *, final: bool = False) -> bytes:
     """Take aligned PCM without producing tiny writes during streaming.
 
@@ -295,22 +307,33 @@ def _take_playback_pcm(buffer: bytearray, *, final: bool = False) -> bytes:
     return pcm
 
 
-def _output_write_is_unpaced(audio_seconds: float, wall_seconds: float) -> bool:
+def _output_write_is_unpaced(
+    audio_seconds: float, wall_seconds: float, buffer_seconds: float = 0.0
+) -> bool:
     """True when output writes cannot plausibly be keeping pace with playback.
 
     A healthy blocking output stream may buffer ahead briefly, so do not judge
     it from the first write. The caller checks this only after at least one full
     second of PCM has been submitted.
+
+    ``buffer_seconds`` is the device's reported output latency. A stream that
+    was idle has an empty buffer that legitimately absorbs that much PCM at
+    once (300-500 ms is common on Windows), so only the audio beyond it is
+    expected to take real time. Without this, a healthy high-latency speaker
+    could be judged "unpaced" and swapped for another device mid-sentence.
     """
     try:
         audio_seconds = float(audio_seconds)
         wall_seconds = float(wall_seconds)
+        buffer_seconds = max(0.0, float(buffer_seconds or 0.0))
     except (TypeError, ValueError):
         return False
+    paced_seconds = audio_seconds - buffer_seconds
     return (
         audio_seconds >= 1.0
+        and paced_seconds > 0.0
         and wall_seconds >= 0.0
-        and wall_seconds < audio_seconds * 0.20
+        and wall_seconds < paced_seconds * 0.20
     )
 
 

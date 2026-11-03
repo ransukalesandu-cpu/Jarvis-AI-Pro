@@ -19,11 +19,18 @@ else:
 _CONFIG = _BASE / "config" / "api_keys.json"
 _LOCK = threading.RLock()
 _PROVIDERS = {"gemini", "openai", "anthropic"}
+# Claude model defaults, in ONE place. Every Claude caller (ask_claude, the
+# one-shot provider in core/ai_providers.py, the text fallback router) reads
+# them through claude_model(); the owner overrides them with the
+# anthropic_model_reasoning / anthropic_model_fast settings.
+CLAUDE_STRONG_MODEL = "claude-sonnet-5-5"
+CLAUDE_FAST_MODEL = "claude-haiku-5-5"
+
 _DEFAULTS = {
     "openai_fast_model": "gpt-5.6-luna",
     "openai_reasoning_model": "gpt-5.6-terra",
-    "anthropic_fast_model": "claude-haiku-4-5-20251001",
-    "anthropic_reasoning_model": "claude-sonnet-5-5",
+    "anthropic_fast_model": CLAUDE_FAST_MODEL,
+    "anthropic_reasoning_model": CLAUDE_STRONG_MODEL,
 }
 
 
@@ -59,6 +66,15 @@ def get_provider_api_key(provider: str) -> str:
         env_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
         return env_key or str(_read().get("anthropic_api_key", "") or "").strip()
     return ""
+
+
+def claude_model(tier: str = "strong") -> str:
+    """The Claude model for a tier: "fast" (quick answers) or anything else
+    (strong reasoning). Settings override the defaults above."""
+    data = _read()
+    if str(tier or "").strip().lower() == "fast":
+        return str(data.get("anthropic_model_fast") or CLAUDE_FAST_MODEL).strip()
+    return str(data.get("anthropic_model_reasoning") or CLAUDE_STRONG_MODEL).strip()
 
 
 def get_provider_settings() -> dict:

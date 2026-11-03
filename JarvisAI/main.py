@@ -1089,9 +1089,29 @@ class JarvisLive(
                     # If the preference cannot be read, fail closed for memory
                     # sharing while keeping the ordinary text fallback available.
                     memory_access = False
+                # Read-only tools for Claude while Live is down; every call
+                # still goes through security.guard and the action log. They
+                # reach the provider call through BrainEngine's query_fn, so the
+                # Brain Engine itself still only produces answers.
+                query_fn = None
+                try:
+                    import functools
+                    from actions.system_monitor import get_system_status
+                    from core.fallback_tools import FallbackToolbox
+                    from core.provider_fallback import query_text_fallback
+                    toolbox = FallbackToolbox(
+                        getattr(self, "_action_registry", None),
+                        recall=self._recall_memory_context,
+                        system_status=get_system_status,
+                        memory_enabled=memory_access,
+                    )
+                    query_fn = functools.partial(query_text_fallback, toolbox=toolbox)
+                except Exception:
+                    query_fn = None
                 brain = BrainEngine(
                     config_path=API_CONFIG_PATH,
                     memory_enabled=memory_access,
+                    query_fn=query_fn,
                 )
                 result = brain.respond(
                     text,
@@ -1152,6 +1172,9 @@ class JarvisLive(
                     )
                 profile = result.get("task_profile") or {}
                 kind = str(profile.get("kind") or "general")
+                ran = result.get("tools_ran") or []
+                if ran:
+                    self.ui.write_log(f"SYS: Fallback tools used: {', '.join(ran)}.")
                 self.ui.write_log(
                     f"SYS: Brain Engine answered via {provider} ({kind}, "
                     f"{result.get('latency_ms', 0)} ms, "

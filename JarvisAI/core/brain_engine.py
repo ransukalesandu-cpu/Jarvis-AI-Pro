@@ -325,4 +325,5 @@ class BrainEngine:
             "history_items": len(history),
             "context_chars": len(prompt),
             "configured_providers": str(configured or "none"),
+            "tools_ran": list(result.get("tools_ran") or []),
         }

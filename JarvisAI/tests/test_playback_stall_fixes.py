@@ -106,39 +106,47 @@ class FakeStream:
 
 
 class PlaybackWorkerTests(unittest.TestCase):
+    @staticmethod
+    def make_host(held=None):
+        return SimpleNamespace(
+            _playback_interrupt_requested=threading.Event(),
+            _shutdown_requested=False,
+            audio_in_queue=asyncio.Queue(),
+            _turn_done_event=asyncio.Event(),
+            _assistant_turn_pending=True,
+            set_speaking=lambda _value: None,
+            ui=SimpleNamespace(write_log=lambda _m: None, push_visemes=lambda *a: None,
+                               set_audio_level=lambda _l: None, muted=False),
+            _out_latency=0.05,
+            _play_cursor=0.0,
+            _visemes=SimpleNamespace(frames=lambda frames, hop: []),
+            _echo=SimpleNamespace(note_output=lambda *a: None),
+            _out_level=0.0,
+            _phone_active=False,
+            _dashboard=None,
+            _output_stream=None,
+            _held_audio_state=lambda: held or HeldAudio(),
+        )
+
+    @staticmethod
+    def playback(host, stream):
+        backend = SimpleNamespace(RawOutputStream=lambda **_kw: stream,
+                                  query_devices=lambda *a: {}, query_hostapis=lambda: [])
+        service = SimpleNamespace(resolve=lambda *_a: None)
+        return run_audio_playback(
+            host, audio_backend=backend, device_service=service,
+            get_output_device_fn=lambda: "", pcm_visemes_fn=lambda pcm, sr: [],
+            output_executor=None, tail_margin=0.1, first_sound_delay=0.0,
+            cursor_slack=0.1, viseme_hop=480,
+        )
+
     def run_worker(self, on_write, *, held=None, chunks=(1, 2, 3, 4)):
         async def scenario():
-            host = SimpleNamespace(
-                _playback_interrupt_requested=threading.Event(),
-                _shutdown_requested=False,
-                audio_in_queue=asyncio.Queue(),
-                _turn_done_event=asyncio.Event(),
-                _assistant_turn_pending=True,
-                set_speaking=lambda _value: None,
-                ui=SimpleNamespace(write_log=lambda _m: None, push_visemes=lambda *a: None,
-                                   set_audio_level=lambda _l: None, muted=False),
-                _out_latency=0.05,
-                _play_cursor=0.0,
-                _visemes=SimpleNamespace(frames=lambda frames, hop: []),
-                _echo=SimpleNamespace(note_output=lambda *a: None),
-                _out_level=0.0,
-                _phone_active=False,
-                _dashboard=None,
-                _output_stream=None,
-                _held_audio_state=lambda: held or HeldAudio(),
-            )
+            host = self.make_host(held)
             for value in chunks:
                 host.audio_in_queue.put_nowait(chunk(value))
             stream = FakeStream(lambda s, data: on_write(host, s, data))
-            backend = SimpleNamespace(RawOutputStream=lambda **_kw: stream,
-                                      query_devices=lambda *a: {}, query_hostapis=lambda: [])
-            service = SimpleNamespace(resolve=lambda *_a: None)
-            await asyncio.wait_for(run_audio_playback(
-                host, audio_backend=backend, device_service=service,
-                get_output_device_fn=lambda: "", pcm_visemes_fn=lambda pcm, sr: [],
-                output_executor=None, tail_margin=0.1, first_sound_delay=0.0,
-                cursor_slack=0.1, viseme_hop=480,
-            ), timeout=5.0)
+            await asyncio.wait_for(self.playback(host, stream), timeout=5.0)
             return stream
 
         with redirect_stdout(io.StringIO()):
@@ -179,6 +187,35 @@ class PlaybackWorkerTests(unittest.TestCase):
         self.assertEqual([data[0] for data in stream.written], [1, 99])
         self.assertEqual(held.chunks, [chunk(3)])
 
+
+    def test_interrupt_during_prebuffer_holds_the_buffered_words_in_order(self):
+        # Interrupt before the first write: chunks 1 and 2 sit in the worker's
+        # prebuffer (200 ms < 300 ms target), chunk 3 is still queued.
+        held = HeldAudio()
+
+        async def scenario():
+            host = self.make_host(held)
+            stream = FakeStream(lambda s, data: None)
+            worker = asyncio.ensure_future(self.playback(host, stream))
+            host.audio_in_queue.put_nowait(chunk(1))
+            host.audio_in_queue.put_nowait(chunk(2))
+            await asyncio.sleep(0.3)               # the worker takes both, then waits
+            host.audio_in_queue.put_nowait(chunk(3))
+            queued = []                            # what _interrupt_on_loop does
+            while not host.audio_in_queue.empty():
+                queued.append(host.audio_in_queue.get_nowait())
+            held.begin(queued)
+            host._playback_interrupt_requested.set()
+            await asyncio.sleep(0.3)
+            host._shutdown_requested = True
+            await asyncio.wait_for(worker, timeout=5.0)
+            return host, stream
+
+        with redirect_stdout(io.StringIO()):
+            host, stream = asyncio.run(scenario())
+        self.assertEqual(stream.written, [])                    # nothing played early
+        self.assertFalse(host._playback_interrupt_requested.is_set())
+        self.assertEqual(held.chunks, [chunk(1) + chunk(2), chunk(3)])
 
 if __name__ == "__main__":
     unittest.main()

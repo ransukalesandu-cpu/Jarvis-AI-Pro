@@ -203,6 +203,8 @@ class BrainEngine:
         router_factory: Callable[..., TextProviderRouter] | None = None,
         memory_retriever: Callable[..., Any] | None = None,
         memory_enabled: bool = False,
+        tool_executor: Callable[[str, dict], str] | None = None,
+        tool_declarations: list[dict] | None = None,
     ) -> None:
         self.config_path = Path(config_path) if config_path else (
             Path(__file__).resolve().parents[1] / "config" / "api_keys.json"
@@ -211,6 +213,11 @@ class BrainEngine:
         self.router_factory = router_factory
         self.memory_retriever = memory_retriever
         self.memory_enabled = bool(memory_enabled)
+        # Optional read-only tools for the Claude text fallback
+        # (core/fallback_tools.py). The engine never runs tools itself; the
+        # caller-supplied executor goes through the normal dispatcher path.
+        self.tool_executor = tool_executor
+        self.tool_declarations = list(tool_declarations or [])
 
     def _retrieve_memory(self, query: str, project: str) -> list[dict[str, Any]]:
         try:
@@ -304,6 +311,9 @@ class BrainEngine:
         }
         if self.router_factory is not None:
             kwargs["router_factory"] = self.router_factory
+        if self.tool_executor is not None and self.tool_declarations:
+            kwargs["tool_executor"] = self.tool_executor
+            kwargs["tool_declarations"] = list(self.tool_declarations)
 
         result, configured = self.query_fn(prompt, **kwargs)
         if not isinstance(result, dict):
@@ -328,4 +338,5 @@ class BrainEngine:
             "history_items": len(history),
             "context_chars": len(prompt),
             "configured_providers": str(configured or "none"),
+            "tools_run": list(result.get("tools_run") or []),
         }

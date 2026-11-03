@@ -1063,12 +1063,38 @@ class JarvisLive(
         manual = self._dashboard.get_manual_url()
         return url, key, f"{url}/auto-login?key={key}", manual
 
+    def _fallback_tool_declarations(self) -> list[dict]:
+        """Declarations of the read-only tools the text fallback may use."""
+        from core.fallback_tools import SAFE_FALLBACK_TOOLS
+        declarations = list(TOOL_DECLARATIONS)
+        registry = getattr(self, "_action_registry", None)
+        if registry is not None:
+            declarations += registry.get_tool_declarations()
+        return [d for d in declarations
+                if isinstance(d, dict) and d.get("name") in SAFE_FALLBACK_TOOLS]
+
+    def _run_fallback_tool(self, name: str, args: dict) -> str:
+        """Run one allow-listed tool for the text fallback (worker thread only).
+
+        Goes through the same _execute_tool path as a Live function call, so
+        security.guard, timeouts and the action log all apply unchanged.
+        """
+        from types import SimpleNamespace
+        from core.fallback_tools import SAFE_FALLBACK_TOOLS
+        if name not in SAFE_FALLBACK_TOOLS:
+            return f"The tool '{name}' is not available while Gemini Live is offline."
+        call = SimpleNamespace(id=None, name=name, args=dict(args or {}), cancel_event=None)
+        response = asyncio.run(self._execute_tool(call))
+        return str((getattr(response, "response", None) or {}).get("result", ""))
+
     def _start_hybrid_text_fallback(self, text: str) -> None:
         """Answer typed prompts through the Brain Engine while Live is down.
 
         Brain Engine enriches the text-only request with bounded recent turns
-        and optional provider-safe memory. It cannot execute computer actions,
-        bypass authorization, or replace the primary Live audio/tool session.
+        and optional provider-safe memory. With an Anthropic key it may also run
+        the read-only tools in core/fallback_tools.py through _execute_tool. It
+        cannot execute computer actions, bypass authorization, or replace the
+        primary Live audio/tool session.
         """
         if not text:
             return
@@ -1092,6 +1118,9 @@ class JarvisLive(
                 brain = BrainEngine(
                     config_path=API_CONFIG_PATH,
                     memory_enabled=memory_access,
+                    # Read-only tools for the Claude fallback when a key exists.
+                    tool_executor=self._run_fallback_tool,
+                    tool_declarations=self._fallback_tool_declarations(),
                 )
                 result = brain.respond(
                     text,
@@ -1158,6 +1187,12 @@ class JarvisLive(
                     f"{result.get('memory_hits', 0)} memory hits, "
                     f"{result.get('history_items', 0)} history items)."
                 )
+                tools_run = result.get("tools_run") or []
+                if tools_run:
+                    self.ui.write_log(
+                        "SYS: Fallback tools run: " + ", ".join(
+                            f"{row.get('tool')} ({row.get('status')})" for row in tools_run)
+                    )
             except Exception as exc:
                 try:
                     self.ui.write_log(

@@ -8,11 +8,15 @@ while a network request is running.
 from __future__ import annotations
 
 import json
+import logging
+import os
 from pathlib import Path
 from typing import Any, Callable
 
 from core.hybrid_llm_router import HybridLLMRouter, resolve_preferred_provider
 from core.provider_protocol import ProviderResult, TextProviderRouter
+
+logger = logging.getLogger("Jarvis.ProviderFallback")
 
 
 _FALLBACK_PROMPT_RULES = (
@@ -57,6 +61,9 @@ def query_text_fallback(
     base_system_prompt: str,
     router_factory: Callable[..., TextProviderRouter] | None = None,
     task: str | None = None,
+    tool_executor: Callable[[str, dict], str] | None = None,
+    tool_declarations: list[dict] | None = None,
+    claude_client_factory: Callable[..., Any] | None = None,
 ) -> tuple[ProviderResult, str]:
     """Run provider-routed text fallback and return results plus provider names.
 
@@ -64,6 +71,11 @@ def query_text_fallback(
     router_factory is injectable so tests need not make network requests.
     `task` is a core.task_router category; it only matters when the owner has
     a `task_routing` setting.
+
+    With `tool_executor` and `tool_declarations`, and an Anthropic key, Claude
+    answers first with the read-only allow-list in core/fallback_tools.py; the
+    executor must run tools through the normal security/dispatcher path. If
+    that fails for any reason, the text-only route below runs unchanged.
     """
     if not isinstance(text, str) or not text.strip():
         raise ValueError("Text fallback requires a non-empty prompt.")
@@ -75,6 +87,24 @@ def query_text_fallback(
     router = factory(preferred_provider=preferred, api_keys=keys)
     status = router.configured_key_status()
     configured = ",".join(name for name, present in status.items() if present) or "none"
+    claude_key = keys["claude"] or os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if tool_executor is not None and tool_declarations and claude_key:
+        from core.fallback_tools import run_claude_tool_fallback
+        try:
+            result = run_claude_tool_fallback(
+                text,
+                system_prompt=base_system_prompt,
+                api_key=claude_key,
+                declarations=tool_declarations,
+                execute=tool_executor,
+                task=task,
+                client_factory=claude_client_factory,
+            )
+            return result, configured
+        except Exception as exc:
+            # Exception text can contain request details; log only the type.
+            logger.warning("Claude tool fallback unavailable (%s); using text-only route",
+                           type(exc).__name__)
     result = router.query(
         text,
         system_prompt=build_fallback_system_prompt(base_system_prompt),

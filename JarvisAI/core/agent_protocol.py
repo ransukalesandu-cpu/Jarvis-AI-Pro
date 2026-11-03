@@ -22,6 +22,7 @@ class AgentResponse(TypedDict):
     history_items: NotRequired[int]
     context_chars: NotRequired[int]
     configured_providers: NotRequired[str]
+    tools_run: NotRequired[list[dict[str, str]]]
 
 
 @runtime_checkable

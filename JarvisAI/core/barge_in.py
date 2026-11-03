@@ -56,6 +56,16 @@ class HeldAudio:
         if self.active and pcm:
             self.chunks.append(bytes(pcm))
 
+    def prepend(self, pcm: bytes) -> None:
+        """Hold PCM that comes *before* everything already held.
+
+        The playback worker's private buffer holds the words just ahead of the
+        speaker queue; on a provisional barge-in it is handed back here so a
+        false alarm resumes without skipping them.
+        """
+        if self.active and pcm:
+            self.chunks.insert(0, bytes(pcm))
+
     def mark_turn_complete(self) -> None:
         if self.active:
             self.turn_complete = True

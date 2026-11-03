@@ -12,12 +12,12 @@ API_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "api_keys.jso
 _ALLOWED_INTENTS = {"CHAT", "BROWSER"}
 
 
-def _configured_preferred_provider() -> str:
+def _configured_preferred_provider(task: str | None = None) -> str:
     try:
         data = json.loads(API_CONFIG_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         data = {}
-    return resolve_preferred_provider(data if isinstance(data, dict) else {})
+    return resolve_preferred_provider(data if isinstance(data, dict) else {}, task=task)
 
 
 def _configured_keys() -> dict[str, str]:
@@ -58,7 +58,8 @@ class SmartIntentRouter:
         if not text:
             raise ValueError("A non-empty user request is required")
         router = self._router_factory(
-            preferred_provider=_configured_preferred_provider(),
+            # Classification is a small, simple task (core/task_router.py).
+            preferred_provider=_configured_preferred_provider(task="simple"),
             api_keys=_configured_keys(),
             online_check=False,
             timeout=15.0,

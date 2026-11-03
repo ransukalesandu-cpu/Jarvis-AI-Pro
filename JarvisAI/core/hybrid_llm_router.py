@@ -20,13 +20,24 @@ from core.provider_protocol import ProviderResult, TextProvider
 logger = logging.getLogger("Jarvis.LLMRouter")
 
 
-def resolve_preferred_provider(config: dict[str, Any]) -> str:
+def resolve_preferred_provider(config: dict[str, Any], task: str | None = None) -> str:
     """Resolve the hybrid router preference without reusing llm_client settings.
 
     `llm_provider` belongs to core.llm_client and selects Ollama or an
     OpenAI-compatible local server. The hybrid route has its own
     `hybrid_provider` setting; absent that, the UI's `ai_provider` is used.
+
+    When a task category is given and the owner has a `task_routing` setting,
+    core.task_router picks the preferred provider instead. Without that setting
+    the result is exactly the legacy choice. Either way, providers without a
+    key are skipped later by the HybridLLMRouter fallback ladder.
     """
+    if task:
+        from core.task_router import provider_for_task, task_routing_enabled
+        if task_routing_enabled(config):
+            return provider_for_task(
+                task, config, has_key=lambda name: _config_has_key(config, name)
+            )
     selected = str(
         config.get("hybrid_provider") or config.get("ai_provider") or "gemini"
     ).strip().lower()
@@ -41,6 +52,20 @@ _KEY_ENV = {
     "openai": "OPENAI_API_KEY",
     "claude": "ANTHROPIC_API_KEY",
 }
+_KEY_FIELDS = {
+    "gemini": ("gemini_api_key",),
+    "groq": ("groq_api_key",),
+    "openai": ("openai_api_key",),
+    "claude": ("anthropic_api_key", "claude_api_key"),
+}
+
+
+def _config_has_key(config: dict[str, Any], provider: str) -> bool:
+    """Credential presence only, from settings or the environment."""
+    if any(str(config.get(field) or "").strip() for field in _KEY_FIELDS.get(provider, ())):
+        return True
+    return bool(os.getenv(_KEY_ENV.get(provider, ""), "").strip())
+
 
 
 class HybridLLMRouter:

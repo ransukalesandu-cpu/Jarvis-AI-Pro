@@ -56,18 +56,21 @@ def query_text_fallback(
     config_path: str | Path,
     base_system_prompt: str,
     router_factory: Callable[..., TextProviderRouter] | None = None,
+    task: str | None = None,
 ) -> tuple[ProviderResult, str]:
     """Run provider-routed text fallback and return results plus provider names.
 
     The second return value contains provider names only, never credentials.
     router_factory is injectable so tests need not make network requests.
+    `task` is a core.task_router category; it only matters when the owner has
+    a `task_routing` setting.
     """
     if not isinstance(text, str) or not text.strip():
         raise ValueError("Text fallback requires a non-empty prompt.")
 
     config = _load_provider_config(config_path)
     keys = _provider_keys(config)
-    preferred = resolve_preferred_provider(config)
+    preferred = resolve_preferred_provider(config, task=task)
     factory = router_factory or HybridLLMRouter
     router = factory(preferred_provider=preferred, api_keys=keys)
     status = router.configured_key_status()

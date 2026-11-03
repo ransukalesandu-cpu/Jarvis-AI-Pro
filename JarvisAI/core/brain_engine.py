@@ -295,9 +295,12 @@ class BrainEngine:
             )
             if value.strip()
         )
+        from core.task_router import category_for_request
         kwargs: dict[str, Any] = {
             "config_path": self.config_path,
             "base_system_prompt": system_prompt,
+            # Used only when the owner configured task_routing.
+            "task": category_for_request(request, profile),
         }
         if self.router_factory is not None:
             kwargs["router_factory"] = self.router_factory

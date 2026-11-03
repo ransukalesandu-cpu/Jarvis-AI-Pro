@@ -223,6 +223,10 @@ _TIERS: dict[str, str] = {
     # read-only / informational
     "web_search":       TIER_SAFE,
     "deep_reasoning":   TIER_SAFE,
+    # Sends text to Claude and returns an answer; no local side effects. It
+    # spends the owner's pay-per-use API credit, so it is rate-limited below
+    # and stays out of the restricted-mode allowlist in core/dispatcher.py.
+    "ask_claude":       TIER_SAFE,
     "weather_report":   TIER_SAFE,
     "earth_globe":      TIER_SAFE,
     # Opening Holo requests webcam access through the native desktop UI.
@@ -422,6 +426,7 @@ _rate_lock = threading.Lock()
 _COSTLY_SAFE_LIMITS: dict[str, tuple[int, int]] = {
     "web_search":     (12, 60),
     "deep_reasoning": (4, 60),
+    "ask_claude":     (4, 60),
     "flight_finder":  (6, 60),
     "weather_report": (12, 60),
 }

@@ -314,16 +314,21 @@ class HybridLLMRouter:
                 timeout=self.timeout, model=kwargs.get("model"),
             )
         import anthropic
-        model = str(kwargs.get("model") or "claude-3-5-sonnet-latest")
+        from core.claude_usage import record_claude_usage
+        from core.provider_settings import anthropic_model
+        model = str(kwargs.get("model") or anthropic_model("reasoning"))
         client = anthropic.Anthropic(
             api_key=self._key("claude"), timeout=self.timeout, max_retries=0
         )
+        # Current Claude models think adaptively by default and thinking counts
+        # toward max_tokens, so 2048 could leave no room for the visible answer.
         response = client.messages.create(
             model=model,
-            max_tokens=2048,
+            max_tokens=8192,
             system=system_prompt,
             messages=[{"role": "user", "content": prompt}],
         )
+        record_claude_usage(response, source="hybrid_router", model=model)
         text = "".join(
             block.text for block in response.content if getattr(block, "type", "") == "text"
         )

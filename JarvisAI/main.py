@@ -1600,6 +1600,16 @@ class JarvisLive(
                 "routine turns. Use web_search for information that must be "
                 "current; deeper reasoning does not make stale facts current."
             )
+        if "ask_claude" in _names:
+            parts.append(
+                "[CLAUDE BRAIN]\n"
+                "For coding, debugging, complex planning, long multi-step "
+                "reasoning, or drafting long text, call ask_claude with the full "
+                "task and context (depth 'deep' only for genuinely hard work), "
+                "then read its short summary aloud. Prefer it over deep_reasoning "
+                "for those tasks. Never use it for simple commands, small talk, "
+                "or anything that needs the screen or camera."
+            )
 
         cfg = dict(
             response_modalities=["AUDIO"],

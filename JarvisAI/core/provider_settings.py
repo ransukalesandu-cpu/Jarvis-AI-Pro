@@ -19,11 +19,19 @@ else:
 _CONFIG = _BASE / "config" / "api_keys.json"
 _LOCK = threading.RLock()
 _PROVIDERS = {"gemini", "openai", "anthropic"}
+
+# The one place Claude model names are chosen. Every Anthropic call (one-shot
+# tiers, the hybrid text router, ask_claude, the tool-capable fallback) reads
+# them through anthropic_model(), so the owner can override them with the
+# existing anthropic_model_reasoning / anthropic_model_fast settings keys.
+ANTHROPIC_REASONING_MODEL = "claude-sonnet-5-5"
+ANTHROPIC_FAST_MODEL = "claude-haiku-5-5"
+
 _DEFAULTS = {
     "openai_fast_model": "gpt-5.6-luna",
     "openai_reasoning_model": "gpt-5.6-terra",
-    "anthropic_fast_model": "claude-haiku-4-5-20251001",
-    "anthropic_reasoning_model": "claude-sonnet-5-5",
+    "anthropic_fast_model": ANTHROPIC_FAST_MODEL,
+    "anthropic_reasoning_model": ANTHROPIC_REASONING_MODEL,
 }
 
 
@@ -59,6 +67,14 @@ def get_provider_api_key(provider: str) -> str:
         env_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
         return env_key or str(_read().get("anthropic_api_key", "") or "").strip()
     return ""
+
+
+def anthropic_model(tier: str = "reasoning") -> str:
+    """The configured Claude model for a tier: ``fast`` or anything else (strong)."""
+    fast = str(tier or "").strip().lower() in {"fast", "quick"}
+    key = "anthropic_model_fast" if fast else "anthropic_model_reasoning"
+    default = ANTHROPIC_FAST_MODEL if fast else ANTHROPIC_REASONING_MODEL
+    return str(_read().get(key) or "").strip() or default
 
 
 def get_provider_settings() -> dict:

@@ -69,12 +69,22 @@ def query_text_fallback(
     keys = _provider_keys(config)
     preferred = resolve_preferred_provider(config)
     factory = router_factory or HybridLLMRouter
-    router = factory(preferred_provider=preferred, api_keys=keys)
+    # Task routing (core/task_router.py) only when the owner set task_routing;
+    # otherwise the router is built and queried exactly as before.
+    from core.task_router import classify, routing_from_config
+    routing = routing_from_config(config)
+    if routing is None:
+        router = factory(preferred_provider=preferred, api_keys=keys)
+        route_kwargs: dict[str, Any] = {}
+    else:
+        router = factory(preferred_provider=preferred, api_keys=keys, task_routing=routing)
+        route_kwargs = {"task": classify(text)}
     status = router.configured_key_status()
     configured = ",".join(name for name, present in status.items() if present) or "none"
     result = router.query(
         text,
         system_prompt=build_fallback_system_prompt(base_system_prompt),
+        **route_kwargs,
     )
     if not isinstance(result, dict):
         raise RuntimeError("The selected provider returned an invalid result.")

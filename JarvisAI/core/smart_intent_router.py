@@ -17,7 +17,14 @@ def _configured_preferred_provider() -> str:
         data = json.loads(API_CONFIG_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         data = {}
-    return resolve_preferred_provider(data if isinstance(data, dict) else {})
+    data = data if isinstance(data, dict) else {}
+    # Classifying an intent is a "simple" task: with task_routing set it goes
+    # to that route's provider; without it, the previous preference is kept.
+    from core.task_router import provider_for, routing_from_config
+    routing = routing_from_config(data)
+    if routing is not None:
+        return provider_for("simple", routing)
+    return resolve_preferred_provider(data)
 
 
 def _configured_keys() -> dict[str, str]:

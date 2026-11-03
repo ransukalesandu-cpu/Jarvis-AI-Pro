@@ -171,31 +171,36 @@ class _HoverMenuButton(QToolButton):
             self.showMenu()
 
 
+from core.ui_tokens import BASE_COLORS as _TOK  # noqa: E402  (the one theme)
+from core import ui_state as _ui_state  # noqa: E402  (state bus + shared clock)
+from core.ui_state import bus as _ui_bus  # noqa: E402
+
+
 class C:
     # Instrument-console palette: graphite, oxidized teal, and machined copper.
-    # Warm status accents and dense technical typography keep the HUD distinct
-    # from a generic neon chatbot panel.
-    BG        = "#080e12"
-    PANEL     = "#10191d"
-    PANEL2    = "#151f22"
-    BORDER    = "#34464a"
-    BORDER_B  = "#647b7d"
-    BORDER_A  = "#4c686b"
-    PRI       = "#71d4c2"
-    PRI_DIM   = "#397f78"
-    PRI_GHO   = "#172d2c"
-    ACC       = "#d98a59"
-    ACC2      = "#d7bd7b"
-    GREEN     = "#9bd5a2"
-    GREEN_D   = "#5b986e"
-    RED       = "#e97869"
-    MUTED_C   = "#d96f68"
-    TEXT      = "#c8d9d5"
-    TEXT_DIM  = "#78908d"
-    TEXT_MED  = "#9aafaa"
-    WHITE     = "#edf3e8"
-    DARK      = "#0b1215"
-    BAR_BG    = "#192326"
+    # The values come from core/ui_tokens.py so the Qt chrome, the painted
+    # renderers and the web pieces share one theme.
+    BG        = _TOK["bg"]
+    PANEL     = _TOK["panel"]
+    PANEL2    = _TOK["panel2"]
+    BORDER    = _TOK["border"]
+    BORDER_B  = _TOK["border_bright"]
+    BORDER_A  = _TOK["border_accent"]
+    PRI       = _TOK["primary"]
+    PRI_DIM   = _TOK["primary_dim"]
+    PRI_GHO   = _TOK["primary_ghost"]
+    ACC       = _TOK["accent"]
+    ACC2      = _TOK["accent2"]
+    GREEN     = _TOK["ok"]
+    GREEN_D   = _TOK["ok_dim"]
+    RED       = _TOK["danger"]
+    MUTED_C   = _TOK["muted"]
+    TEXT      = _TOK["text"]
+    TEXT_DIM  = _TOK["text_dim"]
+    TEXT_MED  = _TOK["text_med"]
+    WHITE     = _TOK["white"]
+    DARK      = _TOK["dark"]
+    BAR_BG    = _TOK["bar_bg"]
 
 
 # Keys tied to the accent colour — status colours (ACC, GREEN, RED…) stay fixed
@@ -953,6 +958,7 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
     def _step(self):
         self._tick += 1
         now = time.time()
+        _ui_bus().drain()          # deliver state published from worker threads
 
         if abs(self._hand_zoom_target - self._hand_zoom) > 0.001:
             self._hand_zoom += (self._hand_zoom_target - self._hand_zoom) * 0.20
@@ -1693,6 +1699,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, face_path: str):
         super().__init__()
+        _ui_bus().adopt_thread()   # the state bus delivers on the Qt thread
         self._session_started_at = time.monotonic()
         self._face_path = face_path
 
@@ -5662,6 +5669,7 @@ class MainWindow(QMainWindow):
 
     def _apply_audio_level(self, level: float) -> None:
         """Apply audio levels to HUD canvases on the Qt GUI thread only."""
+        _ui_bus().set(_ui_state.AUDIO_LEVEL, round(float(level or 0.0), 3))
         try:
             self.hud.set_audio_level(level)
         except (RuntimeError, TypeError, ValueError):
@@ -5693,6 +5701,7 @@ class MainWindow(QMainWindow):
                 pass
 
     def _apply_state(self, state: str):
+        _ui_bus().set(_ui_state.ASSISTANT, str(state).lower())
         self.hud.state    = state
         self.hud.speaking = (state == "SPEAKING")
         if hasattr(self, "_jarvis_logo_overlay"):

@@ -21,6 +21,7 @@ from core.live_audio import (
 )
 
 from core import failsoft
+from core.audio_debug import audio_debug
 
 
 @dataclass(frozen=True)
@@ -128,6 +129,30 @@ def viseme_peak_level(visemes: Any) -> float | None:
     except (TypeError, IndexError, KeyError):
         return best
     return best
+
+
+def drop_pending_pcm(host: Any, pending_pcm: bytearray, *, where: str) -> int:
+    """Empty the worker's private PCM buffer after an interrupt.
+
+    On a provisional (VAD/echo) barge-in the buffered words are handed to the
+    held answer (core/barge_in.py) instead of being thrown away, so a false
+    alarm resumes where playback actually stopped. Returns the byte count.
+    """
+    size = len(pending_pcm)
+    held = None
+    held_state = getattr(host, "_held_audio_state", None)
+    if size and callable(held_state):
+        try:
+            held = held_state()
+        except Exception:
+            held = None
+    kept = bool(held is not None and getattr(held, "active", False))
+    if kept:
+        held.prepend(bytes(pending_pcm))
+    pending_pcm.clear()
+    if size:
+        audio_debug("playback_discard", where=where, bytes=size, held=kept)
+    return size
 
 
 async def open_verified_output_fallback(
@@ -277,7 +302,7 @@ async def run_audio_playback(
             # An interruption must discard both queued and locally buffered
             # PCM, otherwise the old response could resume after barge-in.
             if host._playback_interrupt_requested.is_set():
-                pending_pcm.clear()
+                drop_pending_pcm(host, pending_pcm, where="loop")
                 playback_started = False
                 host._playback_interrupt_requested.clear()
                 try:
@@ -299,7 +324,7 @@ async def run_audio_playback(
                 if host._shutdown_requested:
                     break
                 if host._playback_interrupt_requested.is_set():
-                    pending_pcm.clear()
+                    drop_pending_pcm(host, pending_pcm, where="prebuffer")
                     playback_started = False
                     host._playback_interrupt_requested.clear()
                     try:
@@ -362,7 +387,7 @@ async def run_audio_playback(
                     continue
 
                 if host._playback_interrupt_requested.is_set():
-                    pending_pcm.clear()
+                    drop_pending_pcm(host, pending_pcm, where="prebuffer")
                     playback_started = False
                     host._playback_interrupt_requested.clear()
                     try:
@@ -567,13 +592,22 @@ async def run_audio_playback(
                         )
                         first_output_write_started = True
                     write_started = time.perf_counter()
-                    await asyncio.get_running_loop().run_in_executor(
+                    underflowed = await asyncio.get_running_loop().run_in_executor(
                         output_executor, stream.write, bytes(batch)
                     )
                     write_elapsed = max(0.0, time.perf_counter() - write_started)
                     batch_audio_seconds = len(batch) / (
                         RECEIVE_SAMPLE_RATE * CHANNELS * 2
                     )
+                    # sounddevice's blocking write returns True when the
+                    # speaker ran dry before this batch arrived.
+                    if underflowed is True:
+                        audio_debug("output_underflow", batch_ms=batch_audio_seconds * 1000,
+                                    queue_chunks=host.audio_in_queue.qsize(),
+                                    turn_pending=bool(host._assistant_turn_pending))
+                    if write_elapsed > batch_audio_seconds * 3 + 0.25:
+                        audio_debug("slow_write", write_ms=write_elapsed * 1000,
+                                    batch_ms=batch_audio_seconds * 1000)
                     output_audio_seconds += batch_audio_seconds
                     output_write_wall_seconds += write_elapsed
                     output_write_count += 1
@@ -587,13 +621,17 @@ async def run_audio_playback(
                             f"queue_chunks={host.audio_in_queue.qsize()}."
                         )
 
+                    # Judge pacing only after one second beyond what the
+                    # device buffer can absorb at once (see _output_write_is_unpaced).
+                    device_buffer_seconds = float(getattr(host, "_out_latency", 0.0) or 0.0)
                     if (
                         not output_timing_diagnostic_done
-                        and output_audio_seconds >= 1.0
+                        and output_audio_seconds >= 1.0 + device_buffer_seconds
                     ):
                         output_timing_diagnostic_done = True
                         if _output_write_is_unpaced(
-                            output_audio_seconds, output_write_wall_seconds
+                            output_audio_seconds, output_write_wall_seconds,
+                            device_buffer_seconds,
                         ):
                             print(
                                 "[AudioTrace 4/OUTPUT] WARNING: submitted "
@@ -674,6 +712,12 @@ async def run_audio_playback(
                     raise
                 except Exception as exc:
                     if host._playback_interrupt_requested.is_set():
+                        # The interrupt aborted this write. Drop the rest of
+                        # the interrupted answer here as the other interrupt
+                        # paths do; clearing only the flag let the old PCM
+                        # play again once the stream restarted.
+                        drop_pending_pcm(host, pending_pcm, where="write_aborted")
+                        playback_started = False
                         host._playback_interrupt_requested.clear()
                         host.set_speaking(False)
                         try:

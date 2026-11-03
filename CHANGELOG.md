@@ -8,6 +8,26 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Hybrid Claude brain**: Gemini Live stays the real-time voice/vision/tool
+  path. A new `ask_claude` Live tool (shown only while an Anthropic key is
+  configured) sends coding, planning, long reasoning and long drafts to Claude
+  (`depth` quick → `claude-haiku-5-5`, deep → `claude-sonnet-5-5`). Long answers
+  open in the content panel and are saved under the per-user data folder's
+  `claude_answers/`. Model names live in one place
+  (`core/provider_settings.py`) and follow `anthropic_model_fast` /
+  `anthropic_model_reasoning`. Each Claude call prints one `[Claude usage]` line
+  (model and token counts only). Spending limits are set in the Anthropic Console.
+- **Task-based routing** (`core/task_router.py`): opt-in `task_routing` setting
+  maps coding/planning/reasoning/writing to Claude, voice/vision/simple to
+  Gemini and image generation to OpenAI when a key exists. Without the setting
+  routing is unchanged.
+- **Useful text fallback**: while Live is down and an Anthropic key exists,
+  typed requests can use read-only tools (system status, battery, weather, web
+  search, memory recall) through the normal security/dispatcher path. Nothing
+  that writes or controls the PC is reachable.
+- **`JARVIS_AUDIO_DEBUG=1`** prints `[AudioDebug]` lines for the
+  "stops mid-sentence" investigation; see `docs/LIVE_AUDIO_STALL_INVESTIGATION.md`.
+
 - **HUD is clean by default**: the autonomous surfaces (dashboard card, `◉`
   rail button, menu entries) are opt-in via `autonomous_ui_enabled` /
   `JARVIS_AUTONOMOUS_UI=1`. With the flag off the HUD is exactly as it was, and
@@ -84,6 +104,12 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   requirement files, and cancellation of superseded runs.
 
 ### Fixed
+
+- **Live playback after an interrupt**: when an interrupt aborted a speaker
+  write, the rest of the cancelled answer could play once the stream restarted.
+  A false (echo) barge-in no longer drops the words that were buffered in the
+  playback worker. A healthy high-latency speaker is no longer mistaken for a
+  silent endpoint and swapped mid-sentence.
 
 - **The hologram sat in a black rectangle.** Both renderers cleared to
   `transparent` with `CompositionMode_Clear`, which Qt composites as black on a

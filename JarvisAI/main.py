@@ -50,6 +50,7 @@ from concurrent.futures import ThreadPoolExecutor
 from core.ui_coordinator import HeadlessJarvisUI
 from core.audio_callback_guard import enqueue_audio_frame, guarded_audio_callback
 from core.playback_interrupt import interrupt_playback
+from core.audio_debug import audio_debug, audio_debug_enabled, transcript_overlap
 from core.barge_in import CONFIRM_WINDOW_SECONDS, HeldAudio
 from core.tool_runtime import with_device_parameter
 from core.full_access import session_rules_prompt
@@ -1401,6 +1402,13 @@ class JarvisLive(
                     drained_chunks.append(q.get_nowait())
                 except Exception:
                     break
+        audio_debug(
+            "interrupt", provisional=bool(provisional), active=self._interrupted,
+            speaking=speaking, turn_pending=turn_pending, queued_chunks=len(drained_chunks),
+            device_buffer_ms=(float(self.__dict__.get("_out_latency", 0.0) or 0.0) * 1000
+                              if self._interrupted else 0.0),
+            preroll_frames=len(wake_audio or ()),
+        )
         if provisional and self._interrupted:
             token = self._held_audio_state().begin(drained_chunks)
             print(
@@ -1465,6 +1473,8 @@ class JarvisLive(
         if released is None:
             return
         chunks, turn_complete = released
+        audio_debug("barge_in_released", chunks=len(chunks),
+                    held_ms=sum(len(c) for c in chunks) / 48.0, turn_complete=turn_complete)
         self._interrupted = False
         queue = self.audio_in_queue
         if queue is None:
@@ -2165,6 +2175,7 @@ class JarvisLive(
         holo_open_request_pending = False
         receive_diagnostics = LiveReceiveDiagnostics()
         audio_fragment_buffer = bytearray()
+        debug_echo_reference = ""   # JARVIS_AUDIO_DEBUG only (core/audio_debug.py)
 
         try:
             while True:
@@ -2196,6 +2207,11 @@ class JarvisLive(
                         if self._resume_handle is None:
                             print("[JARVIS] 🔗 Session resumption armed")
                         self._resume_handle = resumable_handle
+
+                    go_away = getattr(response, "go_away", None)
+                    if go_away is not None:
+                        audio_debug("go_away", time_left=getattr(go_away, "time_left", None),
+                                    turn_pending=bool(self._assistant_turn_pending))
 
                     sc = response.server_content
                     _early_transcript = getattr(
@@ -2278,6 +2294,13 @@ class JarvisLive(
                         # Stop any audio already queued for the speakers at once;
                         # otherwise a cut-off sentence can keep playing locally.
                         if getattr(sc, "interrupted", False):
+                            if audio_debug_enabled():
+                                audio_debug("barge_in_confirmed", by="server_interrupted",
+                                            held=self._held_audio_state().active,
+                                            held_ms=self._held_audio_state().held_ms)
+                                # Kept so the transcript that follows can be
+                                # compared with what JARVIS had just said.
+                                debug_echo_reference = " ".join(out_buf)[-1200:]
                             self._confirm_barge_in()
                             # The server may report barge-in independently of the
                             # local wake-word path. Signal the playback worker to
@@ -2347,6 +2370,18 @@ class JarvisLive(
                                 # transcription before the interrupted marker.
                                 # Once speech is transcribed, it belongs to the
                                 # new user turn, not the cancelled assistant turn.
+                                if audio_debug_enabled() and (
+                                        self._held_audio_state().active or debug_echo_reference):
+                                    # Near 1.0: the "user speech" repeats JARVIS's own
+                                    # words, i.e. a self-interrupt from echo.
+                                    audio_debug(
+                                        "barge_in_confirmed", by="input_transcription",
+                                        held=self._held_audio_state().active,
+                                        echo_overlap=transcript_overlap(
+                                            txt, debug_echo_reference or " ".join(out_buf)),
+                                        words=len(txt.split()),
+                                    )
+                                    debug_echo_reference = ""
                                 if self._held_audio_state().active:
                                     # A partial PCM slice of the held answer must not
                                     # prefix the answer to this new request.

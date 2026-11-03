@@ -11,12 +11,17 @@ fractions of the picture (defaults suit a centred head-and-neck portrait):
 
     {"eyes": [[0.38, 0.475], [0.61, 0.475]], "mouth": [0.50, 0.70, 0.19]}
 
-Processing (once, at load): the background is cut away by flooding in from
-the border over light, grey pixels (a baked-in "transparent" checkerboard
-included; the drawing's outline stops the flood), the picture is reduced to
-light, re-coloured along a cyan ramp and given ~50% opacity and faint
-scanlines. Per frame: a gentle float, a jaw that opens with speech, glowing
-eyes and a sweeping scan line. Everything else stays QPainter.
+Processing (once, at load) turns the picture into a hologram rather than
+tinting it: the background is cut away (flooding in from the border over
+light, grey pixels, so a baked-in checkerboard goes too and the drawing's
+outline stops it); the drawing's ink becomes glowing line-art (pixels darker
+than their surroundings), the shading becomes a dim translucent volume, the
+silhouette gets a rim of light, and a depth map (a smoothed dome of the
+silhouette) lets the face turn with parallax. Per frame it is composed
+additively, so it emits light instead of covering the HUD: bloom, scanlines,
+a sweeping scan band, flicker, the odd glitch slice, rising motes and a
+projector base with its beam. A warp grid over the whole picture carries the
+lip sync and the emotions; the mouth opens into a real hole.
 """
 from __future__ import annotations
 
@@ -26,8 +31,8 @@ from pathlib import Path
 
 import numpy as np
 from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import (QBrush, QColor, QImage, QPainter, QPainterPath, QPen, QPolygonF,
-                         QRadialGradient, QTransform)
+from PyQt6.QtGui import (QBrush, QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen,
+                         QPolygonF, QRadialGradient, QTransform)
 
 FACE_DIR = Path(__file__).resolve().parent.parent / "config"
 FACE_NAMES = ("hologram_face.png", "hologram_face.webp", "hologram_face.jpg",
@@ -36,8 +41,28 @@ _MAX_H = 760                       # processed picture height in pixels
 _DEFAULT_LAYOUT = {"eyes": [[0.38, 0.475], [0.61, 0.475]], "mouth": [0.50, 0.70, 0.19]}
 EMOTIONS = ("happy", "sad", "serious", "surprised", "curious")
 _DIRECT = frozenset({"jaw", "wide", "blink", "gaze_x", "gaze_y"})
-_GRID = (16, 22)                   # warp cells across, down
-_REGION = (0.08, 0.26, 0.92, 0.985)  # warped part of the picture (u0, v0, u1, v1)
+_COLS = 12                         # warp cells across; rows are denser over the face
+_PAD = 0.05                        # empty margin round the cut-out, for glow and sway
+_LINE = np.array([225.0, 255.0, 255.0], dtype=np.float32)    # the glowing line-art
+
+
+def _box(a: np.ndarray, r: int) -> np.ndarray:
+    """Mean over a (2r+1)^2 box, edges clamped. Cheap, separable, numpy only."""
+    if r <= 0:
+        return a
+    k = 2 * r + 1
+    p = np.pad(a, r, mode="edge").astype(np.float32)
+    c = np.cumsum(p, axis=0)
+    c = np.vstack([c[k - 1:k], c[k:] - c[:-k]])
+    c = np.cumsum(c, axis=1)
+    c = np.hstack([c[:, k - 1:k], c[:, k:] - c[:, :-k]])
+    return c / (k * k)
+
+
+def _rows() -> np.ndarray:
+    """Warp grid rows: coarse over the hair and neck, fine from brows to chin."""
+    return np.unique(np.concatenate([np.linspace(0.0, 0.40, 5), np.linspace(0.40, 0.86, 22),
+                                     np.linspace(0.86, 1.0, 3)]))
 
 
 def find_face(directory: Path = FACE_DIR) -> Path | None:
@@ -104,18 +129,31 @@ class ImageHologram:
         y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
         self._crop = (x0 / rgba.shape[1], y0 / rgba.shape[0],
                       x1 / rgba.shape[1], y1 / rgba.shape[0])
-        rgba, mask = rgba[y0:y1, x0:x1], mask[y0:y1, x0:x1]
+        # Crop to the face with a margin, so glow and sway have room.
+        pad = int(_PAD * (y1 - y0))
+        rgba = np.pad(rgba[y0:y1, x0:x1], ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+        mask = np.pad(mask[y0:y1, x0:x1], pad)
+        H, W = mask.shape
+        self._crop = ((x0 - pad) / img.width(), (y0 - pad) / img.height(),
+                      (x1 + pad) / img.width(), (y1 + pad) / img.height())
         lum = (rgba[..., :3].astype(np.float32) @ np.array([0.299, 0.587, 0.114],
                                                            dtype=np.float32)) / 255.0
-        # Lift the mid-tones so shading reads on a dark HUD, keep the ink dark.
-        self._lum = np.clip(lum, 0, 1) ** 0.8
-        alpha = mask * (0.30 + 0.55 * self._lum)
-        alpha[::3, :] *= 0.72                                  # faint scanlines
-        self._alpha = alpha
+        lum = np.clip(lum, 0, 1)
+        s = max(1, H // 380)                    # feature sizes scale with the picture
+        # Ink: darker than its neighbourhood. That is every drawn line and
+        # hatch, but not a flat dark area, which would glow as a blob.
+        self._ink = np.clip((_box(lum, 3 * s) - lum) * 5.5, 0, 1) * mask
+        self._rim = np.clip((mask - _box(mask, 5 * s)) * 3.0, 0, 1)
+        self._lum = lum ** 0.8 * mask
+        self._mask = mask
+        depth = _box(_box(mask, 22 * s), 22 * s)
+        self._depth = (depth / max(1e-6, float(depth.max()))).astype(np.float32)
+        self._alpha = mask
         self._tint_key = None
         self._tinted: QImage | None = None
-        self.aspect = rgba.shape[1] / rgba.shape[0]
+        self.aspect = W / H
         self.layout = self._load_layout(path)
+        self._rows = _rows()
 
     def _load_layout(self, path: Path) -> dict:
         layout = dict(_DEFAULT_LAYOUT)
@@ -138,19 +176,29 @@ class ImageHologram:
         return {"eyes": eyes, "mouth": (fx(mx), fy(my), mw / (cx1 - cx0))}
 
     def _image_for(self, primary: QColor) -> QImage:
+        """The hologram itself (premultiplied, meant to be drawn additively)."""
         # Quantise so slow mood fades re-tint a handful of times, not every frame.
         key = (primary.red() // 12, primary.green() // 12, primary.blue() // 12)
         if key != self._tint_key or self._tinted is None:
-            base = np.array([primary.red(), primary.green(), primary.blue()], dtype=np.float32)
-            deep = np.array([0.0, 22.0, 48.0], dtype=np.float32)
-            hi = np.array([230.0, 255.0, 255.0], dtype=np.float32)
-            t = self._lum[..., None]
-            rgb = np.where(t < 0.7, deep + (base - deep) * (t / 0.7),
-                           base + (hi - base) * ((t - 0.7) / 0.3))
-            out = np.empty(self._alpha.shape + (4,), dtype=np.uint8)
+            col = np.array([primary.red(), primary.green(), primary.blue()], dtype=np.float32)
+            lum = self._lum[..., None]
+            body_a = self._mask * (0.08 + 0.30 * self._lum)        # dim volume
+            line_a = self._ink * 0.85                               # glowing line-art
+            line_rgb = _LINE * 0.5 + col * 0.5                      # cyan, not white
+            rim_a = self._rim * 0.80                                # silhouette light
+            rgb = (col * (0.35 + 0.65 * lum)) * body_a[..., None]
+            rgb += line_rgb * line_a[..., None]
+            rgb += (col * 0.6 + _LINE * 0.4) * rim_a[..., None]
+            a = np.clip(body_a + line_a + rim_a, 0, 1)
+            rgb = np.minimum(rgb, a[..., None] * 255.0)
+            a[::3, :] *= 0.45                                       # scanlines
+            rgb[::3, :] *= 0.45
+            out = np.empty(a.shape + (4,), dtype=np.uint8)
             out[..., :3] = np.clip(rgb, 0, 255)
-            out[..., 3] = np.clip(self._alpha * 255, 0, 255)
-            img = _from_array(out)
+            out[..., 3] = np.clip(a * 255, 0, 255)
+            h, w = a.shape
+            data = np.ascontiguousarray(out)
+            img = QImage(data.data, w, h, w * 4, QImage.Format.Format_RGBA8888_Premultiplied).copy()
             self._tinted = img.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
             self._tint_key = key
         return self._tinted
@@ -201,7 +249,7 @@ class ImageHologram:
             dv += inner * (-0.014 * f["sad"] + 0.013 * f["serious"])
             du += inner * (-side) * 0.007 * f["serious"]
             dv += outer * (0.005 * f["sad"])
-            lid_up = g(u, v, ex, ey - 0.014, 0.040, 0.016)
+            lid_up = g(u, v, ex, ey - 0.014, 0.040, 0.020)
             lid_lo = g(u, v, ex, ey + 0.016, 0.035, 0.012)
             dv += lid_up * (0.026 * f["blink"] - 0.006 * f["surprised"])
             dv += lid_lo * (-0.004 * f["blink"] - 0.006 * f["happy"])
@@ -209,10 +257,18 @@ class ImageHologram:
             iris = g(u, v, ex, ey, 0.022, 0.010)
             du += iris * 0.007 * f["gaze_x"]
             dv += iris * 0.004 * f["gaze_y"]
-        # Fade to nothing at the edge of the warped region, so it joins the rest.
-        u0, v0, u1, v1 = _REGION
-        edge = np.minimum(np.minimum(u - u0, u1 - u), np.minimum(v - v0, v1 - v))
-        w = np.clip(edge / 0.06, 0.0, 1.0)
+        # Parallax: near parts (the nose, the brow) slide further than far ones
+        # (the ears, the outline), which reads as the head turning.
+        sway = f.get("sway", 0.0)
+        if sway:
+            H, W = self._depth.shape
+            d = self._depth[np.clip((v * (H - 1)).astype(int), 0, H - 1),
+                            np.clip((u * (W - 1)).astype(int), 0, W - 1)]
+            du += (d - 0.55) * sway
+            dv += (d - 0.55) * f.get("nod", 0.0)
+        # Pin the picture's border, so the cut-out never tears at the edge.
+        edge = np.minimum(np.minimum(u, 1.0 - u), np.minimum(v, 1.0 - v))
+        w = np.clip(edge / 0.04, 0.0, 1.0)
         w = w * w * (3 - 2 * w)
         return du * w, dv * w
 
@@ -236,23 +292,27 @@ class ImageHologram:
 
     def _warped(self, img: QImage, f: dict) -> QImage:
         """The picture with the expression applied (in picture pixels)."""
-        if max(abs(f[k]) for k in f) < 0.01:
+        if max(abs(v) for v in f.values()) < 0.002:
             return img
         iw, ih = img.width(), img.height()
-        nx, ny = _GRID
-        u0, v0, u1, v1 = _REGION
-        gu, gv = np.meshgrid(np.linspace(u0, u1, nx + 1), np.linspace(v0, v1, ny + 1))
+        nx, ny = _COLS, len(self._rows) - 1
+        gu, gv = np.meshgrid(np.linspace(0.0, 1.0, nx + 1), self._rows)
         du, dv = self._field(gu, gv, f)
         sx, sy = gu * iw, gv * ih
         dx, dy = (gu + du) * iw, (gv + dv) * ih
+        # Never let a cell fold over: each row stays below the one above and
+        # each column right of the one before, by at least a fifth of a cell.
+        for j in range(1, dy.shape[0]):
+            dy[j] = np.maximum(dy[j], dy[j - 1] + 0.2 * (sy[j] - sy[j - 1]))
+        for i in range(1, dx.shape[1]):
+            dx[:, i] = np.maximum(dx[:, i], dx[:, i - 1] + 0.2 * (sx[:, i] - sx[:, i - 1]))
         buf = getattr(self, "_buf", None)
         if buf is None or buf.size() != img.size():
             buf = self._buf = QImage(img.size(), QImage.Format.Format_ARGB32_Premultiplied)
         buf.fill(0)
         bp = QPainter(buf)
         try:
-            bp.drawImage(0, 0, img)
-            # Replace (not blend) inside the region: each cell lands exactly once.
+            # Replace (not blend): the cells tile the picture, each pixel once.
             bp.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
             bp.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
             sxl, syl, dxl, dyl = sx.tolist(), sy.tolist(), dx.tolist(), dy.tolist()
@@ -302,13 +362,20 @@ class ImageHologram:
         path.moveTo(l)
         path.quadTo(QPointF((l.x() + r.x()) / 2, top_y - gap * 0.25), r)
         path.quadTo(QPointF((l.x() + r.x()) / 2, top_y + depth), l)
+        # A hologram's mouth is an absence of light: cut a hole, then outline
+        # the lips and the upper teeth in light.
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor(0, 10, 24, 225))
+        p.setBrush(QColor(0, 0, 0, 255))
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
         p.drawPath(path)
-        # Upper teeth show most on spread vowels, barely when rounded.
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(QColor(200, 250, 255, 170), max(1.0, ih / 500)))
+        p.drawPath(path)
         tw = (r.x() - l.x()) * (0.36 + 0.24 * spread - 0.16 * round_)
         teeth = QRectF((l.x() + r.x()) / 2 - tw / 2, top_y - gap * 0.05, tw, gap * 0.26)
-        p.setBrush(QColor(210, 245, 255, int(90 + 60 * spread)))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(170, 230, 245, int(70 + 60 * spread)))
         p.drawRoundedRect(teeth, 2, 2)
 
     # ── frame ───────────────────────────────────────────────────────────────
@@ -323,39 +390,95 @@ class ImageHologram:
         if face:
             target.update({k: float(v) for k, v in face.items() if k in target})
         f = self.expression(target, t)
-        img = self._warped(self._image_for(primary), f)
+        # A slow turn and nod, shown through the depth map.
+        motion = dict(f, sway=0.020 * math.sin(t * 0.37) + 0.006 * math.sin(t * 0.91),
+                      nod=0.006 * math.sin(t * 0.53))
+        img = self._warped(self._image_for(primary), motion)
         h = height * (1.0 + 0.006 * math.sin(t * 1.3))          # breathing
         w = h * self.aspect
         top += 2.0 * math.sin(t * 0.9)                         # float
         left = cx - w / 2
+        P = (primary.red(), primary.green(), primary.blue())
 
-        ar = h * 0.75
+        # Projector: a base ring under the neck and a faint beam up through it.
+        base_y = top + h * (1.0 - _PAD * 0.6)
+        bw, bh = w * 0.62, w * 0.09
+        beam = QLinearGradient(0, base_y, 0, top + h * 0.05)
+        beam.setColorAt(0.0, QColor(*P, int(70 + 50 * amp)))
+        beam.setColorAt(1.0, QColor(*P, 0))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(beam))
+        p.drawPolygon(QPolygonF([QPointF(cx - bw * 0.42, base_y), QPointF(cx + bw * 0.42, base_y),
+                                 QPointF(cx + w * 0.55, top + h * 0.05),
+                                 QPointF(cx - w * 0.55, top + h * 0.05)]))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        for k, a in ((1.0, 170), (0.78, 110), (0.55, 70)):
+            p.setPen(QPen(QColor(*P, a), 1.6))
+            p.drawEllipse(QPointF(cx, base_y), bw * k / 2, bh * k / 2)
+
+        ar = h * 0.72
         grad = QRadialGradient(cx, top + h * 0.45, ar)
-        grad.setColorAt(0.0, QColor(primary.red(), primary.green(), primary.blue(), int(45 + 55 * amp)))
-        grad.setColorAt(1.0, QColor(primary.red(), primary.green(), primary.blue(), 0))
+        grad.setColorAt(0.0, QColor(*P, int(30 + 45 * amp)))
+        grad.setColorAt(1.0, QColor(*P, 0))
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QBrush(grad))
         p.drawEllipse(QRectF(cx - ar, top + h * 0.45 - ar, ar * 2, ar * 2))
 
         p.save()
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-        p.drawImage(QRectF(left, top, w, h), img)
-        p.restore()
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
+        # Flicker: a hologram is never perfectly steady.
+        flicker = 0.90 + 0.06 * math.sin(t * 13.0) * math.sin(t * 7.3) + 0.04 * amp
+        p.setOpacity(max(0.0, min(1.0, flicker)))
+        target_rect = QRectF(left, top, w, h)
+        p.drawImage(target_rect, img)
+        bloom = img.scaled(max(2, img.width() // 6), max(2, img.height() // 6),
+                           Qt.AspectRatioMode.IgnoreAspectRatio,
+                           Qt.TransformationMode.SmoothTransformation)
+        p.setOpacity(0.55 + 0.25 * amp)
+        p.drawImage(target_rect, bloom)
+        # Now and then a slice of the picture jumps sideways for a moment.
+        slot = int(t / 3.7)
+        if (t / 3.7) - slot < 0.035:
+            rnd = (slot * 2654435761) % 1000 / 1000.0
+            band = 0.15 + 0.7 * rnd
+            bh_ = 0.03 + 0.04 * ((slot * 40503) % 100 / 100.0)
+            src = QRectF(0, band * img.height(), img.width(), bh_ * img.height())
+            off = (rnd - 0.5) * w * 0.06
+            p.setOpacity(0.8)
+            p.drawImage(QRectF(left + off, top + band * h, w, bh_ * h), img, src)
+        p.setOpacity(1.0)
 
         # Glowing eyes that follow the gaze; a blink dims them, joy brightens.
         k = max(0.0, 1.0 - f["blink"] * 1.1) * (1.0 + 0.25 * f["happy"] + 0.3 * f["surprised"])
-        rad = w * 0.035 * (1.0 + 0.25 * f["surprised"] - 0.15 * f["serious"])
+        rad = w * 0.030 * (1.0 + 0.25 * f["surprised"] - 0.15 * f["serious"])
         for ex, ey in self.layout["eyes"]:
             c = QPointF(left + (ex + 0.007 * f["gaze_x"]) * w, top + (ey + 0.004 * f["gaze_y"]) * h)
-            # Soft enough that the drawn iris still shows through the glow.
-            g = QRadialGradient(c, rad * 2.0)
-            g.setColorAt(0.0, QColor(235, 252, 255, int(min(255, 125 * k))))
-            g.setColorAt(0.35, QColor(accent.red(), accent.green(), accent.blue(), int(min(255, 80 * k))))
+            g = QRadialGradient(c, rad * 2.2)
+            g.setColorAt(0.0, QColor(235, 252, 255, int(min(255, 150 * k))))
+            g.setColorAt(0.35, QColor(accent.red(), accent.green(), accent.blue(), int(min(255, 90 * k))))
             g.setColorAt(1.0, QColor(accent.red(), accent.green(), accent.blue(), 0))
             p.setBrush(QBrush(g))
-            p.drawEllipse(c, rad * 2.0, rad * 2.0)
+            p.drawEllipse(c, rad * 2.2, rad * 2.2)
 
-        # One sweep of light down the face.
+        # A band of light sweeping down the face.
         sy = top + ((t * 0.16) % 1.0) * h
-        p.setPen(QPen(QColor(primary.red(), primary.green(), primary.blue(), 55), 2.0))
-        p.drawLine(QPointF(left + w * 0.15, sy), QPointF(left + w * 0.85, sy))
+        sweep = QLinearGradient(0, sy - h * 0.03, 0, sy + h * 0.03)
+        sweep.setColorAt(0.0, QColor(*P, 0))
+        sweep.setColorAt(0.5, QColor(*P, 60))
+        sweep.setColorAt(1.0, QColor(*P, 0))
+        p.setBrush(QBrush(sweep))
+        p.drawRect(QRectF(left + w * 0.1, sy - h * 0.03, w * 0.8, h * 0.06))
+
+        # Motes of light drifting up through the beam.
+        p.setBrush(QColor(*P, 150))
+        for i in range(36):
+            a = (i * 0.61803) % 1.0
+            b = (i * 0.38197 + 0.13) % 1.0
+            rise = (t * (0.05 + 0.06 * b) + a) % 1.0
+            x = cx + (a - 0.5) * w * (0.5 + 0.5 * rise) + math.sin(t * 0.8 + i) * w * 0.01
+            y = base_y - rise * h * 0.95
+            r_ = 1.0 + 1.4 * b
+            p.setOpacity(max(0.0, 1.0 - rise) * 0.8)
+            p.drawEllipse(QPointF(x, y), r_, r_)
+        p.restore()

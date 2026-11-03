@@ -48,8 +48,8 @@ _CYBER_PRIMARY = QColor(30, 150, 255)
 _CYBER_ACCENT = QColor(150, 240, 255)
 _HAIR = QColor(70, 120, 210)          # deeper and denser than the skin glass
 _VOL_HAIR = QColor(20, 150, 200)      # the volume look's hair: deeper cyan
-_BUST_LOOKS = ("cyber", "volume")
-_VOL_HEADROOM = 0.30     # sculpted head on shoulders
+_BUST_LOOKS = ("cyber", "volume", "image")   # own colours; sculpted head or picture
+_VOL_HEADROOM = 0.30                         # room for the volume look's hair
 _MIN_ALPHA = 0.05
 
 # Resolution of the surface-shading colour ramp. Banding across a filled facet

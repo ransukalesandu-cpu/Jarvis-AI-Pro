@@ -227,3 +227,16 @@ class ImageHologramTests(unittest.TestCase):
             f = holo.expression({**base, "happy": 1.0}, 0.032)
             self.assertLess(f["happy"], 0.2)                         # moods ease in
             self.assertEqual(f["jaw"], 0.0)                          # and the lips shut at once
+
+    def test_picture_look_uses_cyan(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "hologram_face.png"
+            self._portrait(path)
+            with mock.patch("core.avatar_image.find_face", return_value=path):
+                avatar = MeshHoloAvatar(style="image")
+        self.assertEqual(avatar.look, "image")
+        p, _ = avatar._base_colors()
+        self.assertEqual(avatar._mood_primary.rgb(), p.rgb())

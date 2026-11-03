@@ -178,9 +178,10 @@ class FallbackIntegrationTests(unittest.TestCase):
 
     class Router:
         made = []
+        inits = []
 
         def __init__(self, **kw):
-            pass
+            FallbackIntegrationTests.Router.inits.append(kw)
 
         def configured_key_status(self):
             return {"gemini": True}
@@ -207,7 +208,7 @@ class FallbackIntegrationTests(unittest.TestCase):
         box, _, _ = _toolbox()
         fake = FakeClaude([_resp([_block("text", text="Hello from Claude.")], "end_turn")])
         with mock.patch("core.fallback_tools.get_provider_api_key", return_value=""), \
-                mock.patch("core.provider_fallback._env_claude_key", return_value=False):
+                mock.patch("core.provider_fallback._shared_claude_key", return_value=""):
             result, _ = query_text_fallback(
                 "hi", config_path=self._config({"claude_api_key": "sk-cfg"}),
                 base_system_prompt="s", router_factory=self.Router, toolbox=box,
@@ -256,11 +257,31 @@ class FallbackIntegrationTests(unittest.TestCase):
                 base_system_prompt="s", router_factory=self.Router, toolbox=box,
                 tool_client_factory=lambda t: fake)
         self.assertEqual(result["text"], "text-only answer")
+        self.assertEqual(result["tools_ran"], ["web_search"] * 4)   # still reported
+
+    def test_text_only_route_gets_the_shared_claude_key(self):
+        # No key in this config; the tools path used the shared settings key.
+        from core.provider_fallback import query_text_fallback
+        box, _, _ = _toolbox()
+
+        def broken(t):
+            raise ConnectionError("down")
+        self.Router.inits.clear()
+        with mock.patch("core.provider_fallback._shared_claude_key", return_value="sk-shared"), \
+                mock.patch("builtins.print"):
+            result, configured = query_text_fallback(
+                "hi", config_path=self._config({"gemini_api_key": "g"}),
+                base_system_prompt="s", router_factory=self.Router, toolbox=box,
+                tool_client_factory=broken)
+        self.assertEqual(result["text"], "text-only answer")
+        self.assertNotIn("tools_ran", result)                          # nothing ran
+        self.assertEqual(self.Router.inits[0]["api_keys"]["claude"], "sk-shared")
+        self.assertNotIn("sk-shared", configured)
 
     def test_without_toolbox_or_key_nothing_changes(self):
         from core.provider_fallback import query_text_fallback
         box, _, _ = _toolbox()
-        with mock.patch("core.provider_fallback._env_claude_key", return_value=False):
+        with mock.patch("core.provider_fallback._shared_claude_key", return_value=""):
             result, _ = query_text_fallback("hi", config_path=self._config({}),
                                             base_system_prompt="s", router_factory=self.Router,
                                             toolbox=box)

@@ -38,9 +38,10 @@ def _load_provider_config(config_path: str | Path) -> dict[str, Any]:
         return {}
 
 
-def _env_claude_key() -> bool:
+def _shared_claude_key() -> str:
+    """The Claude key from the shared provider settings (env or default config)."""
     from core.provider_settings import get_provider_api_key
-    return bool(get_provider_api_key("anthropic"))
+    return str(get_provider_api_key("anthropic") or "").strip()
 
 
 def _provider_keys(config: dict[str, Any]) -> dict[str, str]:
@@ -82,7 +83,9 @@ def query_text_fallback(
 
     config = _load_provider_config(config_path)
     keys = _provider_keys(config)
-    if toolbox is not None and (keys.get("claude") or _env_claude_key()):
+    tools_ran: list[str] = []
+    claude_key = (keys.get("claude") or _shared_claude_key()) if toolbox is not None else ""
+    if claude_key:
         import time as _time
         from core.fallback_tools import answer_with_tools
         started = _time.monotonic()
@@ -90,7 +93,7 @@ def query_text_fallback(
             result = answer_with_tools(text, base_system_prompt, toolbox,
                                        client_factory=tool_client_factory,
                                        task_text=task_text,
-                                       api_key=keys.get("claude") or None)
+                                       api_key=claude_key)
             result.update({"mode": "cloud",
                            "latency_ms": round((_time.monotonic() - started) * 1000, 2)})
             configured = ",".join(name for name, value in keys.items() if value) or "claude"
@@ -99,6 +102,11 @@ def query_text_fallback(
             # Fall through to the text-only ladder; log the type only.
             print(f"[Fallback] Claude with tools unavailable ({type(exc).__name__}); "
                   "using the text-only route.")
+            # Tools that already ran are still reported, and the text-only
+            # route can use the same Claude key (never logged).
+            tools_ran = list(getattr(toolbox, "ran", []) or [])
+            if not keys.get("claude"):
+                keys = {**keys, "claude": claude_key}
     preferred = resolve_preferred_provider(config)
     factory = router_factory or HybridLLMRouter
     # Task routing (core/task_router.py) only when the owner set task_routing;
@@ -120,4 +128,6 @@ def query_text_fallback(
     )
     if not isinstance(result, dict):
         raise RuntimeError("The selected provider returned an invalid result.")
+    if tools_ran:
+        result = {**result, "tools_ran": tools_ran}
     return result, configured

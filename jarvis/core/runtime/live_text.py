@@ -22,6 +22,18 @@ class TextCommandMixin:
         manager = security.get_auth_manager()
         if manager.is_privacy_lock_active():
             return
+        from jarvis.core.guest_session import get_guest_service
+        guest = get_guest_service().handle_typed_text(text, manager.needs_pin())
+        if guest is not None:
+            ok, message = guest
+            self._interrupted = False if ok else self._interrupted
+            try:
+                self.ui.write_log("SEC: Owner signed in." if ok else "SEC: Owner credential was not accepted.")
+                if ok and message:
+                    self.__dict__.setdefault("_announcements", __import__("collections").deque(maxlen=20)).append(f"[{message}] Tell the owner briefly.")
+            except Exception:
+                failsoft.suppress('main:JarvisLive._on_text_command')
+            return
         if manager.needs_pin():
             accepted = manager.verify_pin(str(text or "").strip())
             if accepted:

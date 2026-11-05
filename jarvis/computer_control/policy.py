@@ -149,6 +149,8 @@ _DANGEROUS_HOTKEYS = (
     {"win", "r"}, {"win", "x"}, {"ctrl", "shift", "esc"}, {"ctrl", "alt", "delete"},
     {"ctrl", "alt", "del"}, {"shift", "delete"}, {"shift", "del"}, {"win", "l"},
 )
+_FINANCIAL_FIELD = re.compile(r"\b(card|cvv|cvc|security code|expir|iban|account number|routing|ssn|"
+                              r"social security|passport)\b", re.I)
 #: launching by path / URL / protocol / script: the model could run anything
 _LAUNCH_BY_PATH = re.compile(r"[\\/:]|\.(bat|cmd|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|hta|msi|msp|lnk|url|scr|com|"
                              r"pif|cpl|reg|jar)$", re.I)
@@ -307,6 +309,16 @@ class ActionPolicy:
             if any(combo <= keys for combo in _DANGEROUS_HOTKEYS):
                 level = Level.HIGH
                 reasons.append("the shortcut opens a system tool or bypasses the recycle bin")
+
+        if params.get("_private_destination"):
+            level = Level.HIGH
+            reasons.append(f"local or private address ({params.get('_private_destination')})")
+        if params.get("sensitive_form") and name in ("browser.click", "browser.press", "browser.submit"):
+            level = Level.HIGH
+            reasons.append("submits a form with password or payment fields")
+        if name == "browser.fill" and _FINANCIAL_FIELD.search(str(params.get("label") or "")):
+            level = Level.HIGH
+            reasons.append("types into a payment or identity field")
 
         url = str(params.get("url") or "").strip().lower()
         if url and name.startswith("browser.") and not url.startswith(_SAFE_SCHEMES):

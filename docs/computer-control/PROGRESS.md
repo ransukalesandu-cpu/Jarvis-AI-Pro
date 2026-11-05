@@ -7,8 +7,8 @@ REPLACED, NOT APPLICABLE.
 |---|---|---|---|---|
 | 0 | Foundation | MERGED | [#277](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/277) | e14d32e |
 | 1 | Windows native control (+6 fallback input) | MERGED | [#278](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/278) | c82ece7 |
-| 2 | Orchestrator (UFO²-inspired) | TESTING | (this PR) | — |
-| 3 | Browser automation | NOT STARTED | — | — |
+| 2 | Orchestrator (UFO²-inspired) | MERGED | [#279](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/279) | 32bfc21 |
+| 3 | Browser automation | TESTING | (this PR) | — |
 | 4 | Visual understanding | NOT STARTED | — | — |
 | 5 | Workflow learning | NOT STARTED | — | — |
 | 6 | Fallback input | MERGED (folded into Project 1) | see Project 1 | — |
@@ -62,3 +62,13 @@ REPLACED, NOT APPLICABLE.
 * **Tests:** 25 orchestrator tests.
 * **Limitations:** web-UI panel for live cc status not built (status shows in the Jobs window and
   the HUD log); cloud planning needs the owner's key.
+
+## Project 3 — Browser automation
+
+* **Completed:** `browser/` (backend protocol, fake browser, Playwright backend on the installed
+  Edge/Chrome with a JARVIS profile on one dedicated thread, controller with verification, `cc_browser`
+  tool with element-aware policy enrichment), browser agent in the Host Agent, heuristic planning of
+  "search for …" / "go to …" / "open Chrome".
+* **Tests:** 22 browser tests.
+* **Limitations:** real Edge/Chrome runs are pending owner validation; frames/shadow DOM not
+  covered by the snapshot (as in `core/page_snapshot`).

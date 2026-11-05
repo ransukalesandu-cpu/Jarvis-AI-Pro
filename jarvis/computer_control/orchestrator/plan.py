@@ -109,6 +109,9 @@ def build(objective: str, raw_steps: Iterable[dict], known_tools: Iterable[str],
         deps = item.get("depends_on")
         if deps is None:
             deps = [i - 1] if i > 0 else []
+        elif not isinstance(deps, (list, tuple)) or not all(
+                isinstance(d, int) and not isinstance(d, bool) for d in deps):
+            raise PlanError(f"step {i} depends_on must be a list of step numbers")
         steps.append(Step(index=i, tool=tool, args=dict(args),
                           description=str(item.get("description") or "")[:200],
                           depends_on=list(deps), expect=dict(expect),

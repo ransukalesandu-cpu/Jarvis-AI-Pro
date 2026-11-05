@@ -71,11 +71,25 @@ def _windows_recover(host, step, result) -> list[dict]:
     return []
 
 
+def _browser_recover(host, step, result) -> list[dict]:
+    """No automatic browser retries: after a re-render the same ref can point at a
+    different element, so a stale-ref failure goes back to the planner instead of
+    clicking blindly. Only a slow page is waited for once."""
+    message = (result.message or "").lower()
+    if step.tool == "cc_browser" and str(step.args.get("op")) in ("navigate", "search") \
+            and ("timeout" in message or "did not respond" in message):
+        return [{"tool": "cc_browser", "args": dict(step.args), "description": "try loading the page again"}]
+    return []
+
+
 def default_registry() -> AgentRegistry:
     reg = AgentRegistry()
     reg.register(AppAgent("windows", "Windows desktop apps, windows and controls (UI Automation).",
                           frozenset({"cc_app", "cc_window", "cc_control", "cc_pointer"}),
                           recover=_windows_recover))
+    reg.register(AppAgent("browser", "Web pages in the installed Edge/Chrome (Playwright).",
+                          frozenset({"cc_browser"}), recover=_browser_recover,
+                          apps=("msedge", "chrome")))
     reg.register(AppAgent("engine", "Engine status and emergency stop.",
                           frozenset({"cc_engine_status", "cc_emergency_stop"})))
     for extra in _EXTRA_AGENTS:

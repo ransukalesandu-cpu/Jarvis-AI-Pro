@@ -135,3 +135,14 @@ destructive automatic retries, secrets in logs or commits.
 * The cloud planner receives a redacted objective and fenced, redacted context only.
 * `cc_emergency_stop` and `cc_engine_status` are SAFE in `core/security.tier_for` so the
   brake is never behind a confirmation banner.
+
+## 12. Browser specifics (Project 3)
+
+* Local/private/credential URLs (`localhost`, RFC1918, `user:pw@`) are HIGH (approval); a
+  redirect to such an address after navigation closes the page.
+* Submitting a form that has password or payment fields, typing into card/CVV/IBAN/SSN/passport
+  fields, uploads and any "Buy/Pay/Send/Post/Delete…" button are HIGH, decided from the real
+  element behind the ref (the snapshot), not from the plan.
+* Password values are never read back, listed, logged, put in traces or approval details.
+  Cookies are never read. Screenshots mask password inputs.
+* No automatic browser retries: after a re-render a ref may point at a different element.

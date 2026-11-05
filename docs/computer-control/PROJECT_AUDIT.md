@@ -105,3 +105,27 @@ JARVIS-native design (`jarvis/computer_control/orchestrator/`):
 Each task is a `JobManager` job (`cc_task`, `long_running=True`), so the Background Jobs
 window, Cancel, the Island chip and completion notices work unchanged. Live status goes to
 the StateBus key `computer_control` and the HUD log (`CC: …` lines).
+
+## Project 3 — Browser automation (Playwright; browser-use evaluated)
+
+**Upstream inspected:** microsoft/playwright (Apache-2.0; `playwright` already in
+`requirements.txt`), browser-use/browser-use (MIT).
+
+* Playwright: used through the sync API on one dedicated `cc-browser` thread (its objects are
+  thread-bound), `launch_persistent_context(channel="msedge"|"chrome")` on the **installed**
+  browser — no `playwright install`, no bundled Chromium. A dedicated JARVIS profile in the
+  user-data folder keeps the owner's sign-ins there without ever opening the owner's personal
+  profile, cookies or saved passwords. Screenshots use Playwright's `mask=` for
+  `input[type=password]`; downloads use `expect_download` + `save_as`.
+* browser-use: studied its indexed-element DOM view for the LLM, multi-tab state and its
+  agent loop. Not adopted: it brings its own LLM loop and LangChain-style dependencies and would
+  bypass the engine's policy. Its element-index idea already exists in JARVIS as
+  `core/page_snapshot.SNAPSHOT_JS` (`[e12] button "Go"` refs), which the new controller reuses.
+* Reused: `core/browser_automation.validate_public_url` (blocks localhost, private IPs,
+  credential-bearing URLs) and `core/page_snapshot` refs.
+
+`browser/controller.py` verifies every action (landing host, URL/text expectations, field
+read-back except passwords, file on disk for downloads, file listed for uploads) and wraps all
+page text as untrusted content. Login-state awareness: `state` reports "login form shown" /
+"signed in" from the snapshot. The Host Agent routes `cc_browser` steps to the new `browser`
+agent, so a task can mix browser and desktop steps.

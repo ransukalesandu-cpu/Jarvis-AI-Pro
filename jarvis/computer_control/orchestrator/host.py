@@ -254,7 +254,9 @@ class HostAgent:
             summary = (f"Could not finish '{plan.objective[:80]}': step {failed.step + 1} "
                        f"({failed.description or failed.tool}) {failed.status} — {failed.message}")
         else:
-            success = len(ok) == len(last_by_step) and not any(t.verified is False for t in last_by_step.values())
+            optional = {s.index for s in plan.steps if s.optional}
+            required = [t for i, t in last_by_step.items() if i not in optional]
+            success = all(t.status in ("ok", "dry_run") and t.verified is not False for t in required)
             status = "completed" if success else "failed"
             unchecked = len(ok) - len(verified)
             summary = (f"Done: {plan.objective[:80]} — {len(ok)} of {all_steps} steps succeeded, "

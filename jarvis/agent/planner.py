@@ -103,6 +103,7 @@ class Plan:
     source: str = "heuristic"
     rationale: str = ""
     warnings: list[str] = field(default_factory=list)
+    offered: list[str] = field(default_factory=list)   # tool names shown to the model (trace only)
 
     def describe(self) -> str:
         lines = [f"Plan ({self.source}) with {len(self.steps)} steps:"]
@@ -215,6 +216,7 @@ class TaskPlanner:
                 plan = self.parse(raw, text, catalog=catalog)
                 if plan.steps:
                     plan.criteria = explicit or plan.criteria or _default_criteria(text)
+                    plan.offered = [e.name for e in offered]
                     self._cache_put(cache_key, plan)
                     return plan
             except Exception as exc:

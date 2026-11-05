@@ -44,7 +44,7 @@ from jarvis.agent.performance import PerformanceMonitor
 from jarvis.agent.store import redact
 from jarvis.agent.cloud_store import CloudTaskStore
 
-from jarvis.core import failsoft
+from jarvis.core import failsoft, plan_trace
 
 
 @dataclass
@@ -581,10 +581,18 @@ class TaskRunner:
         self.store.append_event(task.id, {
             "kind": "planned",
             "source": plan.source,
-            "steps": [{"title": step.title, "kind": step.kind.value}
+            "steps": [{"title": step.title, "kind": step.kind.value,
+                       **({"tool": step.tool} if step.tool else {})}
                       for step in plan.steps],
             "warnings": plan.warnings,
+            **({"offered": plan.offered} if plan.offered else {}),
         })
+        try:
+            plan_trace.record_plan(task.id, task.objective, source=plan.source,
+                                   offered=plan.offered, steps=task.steps,
+                                   warnings=plan.warnings)
+        except Exception:
+            failsoft.suppress("agent.runner:plan_trace")
         self._emit("planned", task, message=plan.rationale or "Plan ready.",
                    plan={"source": plan.source, "warnings": plan.warnings})
         if plan.source == "heuristic" and any(
@@ -750,7 +758,13 @@ class TaskRunner:
             "attempts": step.attempts,
             "error": step.last_error,
             "evidence": step.evidence,
+            **({"tool": step.tool} if step.tool else {}),
         })
+        try:
+            plan_trace.record_result(task.id, step.index, state=step.state.value,
+                                     result=step.last_error or step.output)
+        except Exception:
+            failsoft.suppress("agent.runner:plan_trace")
 
     def _loop_detected(self, step: TaskStep, result: StepResult) -> bool:
         signature = f"{step.kind.value}|{step.command}|{step.target}|{result.error}"[:400]

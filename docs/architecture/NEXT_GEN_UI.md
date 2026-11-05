@@ -238,3 +238,19 @@ A read-only view of the HUD log (You / JARVIS / System / Error / File lines). Th
 Tests: Python +21 (kinds, 8 secret shapes, home folders, all five blocked states, PIN-then-verified, fail-closed, flood cap, unsubscribe, observer isolation), Vitest +3. Real QtWebEngine run shows redaction and that a PIN typed during `auth_required` never reaches the page.
 
 Not covered: persistent history (the log is this session only) and search.
+
+## 18. Loading feedback and optimistic updates
+
+Rules (`frontend/src/ux/phase.ts`, one place, unit-tested):
+
+| Pending for | Shown |
+|---|---|
+| under 1 s | nothing |
+| 1 s to 10 s | skeleton of the page (home widgets) and a quiet status label |
+| over 10 s | progress bar and "about N s left (estimate)" |
+
+The backend reports no real progress, so the bar and time left are an honest estimate: per-operation moving average of past durations, never 100 % before completion, growing when it overruns, and always labelled "(estimate)". An operation that never answers is dropped after 60 s with a notice.
+
+Tracked operations: connecting (until `host.hello`), first live data, `workspace.load`, named save/delete, `command.submit`, `control.do`. Autosave (`_last`) is silent.
+
+Tap first, sync later (`ux/actions.ts`): mic mute/unmute flips the UI at once; `assistant.muted` confirms, a refusal `control.result` (locked, guest, ...) or a 6 s silence rolls it back with a notice. Workspace save/delete update the list at once; `workspace.list` from Python reconciles (a missing answer triggers a re-sync). Python stays the authority; window moves are local and already instant. Skeletons are aria-hidden and static under reduced motion.

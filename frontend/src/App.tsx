@@ -10,6 +10,7 @@ import { Tray, Windows } from './ui/Windows';
 import { Palette } from './ui/Palette';
 import { CommandBar } from './ui/CommandBar';
 import { Controls } from './ui/Controls';
+import { PendingWatch, StartupSkeleton, SyncStatus, Toast } from './ui/Feedback';
 import { useWindows } from './workspace/windows';
 import { sendRequest } from './bridge/bridge';
 
@@ -51,6 +52,8 @@ export default function App() {
       <div className="widgets left"><ClockWidget /><BatteryWidget /><SystemWidget /></div>
       <div className="widgets right"><BrainWidget /><NetworkWidget /><ActivityWidget /></div>
       {link === 'detached' && <div className="banner glass" role="status">Backend not connected: showing no live data</div>}
+      <StartupSkeleton />
+      <SyncStatus />
       <PageView />
       <Windows />
       <Tray />
@@ -59,6 +62,8 @@ export default function App() {
       <Palette />
       <NavPanel />
       <SettingsPanel />
+      <Toast />
+      <PendingWatch />
     </div>
   );
 }

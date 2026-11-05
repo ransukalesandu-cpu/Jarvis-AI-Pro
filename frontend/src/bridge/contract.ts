@@ -1,6 +1,8 @@
 // Typed message contract between the Python host (jarvis/webui/contract.py) and the page.
 // Both sides validate: anything outside this closed set, or out of range, is dropped, never coerced.
 
+import { validateLayout, type Layout } from '../workspace/layout';
+
 export const ASSISTANT_STATES = ['idle', 'sleeping', 'listening', 'thinking', 'searching', 'executing', 'speaking', 'error'] as const;
 export type AssistantState = (typeof ASSISTANT_STATES)[number];
 export const PERSONAS = ['jarvis', 'bihansa'] as const;
@@ -15,12 +17,17 @@ export type HostEvent =
   | { type: 'system.metrics_updated'; cpu: number; ram: number; disk: number | null; battery: Battery | null; net: Net | null }
   | { type: 'provider.changed'; provider: string; model: string; connected: boolean; fallback: boolean }
   | { type: 'ui.persona'; persona: Persona }
+  | { type: 'workspace.list'; names: string[] }
+  | { type: 'workspace.loaded'; name: string; layout: Layout | null }
   | { type: 'host.hello'; version: number };
 
 /** UI -> Python requests. Authorization always happens in Python; this list is only the shape. */
-export type UiRequest = { kind: 'ready' } | { kind: 'ping'; n: number };
+export type UiRequest =
+  | { kind: 'ready' } | { kind: 'ping'; n: number }
+  | { kind: 'workspace.list' } | { kind: 'workspace.load'; name: string } | { kind: 'workspace.delete'; name: string }
+  | { kind: 'workspace.save'; name: string; layout: Layout };
 
-export const MAX_EVENT_CHARS = 4096;
+export const MAX_EVENT_CHARS = 16384;
 const num = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 const str = (v: unknown, max = 80): v is string => typeof v === 'string' && v.length > 0 && v.length <= max;
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -56,6 +63,14 @@ export function parseHostEvent(raw: unknown): HostEvent | null {
         ? { type: m.type, provider: m.provider, model: m.model, connected: m.connected, fallback: m.fallback } : null;
     case 'ui.persona':
       return (PERSONAS as readonly unknown[]).includes(m.persona) ? { type: m.type, persona: m.persona as Persona } : null;
+    case 'workspace.list':
+      return Array.isArray(m.names) && m.names.length <= 24 && m.names.every((n) => str(n, 32)) ? { type: m.type, names: m.names as string[] } : null;
+    case 'workspace.loaded': {
+      if (!str(m.name, 32)) return null;
+      if (m.layout === null) return { type: m.type, name: m.name, layout: null };
+      const layout = validateLayout(m.layout);
+      return layout ? { type: m.type, name: m.name, layout } : null;
+    }
     case 'host.hello':
       return num(m.version, 0, 1000) ? { type: m.type, version: m.version } : null;
     default:

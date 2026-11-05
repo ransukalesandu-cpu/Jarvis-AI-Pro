@@ -60,6 +60,8 @@ __pycache__/
 *.so
 build/
 dist/
+!webui/dist/
+!webui/dist/**
 *.egg-info/
 .eggs/
 

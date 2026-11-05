@@ -4,12 +4,17 @@ from __future__ import annotations
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 
 from . import contract
+from .workspace_store import LAST, WorkspaceStore
 
 
 class WebUIBridge(QObject):
     event = pyqtSignal(str)            # Python -> page (validated JSON)
     ready = pyqtSignal()               # the page connected and subscribed
     ping_received = pyqtSignal(int)    # heartbeat from the page
+
+    def __init__(self, parent=None, store: WorkspaceStore | None = None):
+        super().__init__(parent)
+        self.store = store or WorkspaceStore()
 
     @pyqtSlot(str)
     def request(self, raw: str) -> None:  # noqa: D401 - Qt slot
@@ -20,6 +25,20 @@ class WebUIBridge(QObject):
             self.ready.emit()
         elif msg["kind"] == "ping":
             self.ping_received.emit(int(msg["n"]))
+        elif msg["kind"] == "workspace.save":
+            if self.store.save(msg["name"], msg["layout"]) and msg["name"].strip().lower() != LAST:
+                self._publish_list()
+        elif msg["kind"] == "workspace.load":
+            n = msg["name"].strip().lower()
+            self.publish("workspace.loaded", name=n, layout=self.store.load(n))
+        elif msg["kind"] == "workspace.delete":
+            self.store.delete(msg["name"])
+            self._publish_list()
+        elif msg["kind"] == "workspace.list":
+            self._publish_list()
+
+    def _publish_list(self) -> None:
+        self.publish("workspace.list", names=self.store.names())
 
     def publish(self, kind: str, **fields) -> bool:
         text = contract.encode_event(kind, **fields)

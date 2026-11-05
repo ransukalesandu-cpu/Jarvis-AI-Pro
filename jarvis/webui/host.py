@@ -14,6 +14,7 @@ from . import DIST
 from .bridge import WebUIBridge
 from .navigation import is_allowed_url
 from .telemetry import Telemetry
+from .workspace_store import WorkspaceStore
 
 BACKDROP = (5, 8, 13)      # matches --bg in tokens.css; the page paints this, not true transparency
 TELEMETRY_MS = 1000
@@ -33,7 +34,7 @@ class _LockedPage(QWebEnginePage):
 
 
 class WebUIHost(QWidget):
-    def __init__(self, parent=None, *, debug: bool = False):
+    def __init__(self, parent=None, *, debug: bool = False, workspace_path=None):
         super().__init__(parent)
         self._reloads = 0
         self._debug = debug
@@ -51,7 +52,7 @@ class WebUIHost(QWidget):
         if hasattr(self._page, "permissionRequested"):
             self._page.permissionRequested.connect(lambda p: p.deny())
 
-        self.bridge = WebUIBridge(self)
+        self.bridge = WebUIBridge(self, WorkspaceStore(workspace_path))
         self._channel = QWebChannel(self)
         self._channel.registerObject("jarvis", self.bridge)
         self._page.setWebChannel(self._channel)

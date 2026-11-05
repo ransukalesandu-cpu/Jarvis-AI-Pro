@@ -51,6 +51,11 @@ class TestPlan:
         with pytest.raises(PlanError):
             build("x", [{"tool": "cc_app"}] * 30, TOOLS)
 
+    def test_depends_on_must_be_a_list_of_numbers(self):
+        for bad in ("0", 1, [True], ["a"]):
+            with pytest.raises(PlanError):
+                build("x", [{"tool": "cc_app"}, {"tool": "cc_app", "depends_on": bad}], TOOLS)
+
     def test_cycles_and_forward_references_are_rejected(self):
         with pytest.raises(PlanError):
             build("x", [{"tool": "cc_app", "depends_on": [1]}, {"tool": "cc_app", "depends_on": [0]}], TOOLS)
@@ -91,6 +96,8 @@ class TestPlanner:
         assert steps[1]["args"] == {"op": "minimize", "window": "calculator"}
         assert heuristic_steps("switch to VS Code")[0]["args"]["window"] == "Visual Studio Code"
         assert heuristic_steps("open notepad, then press ctrl+s")[1]["args"]["keys"] == "ctrl+s"
+        press = heuristic_steps("press ctrl+s in Notepad")[0]["args"]
+        assert press == {"op": "hotkey", "window": "Notepad", "keys": "ctrl+s"}
 
     def test_heuristic_leaves_complex_requests_to_the_model(self):
         for text in ("research three AI projects, compare them and save a report",
@@ -277,6 +284,36 @@ class TestHost:
         assert holder["r"].status == "cancelled" and time.perf_counter() - t0 < 1.0
         assert any(w.title == "Calculator" for w in fake.windows())     # close never ran
 
+    def test_a_failing_optional_step_does_not_fail_the_task(self, env):
+        _fake, specs = env
+        host = HostAgent(specs, max_recoveries=0)
+        report = host.run(host.plan_from("x", [
+            {"tool": "cc_app", "args": {"op": "launch", "name": "Calculator"}},
+            {"tool": "cc_control", "args": {"op": "invoke", "window": "Calculator", "name": "Nope"},
+             "optional": True},
+            {"tool": "cc_control", "args": {"op": "invoke", "window": "Calculator", "name": "One"},
+             "depends_on": [0]},
+        ]))
+        assert report.success and report.status == "completed", report.summary
+
+    def test_router_gets_provider_named_keys(self, monkeypatch):
+        from jarvis.computer_control.orchestrator import planner
+        from jarvis.memory import config_manager
+        monkeypatch.setattr(config_manager, "load_api_keys",
+                            lambda: {"gemini_api_key": "g-key", "unrelated": "x"})
+        seen = {}
+
+        class Router:
+            def __init__(self, preferred, *, api_keys, timeout, online_check):
+                seen["keys"] = api_keys
+
+            def query(self, prompt, system_prompt=""):
+                return {"text": "{}"}
+        import jarvis.core.hybrid_llm_router as hlr
+        monkeypatch.setattr(hlr, "HybridLLMRouter", Router)
+        planner.default_ask()("hi")
+        assert seen["keys"] == {"gemini": "g-key"}
+
     def test_password_never_appears_in_the_trace(self, env):
         _fake, specs = env
         host = HostAgent(specs)
@@ -340,39 +377,44 @@ class TestJobs:
         assert any(v.get("status") == "completed" for v in seen)
         assert cc_jobs.last_report().success
 
-    def test_cancelling_the_job_stops_the_task(self, env):
+    def test_cancelling_the_job_stops_the_task(self, env, monkeypatch):
+        """Through the registered cc_task handler, so the run_detached stop relay is covered."""
+        from jarvis.computer_control.orchestrator import planner
         from jarvis.core.jobs import JobManager
         fake, specs = env
-        spec = specs.get("cc_task")
+        steps = [{"tool": "cc_app", "args": {"op": "launch", "name": "Calculator"}},
+                 {"tool": "cc_control", "args": {"op": "wait", "window": "Calculator", "name": "Never",
+                                                 "timeout": 30}}]
+        monkeypatch.setattr(planner, "heuristic_steps", lambda objective: steps)
         manager = JobManager()
-        captured = {}
-
-        def heavy(prompt):
-            raise AssertionError("not used")
 
         async def main():
             async def work(job):
-                def go():
-                    plan_steps = [{"tool": "cc_app", "args": {"op": "launch", "name": "Calculator"}},
-                                  {"tool": "cc_control", "args": {"op": "wait", "window": "Calculator",
-                                                                  "name": "Never", "timeout": 30}}]
-                    host = HostAgent(specs)
-                    captured["report"] = host.run(host.plan_from("x", plan_steps),
-                                                  cancel_event=job.cancel_event, job_id=job.id)
-                    return captured["report"].summary
-                return await asyncio.to_thread(go)
+                return await asyncio.to_thread(lambda: specs.get("cc_task").call(
+                    {"objective": "wait for a window that never opens"},
+                    cancel_event=job.cancel_event, job_id=job.id).message)
             job = manager.start("cc_task", work)
             await asyncio.sleep(0.4)
             assert manager.request_cancel(job.id)
             for _ in range(100):
-                if "report" in captured:
+                if job.status != "running":
                     break
                 await asyncio.sleep(0.05)
+            await asyncio.sleep(0.3)
             return job
 
+        t0 = time.perf_counter()
         asyncio.run(main())
-        assert captured["report"].status == "cancelled"
-        assert spec is not None and heavy
+        assert cc_jobs.last_report().status == "cancelled"
+        assert time.perf_counter() - t0 < 5
+
+    def test_provider_error_during_planning_is_a_report_not_a_crash(self, env):
+        _fake, specs = env
+
+        def broken(prompt):
+            raise ConnectionError("network down")
+        report = cc_jobs.run_objective("organize my project folder", specs, model=ModelPlanner(broken))
+        assert report.status == "planning_failed" and cc_jobs.last_report() is report
 
     def test_planning_failure_is_reported(self, env, monkeypatch):
         _fake, specs = env

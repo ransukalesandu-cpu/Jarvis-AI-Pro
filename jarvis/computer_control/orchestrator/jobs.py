@@ -40,12 +40,17 @@ def run_objective(objective: str, specs: SpecRegistry, *, cancel_event: threadin
     publish({"job_id": job_id, "status": "planning", "objective": objective[:120], "message": "planning"})
     try:
         plan = make_plan(objective, specs, model=model)
-    except PlanError as exc:
+    except Exception as exc:                 # PlanError or a planner/provider failure
+        if not isinstance(exc, PlanError):
+            from jarvis.core import failsoft
+            failsoft.suppress("computer_control.orchestrator.jobs:make_plan")
         report = TaskReport(objective=objective, success=False, status="planning_failed",
                             summary=f"I could not plan that: {exc}", steps_total=0, steps_ok=0,
                             steps_verified=0, recoveries=0, duration_s=0.0)
         publish({"job_id": job_id, "status": "failed", "objective": objective[:120],
                  "message": report.summary[:200]})
+        with _lock:
+            _last_report = report
         return report
     publish({"job_id": job_id, "status": "running", "objective": objective[:120],
              "message": plan.describe()[:200], "steps": len(plan.steps)})
@@ -82,7 +87,8 @@ def run_detached(ctx: ActionContext, fn):
             worker.join(0.05)
             if ctx.stopped():
                 cancel.set()
-        worker.join(5.0)
+                worker.join(5.0)          # give the host 5 s to wind down, then stop waiting
+                break
     finally:
         cancel.set()
     if "error" in box:

@@ -35,7 +35,7 @@ _SEARCH = re.compile(r"^(?:search|look up|google)\s+(?:the\s+web\s+|online\s+|go
 _GOTO = re.compile(r"^(?:go to|open|visit|navigate to)\s+(?P<url>(?:https?://)?[\w.-]+\.[a-z]{2,}(?:/\S*)?)$", re.I)
 _BROWSERS = {"chrome": "chrome", "google chrome": "chrome", "edge": "msedge", "microsoft edge": "msedge",
              "browser": "", "the browser": "", "web browser": ""}
-_PRESS = re.compile(r"^press\s+(?P<keys>[a-z0-9+ ]{1,30})(?:\s+in\s+(?P<app>.+))?$", re.I)
+_PRESS = re.compile(r"^press\s+(?P<keys>[a-z0-9+ ]{1,30}?)(?:\s+in\s+(?P<app>.+))?$", re.I)
 
 _OP_MAP = {"close": "close", "minimise": "minimize", "minimize": "minimize", "maximise": "maximize",
            "maximize": "maximize", "restore": "restore", "switch to": "activate",
@@ -192,7 +192,11 @@ def default_ask() -> Optional[Callable[[str], str]]:
 
     def ask(prompt: str) -> str:
         from jarvis.core.hybrid_llm_router import HybridLLMRouter, resolve_preferred_provider
-        router = HybridLLMRouter(resolve_preferred_provider(config), api_keys=config, timeout=60.0,
+        # the router looks keys up by provider name ("gemini"), the config file by field name
+        keys = {provider: str(config.get(field) or "") for provider, field in (
+            ("gemini", "gemini_api_key"), ("openai", "openai_api_key"),
+            ("claude", "anthropic_api_key"), ("groq", "groq_api_key")) if config.get(field)}
+        router = HybridLLMRouter(resolve_preferred_provider(config), api_keys=keys, timeout=60.0,
                                  online_check=False)
         result = router.query(prompt, system_prompt="You are JARVIS's computer-control planner. "
                                                      "Answer with JSON only.")

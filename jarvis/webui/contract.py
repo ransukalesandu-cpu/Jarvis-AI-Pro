@@ -9,7 +9,7 @@ import json
 import math
 from typing import Any
 
-from .command_gate import AVAILABILITY, MAX_TEXT, REASONS
+from .command_gate import ACTIONS, AVAILABILITY, MAX_TEXT, REASONS
 from .workspace_store import clean_name, validate_layout
 
 MAX_EVENT_CHARS = 16384
@@ -54,6 +54,7 @@ _EVENTS = {
     "workspace.loaded": ({"name", "layout"}, lambda m: isinstance(m["name"], str) and 0 < len(m["name"]) <= 32
                          and (m["layout"] is None or validate_layout(m["layout"]) is not None)),
     "command.availability": ({"state"}, lambda m: m["state"] in AVAILABILITY),
+    "control.result": ({"reason"}, lambda m: m["reason"] in REASONS),
     "command.result": ({"reason"}, lambda m: m["reason"] in REASONS),
     "host.hello": ({"version"}, lambda m: _num(m["version"], 0, 1000)),
 }
@@ -86,6 +87,7 @@ _REQUESTS = {
     "workspace.delete": ({"name"}, lambda m: clean_name(m["name"]) is not None),
     "workspace.save": ({"name", "layout"}, lambda m: _NAME_OK(m) and validate_layout(m["layout"]) is not None),
     "command.submit": ({"text"}, lambda m: isinstance(m["text"], str) and len(m["text"]) <= 4 * MAX_TEXT),
+    "control.do": ({"action"}, lambda m: m["action"] in ACTIONS),
     "ping": ({"n"}, lambda m: isinstance(m["n"], int) and not isinstance(m["n"], bool) and 0 <= m["n"] < 2 ** 31),
 }
 

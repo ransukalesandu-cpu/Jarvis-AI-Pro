@@ -12,7 +12,7 @@ export const BLOCKED: Record<Exclude<CommandState, 'ok'>, string> = {
   unavailable: 'Typing to JARVIS is not available in this window yet.',
 };
 export const RESULT: Record<CommandReason, string> = {
-  sent: 'Sent', empty: 'Nothing to send', too_long: `Too long (max ${COMMAND_MAX})`, rate_limited: 'Too fast, try again in a moment',
+  sent: 'Sent', done: 'Done', noop: 'Already in that state', empty: 'Nothing to send', too_long: `Too long (max ${COMMAND_MAX})`, rate_limited: 'Too fast, try again in a moment',
   credential: 'That looks like a credential. It was not sent. Use the native prompt.',
   locked: BLOCKED.locked, auth_required: BLOCKED.auth_required, silent: BLOCKED.silent, guest: BLOCKED.guest, unavailable: BLOCKED.unavailable,
 };

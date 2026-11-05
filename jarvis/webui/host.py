@@ -36,7 +36,7 @@ class _LockedPage(QWebEnginePage):
 class WebUIHost(QWidget):
     ready = pyqtSignal()   # emitted each time the page finishes loading (first load and reloads)
 
-    def __init__(self, parent=None, *, debug: bool = False, workspace_path=None, gate=None):
+    def __init__(self, parent=None, *, debug: bool = False, workspace_path=None, gate=None, controls=None):
         super().__init__(parent)
         self._reloads = 0
         self._debug = debug
@@ -54,7 +54,7 @@ class WebUIHost(QWidget):
         if hasattr(self._page, "permissionRequested"):
             self._page.permissionRequested.connect(lambda p: p.deny())
 
-        self.bridge = WebUIBridge(self, WorkspaceStore(workspace_path), gate)
+        self.bridge = WebUIBridge(self, WorkspaceStore(workspace_path), gate, controls)
         self._channel = QWebChannel(self)
         self._channel.registerObject("jarvis", self.bridge)
         self._page.setWebChannel(self._channel)

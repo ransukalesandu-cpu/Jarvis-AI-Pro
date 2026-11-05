@@ -17,7 +17,7 @@ MAX_TEXT = 500
 MIN_INTERVAL = 0.5        # seconds between commands
 MAX_PER_MINUTE = 30
 
-REASONS = ("sent", "empty", "too_long", "locked", "auth_required", "silent", "guest", "credential", "rate_limited", "unavailable")
+REASONS = ("sent", "empty", "too_long", "locked", "auth_required", "silent", "guest", "credential", "rate_limited", "unavailable", "done", "noop")
 AVAILABILITY = ("ok", "locked", "auth_required", "silent", "guest", "unavailable")
 
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
@@ -77,3 +77,37 @@ class CommandGate:
             self._recent.append(now)
         self._run(lambda: self._sink(t))
         return "sent"
+
+
+ACTIONS = ("interrupt", "mute", "unmute", "fullscreen")
+
+
+class ControlGate:
+    """Small allow-listed controls. Things that stop or quiet JARVIS (interrupt, mute) are always allowed; turning
+    the microphone back on is not allowed from the page while locked / awaiting a PIN / silent / in guest mode."""
+
+    def __init__(self, gate: CommandGate, actions: dict[str, Callable[[], None]], is_muted: Callable[[], bool],
+                 clock: Callable[[], float] = time.monotonic):
+        self._gate, self._actions, self._is_muted, self._clock = gate, actions, is_muted, clock
+        self._last = -1e9
+
+    def do(self, action) -> str:
+        fn = self._actions.get(action) if action in ACTIONS else None
+        if fn is None:
+            return "unavailable"
+        now = self._clock()
+        if now - self._last < 0.3:
+            return "rate_limited"
+        try:
+            muted = bool(self._is_muted())
+        except (AttributeError, RuntimeError):
+            return "unavailable"
+        if action == "mute" and muted or action == "unmute" and not muted:
+            return "noop"
+        if action == "unmute":
+            state = self._gate.availability()
+            if state != "ok":
+                return state
+        self._last = now
+        fn()
+        return "done"

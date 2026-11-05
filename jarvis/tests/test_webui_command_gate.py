@@ -115,3 +115,68 @@ def test_bridge_without_a_gate_is_unavailable():
     b.event.connect(lambda s: got.append(json.loads(s)))
     b.request(json.dumps({"kind": "command.submit", "text": "x"}))
     assert {"type": "command.result", "reason": "unavailable"} in got
+
+
+# ── controls ────────────────────────────────────────────────────────────────
+from jarvis.webui.command_gate import ACTIONS, ControlGate  # noqa: E402
+
+
+def ctl(mgr=None, guest=False, muted=False):
+    calls, t, state = [], [0.0], {"muted": muted}
+    gate, _, _ = rig(mgr, guest)
+    acts = {a: (lambda a=a: calls.append(a)) for a in ACTIONS}
+    return ControlGate(gate, acts, lambda: state["muted"], clock=lambda: t[0]), calls, t, state
+
+
+def test_stop_actions_are_always_allowed_even_when_locked():
+    c, calls, t, _ = ctl(Mgr(lock=True), guest=True)
+    assert c.do("interrupt") == "done"
+    t[0] += 1
+    assert c.do("mute") == "done"
+    t[0] += 1
+    assert c.do("fullscreen") == "done"
+    assert calls == ["interrupt", "mute", "fullscreen"]
+
+
+@pytest.mark.parametrize("mgr,guest,reason", [(Mgr(lock=True), False, "locked"), (Mgr(pin=True), False, "auth_required"),
+                                              (Mgr(silent=True), False, "silent"), (Mgr(), True, "guest")])
+def test_turning_the_mic_back_on_needs_an_unlocked_session(mgr, guest, reason):
+    c, calls, _, _ = ctl(mgr, guest, muted=True)
+    assert c.do("unmute") == reason and calls == []
+
+
+def test_unmute_works_when_available_and_noop_when_already_in_state():
+    c, calls, t, st = ctl(muted=True)
+    assert c.do("unmute") == "done" and calls == ["unmute"]
+    st["muted"] = False
+    t[0] += 1
+    assert c.do("unmute") == "noop" and c.do("mute") == "done"
+    st["muted"] = True
+    t[0] += 1
+    assert c.do("mute") == "noop"
+
+
+def test_controls_rate_limit_unknown_and_missing_actions():
+    c, calls, t, _ = ctl()
+    assert c.do("interrupt") == "done" and c.do("interrupt") == "rate_limited"
+    assert c.do("format_disk") == "unavailable" and c.do(None) == "unavailable"
+    gate, _, _ = rig()
+    assert ControlGate(gate, {}, lambda: False).do("interrupt") == "unavailable"
+    assert calls == ["interrupt"]
+
+
+def test_control_contract_and_bridge():
+    pytest.importorskip("PyQt6.QtCore")
+    from jarvis.webui.bridge import WebUIBridge
+    ok = lambda m: contract.parse_request(json.dumps(m)) is not None   # noqa: E731
+    assert ok({"kind": "control.do", "action": "mute"})
+    assert not ok({"kind": "control.do", "action": "shutdown"})
+    assert not ok({"kind": "control.do", "action": "mute", "x": 1})
+    c, calls, _, _ = ctl()
+    b = WebUIBridge(controls=c)
+    got = []
+    b.event.connect(lambda s: got.append(json.loads(s)))
+    b.request(json.dumps({"kind": "control.do", "action": "interrupt"}))
+    assert calls == ["interrupt"] and got == [{"type": "control.result", "reason": "done"}]
+    got.clear()
+    WebUIBridge().request(json.dumps({"kind": "control.do", "action": "interrupt"}))   # no controls -> nothing happens

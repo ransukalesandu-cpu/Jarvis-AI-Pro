@@ -29,12 +29,17 @@ def attach(window):
     from .live import LiveLink
 
     from jarvis.core import identity, security
-    from .command_gate import CommandGate
+    from .command_gate import CommandGate, ControlGate
 
     sink = getattr(window, "_submit_immersive_command", None)   # logs "You: …" and hands off to the assistant
     gate = CommandGate(sink, security.get_auth_manager, lambda: identity.get_identity_manager().guest_mode_active())
     cw = window.centralWidget()
-    host = WebUIHost(cw, gate=gate)
+    actions = {}
+    for name, attr in ("interrupt", "_do_interrupt"), ("mute", "_toggle_mute"), ("unmute", "_toggle_mute"), ("fullscreen", "_toggle_fullscreen"):
+        if callable(getattr(window, attr, None)):
+            actions[name] = getattr(window, attr)
+    controls = ControlGate(gate, actions, lambda: bool(getattr(window, "_muted", False)))
+    host = WebUIHost(cw, gate=gate, controls=controls)
     host.setGeometry(cw.rect())
     cw.installEventFilter(_Fit(cw, host))
     host.show()

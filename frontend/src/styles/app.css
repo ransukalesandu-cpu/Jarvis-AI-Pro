@@ -160,3 +160,9 @@ button { font: inherit; color: inherit; }
 .reply-text { font-size: 14px; line-height: 1.5; }
 .reply-close { position: absolute; top: 8px; right: 8px; background: none; border: 0; color: inherit; opacity: .6; cursor: pointer; }
 .reply-close:hover, .reply-close:focus-visible { opacity: 1; }
+
+.timer { display: grid; gap: 14px; justify-items: center; padding: 8px 4px; }
+.timer-face { font: 600 44px/1 'JetBrains Mono', ui-monospace, monospace; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.timer-face[data-finished="true"] { color: var(--accent-warn, #ffb454); }
+.timer-modes, .timer-presets, .timer-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.timer-status { margin: 0; font-size: 12px; opacity: .7; }

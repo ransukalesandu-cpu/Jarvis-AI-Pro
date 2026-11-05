@@ -1,0 +1,227 @@
+import os
+import unittest
+from unittest.mock import patch
+
+from jarvis.core.hybrid_llm_router import HybridLLMRouter, resolve_preferred_provider
+from jarvis.core.provider_protocol import TextProvider, TextProviderRouter
+
+
+class HybridLLMRouterTests(unittest.TestCase):
+    def test_router_and_provider_adapters_satisfy_shared_contracts(self):
+        router = HybridLLMRouter(api_keys={}, online_check=False)
+        self.assertIsInstance(router, TextProviderRouter)
+        self.assertEqual(
+            set(router.providers),
+            {"gemini", "groq", "openai", "claude", "ollama"},
+        )
+        for provider, adapter in router.providers.items():
+            with self.subTest(provider=provider):
+                self.assertIsInstance(adapter, TextProvider)
+
+    def test_explicit_hybrid_provider_takes_precedence(self):
+        self.assertEqual(
+            resolve_preferred_provider({"hybrid_provider": "groq", "ai_provider": "openai"}),
+            "groq",
+        )
+
+    def test_local_llm_backend_setting_is_not_misread_as_hybrid_provider(self):
+        self.assertEqual(
+            resolve_preferred_provider({"llm_provider": "ollama", "ai_provider": "openai"}),
+            "openai",
+        )
+
+    def test_one_shot_anthropic_setting_maps_to_claude_for_hybrid_fallback(self):
+        self.assertEqual(resolve_preferred_provider({"ai_provider": "anthropic"}), "claude")
+
+    def test_invalid_provider_falls_back_to_gemini(self):
+        self.assertEqual(resolve_preferred_provider({"ai_provider": "unknown"}), "gemini")
+
+    def test_key_status_reports_presence_without_returning_key_values(self):
+        router = HybridLLMRouter(
+            api_keys={"gemini": "secret-test-value", "groq": ""},
+            online_check=False,
+        )
+        status = router.configured_key_status()
+        self.assertEqual(status["gemini"], True)
+        self.assertEqual(status["groq"], False)
+        self.assertNotIn("secret-test-value", repr(status))
+
+    def test_supabase_cloud_is_used_without_local_provider_keys(self):
+        env = {
+            "SUPABASE_URL": "https://example.supabase.co",
+            "SUPABASE_ANON_KEY": "public-test-key",
+            "SUPABASE_EMAIL": "owner@example.com",
+            "SUPABASE_PASSWORD": "test-password",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            router = HybridLLMRouter(online_check=False)
+            router.is_online = lambda: True
+            with patch(
+                "jarvis.core.supabase_cloud_provider.call_supabase_provider",
+                return_value={"text": "cloud answer", "model": "test-model"},
+            ) as call_cloud:
+                result = router.query("hello")
+        self.assertEqual(result["text"], "cloud answer")
+        self.assertEqual(result["provider"], "gemini")
+        self.assertEqual(result["mode"], "cloud")
+        call_cloud.assert_called_once()
+        self.assertEqual(call_cloud.call_args.kwargs["provider"], "gemini")
+
+    def test_cloud_configuration_status_does_not_claim_local_keys_exist(self):
+        env = {
+            "SUPABASE_URL": "https://example.supabase.co",
+            "SUPABASE_ANON_KEY": "public-test-key",
+            "SUPABASE_EMAIL": "owner@example.com",
+            "SUPABASE_PASSWORD": "test-password",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            router = HybridLLMRouter(online_check=False)
+            status = router.configured_key_status()
+        self.assertTrue(status["supabase_cloud"])
+        self.assertFalse(status["gemini"])
+
+    def test_empty_prompt_is_rejected_before_provider_calls(self):
+        router = HybridLLMRouter(online_check=False)
+        with self.assertRaisesRegex(ValueError, "non-empty prompt"):
+            router.query("   ")
+
+    def test_explicit_model_override_is_not_reused_for_fallback_provider(self):
+        router = HybridLLMRouter(
+            preferred_provider="gemini",
+            api_keys={"gemini": "test-gemini", "groq": "test-groq"},
+            online_check=False,
+        )
+        calls = []
+
+        def fail_gemini(prompt, system_prompt, **kwargs):
+            calls.append(("gemini", dict(kwargs)))
+            raise RuntimeError("Gemini model unavailable")
+
+        def answer_groq(prompt, system_prompt, **kwargs):
+            calls.append(("groq", dict(kwargs)))
+            return {"text": "fallback answer", "model": "groq-default"}
+
+        router.providers["gemini"] = fail_gemini
+        router.providers["groq"] = answer_groq
+        result = router.query("hello", model="gemini-2.5-flash")
+
+        self.assertEqual(result["text"], "fallback answer")
+        self.assertEqual(calls[0][0], "gemini")
+        self.assertEqual(calls[0][1]["model"], "gemini-2.5-flash")
+        self.assertEqual(calls[1][0], "groq")
+        self.assertNotIn("model", calls[1][1])
+
+    def test_provider_failure_falls_back_to_next_configured_provider(self):
+        router = HybridLLMRouter(
+            api_keys={"gemini": "test-gemini", "groq": "test-groq", "openai": "test-openai"},
+            online_check=False,
+        )
+        router.is_online = lambda: True
+        router.providers["gemini"] = lambda *a, **k: (_ for _ in ()).throw(TimeoutError())
+        router.providers["groq"] = lambda *a, **k: {"text": "answer", "model": "test-model"}
+        result = router.query("hello")
+        self.assertEqual(result["text"], "answer")
+        self.assertEqual(result["provider"], "groq")
+        self.assertEqual(result["mode"], "cloud")
+        self.assertGreaterEqual(result["latency_ms"], 0)
+
+    def test_empty_provider_response_is_treated_as_failure(self):
+        router = HybridLLMRouter(
+            api_keys={"gemini": "test-gemini", "groq": "test-groq", "openai": "test-openai"},
+            online_check=False,
+        )
+        router.is_online = lambda: True
+        router.providers["gemini"] = lambda *a, **k: {"text": "  "}
+        router.providers["groq"] = lambda *a, **k: {"text": "recovered"}
+        self.assertEqual(router.query("hello")["text"], "recovered")
+
+    def test_offline_prefers_local_provider_when_it_succeeds(self):
+        router = HybridLLMRouter(api_keys={"gemini": "configured"}, online_check=True)
+        router.is_online = lambda: False
+        calls = []
+        router.providers["gemini"] = lambda *a, **k: calls.append("gemini")
+        router.providers["ollama"] = lambda *a, **k: {"text": "local answer", "model": "local"}
+        result = router.query("hello")
+        self.assertEqual(calls, [])
+        self.assertEqual(result["provider"], "ollama")
+        self.assertEqual(result["mode"], "local-offline")
+
+    def test_false_offline_probe_falls_back_to_cloud_if_local_fails(self):
+        router = HybridLLMRouter(
+            api_keys={"gemini": "configured"}, online_check=True
+        )
+        router.is_online = lambda: False
+        calls = []
+        router.providers["ollama"] = lambda *a, **k: (
+            (_ for _ in ()).throw(ConnectionError("local Ollama unavailable"))
+        )
+        router.providers["gemini"] = lambda *a, **k: (
+            calls.append("gemini") or {"text": "cloud recovered", "model": "test-model"}
+        )
+        result = router.query("hello")
+        self.assertEqual(calls, ["gemini"])
+        self.assertEqual(result["text"], "cloud recovered")
+        self.assertEqual(result["provider"], "gemini")
+        self.assertEqual(result["mode"], "cloud")
+
+    def test_missing_cloud_keys_are_skipped_without_calling_provider(self):
+        router = HybridLLMRouter(online_check=False)
+        router.is_online = lambda: True
+        calls = []
+        router.providers["gemini"] = lambda *a, **k: calls.append("gemini")
+        router.providers["ollama"] = lambda *a, **k: {"text": "local answer"}
+        result = router.query("hello")
+        self.assertEqual(calls, [])
+        self.assertEqual(result["provider"], "ollama")
+
+    def test_connectivity_check_does_not_change_global_socket_timeout(self):
+        with patch("jarvis.core.hybrid_llm_router.socket.create_connection", side_effect=OSError) as connect:
+            self.assertFalse(HybridLLMRouter.is_online(timeout=0.2))
+        connect.assert_called_once_with(("1.1.1.1", 443), timeout=0.2)
+
+
+    def test_fallback_order_uses_latency_but_keeps_preference_first(self):
+        router = HybridLLMRouter(
+            preferred_provider="gemini",
+            api_keys={"gemini": "g", "groq": "r", "openai": "o"},
+            online_check=False,
+        )
+        router.is_online = lambda: True
+        router._record_provider_latency("groq", 80.0)
+        router._record_provider_latency("openai", 10.0)
+        calls = []
+
+        def fail(*args, **kwargs):
+            calls.append("gemini")
+            raise TimeoutError()
+
+        def fast(*args, **kwargs):
+            calls.append("openai")
+            return {"text": "fast fallback"}
+
+        router.providers["gemini"] = fail
+        router.providers["openai"] = fast
+        router.providers["groq"] = lambda *a, **k: (
+            calls.append("groq") or {"text": "slow fallback"}
+        )
+        result = router.query("hello")
+        self.assertEqual(calls, ["gemini", "openai"])
+        self.assertEqual(result["provider"], "openai")
+        self.assertIn("openai", router.provider_performance())
+
+
+    def test_failed_fallback_is_demoted_until_it_recovers(self):
+        router = HybridLLMRouter(
+            preferred_provider="gemini",
+            api_keys={"gemini": "g", "groq": "r", "openai": "o"},
+            online_check=False,
+        )
+        router._provider_failures["groq"] = 1
+        order = router._provider_order(online=True)
+        self.assertEqual(order[0], "gemini")
+        self.assertLess(order.index("openai"), order.index("groq"))
+        router._provider_failures["groq"] = 0
+        self.assertEqual(router._provider_failures["groq"], 0)
+
+if __name__ == "__main__":
+    unittest.main()

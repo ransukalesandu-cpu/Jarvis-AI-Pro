@@ -4,7 +4,7 @@ JARVIS can now carry a multi-step objective to completion from a single
 instruction: **understand → plan → observe → act → verify → recover → continue →
 report**. This document describes what is implemented, how to configure it, the
 security model, and the known limitations. Everything here is backed by tests in
-`JarvisAI/tests/test_agent_*.py` and can be inspected in `JarvisAI/agent/`.
+`jarvis/tests/test_agent_*.py` and can be inspected in `jarvis/agent/`.
 
 ```
 voice / HUD text
@@ -67,7 +67,7 @@ file mutation while allowing independent repository reads to overlap.
 
 ## 2. Configuration
 
-All settings live in `JarvisAI/config/api_keys.json` (git-ignored, written
+All settings live in `jarvis/config/api_keys.json` (git-ignored, written
 atomically with `0600`), and every one can be overridden by an environment
 variable where noted.
 
@@ -86,7 +86,7 @@ variable where noted.
 | `autonomous_ui_enabled` | `false` (`JARVIS_AUTONOMOUS_UI=1`) | Draw the autonomous HUD surfaces (card, rail button, menu entries). Off by default so the HUD keeps its clean composition. |
 | `vision_model` | `gemini-2.5-flash` (`JARVIS_VISION_MODEL`) | Gemini vision model id. |
 
-Task state is written to `JarvisAI/memory/agent/` (git-ignored). Override with
+Task state is written to `jarvis/memory/agent/` (git-ignored). Override with
 `JARVIS_AGENT_DIR` — the test suite uses this to stay out of the checkout.
 
 ### The HUD surfaces are opt-in
@@ -189,7 +189,7 @@ at action time; dry-run does not override Privacy Lock.
 ## 5. Tests
 
 ```
-python -m pytest JarvisAI/tests -q
+python -m pytest jarvis/tests -q
 ```
 
 The agent-specific files:

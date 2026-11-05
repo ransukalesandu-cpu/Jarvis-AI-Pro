@@ -9,7 +9,7 @@ This feature provides a read-only browser service and typed browser steps for th
 - `tests/test_smart_hybrid_browser.py`: unit tests with mocked providers/browser plus URL validation.
 
 ## Install
-Playwright is already listed in `JarvisAI/requirements.txt`. After installing project requirements, install Chromium:
+Playwright is already listed in `requirements.txt`. After installing project requirements, install Chromium:
 `python -m playwright install chromium`
 
 ## Agent integration (Part 2)
@@ -28,7 +28,7 @@ Browser automation is deliberately read-only in this increment. Page JavaScript 
 DNS validation blocks localhost, private, link-local, and other non-public destinations, including routed requests. DNS rebinding between validation and browser resolution remains a documented limitation; this module is not a network sandbox. Use OS/container network isolation for stronger protection when browsing untrusted destinations.
 
 ## Run tests
-From `JarvisAI/`:
+From `jarvis/`:
 `python -m unittest discover -s tests -p "test_smart_hybrid_browser.py"`
 
 Full CI and existing voice/audio regressions must pass before merging. This feature requires network access and a configured LLM key for model-based intent routing; the whole system cannot be guaranteed 100% free or always available because provider quotas and terms can change.

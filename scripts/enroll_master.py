@@ -25,8 +25,8 @@ def ensure_restricted_dir(path: Path | str) -> Path:
     return target
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-JARVIS_DIR = ROOT_DIR / "JarvisAI"
-for item in (ROOT_DIR, JARVIS_DIR):
+JARVIS_DIR = ROOT_DIR / "jarvis"
+for item in (ROOT_DIR,):
     if str(item) not in sys.path:
         sys.path.insert(0, str(item))
 
@@ -53,7 +53,7 @@ def _record_three_samples() -> list[np.ndarray]:
 
 
 def enroll_master(sample_files: list[str] | None = None) -> Path:
-    from core import voice_id
+    from jarvis.core import voice_id
 
     if not voice_id.backend_ready():
         raise RuntimeError(

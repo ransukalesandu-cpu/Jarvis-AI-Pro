@@ -82,7 +82,9 @@ def test_notepad_end_to_end(real):
     assert typed.ok, typed.message
     assert typed.verified, typed.evidence
 
-    saved = controller.hotkey(ctx(), query, ["ctrl", "s"])
+    # Save through the UIA menu (no simulated input: CI runners have no interactive
+    # input desktop, so SendInput-based hotkeys are pending owner validation).
+    saved = controller.menu(ctx(), query, "File->Save")
     assert saved.ok, saved.message
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline and note.read_text(encoding="utf-8", errors="replace").strip() != "Hello JARVIS":

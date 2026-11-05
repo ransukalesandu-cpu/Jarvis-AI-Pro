@@ -253,10 +253,37 @@ class PywinautoBackend:
             raise ElementGone(f"window {handle} no longer exists") from exc
 
     def activate(self, handle: int) -> None:
-        hw = self._hwnd(handle)
-        if hw.is_minimized():
-            hw.restore()
-        hw.set_focus()
+        """Bring a window to the foreground without touching the mouse.
+
+        pywinauto's ``HwndWrapper.set_focus()`` moves the cursor off-screen first,
+        which fails on a non-interactive desktop and moves the owner's pointer on a
+        real one. This uses the Win32 calls directly: restore if minimised, then
+        ``SetForegroundWindow`` with the input of the current foreground thread
+        attached (the documented way to be allowed to take the foreground).
+        """
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        hwnd = wintypes.HWND(int(handle))
+        if not user32.IsWindow(hwnd):
+            raise ElementGone(f"window {handle} no longer exists")
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, 9)                       # SW_RESTORE
+        foreground = user32.GetForegroundWindow()
+        if foreground == int(handle):
+            return
+        this_thread = kernel32.GetCurrentThreadId()
+        fg_thread = user32.GetWindowThreadProcessId(foreground, None) if foreground else 0
+        attached = bool(fg_thread) and fg_thread != this_thread and \
+            bool(user32.AttachThreadInput(this_thread, fg_thread, True))
+        try:
+            user32.BringWindowToTop(hwnd)
+            user32.SetForegroundWindow(hwnd)
+        finally:
+            if attached:
+                user32.AttachThreadInput(this_thread, fg_thread, False)
 
     def set_window_state(self, handle: int, state: str) -> None:
         hw = self._hwnd(handle)

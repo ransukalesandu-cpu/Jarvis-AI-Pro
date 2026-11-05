@@ -8,6 +8,7 @@ import { SettingsPanel } from './ui/Settings';
 import { PageView } from './ui/Pages';
 import { Tray, Windows } from './ui/Windows';
 import { Palette } from './ui/Palette';
+import { CommandBar } from './ui/CommandBar';
 import { useWindows } from './workspace/windows';
 import { sendRequest } from './bridge/bridge';
 
@@ -35,6 +36,7 @@ export default function App() {
     void startBridge();
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette(); }
+      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') { e.preventDefault(); dispatchEvent(new Event('jarvis:focus-command')); }
       else if (e.key === 'Escape') { toggleNav(false); toggleSettings(false); }
     };
     addEventListener('keydown', onKey);
@@ -51,6 +53,7 @@ export default function App() {
       <PageView />
       <Windows />
       <Tray />
+      <CommandBar />
       <Palette />
       <NavPanel />
       <SettingsPanel />

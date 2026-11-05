@@ -36,7 +36,7 @@ class _LockedPage(QWebEnginePage):
 class WebUIHost(QWidget):
     ready = pyqtSignal()   # emitted each time the page finishes loading (first load and reloads)
 
-    def __init__(self, parent=None, *, debug: bool = False, workspace_path=None):
+    def __init__(self, parent=None, *, debug: bool = False, workspace_path=None, gate=None):
         super().__init__(parent)
         self._reloads = 0
         self._debug = debug
@@ -54,7 +54,7 @@ class WebUIHost(QWidget):
         if hasattr(self._page, "permissionRequested"):
             self._page.permissionRequested.connect(lambda p: p.deny())
 
-        self.bridge = WebUIBridge(self, WorkspaceStore(workspace_path))
+        self.bridge = WebUIBridge(self, WorkspaceStore(workspace_path), gate)
         self._channel = QWebChannel(self)
         self._channel.registerObject("jarvis", self.bridge)
         self._page.setWebChannel(self._channel)
@@ -77,6 +77,7 @@ class WebUIHost(QWidget):
     def _on_page_ready(self) -> None:
         self.bridge.publish("host.hello", version=HOST_VERSION)
         self._push_metrics()
+        self.bridge.refresh_availability(force=True)
         self.ready.emit()
         if self.isVisible():
             self._timer.start()
@@ -106,6 +107,7 @@ class WebUIHost(QWidget):
 
     # ── backend -> page ─────────────────────────────────────────────────
     def _push_metrics(self) -> None:
+        self.bridge.refresh_availability()       # lock/PIN/guest state can change at any time
         snap = self._telemetry.snapshot()
         if snap is not None:
             self.bridge.publish("system.metrics_updated", **snap)

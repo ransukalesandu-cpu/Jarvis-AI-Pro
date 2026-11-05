@@ -9,6 +9,7 @@ import json
 import math
 from typing import Any
 
+from .command_gate import AVAILABILITY, MAX_TEXT, REASONS
 from .workspace_store import clean_name, validate_layout
 
 MAX_EVENT_CHARS = 16384
@@ -52,6 +53,8 @@ _EVENTS = {
                        and all(isinstance(n, str) and 0 < len(n) <= 32 for n in m["names"])),
     "workspace.loaded": ({"name", "layout"}, lambda m: isinstance(m["name"], str) and 0 < len(m["name"]) <= 32
                          and (m["layout"] is None or validate_layout(m["layout"]) is not None)),
+    "command.availability": ({"state"}, lambda m: m["state"] in AVAILABILITY),
+    "command.result": ({"reason"}, lambda m: m["reason"] in REASONS),
     "host.hello": ({"version"}, lambda m: _num(m["version"], 0, 1000)),
 }
 
@@ -82,6 +85,7 @@ _REQUESTS = {
     "workspace.load": ({"name"}, _NAME_OK),
     "workspace.delete": ({"name"}, lambda m: clean_name(m["name"]) is not None),
     "workspace.save": ({"name", "layout"}, lambda m: _NAME_OK(m) and validate_layout(m["layout"]) is not None),
+    "command.submit": ({"text"}, lambda m: isinstance(m["text"], str) and len(m["text"]) <= 4 * MAX_TEXT),
     "ping": ({"n"}, lambda m: isinstance(m["n"], int) and not isinstance(m["n"], bool) and 0 <= m["n"] < 2 ** 31),
 }
 
@@ -94,7 +98,8 @@ def parse_request(raw: Any) -> dict | None:
     """
     if not isinstance(raw, str) or not raw or len(raw) > MAX_REQUEST_CHARS:
         return None
-    if len(raw) > 512 and '"kind":"workspace.save"' not in raw[:40]:   # only saving a layout may be large
+    head = raw[:40]
+    if len(raw) > 512 and '"kind":"workspace.save"' not in head and not (len(raw) <= 8 * MAX_TEXT and '"kind":"command.submit"' in head):   # only a layout or a typed command may be large
         return None
     try:
         m = json.loads(raw)

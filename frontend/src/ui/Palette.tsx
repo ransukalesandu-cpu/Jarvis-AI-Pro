@@ -25,6 +25,9 @@ export function Palette() {
         <Command.Group heading="Navigate">
           {PAGES.filter((p) => p.ready).map((p) => <Command.Item key={p.id} value={`go ${p.label}`} onSelect={run(() => go(p.id))}>{p.icon}<span>{p.label}</span></Command.Item>)}
         </Command.Group>
+        <Command.Group heading="Assistant">
+          <Command.Item value="ask jarvis type a command" onSelect={run(() => setTimeout(() => dispatchEvent(new Event('jarvis:focus-command')), 0))}>Ask JARVIS…</Command.Item>
+        </Command.Group>
         <Command.Group heading="Windows">
           {(Object.keys(TITLES) as WinKind[]).map((k) => <Command.Item key={k} value={`open window ${TITLES[k]}`} onSelect={run(() => { w().open(k); })}>Open {TITLES[k]} window</Command.Item>)}
           <Command.Item value="tile windows arrange" onSelect={run(() => w().tileAll())}>Tile windows</Command.Item>

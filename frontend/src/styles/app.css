@@ -103,3 +103,12 @@ button { font: inherit; color: inherit; }
 .spark-base { stroke: rgba(255, 255, 255, 0.08); vector-effect: non-scaling-stroke; }
 .spark-empty { fill: var(--text-faint); font-size: 10px; }
 .win-inner:focus-visible { outline-offset: -3px; }
+
+/* Command bar */
+.cmdbar { position: absolute; left: 50%; bottom: var(--space-4); transform: translateX(-50%); width: min(560px, calc(100% - 32px)); z-index: var(--z-hud); display: flex; align-items: center; gap: var(--space-2); padding: 6px 8px; border-radius: var(--radius-pill); flex-wrap: wrap; }
+.cmdbar input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--text); font: inherit; font-size: 14px; padding: 8px 12px; outline: none; }
+.cmdbar input:disabled { color: var(--text-faint); }
+.cmdbar button { background: rgba(47, 155, 255, 0.2); border: 1px solid var(--glass-border); border-radius: 50%; width: 32px; height: 32px; display: grid; place-items: center; cursor: pointer; color: var(--text); }
+.cmdbar button:disabled { opacity: 0.4; cursor: not-allowed; }
+.cmdbar-note { flex-basis: 100%; font-size: 11px; color: var(--text-dim); padding: 0 12px 2px; min-height: 0; }
+.cmdbar-note:empty { display: none; }

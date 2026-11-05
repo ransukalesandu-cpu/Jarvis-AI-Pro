@@ -1,7 +1,6 @@
 import asyncio
 import json
 
-import pytest
 
 from jarvis.core import ui_state
 from jarvis.core.jobs import JobManager

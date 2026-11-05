@@ -105,3 +105,14 @@ False-accept/false-reject rates, Sinhala vs English performance, and the Resembl
 - **Retention (local).** Rows carry `expires_at = ts + 7 days`; they are purged at Guest start and before every read. Server-side purge is Phase 4.
 
 **Known limits.** When owners exist, the legacy single PIN no longer signs anyone in as owner during a Guest session (by design: it has no owner identity). Voice sign-in during Guest Mode is not yet wired to the live audio path (the registry supports it). Windows behaviour and real microphone paths were not exercised here.
+
+## Phase 5 — Security UI
+
+The existing HUD security panel now embeds `GuestSecurityView` (`ui/panels/guest_security_view.py`), fed by `core/security_view.py`.
+
+- **Guest** sees only the Guest notice and a "restricted" line. Owner names, history and all controls are hidden, and the view-model does not even return that data for a Guest.
+- **Owner** sees who is signed in, the owner list (name, admin, revoked), a short Guest history summary, a Security ON/OFF button and "Delete latest Guest history". Delete and turn-OFF ask for confirmation first.
+- The panel has no privileges of its own. Its actions call the same gated code as the voice tools (step-up for OFF, verified delete), and re-check for an owner session.
+- **Legacy** (no owners yet): a one-line hint to run `scripts/security_owners.py`.
+
+**Not in the UI yet:** adding/revoking owners and enrolling voices (still `scripts/security_owners.py`, because adding an owner needs a PIN field with its own review), and a typed owner-PIN box (sign-in is the `/owner <pin>` text command). The panel was only tested headless (offscreen Qt); I have not seen it rendered on a real screen or on Windows.

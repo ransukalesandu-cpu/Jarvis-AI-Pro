@@ -77,6 +77,10 @@ class SecurityPanel(QFrame):
 
         layout.addLayout(row)
 
+        from jarvis.ui.panels.guest_security_view import GuestSecurityView
+        self._guest_view = GuestSecurityView(self)
+        layout.addWidget(self._guest_view)
+
     @pyqtSlot(str, int, str)
     def update_auth_state(self, state: str, failed_attempts: int = 0, method: str = ""):
         """Update AuthState display."""

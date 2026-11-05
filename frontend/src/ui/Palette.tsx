@@ -8,6 +8,12 @@ import { TITLES, type WinKind, validateLayout } from '../workspace/layout';
 import { useWindows } from '../workspace/windows';
 
 const clean = (s: string) => s.trim().toLowerCase();
+/** Fixed questions, identical to ASK_TEXT in jarvis/core/ui_menus.py. Sent through the same gated command path as typing. */
+export const ASKS = [
+  { id: 'routines', label: 'Show my routines', text: 'show my routines', keywords: 'ask routines' },
+  { id: 'jobs', label: 'List my background jobs', text: 'list my background jobs', keywords: 'ask jobs tasks' },
+  { id: 'recent', label: 'Show recent actions', text: 'show recent actions', keywords: 'ask recent actions history' },
+] as const;
 const NAME = /^[a-z0-9][a-z0-9 _-]{0,31}$/;
 
 /** Ctrl+K. Only actions that are implemented and need no extra authorisation are offered. */
@@ -20,6 +26,7 @@ export function Palette() {
   const doControl = (action: ControlAction) => sendRequest({ kind: 'control.do', action });
   const wsName = clean(q);
   const connected = link === 'connected';
+  const canAsk = useUi((s) => s.command.state) === 'ok';
   return (
     <Command.Dialog open={paletteOpen} onOpenChange={(o) => { setPalette(o); if (!o) setQ(''); }} label="Command palette" className="palette glass" overlayClassName="palette-overlay" shouldFilter>
       <Command.Input value={q} onValueChange={setQ} placeholder="Type a command…" aria-label="Command" />
@@ -32,6 +39,7 @@ export function Palette() {
           {connected && <Command.Item value="interrupt stop speaking" onSelect={run(() => doControl('interrupt'))}>Interrupt JARVIS</Command.Item>}
           {connected && <Command.Item value="microphone mute unmute" onSelect={run(() => doControl(muted ? 'unmute' : 'mute'))}>{muted ? 'Unmute microphone' : 'Mute microphone'}</Command.Item>}
           {connected && <Command.Item value="toggle fullscreen" onSelect={run(() => doControl('fullscreen'))}>Toggle fullscreen</Command.Item>}
+          {canAsk && ASKS.map((a) => <Command.Item key={a.id} value={`${a.keywords} ${a.label}`} onSelect={run(() => sendRequest({ kind: 'command.submit', text: a.text }))}>{a.label}</Command.Item>)}
           <Command.Item value="ask jarvis type a command" onSelect={run(() => setTimeout(() => dispatchEvent(new Event('jarvis:focus-command')), 0))}>Ask JARVIS…</Command.Item>
         </Command.Group>
         <Command.Group heading="Windows">

@@ -28,7 +28,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not yet · 🔒 stays native on purpose 
 | System / Telemetry / Activity panels | ✅ | floating windows |
 | Dynamic Island | ✅ | real state, window count |
 | Ask JARVIS / text command bar (`ask`, Ctrl+L) | ✅ | `command.submit` through `CommandGate`: refused while locked / PIN / silent / guest, credential-shaped text refused, limits, fail closed |
-| `ask:routines`, `ask:jobs`, `ask:recent_actions` | ⬜ | the command bar now exists; these just need palette entries that send the fixed ASK_TEXT |
+| `ask:routines`, `ask:jobs`, `ask:recent_actions` | ✅ | palette entries send the fixed ASK_TEXT through the gated command path (offered only while typing is available); reply text appears in the log mirror |
 | Bento dashboard (`bento`) | ⬜ | |
 | `mode:jarvis` / `mode:bihansa` | ⬜ | write path (changes persona) |
 | `perf:*` | ⬜ | write path to the perf tier |

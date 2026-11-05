@@ -254,3 +254,7 @@ The backend reports no real progress, so the bar and time left are an honest est
 Tracked operations: connecting (until `host.hello`), first live data, `workspace.load`, named save/delete, `command.submit`, `control.do`. Autosave (`_last`) is silent.
 
 Tap first, sync later (`ux/actions.ts`): mic mute/unmute flips the UI at once; `assistant.muted` confirms, a refusal `control.result` (locked, guest, ...) or a 6 s silence rolls it back with a notice. Workspace save/delete update the list at once; `workspace.list` from Python reconciles (a missing answer triggers a re-sync). Python stays the authority; window moves are local and already instant. Skeletons are aria-hidden and static under reduced motion.
+
+## 19. Reply panel
+
+`ui/Reply.tsx` shows the latest exchange (your last line and JARVIS's answer, consecutive JARVIS lines joined, max 6) above the command bar. It is derived only from the existing log mirror, so it inherits the same redaction and the same rule that nothing is shown while locked, awaiting a PIN, silent or in guest mode. Read-only; text is rendered as plain text (escaped); dismissing hides it until the next reply. Limitation: it appears when Python writes the reply to the HUD log, so it is not a live token stream.

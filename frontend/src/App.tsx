@@ -9,6 +9,7 @@ import { PageView } from './ui/Pages';
 import { Tray, Windows } from './ui/Windows';
 import { Palette } from './ui/Palette';
 import { CommandBar } from './ui/CommandBar';
+import { ReplyPanel } from './ui/Reply';
 import { Controls } from './ui/Controls';
 import { PendingWatch, StartupSkeleton, useStartupLoading, SyncStatus, Toast } from './ui/Feedback';
 import { useWindows } from './workspace/windows';
@@ -58,6 +59,7 @@ export default function App() {
       <PageView />
       <Windows />
       <Tray />
+      <ReplyPanel />
       <CommandBar />
       <Controls />
       <Palette />

@@ -10,12 +10,12 @@ Legend: ✅ done · 🟡 partial · ⬜ not yet · 🔒 stays native on purpose 
 | Assistant state (idle/listening/thinking/speaking/sleeping/error…) | ✅ | via `ui_state` bus; unknown labels are dropped |
 | Audio level driving the hologram | ✅ | 20 Hz throttle |
 | Mic muted | ✅ | Island shows MIC MUTED |
-| Persona (JARVIS / BIHANSA) display | 🟡 | event exists; nothing publishes `PERSONA` on the bus yet |
+| Persona (JARVIS / BIHANSA) display | ✅ | HUD publishes `PERSONA` at start-up and on every mode change; the page shows it read-only (changing it stays native) |
 | Conversation log (read-only) | ✅ | redacted; nothing forwarded while locked / PIN needed / silent / guest (a typed PIN is logged by the classic box before it is recognised, so this is gated at log time) |
 | One-shot AI provider/model/key-configured | ✅ | never sends a key |
 | CPU/RAM/disk/battery/network + history | ✅ | psutil in Python, 2-minute sparklines |
 | Hologram (HoloAvatar look, heart, orb, wires) | ✅ | verified in QtWebEngine; real-GPU/Windows look unconfirmed |
-| Performance tier (Auto/Full/Balanced/Lite) | ⬜ | web UI has its own reduced-motion only; no link to `PERF_TIER` |
+| Performance tier (Auto/Full/Balanced/Lite) | 🟡 | current tier (full/balanced/lite) shown read-only in Settings from `PERF_TIER`; choosing a tier stays native |
 
 ## 2. Workspace / shell (ui_menus)
 | Classic command | Web UI | Notes |

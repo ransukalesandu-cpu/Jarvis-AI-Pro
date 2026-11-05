@@ -4805,6 +4805,7 @@ class MainWindow(QMainWindow):
             self._mode_btn.blockSignals(False)
         if hasattr(self, "_hologram_mode_stack"):
             self._hologram_mode_stack.setCurrentIndex(1 if mode == "bihansa" and self._bihansa_hologram else 0)
+        _ui_bus().set(_ui_state.PERSONA, "bihansa" if mode == "bihansa" else "jarvis")   # read-only mirror for the web UI
 
     def _on_assistant_mode_selected(self, index: int):
         from jarvis.memory.config_manager import save_assistant_mode
@@ -4816,6 +4817,7 @@ class MainWindow(QMainWindow):
             self._bihansa_settings.assistant_mode = want
         if hasattr(self, "_hologram_mode_stack"):
             self._hologram_mode_stack.setCurrentIndex(1 if want == "bihansa" and self._bihansa_hologram else 0)
+        _ui_bus().set(_ui_state.PERSONA, want)
         self._log.append_log(f"SYS: Assistant mode set to '{want.upper()}'.")
         if callable(getattr(self, "on_voice_change", None)):
             self.on_voice_change()

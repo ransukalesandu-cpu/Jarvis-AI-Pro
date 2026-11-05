@@ -20,6 +20,7 @@ class FakeHost(QObject):
     def set_state(self, s): self.calls.append(("state", s))
     def set_level(self, v, src="output"): self.calls.append(("level", round(v, 3)))
     def set_persona(self, p): self.calls.append(("persona", p))
+    def set_perf_tier(self, t): self.calls.append(("perf", t))
     def set_muted(self, m): self.calls.append(("muted", m))
     def set_provider(self, **kw): self.calls.append(("provider", kw["provider"]))
 
@@ -57,6 +58,13 @@ def test_audio_is_throttled_but_silence_always_goes_through(rig):
     t[0] += AUDIO_MIN_INTERVAL
     bus.set(ui_state.AUDIO_LEVEL, 0.5)
     assert [c for c in host.calls if c[0] == "level"] == [("level", 0.2), ("level", 0.0), ("level", 0.5)]
+
+
+def test_perf_tier_only_known_values(rig):
+    bus, host = rig[0], rig[1]
+    bus.set(ui_state.PERF_TIER, "lite")
+    bus.set(ui_state.PERF_TIER, "turbo")
+    assert host.calls == [("perf", "lite")]
 
 
 def test_persona_only_known_values(rig):
@@ -109,3 +117,11 @@ def test_provider_unknown_is_not_guessed(monkeypatch):
     def boom(): raise OSError("no config")
     monkeypatch.setattr(ps, "get_provider_settings", boom)
     assert provider_info.snapshot() is None
+
+
+def test_hud_publishes_persona_on_refresh_and_change():
+    """The HUD source must publish PERSONA where the assistant mode is applied, so the web page never shows a guess."""
+    import inspect
+    from jarvis import ui
+    src = inspect.getsource(ui.MainWindow._refresh_assistant_mode_btn) + inspect.getsource(ui.MainWindow._on_assistant_mode_selected)
+    assert src.count("_ui_state.PERSONA") == 2

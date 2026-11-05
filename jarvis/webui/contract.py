@@ -18,6 +18,7 @@ MAX_REQUEST_CHARS = 16384          # upper bound; each request kind has a tighte
 
 ASSISTANT_STATES = frozenset({"idle", "sleeping", "listening", "thinking", "searching", "executing", "speaking", "error"})
 PERSONAS = frozenset({"jarvis", "bihansa"})
+PERF_TIERS = frozenset({"full", "balanced", "lite"})
 
 
 def _num(v: Any, lo: float, hi: float) -> bool:
@@ -50,6 +51,7 @@ _EVENTS = {
                          and isinstance(m["connected"], bool) and isinstance(m["fallback"], bool)),
     "assistant.muted": ({"muted"}, lambda m: isinstance(m["muted"], bool)),
     "ui.persona": ({"persona"}, lambda m: m["persona"] in PERSONAS),
+    "ui.perf": ({"tier"}, lambda m: m["tier"] in PERF_TIERS),
     "workspace.list": ({"names"}, lambda m: isinstance(m["names"], list) and len(m["names"]) <= 24
                        and all(isinstance(n, str) and 0 < len(n) <= 32 for n in m["names"])),
     "workspace.loaded": ({"name", "layout"}, lambda m: isinstance(m["name"], str) and 0 < len(m["name"]) <= 32

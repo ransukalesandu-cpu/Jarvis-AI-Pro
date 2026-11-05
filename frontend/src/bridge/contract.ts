@@ -7,6 +7,8 @@ export const ASSISTANT_STATES = ['idle', 'sleeping', 'listening', 'thinking', 's
 export type AssistantState = (typeof ASSISTANT_STATES)[number];
 export const PERSONAS = ['jarvis', 'bihansa'] as const;
 export type Persona = (typeof PERSONAS)[number];
+export const PERF_TIERS = ['full', 'balanced', 'lite'] as const;
+export type PerfTier = (typeof PERF_TIERS)[number];
 
 export interface Battery { percent: number; charging: boolean }
 export interface Net { upKBps: number; downKBps: number }
@@ -18,6 +20,7 @@ export type HostEvent =
   | { type: 'provider.changed'; provider: string; model: string; connected: boolean; fallback: boolean }
   | { type: 'assistant.muted'; muted: boolean }
   | { type: 'ui.persona'; persona: Persona }
+  | { type: 'ui.perf'; tier: PerfTier }
   | { type: 'workspace.list'; names: string[] }
   | { type: 'workspace.loaded'; name: string; layout: Layout | null }
   | { type: 'command.availability'; state: CommandState }
@@ -82,6 +85,8 @@ export function parseHostEvent(raw: unknown): HostEvent | null {
         ? { type: m.type, provider: m.provider, model: m.model, connected: m.connected, fallback: m.fallback } : null;
     case 'assistant.muted':
       return typeof m.muted === 'boolean' ? { type: m.type, muted: m.muted } : null;
+    case 'ui.perf':
+      return (PERF_TIERS as readonly unknown[]).includes(m.tier) ? { type: m.type, tier: m.tier as PerfTier } : null;
     case 'ui.persona':
       return (PERSONAS as readonly unknown[]).includes(m.persona) ? { type: m.type, persona: m.persona as Persona } : null;
     case 'workspace.list':

@@ -50,7 +50,7 @@ It builds on the existing task runner rather than adding another runtime.
 
 ## Benchmark
 
-Run from the JarvisAI directory:
+Run from the repository root:
 
     python -m benchmarks.benchmark_agent_engine --steps 12 --delay-ms 30
 

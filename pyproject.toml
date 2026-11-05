@@ -31,15 +31,24 @@ Homepage = "https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro"
 Issues = "https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/issues"
 Changelog = "https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/blob/main/CHANGELOG.md"
 
+[project.scripts]
+jarvis = "jarvis.main:main"
+
+[tool.setuptools.packages.find]
+include = ["jarvis*"]
+
+[tool.setuptools.package-data]
+jarvis = ["core/prompt.txt", "core/*.html", "core/face_model.obj", "assets/**/*", "config/*.json", "ui/assets/*", "dashboard/static/*"]
+
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"] }
 
 # ── pytest ───────────────────────────────────────────────────────────────────
-# Configuration lives here (not in JarvisAI/) so that `pytest` behaves the same
-# whether it is started from the repository root or from inside JarvisAI/.
-# JarvisAI/conftest.py puts `core`, `actions`, `memory`, ... on sys.path.
+# Configuration lives here so that `pytest` behaves the same wherever it is
+# started. jarvis/conftest.py puts the repository root on sys.path, so tests use
+# the same `from jarvis.core import ...` imports as the app.
 [tool.pytest.ini_options]
-testpaths = ["JarvisAI/tests"]
+testpaths = ["jarvis/tests"]
 addopts = "-ra --strict-markers"
 # Long, chatty tracebacks add nothing when a third-party wheel is missing.
 filterwarnings = [
@@ -58,7 +67,7 @@ markers = [
 # breakage (undefined names, broken imports, syntax-level mistakes) and is kept
 # clean at zero findings. Wider rule families are available locally, e.g.
 #
-#     ruff check --select E,F,B,SIM,UP,RUF JarvisAI
+#     ruff check --select E,F,B,SIM,UP,RUF jarvis
 #
 # See docs/DEVELOPMENT.md for the current debt in those families and the plan
 # for switching them on one at a time.
@@ -70,7 +79,7 @@ extend-exclude = [
   "build",
   "dist",
   "supabase",
-  "JarvisAI/dashboard/static",
+  "jarvis/dashboard/static",
 ]
 
 [tool.ruff.lint]
@@ -90,23 +99,23 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 # Test helpers intentionally reach into module internals and redefine names.
-"JarvisAI/tests/**" = ["F811"]
+"jarvis/tests/**" = ["F811"]
 # Re-export shims: the import *is* the public API.
-"JarvisAI/config/__init__.py" = ["F401"]
+"jarvis/config/__init__.py" = ["F401"]
 # The fail-soft recorder itself must never raise while handling an error, so it
 # wraps its own bookkeeping in broad handlers. That is the one place where a
 # blind except is the whole point.
-"JarvisAI/core/failsoft.py" = ["BLE001"]
+"jarvis/core/failsoft.py" = ["BLE001"]
 
 # ── coverage ─────────────────────────────────────────────────────────────────
 # Run with:  pytest --cov  (needs requirements-dev.txt)
 [tool.coverage.run]
-source = ["JarvisAI"]
+source = ["jarvis"]
 branch = false
 omit = [
   "*/tests/*",
   "*/conftest.py",
-  "JarvisAI/dashboard/static/*",
+  "jarvis/dashboard/static/*",
 ]
 
 [tool.coverage.report]

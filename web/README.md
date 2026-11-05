@@ -26,10 +26,10 @@ The Jarvis AI web and desktop chat interface. It is built on
 1. Choose a long random secret and start JARVIS with it:
 
    ```bash
-   JARVIS_WEB_API_KEY=change-me-to-a-long-random-secret python JarvisAI/main.py
+   JARVIS_WEB_API_KEY=change-me-to-a-long-random-secret python main.py
    ```
 
-   Or add `"web_chat_api_key": "..."` to `JarvisAI/config/api_keys.json`. The
+   Or add `"web_chat_api_key": "..."` to `jarvis/config/api_keys.json`. The
    JARVIS dashboard (port 8000) then serves `GET /v1/models` and
    `POST /v1/chat/completions`. Until a key is set, these return HTTP 503.
 

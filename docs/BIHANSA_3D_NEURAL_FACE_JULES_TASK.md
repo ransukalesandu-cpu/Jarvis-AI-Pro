@@ -1,7 +1,7 @@
 # Bihansa 3D Neural Face — Architecture & Roadmap Documentation
 
 ## Overview
-Bihansa Mode introduces an opt-in 3D-style neural wireframe face overlay aligned to facial landmarks extracted from the reference portrait (`JarvisAI/assets/bihansa_reference.png`).
+Bihansa Mode introduces an opt-in 3D-style neural wireframe face overlay aligned to facial landmarks extracted from the reference portrait (`jarvis/assets/bihansa_reference.png`).
 
 It preserves the original portrait reference while layering a facial-landmark-derived 3D triangulated mesh with perspective projection, smooth 3D motion (yaw, pitch, roll), audio-reactive lip deformation, and glowing neural aura particles.
 
@@ -39,8 +39,8 @@ Currently, Bihansa 3D Neural Face uses a **2.5D photo-derived perspective model*
 To upgrade to true multi-view 3D mesh reconstruction in future phases:
 1. **Photo Requirements:**
    - Frontal view (0° yaw) — existing `bihansa_reference.png`.
-   - Left side profile (+45° to +90° yaw) — place as `JarvisAI/assets/bihansa_side_left.png`.
-   - Right side profile (-45° to -90° yaw) — place as `JarvisAI/assets/bihansa_side_right.png`.
+   - Left side profile (+45° to +90° yaw) — place as `jarvis/assets/bihansa_side_left.png`.
+   - Right side profile (-45° to -90° yaw) — place as `jarvis/assets/bihansa_side_right.png`.
 2. **Mesh Optimization:**
    - Use multi-view stereo or neural radiance fields (NeRF/Gaussian Splatting) to compute exact 3D vertex positions and UV texture maps.
    - Update `BIHANSA_LANDMARKS_3D` with full 360° 3D mesh obj assets (`bihansa_head.obj`).

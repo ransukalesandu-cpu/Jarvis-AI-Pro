@@ -12,7 +12,7 @@ The desktop UI offers local owner Master Password enrollment after API setup, an
    ```
 
 3. Create and confirm a PIN/password locally. Do not put it in a command-line argument, config file, issue, or log.
-4. Optional Voice ID enrollment: install the local SpeechBrain/Torch and secure platform key-store dependencies required by `JarvisAI/core/voice_id.py`, connect a working microphone, then run:
+4. Optional Voice ID enrollment: install the local SpeechBrain/Torch and secure platform key-store dependencies required by `jarvis/core/voice_id.py`, connect a working microphone, then run:
 
    ```powershell
    python scripts/enroll_master.py

@@ -42,19 +42,19 @@ pre-commit install
 Then launch the app the same way a user would:
 
 ```bash
-python main.py
+python main.py        # or: python -m jarvis
 ```
 
-On Windows the supported path is the setup BAT: `JarvisAI\Jarvis_Setup.bat`
+On Windows the supported path is the setup BAT: `Jarvis_Setup.bat`
 (menu: Install / Repair, Verify, Launch, Exit) wraps
-`JarvisAI/tools/windows_setup.py`, which is where the logic lives and where it is
+`jarvis/tools/windows_setup.py`, which is where the logic lives and where it is
 tested (`tests/test_windows_setup.py`). The same commands work by hand:
 
 ```bat
-py -3.12 JarvisAI\tools\windows_setup.py interpreters
-py -3.12 JarvisAI\tools\windows_setup.py install --yes
-py -3.12 JarvisAI\tools\windows_setup.py verify --json
-py -3.12 JarvisAI\tools\windows_setup.py launch
+py -3.12 jarvis\tools\windows_setup.py interpreters
+py -3.12 jarvis\tools\windows_setup.py install --yes
+py -3.12 jarvis\tools\windows_setup.py verify --json
+py -3.12 jarvis\tools\windows_setup.py launch
 ```
 
 The batch files are kept deliberately thin so no decision depends on
@@ -67,17 +67,17 @@ their own folder, never delete `.venv`, and never embed a credential.
 
 ```bash
 python -m pytest                 # whole suite, from the repository root
-python -m pytest JarvisAI/tests/test_brain_engine.py   # one file
+python -m pytest jarvis/tests/test_brain_engine.py   # one file
 python -m pytest -k memory       # by name
 ```
 
 The suite is importable from **any** working directory. That is arranged once in
-`JarvisAI/conftest.py`, which puts `JarvisAI/`, the repository root and `voice/`
-on `sys.path` — test files no longer need their own `sys.path` tweaks.
+`jarvis/conftest.py`, which puts the repository root on `sys.path` (tests import
+`jarvis.*` like the app does) — test files need no `sys.path` tweaks of their own.
 
 Notes:
 
-* `JarvisAI/conftest.py` skips the GUI modules (`test_avatar`,
+* `jarvis/conftest.py` skips the GUI modules (`test_avatar`,
   `test_bihansa_integration`, `test_pr68_fixes`, `test_ui_hologram`) when Qt
   cannot load, and says so in the header line. On a desktop or in CI they run.
 * `QT_QPA_PLATFORM=offscreen` is what the Windows CI job uses and is handy
@@ -92,7 +92,7 @@ Two tests guard the codebase's *shape* rather than a feature:
   fails if a module imports a name its target no longer defines — the failure
   mode that cleanup commits create and that only shows up at runtime, often on a
   screen nobody tests.
-* `tests/test_ui_import_smoke.py` imports every module in `JarvisAI/ui/` once
+* `tests/test_ui_import_smoke.py` imports every module in `jarvis/ui/` once
   (skipped where Qt cannot load), which is the only coverage the panels and
   dashboards get.
 
@@ -108,8 +108,8 @@ python -m pytest --cov --cov-report=term-missing
 ## 3. Linting
 
 ```bash
-ruff check JarvisAI          # the CI gate
-ruff check --fix JarvisAI    # apply safe fixes
+ruff check jarvis          # the CI gate
+ruff check --fix jarvis    # apply safe fixes
 ```
 
 The gate in `[tool.ruff.lint]` (pyproject.toml) is a **ratchet**: it enforces the
@@ -152,7 +152,7 @@ When a name is imported only for its side effect (a re-export, a probe, or
 
 `.github/workflows/python-checks.yml`:
 
-1. **lint** — `ruff check JarvisAI` on Python 3.12. Seconds, no dependencies.
+1. **lint** — `ruff check jarvis` on Python 3.12. Seconds, no dependencies.
 2. **checks** — installs the runtime requirements plus the Qt system libraries,
    `compileall`, runs `diagnose.py` in CI mode, then the full `pytest` suite
    (including the UI import smoke test); also type-checks and tests the Deno
@@ -171,29 +171,32 @@ not queue two identical test runs.
 ## 5. Project layout
 
 ```
-main.py                  thin launcher: puts the roots on sys.path, calls JarvisAI/main.py
-run.py / setup.py        one-time setup: OS-filtered pip install + Playwright browsers
-voice/                   persona definitions loaded by the TTS layer
-JarvisAI/
+main.py / run.py         thin launchers: put the repository root on sys.path, call jarvis.main
+setup.py                 one-time setup: OS-filtered pip install + Playwright browsers
+Jarvis_Setup.bat, Run_Jarvis.bat, Repair_Memory_Audit.bat   Windows entry points
+requirements*.txt        runtime / voice-id / dev dependencies (single copy each)
+jarvis/                  the application package
   main.py                the application: window, event loop, live session wiring
   core/                  engine room: LLM providers, Live API, audio, memory, security
   actions/               one file per capability the assistant can invoke
   memory/                episodic / semantic / procedural / prospective memory
   security/              owner PIN, face + voice auth, lockdown, device identity
   dashboard/             FastAPI server + static UI for phone control
-  plugins/               heavier integrations (Gmail, Calendar, MCP hub, MQTT)
-  services/              device bridges (ADB phone control, radar)
+  plugins/               heavier integrations (Gmail, Calendar, home automation, ...)
+  services/              device bridges (ADB phone control)
   tests/                 pytest suite
-  conftest.py            sys.path setup + GUI skip logic
+  conftest.py            repo-root sys.path + GUI skip logic
 docs/                    design notes for individual subsystems
+scripts/                 owner enrollment helpers, Windows ADB scripts
 supabase/                Deno edge function + migrations for personal memory
 ```
 
 Two rules that keep this layout honest:
 
-* **Imports are top-level-flat on purpose** (`from core.x import y`,
-  `from actions.x import y`) because `JarvisAI/` is on `sys.path`. That is why
-  generic top-level module names are risky: see the `config` note below.
+* **Imports are package-qualified** (`from jarvis.core.x import y`,
+  `from jarvis.actions.x import y`). Only the repository root is on `sys.path`,
+  so generic names such as `config` or `memory` can no longer collide with
+  third-party packages. Inside a package, relative imports are fine.
 * **Nothing at import time may touch the network, the microphone, the camera or
   the filesystem outside the repo.** Tests import almost every module; a module
   that opens a device on import breaks the suite on a machine without it.
@@ -252,9 +255,10 @@ signal that would have caught both panel bugs on day one.
 `ruff` enforces the idiom: `S110` and `S112` fail the build if a new bare
 `pass`/`continue` handler appears.
 
-### The `config` naming trap
+### The `config` naming trap (historical)
 
-`JarvisAI/config/` is a package *and* a data directory. Its name is also claimed
+`jarvis/config/` is a package *and* a data directory. Before the move to the
+`jarvis` package its bare name `config` was also claimed
 by `opencv-python`, which ships `cv2/config.py` and leaks its directory onto
 `sys.path` while `cv2` imports. When that happens first, `from config import
 is_windows` executes OpenCV's loader and the app dies with
@@ -264,7 +268,8 @@ The OS/key helpers therefore live in **`core/host_env.py`**, and new code must
 import from there. `config/__init__.py` re-exports them for extensions written
 against the old path, but that path is best-effort — treat `config` as a data
 directory, not an API. `tests/test_project_health.py` fails if a first-party
-module starts importing the bare `config` package again.
+module starts importing the bare `config` package again. With the package-qualified
+layout (`jarvis.config`) the collision can no longer happen, but the guard stays.
 
 ---
 
@@ -280,7 +285,7 @@ module starts importing the bare `config` package again.
   reaching into module globals.
 * **Secrets never land in git.** `config/api_keys.json`, `.env`, biometric
   embeddings, vaults and databases are git-ignored. `SECURITY.md` describes the
-  threat model; read it before touching `JarvisAI/security/`.
+  threat model; read it before touching `jarvis/security/`.
 * **Type hints where they help.** Public helpers in `core/` are annotated.
   Private helpers may stay unannotated rather than being annotated `Any`.
 * **Changelog.** User-visible changes get an entry in `CHANGELOG.md` under

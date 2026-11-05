@@ -152,6 +152,14 @@ class TestPolicy:
     def test_non_web_urls_are_high(self, url):
         assert self.policy.classify("browser.navigate", {"url": url})[0] is Level.HIGH
 
+    @pytest.mark.parametrize("name", [r"C:\Temp\evil.exe", "mshta", "rundll32.exe", "https://evil.test/x",
+                                      "ms-settings:privacy", "run.bat", "script.ps1", "shortcut.lnk"])
+    def test_launching_by_path_url_or_system_binary_is_high(self, name):
+        assert self.policy.classify("app.launch", {"name": name})[0] is Level.HIGH
+
+    def test_launch_arguments_are_at_least_medium(self):
+        assert self.policy.classify("app.launch", {"name": "Notepad", "args": ["notes.txt"]})[0] is Level.MEDIUM
+
     def test_launching_a_shell_or_installer_is_high(self):
         assert self.policy.classify("app.launch", {"name": "powershell"})[0] is Level.HIGH
         assert self.policy.classify("app.launch", {"name": "setup.exe"})[0] is Level.HIGH

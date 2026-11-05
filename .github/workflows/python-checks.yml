@@ -173,8 +173,26 @@ jobs:
             jarvis/tests/test_security_v2_settings.py `
             jarvis/tests/test_security_v2_hardening.py `
             jarvis/tests/test_computer_control_phase0.py `
-            jarvis/tests/test_computer_control_injection.py 2>&1 | Tee-Object -FilePath pytest-windows.log
+            jarvis/tests/test_computer_control_injection.py `
+            jarvis/tests/test_computer_control_windows.py `
+            jarvis/tests/test_computer_control_windows_real.py 2>&1 | Tee-Object -FilePath pytest-windows.log
           exit $LASTEXITCODE
+
+      # Resource numbers for docs/computer-control/PERFORMANCE_REPORT.md, measured on
+      # a real Windows runner (import RSS of the app, the engine and the UIA backend).
+      - name: Computer control resource baseline (Windows)
+        shell: pwsh
+        run: |
+          python -m jarvis.computer_control.bench baseline --json cc-baseline-windows.json
+          if ($LASTEXITCODE -ne 0) { throw "baseline failed" }
+
+      - name: Upload the Windows resource baseline
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cc-baseline-windows
+          path: cc-baseline-windows.json
+          if-no-files-found: ignore
 
       # The raw job log lives behind a signed blob URL that is not always
       # readable; these annotations are. Only emitted when the run above failed.

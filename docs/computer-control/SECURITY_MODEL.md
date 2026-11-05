@@ -91,3 +91,35 @@ HMAC-chained security ledger.
 
 Hidden access, credential theft, security bypass, an unrestricted shell for the AI,
 destructive automatic retries, secrets in logs or commits.
+
+## 10. Windows controller specifics (Project 1 / 6)
+
+* **Policy sees the real target.** Before the policy runs, `cc_control` resolves the target
+  window and control (read-only) and adds the window title (`app`) and the control's real
+  accessible name (`label`). A control referenced only by `ref` or automation id therefore
+  cannot hide a "Delete"/"Send" label, and typing or hotkeys into a window titled
+  PowerShell/cmd/Terminal/Run/Registry Editor are HIGH even when the request did not name it.
+* **Launching:** apps by name are LOW; launch arguments make it MEDIUM; launching by path,
+  URL, protocol (`ms-settings:`), script/shortcut extension or a built-in system binary that runs
+  code (mshta, wscript, rundll32, certutil, powershell, …) is HIGH.
+* **Coordinates from the model are never trusted.** `cc_pointer` click/double-click/right-click/
+  drag are HIGH (approval); a `source` of "owner"/"accessibility" in tool arguments is treated as
+  "model", so the confidence and fingerprint checks always apply. Routine clicks go through
+  `cc_control` (accessibility) or `cc_screen` (which locates the target itself).
+* **Keys only reach the intended program.** `cc_pointer` type/hotkey: the policy sees the real
+  foreground window title (unknown → HIGH). The UIA backend refuses to send keys when the
+  foreground window does not belong to the target window's process.
+* **Password detection fails closed:** if UIA cannot tell whether a field is a password field,
+  its value is not read.
+* **Enrichment only when the engine is on** and no stop is held.
+* **No answering dialogs for the owner.** Closing a window with unsaved work reports the
+  dialog text and buttons and stops; nothing is clicked automatically.
+* **Only own processes are force-closed**, and `kill` is HIGH (approval).
+* **Fallback input safeguards:** screen bounds, failsafe corners, max 6 inputs / 3 s and a
+  minimum gap (click-storm guard), a fingerprint re-check of the target area (refuses if the
+  screen changed since the target was located), coordinates from OCR/vision/model need
+  confidence ≥ 0.8 **and** a fingerprint, text typed in 200-char chunks with a stop check
+  between chunks, max 5000 chars.
+* **Password fields:** `set_text` into a UIA password field marks the call `is_password`
+  so the logged `text` becomes `[password-field]`; the value is never read back, listed or
+  returned.

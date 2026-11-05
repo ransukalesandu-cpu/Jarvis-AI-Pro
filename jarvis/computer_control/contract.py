@@ -68,6 +68,10 @@ class ToolSpec:
     #: Only for ``engine.stop``: stopping must work even while a stop is held,
     #: so it is logged but not routed through the runner's stop check.
     bypass_runner: bool = False
+    #: Read-only lookup run before the policy so it judges what will really be
+    #: touched (e.g. a control given only by ref gets its accessible name added
+    #: as ``label``, so a "Delete" button is HIGH however it was referenced).
+    enrich: Optional[Callable[[dict], dict]] = None
 
     @property
     def level(self) -> Level:
@@ -102,6 +106,12 @@ class ToolSpec:
         params = {k: v for k, v in dict(params or {}).items() if k != "device"}
         if self.bypass_runner:
             return _call_direct(self, params, job_id)
+        if self.enrich is not None and flags.enabled() and not _stop_held():
+            try:
+                params = dict(self.enrich(dict(params)) or params)
+            except Exception:
+                from jarvis.core import failsoft
+                failsoft.suppress("computer_control.contract:enrich")
         summary = ""
         if self.summary_for is not None:
             try:
@@ -135,6 +145,11 @@ class ToolSpec:
             "available": flags.enabled,
             "cc_output_schema": self.output_schema,
         }
+
+
+def _stop_held() -> bool:
+    from jarvis.computer_control import estop
+    return estop.get().engaged
 
 
 def _call_direct(spec: ToolSpec, params: dict, job_id: str) -> ActionResult:

@@ -7,6 +7,14 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Computer Control — Project 1: Windows native control** (`jarvis/computer_control/windows/`).
+  One Windows Controller API over pywinauto UI Automation (accessibility first, Win32 for
+  window geometry) with a fake desktop for tests: discover/launch/close apps, find/activate/
+  move/resize/min/max/close windows (save dialogs are reported, never answered), find/read/
+  invoke/set_text/select/toggle controls, menus and hotkeys, each verified where possible.
+  Guarded coordinate fallback (Project 6): screen bounds, failsafe corners, click-storm guard,
+  screen-change fingerprint, confidence threshold for AI coordinates. Tools `cc_app`,
+  `cc_window`, `cc_control`, `cc_pointer`. Password fields are never read or logged.
 - **Computer Control Engine — Phase 0 foundation** (`jarvis/computer_control/`,
   `docs/computer-control/`). Off by default (`JARVIS_COMPUTER_CONTROL=1`, dry run with
   `JARVIS_COMPUTER_CONTROL_DRY_RUN=1`). One pipeline for every engine action: flag →

@@ -24,8 +24,20 @@ def _trigger_line() -> str:
         return "Trigger state unavailable."
 
 
+def _plan_trace_text() -> str:
+    try:
+        from jarvis.core import plan_trace
+        return plan_trace.describe_last()
+    except Exception:
+        failsoft.suppress("self_check:plan_trace")
+        return ""
+
+
 def self_check(parameters: dict, **_ctx) -> str:
     parts = [live_health.describe(), _agent_line(), _trigger_line()]
+    trace = _plan_trace_text()
+    if trace:
+        parts.append(trace)
     swallowed = failsoft.count()
     parts.append(f"Handled internal errors this run: {swallowed}." + (f" Top: {failsoft.report(limit=3)}" if swallowed else ""))
     return "\n".join(parts)
@@ -34,7 +46,7 @@ def self_check(parameters: dict, **_ctx) -> str:
 TOOL = {
     "name": "self_check",
     "description": ("Report Jarvis's own health: voice connection stability, unfinished autonomous tasks, "
-                    "failing triggers and handled internal errors. Use when the owner asks how you are "
+                    "failing triggers, handled internal errors and the last autonomous plan's tool choices and results. Use when the owner asks how you are "
                     "running, why you disconnected, or whether anything is broken."),
     "parameters": {"type": "OBJECT", "properties": {}},
     "handler": self_check,

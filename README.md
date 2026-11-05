@@ -65,6 +65,35 @@ mission transcript, and voice controls in one PyQt window.
 
 ![JARVIS desktop HUD with the Settings and Controls panel open](docs/images/jarvis-hud-settings.png)
 
+### Hologram stage, glass windows and the command palette
+
+The face sits in the middle of the window on a stage that windows never
+cover. Under it, a cyan orb shows what JARVIS is doing (breathing when idle,
+arcs while thinking, ripples with the voice while speaking); a small heart
+beats low on the left; five energy wires carry light from the neck to the
+heart and the orb, faster and brighter with the voice.
+
+![The HUD while JARVIS speaks](docs/images/hud-speaking-1920x1080.png)
+
+Glass windows tile in docks either side of the stage: Timer, YouTube Music,
+Music, Video, Image, News and Downloads. Open them from the hover menu, the
+Ctrl+K palette, or by voice: *"open music on the left"*, *"move video to the
+right"*, *"close the timer window"*, *"tile windows"*, *"save workspace as
+study"*, *"load workspace study"*.
+
+![Glass windows docked beside the stage](docs/images/hud-windows-1920x1080.png)
+
+![The Ctrl+K command palette](docs/images/hud-palette-1366x768.png)
+
+Performance tiers (palette: *Performance: Auto / Full / Balanced / Lite*)
+cap the frame rate and drop the heavier effects on slower machines; "auto"
+picks a tier from the hardware and steps down if frames run long. The HUD
+stops animating while the window is minimised.
+
+To use your own face, save a photo of yourself (or an original drawing) as
+`jarvis/config/hologram_face.png`; it is turned into a 3D hologram with lip
+sync and expressions. Without one, the code-drawn cyan head is shown.
+
 ### Optional startup intro
 
 The startup intro plays inside the native application and can be skipped.

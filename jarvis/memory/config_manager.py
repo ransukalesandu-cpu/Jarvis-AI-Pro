@@ -238,6 +238,20 @@ def save_hud_style(style: str) -> None:
     _save_flag("hud_style", s if s in HUD_STYLES else "neural")
 
 
+PERF_TIERS = ("auto", "full", "balanced", "lite")
+
+
+def get_perf_tier() -> str:
+    """HUD performance tier (core/ui_perf.py): auto, full, balanced or lite."""
+    v = str(load_api_keys().get("perf_tier", "auto")).strip().lower()
+    return v if v in PERF_TIERS else "auto"
+
+
+def save_perf_tier(tier: str) -> None:
+    t = str(tier or "").strip().lower()
+    _save_flag("perf_tier", t if t in PERF_TIERS else "auto")
+
+
 NEURAL_RENDER_SCALES = (1.0, 0.75, 0.6)
 
 

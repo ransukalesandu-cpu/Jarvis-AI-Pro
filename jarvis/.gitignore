@@ -4,6 +4,8 @@
 # in .gitignore, an inline # is treated as part of the filename pattern.
 config/api_keys.json
 config/api_keys.json.tmp
+config/workspaces.json
+config/workspaces.tmp
 config/secrets.json
 config/certs/
 config/whatsapp_web/

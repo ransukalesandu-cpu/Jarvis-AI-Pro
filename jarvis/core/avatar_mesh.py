@@ -177,7 +177,7 @@ def _add_cranium(verts: np.ndarray, faces: np.ndarray):
     return np.vstack(out_v), np.array(out_f, dtype=np.int64)
 
 
-def _add_neck(verts: np.ndarray, faces: np.ndarray):
+def _add_neck(verts: np.ndarray, faces: np.ndarray, thick: float = 1.0):
     """A tapering tube dropped from inside the jaw; it fades out, so no shoulders."""
     ph = np.linspace(0.0, 2.0 * np.pi, _NECK_SEGS, endpoint=False)
     # Short, and flaring hard at the bottom: a straight vertical tube reads as
@@ -187,8 +187,8 @@ def _add_neck(verts: np.ndarray, faces: np.ndarray):
     ys = np.linspace(-5.5, -13.0, _NECK_RINGS)
     d = (ys + 5.5) / -7.5
 
-    rx = 4.6 * (1.0 + 0.52 * d ** 1.9)
-    rz = 4.1 * (1.0 + 0.38 * d ** 1.9)
+    rx = 4.6 * thick * (1.0 + 0.52 * d ** 1.9)
+    rz = 4.1 * thick * (1.0 + 0.38 * d ** 1.9)
     nx = rx[:, None] * np.cos(ph)[None, :]
     nz = _NECK_Z + rz[:, None] * np.sin(ph)[None, :]
     ny = ys[:, None] * np.ones_like(ph)[None, :]
@@ -260,15 +260,74 @@ def _check_landmarks(verts: np.ndarray) -> None:
     assert abs(lips[0]) < 0.5, "lips are not centred"
 
 
-def build_head() -> dict:
+def _bump(v: np.ndarray, cx: float, cy: float, sx: float, sy: float, mirror: bool = False):
+    """Gaussian weight around (cx, cy) on the face, optionally on both sides."""
+    x = np.abs(v[:, 0]) if mirror else v[:, 0]
+    return np.exp(-((x - cx) / sx) ** 2 - ((v[:, 1] - cy) / sy) ** 2)
+
+
+def _sculpt(verts: np.ndarray) -> np.ndarray:
+    """Give the canonical face adult, defined anatomy (model units).
+
+    MediaPipe's canonical face is an average of many people: a narrow V jaw, a
+    soft nose and almost no brow ridge, which is why it reads as a mannequin.
+    These moves are generic anatomy, not anyone's likeness: a squarer jaw with
+    a real angle, a broad chin, a stronger nose, a brow ridge over deeper-set
+    eyes, cheekbones with a hollow under them, and fuller lips. Every move is a
+    smooth falloff, so the landmark rings keep their shape and order.
+    """
+    v = verts.copy()
+    x, y, z = v[:, 0], v[:, 1], v[:, 2]
+    side = np.sign(x)
+    front = np.clip((z - 1.0) / 2.0, 0.0, 1.0)            # the face, not the sides
+
+    # Lower face: widen from the mouth down, so the jaw is square, not a V.
+    lower = np.clip((-2.6 - y) / 5.6, 0.0, 1.0) ** 0.9
+    v[:, 0] *= 1.0 + 0.28 * lower
+    # A defined jaw angle: the gonion goes out and a little down.
+    g = _bump(v, 6.3, -5.9, 1.7, 1.5, mirror=True)
+    v[:, 0] += side * 0.55 * g
+    v[:, 1] -= 0.30 * g
+    # Broad chin: square off the bottom and bring it forward.
+    chin = np.clip((-7.3 - y) / 1.6, 0.0, 1.0) * np.exp(-((np.abs(x) - 2.4) / 1.3) ** 2)
+    v[:, 1] -= 0.55 * chin
+    v[:, 2] += 0.50 * _bump(v, 0.0, -8.6, 3.0, 1.6) * front
+
+    # Nose: a straighter, higher bridge, a firmer tip and broader wings.
+    v[:, 2] += 0.40 * np.exp(-(x / 0.95) ** 2) * np.exp(-((y - 1.4) / 2.0) ** 2) * front
+    v[:, 2] += 0.22 * _bump(v, 0.0, -0.8, 1.0, 0.9)
+    v[:, 0] += side * 0.45 * _bump(v, 1.8, -0.9, 0.9, 0.8, mirror=True)
+    v[:, 1] -= 0.30 * _bump(v, 0.0, -1.0, 1.6, 1.2)            # a longer nose
+
+    # Heavy, low brows over deeper-set eyes.
+    v[:, 1] -= 0.35 * np.exp(-((y - 4.8) / 1.2) ** 2) * np.exp(-(x / 5.0) ** 4) * front
+    v[:, 2] += 0.60 * np.exp(-((y - 4.5) / 1.0) ** 2) * np.exp(-(x / 4.6) ** 4) * front
+    v[:, 2] -= 0.22 * _bump(v, 3.1, 2.6, 1.6, 0.9, mirror=True)
+
+    # Cheekbones out and up, with the hollow beneath them.
+    cb = _bump(v, 5.5, 0.3, 1.5, 1.2, mirror=True)
+    v[:, 0] += side * 0.30 * cb
+    v[:, 2] += 0.22 * cb * front
+    v[:, 2] -= 0.28 * _bump(v, 4.3, -2.8, 1.2, 1.2, mirror=True) * front
+
+    # A wide mouth.
+    v[:, 0] *= 1.0 + 0.08 * np.exp(-((y + 4.3) / 1.4) ** 2) * front
+    v[:, 2] += 0.24 * np.exp(-(x / 2.2) ** 2) * np.exp(-((y + 4.3) / 1.0) ** 2) * front
+    return v
+
+
+def build_head(sculpt: bool = False) -> dict:
     """Assemble the full head. Called once; `get_head_mesh()` caches the result."""
     verts, faces = _load_obj(_OBJ)
     _check_landmarks(verts)
+    if sculpt:
+        verts = _sculpt(verts)
+        _check_landmarks(verts)
 
     n_face = len(verts)
     verts, faces = _add_cranium(verts, faces)
     n_head = len(verts)
-    verts, faces, fade = _add_neck(verts, faces)
+    verts, faces, fade = _add_neck(verts, faces, 1.32 if sculpt else 1.0)
 
     # ── normalise: crown → +1, chin → -1, eyes land on y ≈ 0 ────────────────
     head_y = verts[:n_head, 1]
@@ -340,12 +399,16 @@ def build_head() -> dict:
     }
 
 
-_CACHE: dict | None = None
+_CACHE: dict[bool, dict] = {}
 
 
-def get_head_mesh() -> dict:
-    """Process-wide cached mesh — every HudCanvas shares the same arrays."""
-    global _CACHE
-    if _CACHE is None:
-        _CACHE = build_head()
-    return _CACHE
+def get_head_mesh(sculpt: bool = False) -> dict:
+    """Process-wide cached mesh — every HudCanvas shares the same arrays.
+
+    `sculpt` selects the defined adult anatomy (see `_sculpt`) used by the
+    cyber look; the default is the untouched canonical face.
+    """
+    mesh = _CACHE.get(sculpt)
+    if mesh is None:
+        mesh = _CACHE[sculpt] = build_head(sculpt)
+    return mesh

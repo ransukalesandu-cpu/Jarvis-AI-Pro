@@ -44,6 +44,12 @@ _CAM_D = 4.6
 # Wireframe opacity buckets, so the whole lattice draws in a handful of batched
 # drawLines() calls instead of one call per line.
 _BUCKETS = 4
+_CYBER_PRIMARY = QColor(30, 150, 255)
+_CYBER_ACCENT = QColor(150, 240, 255)
+_HAIR = QColor(70, 120, 210)          # deeper and denser than the skin glass
+_VOL_HAIR = QColor(20, 150, 200)      # the volume look's hair: deeper cyan
+_BUST_LOOKS = ("cyber", "volume", "image")   # own colours; sculpted head or picture
+_VOL_HEADROOM = 0.30                         # room for the volume look's hair
 _MIN_ALPHA = 0.05
 
 # Resolution of the surface-shading colour ramp. Banding across a filled facet
@@ -126,9 +132,27 @@ class HoloAvatar:
     # Look: True paints a lit, solid head with a wireframe over it; False is a
     # see-through glass wireframe. Flip here, or per instance.
     shaded = True
+    # "cyber" is the half-transparent blue circuit bust (core/avatar_cyber.py);
+    # empty means "shaded" or "glass" from the flag above.
+    style = ""
+    # Glow passes (volume and picture looks); the lite performance tier sets False.
+    bloom = True
 
-    def __init__(self) -> None:
-        mesh = get_head_mesh()
+    def __init__(self, style: str | None = None) -> None:
+        if style is not None:
+            self.style = style
+        self._img = None
+        if self.style == "image":
+            # The owner's own face picture; without one, the volume look.
+            try:
+                from jarvis.core.avatar_image import ImageHologram, find_face
+                path = find_face()
+                self._img = ImageHologram(path) if path else None
+            except Exception:
+                self._img = None
+            if self._img is None:
+                self.style = "volume"
+        mesh = get_head_mesh(sculpt=self.look in _BUST_LOOKS)
         self._v0 = mesh["verts"]
         self._n0 = mesh["normals"]
         self._jaw = mesh["jaw"]
@@ -151,6 +175,16 @@ class HoloAvatar:
         # Crown (+1.0) down to the bottom of the neck, in head-half-heights.
         # Callers size the head to the room they have with this.
         self.SPAN = mesh["span"][0] - mesh["span"][1]
+        self._mesh = mesh
+        self._cyber = None
+        self._rot = np.eye(3, dtype=np.float32)
+        self._vol = None
+        if self._img is not None:
+            self.SPAN = 2.75                     # the picture: head, neck, hair
+        if self.look == "volume":
+            self.SPAN += _VOL_HEADROOM           # room for the hair above the crown
+        if self.look == "cyber":                 # the volume look has no shoulders
+            self.SPAN = mesh["span"][0] - float(self._cyber_parts().bust_v[:, 1].min())
 
         self._lut_cache: list = []
         self._lut_key = None
@@ -220,6 +254,26 @@ class HoloAvatar:
         self._mood_primary = QColor(113, 212, 194)
         self._mood_accent = QColor(217, 138, 89)
         self._state_str = "IDLE"
+        self._emotion = ""         # happy / sad / serious / surprised / curious
+        if self.look in _BUST_LOOKS:
+            self._mood_primary = QColor(self._base_colors()[0])
+            self._mood_accent = QColor(self._base_colors()[1])
+
+    @property
+    def look(self) -> str:
+        return self.style or ("shaded" if self.shaded else "glass")
+
+    def _base_colors(self) -> tuple[QColor, QColor]:
+        if self.look in ("volume", "image"):
+            from jarvis.core.avatar_volume import VOLUME_ACCENT, VOLUME_PRIMARY
+            return VOLUME_PRIMARY, VOLUME_ACCENT
+        return _CYBER_PRIMARY, _CYBER_ACCENT
+
+    def _cyber_parts(self):
+        if self._cyber is None:
+            from jarvis.core.avatar_cyber import CyberParts
+            self._cyber = CyberParts.build(self._mesh)
+        return self._cyber
 
     def react_to_text(self, text: str) -> None:
         """Choose a brief facial expression and head gesture from spoken words."""
@@ -245,23 +299,37 @@ class HoloAvatar:
             " glad to help ", " happy to help ", " you're welcome ", " you are welcome ",
             " thank you ", " thanks ",
         ))
+        surprise = any(term in words for term in (
+            " wow ", " amazing ", " incredible ", " really ", " oh ", " unbelievable ",
+            " no way ", " whoa ",
+        ))
         if greeting:
+            self._emotion = "happy"
             self._smile_tgt, self._gesture = 0.92, "nod"
             self._gesture_strength = 1.0
             hold = 3.0
         elif serious:
+            self._emotion = "serious"
             self._smile_tgt, self._gesture = 0.0, "focus"
             self._gesture_strength = 0.75
             hold = 2.4
         elif apology:
+            self._emotion = "sad"
             self._smile_tgt, self._gesture = 0.0, "tilt"
             self._gesture_strength = 0.70
             hold = 2.5
+        elif surprise:
+            self._emotion = "surprised"
+            self._smile_tgt, self._gesture = 0.3, "nod"
+            self._gesture_strength = 0.6
+            hold = 2.0
         elif acknowledgement:
+            self._emotion = "happy"
             self._smile_tgt, self._gesture = 0.72, "nod"
             self._gesture_strength = 0.72
             hold = 2.5
         elif question:
+            self._emotion = "curious"
             self._smile_tgt, self._gesture = 0.12, "tilt"
             self._gesture_strength = 0.48
             hold = 1.6
@@ -569,6 +637,7 @@ class HoloAvatar:
         roll = np.array([[cr, -sr, 0.0], [sr, cr, 0.0], [0.0, 0.0, 1.0]],
                         dtype=np.float32)
         m = roll @ m
+        self._rot = m
 
         return v @ m.T, self._n0 @ m.T
 
@@ -660,9 +729,28 @@ class HoloAvatar:
         if bg is None:
             bg = QColor(0, 0, 0)
 
+        bust = self.look in _BUST_LOOKS
+        if bust and primary.rgb() == accent.rgb():
+            # Idle: the look's own colours (electric blue, or cyan).
+            primary, accent = self._base_colors()
+        elif bust:
+            primary = self._base_colors()[0]
         primary, accent = self._adapt_colors(0.016, primary, accent)
         amp = self._glow
+        if self._img is not None:
+            self._img.bloom = self.bloom
+            self._img.paint(p, cx, cy - r, self.SPAN * r, primary, accent, self._t,
+                            self._mouth, amp, self._blink, self._face_targets())
+            return
         verts, norms = self._pose()
+        if self.look == "volume":
+            # Callers place the crown at the top of SPAN; the hair needs room.
+            cy += _VOL_HEADROOM * r
+            self._paint_volume(p, cx, cy, r, verts, norms, primary, accent, bg, amp)
+            return
+        if bust:
+            self._paint_cyber(p, cx, cy, r, verts, norms, primary, accent, bg, amp)
+            return
 
         # ── aura ────────────────────────────────────────────────────────────
         ar = r * 1.95
@@ -684,6 +772,161 @@ class HoloAvatar:
         if self.shaded:
             self._paint_surface(p, xs, ys, norms, verts, primary, bg, amp)
         self._paint_wire(p, xs, ys, norms, verts, primary, bg, amp)
+        self._paint_features(p, cx, cy, xs, ys, norms, r, primary, accent, bg, amp)
+
+    def set_emotion(self, emotion: str, hold: float = 2.5) -> None:
+        """Show an emotion for `hold` seconds: happy, sad, serious, surprised or
+        curious (empty clears it)."""
+        self._emotion = emotion if emotion in ("happy", "sad", "serious", "surprised",
+                                               "curious") else ""
+        self._smile_tgt = 0.85 if emotion == "happy" else 0.0
+        self._smile_until = self._t + max(0.1, float(hold))
+
+    def _face_targets(self) -> dict:
+        """Expression targets for the picture look, from the live face state."""
+        active = self._t < self._smile_until
+        emo = self._emotion if active else ""
+        st = self._state_str
+        f = {"yaw": self._yaw, "pitch": self._pitch, "roll": self._roll,
+             "jaw": self._mouth, "wide": self._wide if self._mouth > 0.02 else 0.0,
+             "brow": max(-0.4, min(1.0, self._brow)), "blink": self._blink,
+             "gaze_x": self._gaze[0], "gaze_y": self._gaze[1],
+             "happy": max(self._smile, 1.0 if emo == "happy" else 0.0),
+             "sad": 1.0 if emo == "sad" else 0.0,
+             "serious": 1.0 if emo == "serious" else (0.35 if st in ("THINKING", "PROCESSING")
+                                                      else 0.0),
+             "surprised": 1.0 if emo == "surprised" else 0.0,
+             "curious": 1.0 if emo == "curious" else (0.4 if st == "LISTENING" else 0.0)}
+        if st in ("SLEEPING", "STANDBY"):
+            f["blink"] = max(f["blink"], 0.85)
+        return f
+
+    def _project(self, pts, cx: float, cy: float, r: float):
+        w = np.maximum(_CAM_D - pts[..., 2], 0.35)
+        k = (_CAM_D / w) * r
+        return cx + pts[..., 0] * k, cy - pts[..., 1] * k
+
+    def _paint_volume(self, p: QPainter, cx: float, cy: float, r: float, verts, norms,
+                      primary: QColor, accent: QColor, bg: QColor, amp: float) -> None:
+        """Smooth cyan hologram with no wires: a soft glowing volume, crisp features."""
+        from jarvis.core.avatar_volume import VolumePainter, grow_tufts
+        cp = self._cyber_parts()
+        if self._vol is None:
+            self._vol = VolumePainter()
+            rng = np.random.default_rng(11)
+            self._tufts = grow_tufts(cp.cap_v, cp.cap_f, cp.hair_centre, rng)
+            n = self._tufts[:, :2].mean(axis=1) - cp.hair_centre
+            self._tuft_n = n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
+            root = self._tufts[:, :2].mean(axis=1)
+            self._tuft_grey = (np.abs(root[:, 0]) > 0.50) & (root[:, 1] < 0.55)
+            # Stubble: fixed points over the jaw, chin and upper lip, off the lips.
+            v0 = self._v0[:self._mesh["n_face"]]
+            lips = set(self._lm["lips_out"].tolist()) | set(self._lm["lips_in"].tolist())
+            zone = np.flatnonzero((v0[:, 1] < -0.45) & (v0[:, 2] > 0.05))
+            zone = np.array([i for i in zone if i not in lips], dtype=np.int64)
+            self._stubble = rng.choice(zone, size=min(220, len(zone)), replace=False)
+        vol = self._vol
+        rot = self._rot
+
+        ar = r * 2.0
+        grad = QRadialGradient(cx, cy + r * 0.1, ar)
+        grad.setColorAt(0.00, _c(primary, 46 + 60 * amp))
+        grad.setColorAt(0.50, _c(primary, 14 + 26 * amp))
+        grad.setColorAt(1.00, _c(primary, 0))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawEllipse(QRectF(cx - ar, cy + r * 0.1 - ar, ar * 2, ar * 2))
+
+        xs, ys = self._project(verts, cx, cy, r)
+        bottom = float(ys.max()) + 4.0
+        rect = QRectF(cx - r * 1.6, cy - r * 1.45, r * 3.2, bottom - (cy - r * 1.45))
+
+        def body(bp: QPainter) -> None:
+            if cp.ears.size:
+                ev = cp.ears @ rot.T
+                ex, ey = self._project(ev, cx, cy, r)
+                cp.paint_ears(bp, np.stack([ex, ey], axis=-1), primary)
+            keep = cp.face_keep
+            vol.fill(bp, xs, ys, verts, norms, self._f[keep], self._fgroup[keep], primary, amp,
+                     fade=self._fade)
+            if len(cp.cap_f):
+                cv = cp.cap_v @ rot.T
+                gx, gy = self._project(cv, cx, cy, r)
+                cn = (cp.cap_v - cp.hair_centre) @ rot.T
+                cn /= np.maximum(np.linalg.norm(cn, axis=1, keepdims=True), 1e-9)
+                zf = np.zeros(len(cp.cap_f), dtype=np.float32)
+                vol.fill(bp, gx, gy, cv, cn, cp.cap_f, zf, _VOL_HAIR, amp, gain=1.3)
+            if len(self._tufts):
+                tv = self._tufts @ rot.T
+                tx, ty = self._project(tv, cx, cy, r)
+                tn = self._tuft_n @ rot.T
+                vol.tufts(bp, np.stack([tx, ty], axis=-1), tv[:, 2, 2], tn[:, 2],
+                          _VOL_HAIR, primary.lighter(150), self._tuft_grey)
+
+        vol.bloom = self.bloom
+        vol.compose(p, rect, body)
+        vol.scanline(p, rect, self._t, primary.lighter(140))
+
+        self._paint_features(p, cx, cy, xs, ys, norms, r, primary, accent, bg, amp)
+        face = max(0.0, math.cos(self._yaw) * math.cos(self._pitch)) ** 2
+        if face > 0.02:
+            brow_col = _c(primary.lighter(125), 165 * face)
+            for key in ("brow_l", "brow_r"):
+                vol.brow(p, xs, ys, self._lm[key], r * 0.075, brow_col)
+            st = self._stubble
+            vis = st[norms[st, 2] > 0.1]
+            vol.character(p, xs, ys, self._lm, r, primary.lighter(170),
+                          np.stack([xs[vis], ys[vis]], axis=1))
+
+    def _paint_cyber(self, p: QPainter, cx: float, cy: float, r: float, verts, norms,
+                     primary: QColor, accent: QColor, bg: QColor, amp: float) -> None:
+        """Half-transparent circuit bust: shoulders, glass head, traces, hair."""
+        cp = self._cyber_parts()
+        t = self._t
+
+        # Aura, centred a little low so it also lights the shoulders.
+        ar = r * 2.1
+        grad = QRadialGradient(cx, cy + r * 0.25, ar)
+        grad.setColorAt(0.00, _c(primary, 40 + 60 * amp))
+        grad.setColorAt(0.45, _c(primary, 16 + 30 * amp))
+        grad.setColorAt(1.00, _c(primary, 0))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawEllipse(QRectF(cx - ar, cy + r * 0.25 - ar, ar * 2, ar * 2))
+
+        # Shoulders stay put; only the head turns on the neck.
+        bxs, bys = self._project(cp.bust_v, cx, cy, r)
+        zero = np.zeros(len(cp.bust_faces), dtype=np.float32)
+        cp.paint_fill(p, bxs, bys, cp.bust_v, cp.bust_faces, zero, primary, amp,
+                      centre=zero, fade=cp.bust_fade, cull=False)
+        cp.paint_edges(p, bxs, bys, cp.bust_n, cp.bust_edges[:, 0], cp.bust_edges[:, 1],
+                       cp.bust_fade, primary, amp)
+        cp.paint_traces(p, bxs, bys, cp.bust_n, cp.bust_traces, cp.trace_phase, accent, t, amp)
+
+        if cp.ears.size:
+            # Behind the glass head, so the near ear reads through the skin edge
+            # and the far one hides as the head turns.
+            ev = cp.ears @ self._rot.T
+            ex, ey = self._project(ev, cx, cy, r)
+            cp.paint_ears(p, np.stack([ex, ey], axis=-1), primary)
+
+        xs, ys = self._project(verts, cx, cy, r)
+        keep = cp.face_keep
+        cp.paint_fill(p, xs, ys, verts, self._f[keep], self._fgroup[keep], primary, amp,
+                      centre=cp.centre_w[keep])
+        cp.paint_edges(p, xs, ys, norms, cp.edges[:, 0], cp.edges[:, 1], self._fade, primary, amp)
+        cp.paint_traces(p, xs, ys, norms, cp.traces, cp.trace_phase, accent, t, amp)
+
+        if len(cp.cap_f):
+            cv = cp.cap_v @ self._rot.T
+            gx, gy = self._project(cv, cx, cy, r)
+            zf = np.zeros(len(cp.cap_f), dtype=np.float32)
+            cp.paint_fill(p, gx, gy, cv, cp.cap_f, zf, _HAIR, amp, centre=zf, gain=1.25)
+        if cp.hair.size:
+            hp = cp.hair @ self._rot.T
+            hx, hy = self._project(hp, cx, cy, r)
+            cp.paint_hair(p, np.stack([hx, hy], axis=-1), hp[..., 2], primary, r / 300.0)
+
         self._paint_features(p, cx, cy, xs, ys, norms, r, primary, accent, bg, amp)
 
     def _paint_surface(self, p: QPainter, xs, ys, norms, verts,
@@ -860,13 +1103,15 @@ class HoloAvatar:
                 glint = QPointF(cpt.x() - rad * 0.30, cpt.y() - rad * 0.30 * vis)
                 p.setBrush(QBrush(_c(QColor(255, 255, 255), 230 * face * vis)))
                 p.drawEllipse(glint, rad * 0.18, rad * 0.18 * vis)
+                if self._cyber is not None and self.look in _BUST_LOOKS:
+                    self._cyber.paint_eye_glow(p, cpt, rad, accent, face * vis * (0.75 + 0.25 * amp))
 
         # ── brows ───────────────────────────────────────────────────────────
         p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QPen(_c(primary, 190 * face), 2.2))
         for key in ("brow_l", "brow_r"):
             idx = lm[key]
             poly_brow = self._ring(xs, ys, idx)
+            p.setPen(QPen(_c(primary, 190 * face), 2.2))
             p.drawPolyline(poly_brow)
             # Sculpted brow shadow line for depth
             p.setPen(QPen(_c(accent, 110 * face), 1.2))
@@ -913,6 +1158,8 @@ class HoloAvatar:
 
         # ── forehead chip & cheek circuit highlights ──────────────────────
         # Central forehead processor reticle node
+        if self.look in _BUST_LOOKS:
+            return                 # the hair covers the forehead chip
         forehead_x = cx
         forehead_y = cy - r * 0.72
         p.setPen(QPen(_c(accent, 140 * face), 1.0))

@@ -23,6 +23,7 @@ else:
     _WIN_HIDE: dict = {}
 
 from PyQt6.QtCore import (
+    QPointF,
     QEvent, QEasingCurve, QLineF, QPropertyAnimation, QRectF, Qt, QTimer, QUrl, pyqtSignal,
 )
 from PyQt6.QtGui import (
@@ -171,31 +172,37 @@ class _HoverMenuButton(QToolButton):
             self.showMenu()
 
 
+from jarvis.core.ui_tokens import BASE_COLORS as _TOK  # noqa: E402  (the one theme)
+from jarvis.core import ui_state as _ui_state  # noqa: E402  (state bus + shared clock)
+from jarvis.core.ui_state import bus as _ui_bus  # noqa: E402
+from jarvis.ui.hologram.stage import HologramStage  # noqa: E402
+
+
 class C:
     # Instrument-console palette: graphite, oxidized teal, and machined copper.
-    # Warm status accents and dense technical typography keep the HUD distinct
-    # from a generic neon chatbot panel.
-    BG        = "#080e12"
-    PANEL     = "#10191d"
-    PANEL2    = "#151f22"
-    BORDER    = "#34464a"
-    BORDER_B  = "#647b7d"
-    BORDER_A  = "#4c686b"
-    PRI       = "#71d4c2"
-    PRI_DIM   = "#397f78"
-    PRI_GHO   = "#172d2c"
-    ACC       = "#d98a59"
-    ACC2      = "#d7bd7b"
-    GREEN     = "#9bd5a2"
-    GREEN_D   = "#5b986e"
-    RED       = "#e97869"
-    MUTED_C   = "#d96f68"
-    TEXT      = "#c8d9d5"
-    TEXT_DIM  = "#78908d"
-    TEXT_MED  = "#9aafaa"
-    WHITE     = "#edf3e8"
-    DARK      = "#0b1215"
-    BAR_BG    = "#192326"
+    # The values come from core/ui_tokens.py so the Qt chrome, the painted
+    # renderers and the web pieces share one theme.
+    BG        = _TOK["bg"]
+    PANEL     = _TOK["panel"]
+    PANEL2    = _TOK["panel2"]
+    BORDER    = _TOK["border"]
+    BORDER_B  = _TOK["border_bright"]
+    BORDER_A  = _TOK["border_accent"]
+    PRI       = _TOK["primary"]
+    PRI_DIM   = _TOK["primary_dim"]
+    PRI_GHO   = _TOK["primary_ghost"]
+    ACC       = _TOK["accent"]
+    ACC2      = _TOK["accent2"]
+    GREEN     = _TOK["ok"]
+    GREEN_D   = _TOK["ok_dim"]
+    RED       = _TOK["danger"]
+    MUTED_C   = _TOK["muted"]
+    TEXT      = _TOK["text"]
+    TEXT_DIM  = _TOK["text_dim"]
+    TEXT_MED  = _TOK["text_med"]
+    WHITE     = _TOK["white"]
+    DARK      = _TOK["dark"]
+    BAR_BG    = _TOK["bar_bg"]
 
 
 # Keys tied to the accent colour — status colours (ACC, GREEN, RED…) stay fixed
@@ -519,6 +526,11 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
         self._avatar = None
         if enable_avatar and HoloAvatar is not None:
             try:
+                # The owner's chosen identity: their own face picture as a
+                # cyan hologram (core/avatar_image.py), or the smooth volume
+                # head when no picture is installed.
+                self._avatar = HoloAvatar(style="image")
+            except TypeError:          # the synthetic fallback has no styles
                 self._avatar = HoloAvatar()
             except Exception:
                 self._avatar = None
@@ -603,6 +615,8 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
         self._vis_i = None        # first schedule frame not yet handed to the mouth
         self._base_scale = 1.0    # slow "breathing" target; amp is added per-frame
         self._base_halo  = 55.0
+
+        self._stage = None        # heart, orb and energy wires (face mode)
 
         self._tmr = QTimer(self)
         self._tmr.timeout.connect(self._step)
@@ -826,7 +840,16 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
 
     def paintGL(self) -> None:
         """Paint the same HUD scene into QOpenGLWidget's current framebuffer."""
+        self._timed_paint()
+
+    def _timed_paint(self) -> None:
+        """Paint, and report the paint time to the window's performance
+        governor (core/ui_perf.FrameGovernor)."""
+        t0 = time.perf_counter()
         self._paint_canvas()
+        rec = getattr(self.window(), "_record_frame_time", None)
+        if rec is not None:
+            rec((time.perf_counter() - t0) * 1000.0)
 
     def _start_neural_quick(self) -> None:
         """Start the D3D11-compatible Qt Quick neural renderer, if available."""
@@ -948,6 +971,7 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
     def _step(self):
         self._tick += 1
         now = time.time()
+        _ui_bus().drain()          # deliver state published from worker threads
 
         if abs(self._hand_zoom_target - self._hand_zoom) > 0.001:
             self._hand_zoom += (self._hand_zoom_target - self._hand_zoom) * 0.20
@@ -1259,7 +1283,7 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
         if _OPENGL_CANVAS_AVAILABLE:
             super().paintEvent(event)
         else:
-            self._paint_canvas()
+            self._timed_paint()
 
     def _paint_canvas(self):
         if (self._neural_quick_ready and self.hud_style in ("neural", "neural_orb")
@@ -1293,8 +1317,12 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
         if self._avatar is not None and self.hud_style == "face":
             _band_t = 12.0
             _band_h = max(60.0, _sy_status - 12.0 - _band_t)
-            _r_head = min(fw * 0.355, _band_h / (self._avatar.SPAN + 0.08))
-            _head_cy = _band_t + (_band_h - self._avatar.SPAN * _r_head) / 2.0 + _r_head
+            # The stage shares the band: the face keeps the top, the orb sits
+            # under it and the heart low on the left (ui/hologram/stage.py).
+            _face_h, _orb, _orb_r, _heart, _heart_r = HologramStage.geometry(
+                W, H, _band_t, _band_h, cx)
+            _r_head = min(fw * 0.355, _face_h / (self._avatar.SPAN + 0.08))
+            _head_cy = _band_t + (_face_h - self._avatar.SPAN * _r_head) / 2.0 + _r_head
 
             if self.muted:
                 _main = _acc = qcol(C.MUTED_C)
@@ -1308,6 +1336,16 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
                     _acc = qcol(C.GREEN)
                 else:
                     _acc = qcol(C.PRI)
+            _neck = QPointF(cx, _head_cy - _r_head + self._avatar.SPAN * _r_head * 0.97)
+            if self._stage is None:
+                self._stage = HologramStage()
+                _tier = getattr(self, "_perf_tier", None)
+                if _tier is not None:
+                    self._stage.wires, self._stage.pulses = _tier.wires, _tier.pulses
+            self._stage.paint(p, neck=_neck, orb=_orb, orb_r=_orb_r, heart=_heart,
+                              heart_r=_heart_r, t=_ui_state.clock().now,
+                              level=float(_ui_bus().get(_ui_state.AUDIO_LEVEL, 0.0) or 0.0),
+                              state="MUTED" if self.muted else self.state)
             self._avatar.paint(p, cx, _head_cy, _r_head, _main, _acc, qcol(C.BG))
 
         elif self.hud_style in ("neural", "neural_orb"):
@@ -1361,12 +1399,15 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
                            QLineF(_x, _y, _x, _y + _sy * _a)))
         p.setPen(QPen(qcol(C.BORDER_A), 1.0))
         p.drawLines(_lines)
+        _clean = self.hud_style == "face"     # the stage needs the room: no labels/ticks
         p.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
         p.setPen(QPen(qcol(C.TEXT_DIM), 1.0))
-        p.drawText(QRectF(_m + 4, _m - 2, 148, 12),
-                   Qt.AlignmentFlag.AlignLeft, "OPTIC ARRAY  //  01")
-        p.drawText(QRectF(W - _m - 152, _m - 2, 148, 12),
-                   Qt.AlignmentFlag.AlignRight, "SENSOR MATRIX  //  LIVE")
+        if not _clean:
+            p.drawText(QRectF(_m + 4, _m - 2, 148, 12),
+                       Qt.AlignmentFlag.AlignLeft, "OPTIC ARRAY  //  01")
+        if not _clean:
+            p.drawText(QRectF(W - _m - 152, _m - 2, 148, 12),
+                       Qt.AlignmentFlag.AlignRight, "SENSOR MATRIX  //  LIVE")
         _ticks = []
         for _i in range(1, 8):
             _ty = _m + (H - 2 * _m) * _i / 8
@@ -1374,7 +1415,8 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
             _ticks.extend((QLineF(_m, _ty, _m + _length, _ty),
                            QLineF(W - _m - _length, _ty, W - _m, _ty)))
         p.setPen(QPen(qcol(C.BORDER), 1.0))
-        p.drawLines(_ticks)
+        if not _clean:
+            p.drawLines(_ticks)
 
         # Privacy Lock overlay is driven by the existing shared AuthManager.
         # Do not create a second security state machine in the UI.
@@ -1688,6 +1730,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, face_path: str):
         super().__init__()
+        _ui_bus().adopt_thread()   # the state bus delivers on the Qt thread
         self._session_started_at = time.monotonic()
         self._face_path = face_path
 
@@ -1916,6 +1959,15 @@ class MainWindow(QMainWindow):
 
         # Quick-access drawer (floating overlay, built after central widget layout is done)
         self._quick_drawer = self._build_quick_drawer()
+        QTimer.singleShot(0, self._ensure_island)   # Dynamic Island over the stage
+        try:
+            from jarvis.memory.config_manager import get_perf_tier
+            self._perf_choice = get_perf_tier()
+        except Exception:
+            self._perf_choice = "auto"
+        # A bound method, not a lambda: Qt drops it if the window is deleted
+        # before the event loop runs it.
+        QTimer.singleShot(0, self._apply_saved_perf_tier)
         self._update_autostart_btn(self._check_autostart())
         from jarvis.memory.config_manager import get_brief_enabled as _gbe
         self._update_brief_btn(_gbe())
@@ -2026,6 +2078,10 @@ class MainWindow(QMainWindow):
         sc_mute.activated.connect(self._toggle_mute)
         sc_full = QShortcut(QKeySequence("F11"), self)
         sc_full.activated.connect(self._toggle_fullscreen)
+        sc_palette = QShortcut(QKeySequence("Ctrl+K"), self)
+        sc_palette.activated.connect(self._open_palette)
+        sc_ask = QShortcut(QKeySequence("Ctrl+L"), self)
+        sc_ask.activated.connect(lambda: self._run_ui_command("ask"))
         sc_intr = QShortcut(QKeySequence("Escape"), self)
         sc_intr.activated.connect(self._handle_escape)
 
@@ -3120,6 +3176,11 @@ class MainWindow(QMainWindow):
         # Quick drawer — reposition if open
         if hasattr(self, '_quick_drawer') and self._quick_drawer.isVisible():
             self._position_quick_drawer()
+        self._position_island()
+        # Glass windows reflow into the new docks.
+        if getattr(self, "_wm", None) is not None:
+            self._wm.set_layout(self._window_layout())
+            self._apply_windows()
 
     def _update_metrics(self):
         snap = _metrics.snapshot()
@@ -3208,20 +3269,15 @@ class MainWindow(QMainWindow):
             QMenu::item:selected {{ color: {C.PRI}; background: {C.PRI_GHO}; }}
             QMenu::separator {{ height: 1px; background: {C.BORDER}; margin: 4px 6px; }}
         """)
-        for key, label in (
-            ("timers", "◷   TIMER & REMINDERS"),
-            ("music", "♫   YOUTUBE MUSIC"),
-            ("news", "◉   LIVE NEWS"),
-            ("media", "▣   MEDIA PLAYER"),
-            ("system", "⌘   SYSTEM STATUS"),
-        ):
-            action = self._nav_menu.addAction(label)
-            action.triggered.connect(
-                lambda _checked=False, view=key: self._on_workspace_shortcut(view)
-            )
-        self._nav_menu.addSeparator()
-        dashboard_action = self._nav_menu.addAction("▦   BENTO DASHBOARD")
-        dashboard_action.triggered.connect(self._open_bento_dashboard)
+        # Left hover menu: one submenu per section, from core/ui_menus.py (the
+        # same commands the right menu and the Ctrl+K palette use).
+        from jarvis.core import ui_menus as _menus
+        for section in _menus.LEFT_SECTIONS:
+            sub = self._nav_menu.addMenu(section.upper())
+            sub.setStyleSheet(self._nav_menu.styleSheet())
+            for cmd in _menus.by_section(section):
+                act = sub.addAction(cmd.title + (f"\t{cmd.shortcut}" if cmd.shortcut else ""))
+                act.triggered.connect(lambda _c=False, cid=cmd.id: self._run_ui_command(cid))
         self._nav_menu_btn.setMenu(self._nav_menu)
         lay.addWidget(self._nav_menu_btn)
         lay.addWidget(_badge(APP_VERSION, C.PRI_DIM))
@@ -3336,30 +3392,13 @@ class MainWindow(QMainWindow):
         """)
         self._right_menu = QMenu(self._right_menu_btn)
         self._right_menu.setStyleSheet(self._nav_menu.styleSheet())
-        dash_action = self._right_menu.addAction("▦  Bento Dashboard")
-        dash_action.triggered.connect(self._open_bento_dashboard)
-        self._right_menu.addSeparator()
-        telemetry_action = self._right_menu.addAction("▤  Toggle Telemetry")
-        telemetry_action.triggered.connect(
-            lambda _checked=False: self._toggle_telemetry_panel(
-                not self._left_panel.isVisible()
-            )
-        )
-        activity_action = self._right_menu.addAction("☷  Toggle Activity")
-        activity_action.triggered.connect(
-            lambda _checked=False: self._toggle_activity_panel(
-                not self._right_panel.isVisible()
-            )
-        )
-        settings_action = self._right_menu.addAction("⚙  Settings & Controls")
-        settings_action.triggered.connect(
-            lambda _checked=False: self._drawer_btn.click()
-        )
-        self._right_menu.addSeparator()
-        jarvis_action = self._right_menu.addAction("JARVIS Mode")
-        jarvis_action.triggered.connect(lambda: self._mode_btn.setCurrentIndex(0))
-        bihansa_action = self._right_menu.addAction("BIHANSA Mode")
-        bihansa_action.triggered.connect(lambda: self._mode_btn.setCurrentIndex(1))
+        # Right control menu: how JARVIS itself behaves (core/ui_menus.py).
+        from jarvis.core import ui_menus as _menus
+        for cmd in _menus.by_section(_menus.RIGHT_SECTION):
+            if cmd.id == "settings":
+                self._right_menu.addSeparator()
+            act = self._right_menu.addAction(cmd.title)
+            act.triggered.connect(lambda _c=False, cid=cmd.id: self._run_ui_command(cid))
         self._right_menu_btn.setMenu(self._right_menu)
         self._right_menu_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         lay.addWidget(self._right_menu_btn)
@@ -5307,6 +5346,287 @@ class MainWindow(QMainWindow):
                 best = max(best, score)
         return best
 
+    # ── performance tiers (core/ui_perf.py) ────────────────────────────────
+    def set_performance_budget(self, choice: str = "auto", save: bool = False) -> str:
+        """Apply a performance tier ("auto", "full", "balanced", "lite").
+        Returns the tier in effect."""
+        from jarvis.core import ui_perf
+        auto = ui_perf.auto_tier()
+        tier_name = ui_perf.resolve(choice) if choice != "auto" else auto
+        self._perf_gov = ui_perf.FrameGovernor(tier_name, ceiling=auto if choice == "auto" else tier_name,
+                                               pinned=choice != "auto")
+        self._apply_tier(tier_name)
+        if save:
+            try:
+                from jarvis.memory.config_manager import save_perf_tier
+                save_perf_tier(choice)
+            except Exception as exc:
+                self._log.append_log(f"SYS: Could not save the performance setting: {exc}")
+        return tier_name
+
+    def _apply_saved_perf_tier(self) -> None:
+        self.set_performance_budget(getattr(self, "_perf_choice", "auto"))
+
+    def _apply_tier(self, tier_name: str) -> None:
+        from jarvis.core import ui_perf
+        tier = ui_perf.TIERS[tier_name]
+        _ui_state.clock().fps_cap = tier.fps
+        try:
+            self.hud._tmr.setInterval(tier.interval_ms)
+            self.hud._perf_tier = tier
+            st = getattr(self.hud, "_stage", None)
+            if st is not None:
+                st.wires, st.pulses = tier.wires, tier.pulses
+            av = getattr(self.hud, "_avatar", None)
+            if av is not None and hasattr(av, "bloom"):
+                av.bloom = tier.bloom
+        except (RuntimeError, AttributeError):
+            pass
+        for gw in getattr(self, "_glass", {}).values():
+            gw.lite = not tier.glass_sheen
+            gw.update()
+        _ui_bus().set(_ui_state.PERF_TIER, tier_name)
+
+    def _record_frame_time(self, paint_ms: float) -> None:
+        gov = getattr(self, "_perf_gov", None)
+        if gov is not None:
+            new = gov.record(paint_ms)
+            if new:
+                self._apply_tier(new)
+                self._log.append_log(f"SYS: HUD performance tier now {new.upper()}.")
+
+    # ── menus, palette, island (core/ui_menus.py, ui/command_palette.py) ──
+    def _run_ui_command(self, cid: str) -> None:
+        """Run one command from the menus or the palette."""
+        from jarvis.core import ui_menus
+        if cid.startswith("open:"):
+            self.open_glass_window(cid.split(":", 1)[1])
+        elif cid == "home":
+            wm = self._window_manager()
+            for w in wm.windows():
+                wm.minimize(w.id)
+            self._apply_windows()
+        elif cid == "tile":
+            self._window_manager().tile()
+            self._apply_windows()
+        elif cid == "ask":
+            self._input.setFocus()
+            self._input.selectAll()
+        elif cid == "palette":
+            self._open_palette()
+        elif cid == "bento":
+            self._open_bento_dashboard()
+        elif cid in ui_menus.ASK_TEXT:
+            self._ask_jarvis(ui_menus.ASK_TEXT[cid])
+        elif cid in ("activity", "activity_panel"):
+            self._toggle_activity_panel(not self._right_panel.isVisible())
+        elif cid == "telemetry":
+            self._toggle_telemetry_panel(not self._left_panel.isVisible())
+        elif cid == "settings":
+            self._drawer_btn.click()
+        elif cid == "system":
+            self._on_workspace_shortcut("system")
+        elif cid in ("mode:jarvis", "mode:bihansa"):
+            self._mode_btn.setCurrentIndex(0 if cid.endswith("jarvis") else 1)
+        elif cid == "ws:save":
+            from PyQt6.QtWidgets import QInputDialog
+            name, ok = QInputDialog.getText(self, "Save workspace", "Name:")
+            if ok and name.strip():
+                self._window_manager()
+                self._workspaces.save(name.strip(), self._wm)
+                self._log.append_log(f"SYS: Workspace '{name.strip().lower()}' saved.")
+        elif cid == "ws:load":
+            from PyQt6.QtWidgets import QInputDialog
+            self._window_manager()
+            names = self._workspaces.names()
+            if not names:
+                self._log.append_log("SYS: No saved workspaces yet.")
+                return
+            name, ok = QInputDialog.getItem(self, "Load workspace", "Workspace:", names, 0, False)
+            if ok and name:
+                self._load_workspace(name)
+        elif cid.startswith("ws:load:"):
+            self._load_workspace(cid.split(":", 2)[2])
+        elif cid.startswith("perf:"):
+            tier = self.set_performance_budget(cid.split(":", 1)[1], save=True)
+            self._log.append_log(f"SYS: Performance {cid.split(':', 1)[1].upper()} — tier {tier.upper()}.")
+
+    def _ask_jarvis(self, text: str) -> None:
+        if self.on_text_command:
+            threading.Thread(target=self.on_text_command, args=(text,), daemon=True).start()
+
+    def _open_palette(self) -> None:
+        from jarvis.core import ui_menus
+        from jarvis.ui.command_palette import CommandPalette
+        pal = getattr(self, "_palette", None)
+        if pal is None:
+            pal = self._palette = CommandPalette(self.centralWidget())
+            pal.command_chosen.connect(self._run_ui_command)
+            pal.text_submitted.connect(self._ask_jarvis)
+        self._window_manager()
+        pal.extra = [ui_menus.Command(f"ws:load:{n}", f"Workspace: {n}", "Workspaces", "load restore")
+                     for n in self._workspaces.names()]
+        pal.open()
+
+    def _ensure_island(self) -> None:
+        from jarvis.ui.command_palette import IslandPill
+        if getattr(self, "_island", None) is None:
+            self._island = IslandPill(self.centralWidget())
+            self._island.clicked.connect(self._open_palette)
+            self._island_tmr = QTimer(self)
+            self._island_tmr.timeout.connect(self._update_island)
+            self._island_tmr.start(500)
+        self._position_island()
+
+    def _position_island(self) -> None:
+        isl = getattr(self, "_island", None)
+        if isl is None:
+            return
+        try:
+            tl = self.hud.mapTo(self.centralWidget(), self.hud.rect().topLeft())
+            w = max(220, min(420, int(self.hud.width() * 0.32)))
+            isl.setGeometry(tl.x() + (self.hud.width() - w) // 2, tl.y() + 8, w, 28)
+            isl.show()
+            isl.raise_()
+        except (RuntimeError, AttributeError):
+            pass
+
+    def _update_island(self) -> None:
+        text = ""
+        wm = getattr(self, "_wm", None)
+        if wm is not None:
+            t = wm.find("timer")
+            gw = self._glass.get(t.id) if t is not None else None
+            if gw is not None and gw.content.running:
+                text = gw.content._display.text()
+        self._island.set_timer(text)
+
+    # ── glass windows (core/window_manager.py, ui/glass_window.py) ─────────
+    def _window_layout(self):
+        """The dock layout for the area the HUD canvas occupies, so windows
+        never cover the header, the command bar or the hologram."""
+        from jarvis.core.ui_layout import compute_layout
+        cw = self.centralWidget()
+        top = bottom = 0
+        try:
+            tl = self.hud.mapTo(cw, self.hud.rect().topLeft())
+            top = tl.y()
+            bottom = cw.height() - (tl.y() + self.hud.height())
+        except (RuntimeError, AttributeError):
+            pass
+        return compute_layout(cw.width(), cw.height(), header_h=top, footer_h=bottom)
+
+    def _window_manager(self):
+        wm = getattr(self, "_wm", None)
+        if wm is None:
+            from jarvis.core.window_manager import WindowManager, Workspaces
+            wm = self._wm = WindowManager(self._window_layout())
+            self._glass: dict = {}
+            self._workspaces = Workspaces(CONFIG_DIR / "workspaces.json")
+        return wm
+
+    def open_glass_window(self, kind: str, side: str | None = None, payload: dict | None = None):
+        """Open (or bring back) a glass window; returns its id."""
+        from jarvis.ui.glass_window import GlassWindow, make_content
+        wm = self._window_manager()
+        win = wm.open(kind, side or None, payload)
+        gw = self._glass.get(win.id)
+        if gw is None:
+            gw = GlassWindow(win.id, win.title, make_content(kind, win.payload), self.centralWidget(),
+                             lite=_ui_bus().get(_ui_state.PERF_TIER, "full") == "lite")
+            gw.close_clicked.connect(self.close_glass_window)
+            gw.minimize_clicked.connect(lambda wid: (self._wm.minimize(wid), self._apply_windows()))
+            gw.dropped.connect(lambda wid, x, y: (self._wm.drop(wid, x, y), self._apply_windows()))
+            gw.activated.connect(lambda wid: (self._wm.focus(wid), self._apply_windows()))
+            self._glass[win.id] = gw
+        elif payload:
+            self._update_glass_content(gw, kind, payload)
+        self._apply_windows()
+        return win.id
+
+    def _update_glass_content(self, gw, kind: str, payload: dict) -> None:
+        c = gw.content
+        if kind == "news" and "items" in payload:
+            c.set_items(payload["items"])
+        elif kind == "image" and payload.get("path"):
+            c.show_image(str(payload["path"]))
+        elif kind == "timer" and payload.get("seconds"):
+            c.add(int(payload["seconds"]))
+            if not c.running:
+                c.toggle()
+
+    def close_glass_window(self, wid: str) -> None:
+        wm = self._window_manager()
+        wm.close(wid)
+        gw = self._glass.pop(wid, None)
+        if gw is not None:
+            gw.hide()
+            gw.deleteLater()
+        self._apply_windows()
+
+    def _apply_windows(self) -> None:
+        wm = getattr(self, "_wm", None)
+        if wm is None:
+            return
+        geo = wm.geometry()
+        frozen = wm.frozen()
+        for wid, gw in self._glass.items():
+            r = geo.get(wid)
+            if r is None:
+                gw.hide()
+            else:
+                gw.setGeometry(*r.rounded())
+                gw.show()
+                gw.raise_()
+            gw.set_frozen(wid in frozen)
+        _ui_bus().set(_ui_state.WINDOWS, tuple(w.kind for w in wm.windows() if not w.minimized))
+
+    def _handle_window_command(self, command: VoiceUICommand) -> None:
+        from jarvis.core.window_manager import KINDS
+        wm = self._window_manager()
+        act, target, side = command.action, command.target, command.desired_state or None
+        if act == "window_open" and target in KINDS:
+            self.open_glass_window(target, side)
+            self._log.append_log(f"SYS: {KINDS[target]['title'].title()} opened"
+                                 + (f" on the {side}." if side else "."))
+        elif act == "window_move" and wm.find(target) is not None:
+            wm.move(wm.find(target).id, side or "left")
+            self._apply_windows()
+        elif act == "window_close" and wm.find(target) is not None:
+            self.close_glass_window(wm.find(target).id)
+        elif act == "window_tile":
+            wm.tile()
+            self._apply_windows()
+        elif act == "workspace_save":
+            self._workspaces.save(target, wm)
+            self._log.append_log(f"SYS: Workspace '{target}' saved.")
+        elif act == "workspace_load":
+            if self._load_workspace(target):
+                self._log.append_log(f"SYS: Workspace '{target}' restored.")
+            else:
+                self._log.append_log(f"SYS: No workspace called '{target}'.")
+        else:
+            self._log.append_log(f"SYS: No {target.replace('_', ' ')} window is open.")
+
+    def _load_workspace(self, name: str) -> bool:
+        wm = self._window_manager()
+        if not self._workspaces.load(name, wm):
+            return False
+        for wid, gw in list(self._glass.items()):      # the snapshot replaces everything
+            gw.hide()
+            gw.deleteLater()
+        self._glass.clear()
+        from jarvis.ui.glass_window import GlassWindow, make_content
+        for w in wm.windows():
+            gw = GlassWindow(w.id, w.title, make_content(w.kind, w.payload), self.centralWidget())
+            gw.close_clicked.connect(self.close_glass_window)
+            gw.minimize_clicked.connect(lambda wid: (self._wm.minimize(wid), self._apply_windows()))
+            gw.dropped.connect(lambda wid, x, y: (self._wm.drop(wid, x, y), self._apply_windows()))
+            gw.activated.connect(lambda wid: (self._wm.focus(wid), self._apply_windows()))
+            self._glass[w.id] = gw
+        self._apply_windows()
+        return True
+
     def _dispatch_voice_ui_command(self, command: VoiceUICommand) -> None:
         """Perform a narrowly matched command on visible JARVIS controls only."""
         if not isinstance(command, VoiceUICommand):
@@ -5337,6 +5657,10 @@ class MainWindow(QMainWindow):
                 "Use CONFIRM ACTION / CANCEL ACTION where voice approval is allowed; "
                 "manual-click-only requests must be resolved on the HUD."
             )
+            return
+
+        if command.action.startswith(("window_", "workspace_")):
+            self._handle_window_command(command)
             return
 
         # Some Qt child overlays do not set Qt's modal flag. Restrict voice
@@ -5657,6 +5981,7 @@ class MainWindow(QMainWindow):
 
     def _apply_audio_level(self, level: float) -> None:
         """Apply audio levels to HUD canvases on the Qt GUI thread only."""
+        _ui_bus().set(_ui_state.AUDIO_LEVEL, round(float(level or 0.0), 3))
         try:
             self.hud.set_audio_level(level)
         except (RuntimeError, TypeError, ValueError):
@@ -5688,6 +6013,7 @@ class MainWindow(QMainWindow):
                 pass
 
     def _apply_state(self, state: str):
+        _ui_bus().set(_ui_state.ASSISTANT, str(state).lower())
         self.hud.state    = state
         self.hud.speaking = (state == "SPEAKING")
         if hasattr(self, "_jarvis_logo_overlay"):
@@ -5904,6 +6230,18 @@ class MainWindow(QMainWindow):
     def changeEvent(self, event):
         super().changeEvent(event)
         if event.type() == QEvent.Type.WindowStateChange:
+            # Minimised: stop animating altogether (shared clock and HUD timer),
+            # and pick up exactly where it was on restore.
+            try:
+                if self.isMinimized():
+                    _ui_state.clock().pause()
+                    self.hud._tmr.stop()
+                else:
+                    _ui_state.clock().resume()
+                    if not self.hud._tmr.isActive():
+                        self.hud._tmr.start()
+            except (RuntimeError, AttributeError):
+                pass
             overlay = getattr(self, "_jarvis_logo_overlay", None)
             if overlay is None:
                 return

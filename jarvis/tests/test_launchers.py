@@ -165,10 +165,17 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertIn("class _HoverMenuButton(QToolButton)", source)
         self.assertIn("self.showMenu()", source)
         self.assertIn("self._nav_menu_btn = _HoverMenuButton()", source)
-        for key in ("timers", "music", "news", "media", "system"):
-            self.assertIn(f'("{key}",', source)
-        self.assertIn("self._on_workspace_shortcut(view)", source)
-        self.assertIn("self._show_workspace_side(key)", source)
+        # The hover menu is built from core/ui_menus.py, one submenu per
+        # section, and its commands open glass windows (core/window_manager).
+        self.assertIn("for section in _menus.LEFT_SECTIONS:", source)
+        self.assertIn("self._run_ui_command(cid)", source)
+        self.assertIn('if cid.startswith("open:"):', source)
+        self.assertIn("self.open_glass_window(cid.split(\":\", 1)[1])", source)
+        self.assertIn('self._on_workspace_shortcut("system")', source)
+        from jarvis.core import ui_menus
+        ids = {c.id for c in ui_menus.COMMANDS}
+        for kind in ("timer", "youtube_music", "news", "video", "downloads"):
+            self.assertIn(f"open:{kind}", ids)
 
     def test_hidden_telemetry_does_not_poll_until_opened(self):
         source = (ROOT / "jarvis" / "ui" / "__init__.py").read_text(encoding="utf-8")
@@ -191,7 +198,9 @@ class TestLaunchersAndImports(unittest.TestCase):
         dashboard = source.split("    def _open_bento_dashboard(self)", 1)[1].split(
             "    def _on_workspace_shortcut(self)", 1
         )[0]
-        self.assertIn('self._nav_menu.addAction("▦   BENTO DASHBOARD")', header)
+        from jarvis.core import ui_menus
+        self.assertEqual(ui_menus.get("bento").section, "AI Tools")       # in the hover menu
+        self.assertIn('elif cid == "bento":\n            self._open_bento_dashboard()', source)
         self.assertIn("dialog = QDialog(self)", dashboard)
         self.assertIn("dialog.setModal(False)", dashboard)
         self.assertIn("self._bento_timer.setInterval(3000)", dashboard)
@@ -213,13 +222,15 @@ class TestLaunchersAndImports(unittest.TestCase):
             "    def _tick_clock(self)", 1
         )[0]
         self.assertIn("self._right_menu_btn = QToolButton()", header)
-        self.assertIn('"▦  Bento Dashboard"', header)
-        self.assertIn('"▤  Toggle Telemetry"', header)
-        self.assertIn('"☷  Toggle Activity"', header)
-        self.assertIn('"⚙  Settings & Controls"', header)
-        self.assertIn('"JARVIS Mode"', header)
-        self.assertIn('"BIHANSA Mode"', header)
-        self.assertIn("self._mode_btn.setCurrentIndex(1)", header)
+        self.assertIn("_menus.by_section(_menus.RIGHT_SECTION)", header)
+        from jarvis.core import ui_menus
+        titles = [c.title for c in ui_menus.by_section(ui_menus.RIGHT_SECTION)]
+        for title in ("JARVIS Mode", "BIHANSA Mode", "Settings", "System Controls",
+                      "Activity", "Telemetry"):
+            self.assertIn(title, titles)
+        self.assertIn('self._mode_btn.setCurrentIndex(0 if cid.endswith("jarvis") else 1)', source)
+        self.assertIn("self._toggle_telemetry_panel(not self._left_panel.isVisible())", source)
+        self.assertIn("self._toggle_activity_panel(not self._right_panel.isVisible())", source)
 
     def test_import_voice_persona(self):
         import jarvis.voice.persona as persona

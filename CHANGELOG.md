@@ -8,6 +8,16 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Jarvis Web** (`web/`): the full NextChat web/desktop chat app, rebranded
+  as Jarvis AI, with every upstream feature (multi-provider chat, masks,
+  prompts, plugins, MCP, artifacts, realtime voice, TTS, export, sync, PWA,
+  Tauri). Upstream's paid-service promotion and auto-updater are removed.
+- **OpenAI-compatible Jarvis API** (`dashboard/openai_bridge.py`): the
+  dashboard now serves `GET /v1/models` and `POST /v1/chat/completions`
+  (streaming and non-streaming) backed by the hybrid router, so the web UI can
+  chat with the `jarvis` model. Off until `JARVIS_WEB_API_KEY` or
+  `web_chat_api_key` is set; requests need that key as a Bearer token.
+
 - **Hybrid brain: `ask_claude` tool** (`actions/ask_claude.py`): Gemini Live can
   hand coding, planning, long reasoning and long writing to Claude (quick = fast
   model, deep = strong model). Short spoken answer; long results saved under

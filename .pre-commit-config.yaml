@@ -8,6 +8,8 @@
 # the app that a formatter could break.
 minimum_pre_commit_version: "3.7.0"
 default_stages: [pre-commit]
+# web/ is the NextChat-based UI with its own lint/format tooling (prettier, eslint).
+exclude: ^web/
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks

@@ -25,6 +25,7 @@ PERSONA = "persona"                # jarvis / bihansa
 PERF_TIER = "perf.tier"            # full / balanced / lite
 WINDOWS = "windows"                # tuple of open window ids
 FOCUS = "focus"                    # id of the focused window, or ""
+NEWS = "news.items"                # (heading, [ {title, source, url}, ... ]) last headlines shown by the HUD
 
 ALL = "*"
 

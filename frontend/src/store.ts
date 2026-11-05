@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AssistantState, Battery, CommandReason, CommandState, HostEvent, LogTag, Net, Persona, PerfTier } from './bridge/contract';
+import type { AssistantState, Battery, CommandReason, CommandState, HostEvent, LogTag, NewsItem, Net, Persona, PerfTier } from './bridge/contract';
 
 export type Page = 'home' | 'chat' | 'activity' | 'models' | 'research' | 'reminders' | 'apps' | 'files' | 'memory' | 'automation' | 'monitor' | 'security';
 
@@ -19,6 +19,7 @@ export interface UiState {
   assistant: AssistantState;
   persona: Persona;
   perfTier: PerfTier | null;
+  news: { heading: string; items: NewsItem[] } | null;
   outputLevel: number;
   inputLevel: number;
   series: Series;
@@ -50,7 +51,7 @@ export interface UiState {
 const prefersReduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export const useUi = create<UiState>((set) => ({
-  link: 'connecting', assistant: 'idle', persona: 'jarvis', perfTier: null, outputLevel: 0, inputLevel: 0,
+  link: 'connecting', assistant: 'idle', persona: 'jarvis', perfTier: null, news: null, outputLevel: 0, inputLevel: 0,
   series: EMPTY, metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, clock24: true, history: [], workspaceNames: [], paletteOpen: false, muted: false, command: { state: 'unavailable', last: null }, control: null, log: [],
   setLink: (link) => set({ link }),
   apply: (e) => set((s) => {
@@ -66,6 +67,7 @@ export const useUi = create<UiState>((set) => ({
       case 'assistant.muted': return { muted: e.muted };
       case 'ui.persona': return { persona: e.persona };
       case 'ui.perf': return { perfTier: e.tier };
+      case 'news.items': return { news: { heading: e.heading, items: e.items } };
       case 'workspace.list': return { workspaceNames: e.names };
       case 'workspace.loaded': return e.layout ? { page: e.layout.page } : s;
       case 'host.hello': return { link: 'connected' as const };

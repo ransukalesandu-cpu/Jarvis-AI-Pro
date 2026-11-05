@@ -60,6 +60,10 @@ _EVENTS = {
     "log.line": ({"tag", "text"}, lambda m: m["tag"] in LOG_KINDS and isinstance(m["text"], str) and 0 < len(m["text"]) <= MAX_LINE),
     "control.result": ({"reason"}, lambda m: m["reason"] in REASONS),
     "command.result": ({"reason"}, lambda m: m["reason"] in REASONS),
+    "news.items": ({"heading", "items"}, lambda m: isinstance(m["heading"], str) and len(m["heading"]) <= 80
+                   and isinstance(m["items"], list) and len(m["items"]) <= 20
+                   and all(isinstance(i, dict) and set(i) == {"title", "source", "link"} and isinstance(i["title"], str) and 0 < len(i["title"]) <= 200
+                           and isinstance(i["source"], str) and len(i["source"]) <= 80 and isinstance(i["link"], bool) for i in m["items"])),
     "host.hello": ({"version"}, lambda m: _num(m["version"], 0, 1000)),
 }
 
@@ -92,6 +96,7 @@ _REQUESTS = {
     "workspace.save": ({"name", "layout"}, lambda m: _NAME_OK(m) and validate_layout(m["layout"]) is not None),
     "command.submit": ({"text"}, lambda m: isinstance(m["text"], str) and len(m["text"]) <= 4 * MAX_TEXT),
     "control.do": ({"action"}, lambda m: m["action"] in ACTIONS),
+    "news.open": ({"index"}, lambda m: isinstance(m["index"], int) and not isinstance(m["index"], bool) and 0 <= m["index"] < 20),
     "ping": ({"n"}, lambda m: isinstance(m["n"], int) and not isinstance(m["n"], bool) and 0 <= m["n"] < 2 ** 31),
 }
 

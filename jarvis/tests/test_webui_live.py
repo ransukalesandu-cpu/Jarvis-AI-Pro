@@ -125,3 +125,22 @@ def test_hud_publishes_persona_on_refresh_and_change():
     from jarvis import ui
     src = inspect.getsource(ui.MainWindow._refresh_assistant_mode_btn) + inspect.getsource(ui.MainWindow._on_assistant_mode_selected)
     assert src.count("_ui_state.PERSONA") == 2
+
+
+def test_news_is_mirrored_without_urls_in_the_event():
+    import json
+    from jarvis.webui import contract
+    host, got = FakeHost(), []
+    host.set_news = lambda heading, rows: got.append((heading, rows))
+    bus = ui_state.StateBus()
+    LiveLink(host, bus, clock=lambda: 0.0)
+    bus.set(ui_state.NEWS, ("HEADLINES", [{"title": "A", "source": "S", "url": "https://x.example/a"}]))
+    assert got and got[0][0] == "HEADLINES"
+    ev = contract.encode_event("news.items", heading="H", items=[{"title": "A", "source": "S", "link": True}])
+    assert ev and "https://" not in ev
+    assert contract.encode_event("news.items", heading="H", items=[{"title": "A", "source": "S", "link": True, "url": "https://x"}]) is None
+    assert contract.encode_event("news.items", heading="H", items=[{"title": "", "source": "S", "link": True}]) is None
+    assert contract.encode_event("news.items", heading="H", items=[{"title": "t", "source": "", "link": True}] * 21) is None
+    assert contract.parse_request(json.dumps({"kind": "news.open", "index": 3})) is not None
+    for bad in (-1, 20, True, "1"):
+        assert contract.parse_request(json.dumps({"kind": "news.open", "index": bad})) is None

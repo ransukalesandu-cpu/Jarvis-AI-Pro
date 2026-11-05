@@ -2363,6 +2363,14 @@ class MainWindow(QMainWindow):
         side_width = min(side_width, max(230, total - 180))
         self._stage_split.setSizes([max(180, total - side_width), side_width])
 
+    def _publish_news(self, items, title) -> None:
+        """Mirror the headlines the HUD is showing to the state bus (read-only; the web page gets titles, never URLs)."""
+        if not isinstance(items, (list, tuple)):
+            return
+        rows = [{"title": str(i.get("title") or ""), "source": str(i.get("source") or ""), "url": str(i.get("url") or "")}
+                for i in items if isinstance(i, dict)]
+        _ui_bus().set(_ui_state.NEWS, (str(title or "HEADLINES"), rows))
+
     def _show_workspace(self, kind: str, payload) -> None:
         data = payload if isinstance(payload, dict) else {"value": payload}
         if kind == "briefing_news":
@@ -2407,6 +2415,7 @@ class MainWindow(QMainWindow):
         elif kind == "document":
             self._workspace.show_document(data.get("path", ""), data.get("summary", ""))
         elif kind == "news":
+            self._publish_news(data.get("items"), data.get("title"))
             self._workspace.show_news(data.get("items", data.get("text", "")), data.get("title", "HEADLINES"))
         elif kind == "email":
             self._workspace.show_email(data.get("items", []), data.get("title", "INBOX"))

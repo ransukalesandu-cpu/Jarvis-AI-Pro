@@ -12,6 +12,7 @@ from jarvis.core import failsoft
 
 from . import DIST
 from .bridge import WebUIBridge
+from .command_gate import safe_link
 from .navigation import is_allowed_url
 from .telemetry import Telemetry
 from .workspace_store import WorkspaceStore
@@ -36,7 +37,7 @@ class _LockedPage(QWebEnginePage):
 class WebUIHost(QWidget):
     ready = pyqtSignal()   # emitted each time the page finishes loading (first load and reloads)
 
-    def __init__(self, parent=None, *, debug: bool = False, workspace_path=None, gate=None, controls=None):
+    def __init__(self, parent=None, *, debug: bool = False, workspace_path=None, gate=None, controls=None, links=None):
         super().__init__(parent)
         self._reloads = 0
         self._debug = debug
@@ -54,7 +55,8 @@ class WebUIHost(QWidget):
         if hasattr(self._page, "permissionRequested"):
             self._page.permissionRequested.connect(lambda p: p.deny())
 
-        self.bridge = WebUIBridge(self, WorkspaceStore(workspace_path), gate, controls)
+        self._news_urls: list[str] = []
+        self.bridge = WebUIBridge(self, WorkspaceStore(workspace_path), gate, controls, links)
         self._channel = QWebChannel(self)
         self._channel.registerObject("jarvis", self.bridge)
         self._page.setWebChannel(self._channel)
@@ -123,6 +125,17 @@ class WebUIHost(QWidget):
 
     def set_muted(self, muted: bool) -> None:
         self.bridge.publish("assistant.muted", muted=bool(muted))
+
+    def news_urls(self) -> list[str]:
+        return list(self._news_urls)
+
+    def set_news(self, heading: str, rows) -> None:
+        """Headlines for the page: title and source only. The links stay here and are opened by index through LinkGate."""
+        rows = [r for r in list(rows)[:20] if isinstance(r, dict) and str(r.get("title") or "").strip()]
+        self._news_urls = [str(r.get("url") or "") for r in rows]
+        items = [{"title": str(r["title"]).strip()[:200], "source": str(r.get("source") or "").strip()[:80],
+                  "link": safe_link(r.get("url")) is not None} for r in rows]
+        self.bridge.publish("news.items", heading=str(heading or "HEADLINES")[:80], items=items)
 
     def set_perf_tier(self, tier: str) -> None:
         self.bridge.publish("ui.perf", tier=tier)

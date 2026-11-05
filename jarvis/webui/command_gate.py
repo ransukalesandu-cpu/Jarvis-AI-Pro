@@ -79,6 +79,50 @@ class CommandGate:
         return "sent"
 
 
+MAX_NEWS = 20
+LINK_MAX = 2000
+
+
+def safe_link(url) -> str | None:
+    """An https URL with a host and no embedded credentials, else None. The only kind of link the page may ask to open."""
+    from urllib.parse import urlsplit
+    try:
+        u = urlsplit(str(url or "").strip())
+    except ValueError:
+        return None
+    if u.scheme != "https" or not u.hostname or u.username or u.password or len(str(url)) > LINK_MAX:
+        return None
+    return u.geturl()
+
+
+class LinkGate:
+    """Lets the page ask to open one of the headlines JARVIS is currently showing, by index. The page never supplies a
+    URL: Python looks it up in its own list, checks it, and hands it to the system browser. Same availability rule as
+    typing (refused while locked / PIN / silent / guest), rate limited."""
+
+    def __init__(self, gate: "CommandGate", urls: Callable[[], list[str]], opener: Callable[[str], None],
+                 clock: Callable[[], float] = time.monotonic):
+        self._gate, self._urls, self._opener, self._clock = gate, urls, opener, clock
+        self._last = -1e9
+
+    def open(self, index) -> str:
+        if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < MAX_NEWS:
+            return "unavailable"
+        state = self._gate.availability()
+        if state != "ok":
+            return state
+        now = self._clock()
+        if now - self._last < 1.0:
+            return "rate_limited"
+        urls = self._urls()
+        url = safe_link(urls[index]) if index < len(urls) else None
+        if url is None:
+            return "unavailable"
+        self._last = now
+        self._opener(url)
+        return "done"
+
+
 MODE_ACTIONS = ("mode_jarvis", "mode_bihansa")
 PERF_ACTIONS = ("perf_auto", "perf_full", "perf_balanced", "perf_lite")
 # Changing how JARVIS behaves (persona, performance) needs the same fully-normal state as unmuting the microphone.

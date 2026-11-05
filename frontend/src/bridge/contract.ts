@@ -11,6 +11,7 @@ export const PERF_TIERS = ['full', 'balanced', 'lite'] as const;
 export type PerfTier = (typeof PERF_TIERS)[number];
 
 export interface Battery { percent: number; charging: boolean }
+export interface NewsItem { title: string; source: string; link: boolean }
 export interface Net { upKBps: number; downKBps: number }
 
 export type HostEvent =
@@ -21,6 +22,7 @@ export type HostEvent =
   | { type: 'assistant.muted'; muted: boolean }
   | { type: 'ui.persona'; persona: Persona }
   | { type: 'ui.perf'; tier: PerfTier }
+  | { type: 'news.items'; heading: string; items: NewsItem[] }
   | { type: 'workspace.list'; names: string[] }
   | { type: 'workspace.loaded'; name: string; layout: Layout | null }
   | { type: 'command.availability'; state: CommandState }
@@ -35,6 +37,7 @@ export type UiRequest =
   | { kind: 'workspace.list' } | { kind: 'workspace.load'; name: string } | { kind: 'workspace.delete'; name: string }
   | { kind: 'workspace.save'; name: string; layout: Layout }
   | { kind: 'command.submit'; text: string }
+  | { kind: 'news.open'; index: number }
   | { kind: 'control.do'; action: ControlAction };
 
 export const COMMAND_MAX = 500;
@@ -89,6 +92,16 @@ export function parseHostEvent(raw: unknown): HostEvent | null {
       return (PERF_TIERS as readonly unknown[]).includes(m.tier) ? { type: m.type, tier: m.tier as PerfTier } : null;
     case 'ui.persona':
       return (PERSONAS as readonly unknown[]).includes(m.persona) ? { type: m.type, persona: m.persona as Persona } : null;
+    case 'news.items': {
+      if (!str(m.heading, 80) && m.heading !== '') return null;
+      if (!Array.isArray(m.items) || m.items.length > 20) return null;
+      const items: NewsItem[] = [];
+      for (const i of m.items as Record<string, unknown>[]) {
+        if (!i || typeof i !== 'object' || !str(i.title, 200) || typeof i.source !== 'string' || i.source.length > 80 || typeof i.link !== 'boolean') return null;
+        items.push({ title: i.title as string, source: i.source, link: i.link });
+      }
+      return { type: m.type, heading: m.heading as string, items };
+    }
     case 'workspace.list':
       return Array.isArray(m.names) && m.names.length <= 24 && m.names.every((n) => str(n, 32)) ? { type: m.type, names: m.names as string[] } : null;
     case 'workspace.loaded': {

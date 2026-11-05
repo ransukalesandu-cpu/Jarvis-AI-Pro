@@ -6,6 +6,20 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Automation A1** (see `docs/plans/automation.md`). Triggers accept 5-field
+  **cron expressions** with an IANA time zone (`core/cron_expr.py`, no new
+  dependency), a `catch_up` policy (`once` fires a missed run late, `skip` drops
+  it), a per-hour fire budget, and automatic switch-off after 3 consecutive
+  failures. Every attempt is written to a **run history** (`trigger_runs` table in
+  the existing owner database, newest 200 per trigger). `mode="task"` runs the
+  prompt as a silent background agent task through the normal agent policy (so
+  DANGEROUS steps still need a UI confirmation) and announces the result; a task
+  started by a trigger cannot create or change triggers. The `proactive_triggers`
+  voice tool gained `runs`, `run_now`, `enable`, `disable`, `cron`, `tz`, `mode`,
+  `catch_up`, `max_per_hour`. Existing `triggers.json` files load unchanged.
+
 ### Changed
 
 - **Restructured into a real `jarvis` Python package.** `JarvisAI/` is now

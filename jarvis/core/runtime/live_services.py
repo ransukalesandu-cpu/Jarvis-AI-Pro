@@ -185,6 +185,75 @@ class BackgroundServicesMixin:
         from jarvis.core import events
         await asyncio.to_thread(events.emit, "schedule", {"name": trigger.name, "prompt": prompt})
 
+    async def _run_trigger(self, registry, trigger, prompt: str) -> None:
+        """Run one due trigger, record the outcome, and apply the failure policy."""
+        from jarvis.core import trigger_runs
+        started = time.time()
+        try:
+            run_id = await asyncio.to_thread(
+                trigger_runs.record, trigger.name, "started", mode=trigger.mode, started=started)
+        except Exception as exc:          # history must never stop automation
+            print(f"[Triggers] Could not record run: {exc}")
+            run_id = 0
+        try:
+            if trigger.mode == "task":
+                await self._fire_task(registry, trigger, prompt, run_id)
+                return
+            await self._fire_trigger(trigger, prompt)
+            await self._finish_run(registry, trigger, run_id, True, "spoken")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            await self._finish_run(registry, trigger, run_id, False, f"{type(exc).__name__}: {exc}")
+
+    async def _finish_run(self, registry, trigger, run_id: int, ok: bool, detail: str) -> None:
+        from jarvis.core import trigger_runs
+        disabled = registry.record_result(trigger.name, ok)
+        try:
+            if run_id:
+                await asyncio.to_thread(trigger_runs.update, run_id, "ok" if ok else "failed", detail)
+        except Exception as exc:
+            print(f"[Triggers] Could not update run: {exc}")
+        if disabled:
+            queue = self.__dict__.setdefault("_announcements", __import__("collections").deque(maxlen=20))
+            queue.append(
+                f"[Trigger '{trigger.name}' failed 3 times in a row and was switched off. "
+                f"Last error: {detail[:200]}] Tell the owner briefly.")
+
+    async def _fire_task(self, registry, trigger, prompt: str, run_id: int) -> None:
+        """Start a background agent task. It runs through the normal agent policy,
+        so DANGEROUS steps still wait for a UI confirmation; the result is announced
+        when the owner next hears from JARVIS."""
+        from collections import deque
+        from jarvis.agent.integration import get_service
+        service = get_service()
+        task = await asyncio.to_thread(service.start, prompt, source="trigger")
+        self.ui.write_log(f"SYS: Trigger '{trigger.name}' started a background task.")
+        loop = asyncio.get_running_loop()
+        holder: dict = {"id": task.id, "done": False}
+
+        def handle(event) -> None:
+            if holder["done"] or event.kind != "finished" or event.task_id != task.id:
+                return
+            holder["done"] = True
+            unsubscribe = holder.get("off")
+            if unsubscribe:
+                unsubscribe()
+            ok = event.state.value == "completed"
+            queue = self.__dict__.setdefault("_announcements", deque(maxlen=20))
+            queue.append(
+                f"[Scheduled task '{trigger.name}' finished: {event.state.value}. "
+                f"{str(event.message)[:600]}] Tell the owner the result in one or two sentences.")
+            asyncio.run_coroutine_threadsafe(
+                self._finish_run(registry, trigger, run_id, ok, f"{event.state.value}: {event.message}"), loop)
+
+        holder["off"] = service.subscribe(handle)
+        # The task may have finished before we subscribed: check its state once.
+        latest = service.store.load(task.id)
+        if latest is not None and latest.state.terminal:
+            from jarvis.agent.events import event_from_task
+            handle(event_from_task("finished", latest, message=""))
+
     async def _run_trigger_scheduler(self) -> None:
         """Background task: inject due triggers as turns so JARVIS speaks first."""
         from jarvis.core.triggers import get_trigger_registry
@@ -208,11 +277,14 @@ class BackgroundServicesMixin:
                 due = await asyncio.to_thread(registry.due, quiet_hours=get_quiet_hours())
                 if not due:
                     continue
-                if self._proactive_turn_blocker():
+                blocked = self._proactive_turn_blocker()
+                # Background tasks never speak, so only spoken turns wait for a quiet moment.
+                pick = next(((t, p) for t, p in due if t.mode == "task" or not blocked), None)
+                if pick is None:
                     continue      # still due; retried on the next tick
-                trigger, prompt = due[0]          # one turn at a time
+                trigger, prompt = pick
                 registry.mark_fired(trigger.name)
-                await self._fire_trigger(trigger, prompt)
+                await self._run_trigger(registry, trigger, prompt)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

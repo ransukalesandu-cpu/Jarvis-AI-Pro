@@ -42,7 +42,12 @@ from typing import Callable, Optional
 _NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,63}$")
 _HHMM_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 _PERSISTED_FIELDS = ("name", "prompt", "description", "daily_at", "every_seconds",
-                     "once_at", "respect_quiet_hours", "enabled")
+                     "once_at", "respect_quiet_hours", "enabled", "cron", "tz",
+                     "catch_up", "mode", "max_per_hour", "consecutive_failures")
+MAX_CONSECUTIVE_FAILURES = 3
+CATCH_UP_GRACE_SECONDS = 120.0
+MODES = ("turn", "task")
+CATCH_UP_MODES = ("once", "skip")
 
 
 @dataclass
@@ -53,6 +58,13 @@ class Trigger:
     daily_at: Optional[str] = None
     every_seconds: Optional[float] = None
     once_at: Optional[float] = None
+    cron: Optional[str] = None      # 5-field cron expression (core/cron_expr.py)
+    tz: Optional[str] = None        # IANA zone for cron/daily_at; local when empty
+    catch_up: str = "once"          # missed slot: "once" fire late, or "skip" it
+    mode: str = "turn"              # "turn" speaks a prompt; "task" runs a background agent task
+    max_per_hour: int = 12          # budget: fires beyond this in an hour are held
+    consecutive_failures: int = 0
+    run_requested: bool = False     # "run now": fires on the next scheduler tick (not saved)
     check: Optional[Callable[[], Optional[str]]] = None
     respect_quiet_hours: bool = True
     enabled: bool = True
@@ -64,9 +76,29 @@ class Trigger:
         if not _NAME_RE.match(self.name or ""):
             raise ValueError("trigger name must be an identifier (letters, digits, _)")
         schedules = [self.daily_at is not None, self.every_seconds is not None,
-                     self.once_at is not None, self.check is not None]
+                     self.once_at is not None, self.cron is not None, self.check is not None]
         if sum(schedules) != 1:
-            raise ValueError("a trigger needs exactly one of daily_at, every_seconds, once_at, check")
+            raise ValueError(
+                "a trigger needs exactly one of daily_at, every_seconds, once_at, cron, check")
+        if self.mode not in MODES:
+            raise ValueError("mode must be 'turn' or 'task'")
+        if self.catch_up not in CATCH_UP_MODES:
+            raise ValueError("catch_up must be 'once' or 'skip'")
+        if int(self.max_per_hour) < 1:
+            raise ValueError("max_per_hour must be at least 1")
+        if self.cron is not None:
+            from jarvis.core import cron_expr
+            try:
+                cron_expr.parse(self.cron)
+                cron_expr.resolve_zone(self.tz)
+            except cron_expr.CronError as exc:
+                raise ValueError(str(exc)) from exc
+        elif self.tz:
+            from jarvis.core import cron_expr
+            try:
+                cron_expr.resolve_zone(self.tz)
+            except cron_expr.CronError as exc:
+                raise ValueError(str(exc)) from exc
         if self.daily_at is not None and not _HHMM_RE.match(str(self.daily_at)):
             raise ValueError("daily_at must be HH:MM (24-hour)")
         if self.every_seconds is not None and float(self.every_seconds) < 30:
@@ -80,6 +112,14 @@ class Trigger:
             return None
         if self.once_at is not None:
             return None if self.last_fired else float(self.once_at)
+        if self.cron is not None:
+            from jarvis.core import cron_expr
+            expr = cron_expr.parse(self.cron)
+            base = self.last_fired or self.registered_at
+            due = cron_expr.next_after(expr, base, self.tz)
+            if due is not None and self.catch_up == "skip" and due < now - CATCH_UP_GRACE_SECONDS:
+                due = cron_expr.next_after(expr, now - CATCH_UP_GRACE_SECONDS, self.tz)
+            return due
         if self.every_seconds is not None:
             base = self.last_fired or self.registered_at
             return base + float(self.every_seconds)
@@ -90,6 +130,8 @@ class Trigger:
             candidate = (today + timedelta(days=1)).timestamp()
         elif not self.last_fired and self.registered_at > candidate:
             # Registered after today's slot: first run is tomorrow, not "late now".
+            candidate = (today + timedelta(days=1)).timestamp()
+        if self.catch_up == "skip" and candidate < now - CATCH_UP_GRACE_SECONDS:
             candidate = (today + timedelta(days=1)).timestamp()
         return candidate
 
@@ -128,6 +170,7 @@ class TriggerRegistry:
         self._lock = threading.RLock()
         self._triggers: dict[str, Trigger] = {}
         self._store_path = store_path
+        self._fires: dict[str, list[float]] = {}     # recent fire times, for max_per_hour
         if store_path is not None:
             self._load()
 
@@ -185,6 +228,12 @@ class TriggerRegistry:
         for trig in triggers:
             if not trig.enabled or (quiet_now and trig.respect_quiet_hours):
                 continue
+            if self._over_budget(trig, now):
+                continue
+            if trig.run_requested and trig.check is None and trig.prompt:
+                trig.run_requested = False
+                ready.append((trig, trig.prompt))
+                continue
             if trig.check is not None:
                 try:
                     text = trig.check()
@@ -199,12 +248,58 @@ class TriggerRegistry:
                 ready.append((trig, trig.prompt))
         return ready
 
+    def _over_budget(self, trig: Trigger, now: float) -> bool:
+        with self._lock:
+            recent = [t for t in self._fires.get(trig.name, []) if now - t < 3600]
+            self._fires[trig.name] = recent
+            return len(recent) >= int(trig.max_per_hour)
+
+    def request_run(self, name: str) -> bool:
+        """Ask the scheduler to run a trigger on its next tick (ignores the schedule)."""
+        with self._lock:
+            trig = self._triggers.get(name)
+            if trig is None or trig.check is not None:
+                return False
+            trig.run_requested = True
+            return True
+
+    def set_enabled(self, name: str, enabled: bool) -> bool:
+        with self._lock:
+            trig = self._triggers.get(name)
+            if trig is None:
+                return False
+            trig.enabled = bool(enabled)
+            if enabled:
+                trig.consecutive_failures = 0
+            if trig.source == "user":
+                self._save()
+            return True
+
+    def record_result(self, name: str, ok: bool) -> bool:
+        """Count a run outcome. Returns True when this failure auto-disabled the trigger."""
+        with self._lock:
+            trig = self._triggers.get(name)
+            if trig is None:
+                return False
+            if ok:
+                trig.consecutive_failures = 0
+                disabled = False
+            else:
+                trig.consecutive_failures += 1
+                disabled = trig.consecutive_failures >= MAX_CONSECUTIVE_FAILURES
+                if disabled:
+                    trig.enabled = False
+            if trig.source == "user":
+                self._save()
+            return disabled
+
     def mark_fired(self, name: str, when: Optional[float] = None) -> None:
         with self._lock:
             trig = self._triggers.get(name)
             if trig is None:
                 return
             trig.last_fired = time.time() if when is None else when
+            self._fires.setdefault(name, []).append(trig.last_fired)
             if trig.once_at is not None and trig.source == "user":
                 # A one-shot reminder is finished once it has been delivered.
                 del self._triggers[name]

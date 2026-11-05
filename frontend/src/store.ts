@@ -28,6 +28,7 @@ export interface UiState {
   paletteOpen: boolean;
   muted: boolean;
   command: { state: CommandState; last: CommandReason | null };
+  control: CommandReason | null;
   history: { at: number; state: AssistantState }[];
   setLink: (l: UiState['link']) => void;
   apply: (e: HostEvent) => void;
@@ -43,7 +44,7 @@ const prefersReduced = typeof matchMedia === 'function' && matchMedia('(prefers-
 
 export const useUi = create<UiState>((set) => ({
   link: 'connecting', assistant: 'idle', persona: 'jarvis', outputLevel: 0, inputLevel: 0,
-  series: EMPTY, metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, clock24: true, history: [], workspaceNames: [], paletteOpen: false, muted: false, command: { state: 'unavailable', last: null },
+  series: EMPTY, metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, clock24: true, history: [], workspaceNames: [], paletteOpen: false, muted: false, command: { state: 'unavailable', last: null }, control: null,
   setLink: (link) => set({ link }),
   apply: (e) => set((s) => {
     switch (e.type) {
@@ -53,6 +54,7 @@ export const useUi = create<UiState>((set) => ({
       case 'provider.changed': return { provider: { provider: e.provider, model: e.model, connected: e.connected, fallback: e.fallback } };
       case 'command.availability': return { command: { ...s.command, state: e.state } };
       case 'command.result': return { command: { ...s.command, last: e.reason } };
+      case 'control.result': return { control: e.reason };
       case 'assistant.muted': return { muted: e.muted };
       case 'ui.persona': return { persona: e.persona };
       case 'workspace.list': return { workspaceNames: e.names };

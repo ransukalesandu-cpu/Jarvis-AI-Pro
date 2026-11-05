@@ -217,3 +217,7 @@ Still open: task events + notification centre (needs a designed backend event so
 - Tests: Python 16 (all four lock states, credential shapes, limits, fail-closed, bridge round trip, change-only availability), Vitest 31; real QtWebEngine run shows send, then lock on PIN state.
 
 Not covered: showing JARVIS's reply as text in the page (needs a read-only, redacted log event).
+
+## 16. Controls — interrupt, mute, fullscreen
+
+`control.do` (closed set: `interrupt`, `mute`, `unmute`, `fullscreen`) via `ControlGate` in Python. Rule: things that stop or quiet JARVIS are always allowed; turning the microphone back **on** is refused from the page while the assistant is locked, awaiting a PIN, silent, or in guest mode (same availability check as the command bar). Idempotent (`noop` when already in that state), 0.3 s spacing, unknown actions do nothing, missing sink means unavailable. Actions call the classic window methods, so there is one implementation. Tests: Python +8, Vitest +4; real QtWebEngine: mute works, unmute while locked is refused and the mic stays muted.

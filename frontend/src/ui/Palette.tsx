@@ -1,6 +1,7 @@
 import { Command } from 'cmdk';
 import { useState } from 'react';
 import { sendRequest } from '../bridge/bridge';
+import type { ControlAction } from '../bridge/contract';
 import { useUi } from '../store';
 import { PAGES } from './Chrome';
 import { TITLES, type WinKind, validateLayout } from '../workspace/layout';
@@ -15,6 +16,8 @@ export function Palette() {
   const [q, setQ] = useState('');
   const run = (fn: () => void) => () => { fn(); setPalette(false); setQ(''); };
   const w = useWindows.getState;
+  const muted = useUi((s) => s.muted);
+  const doControl = (action: ControlAction) => sendRequest({ kind: 'control.do', action });
   const wsName = clean(q);
   const connected = link === 'connected';
   return (
@@ -26,6 +29,9 @@ export function Palette() {
           {PAGES.filter((p) => p.ready).map((p) => <Command.Item key={p.id} value={`go ${p.label}`} onSelect={run(() => go(p.id))}>{p.icon}<span>{p.label}</span></Command.Item>)}
         </Command.Group>
         <Command.Group heading="Assistant">
+          {connected && <Command.Item value="interrupt stop speaking" onSelect={run(() => doControl('interrupt'))}>Interrupt JARVIS</Command.Item>}
+          {connected && <Command.Item value="microphone mute unmute" onSelect={run(() => doControl(muted ? 'unmute' : 'mute'))}>{muted ? 'Unmute microphone' : 'Mute microphone'}</Command.Item>}
+          {connected && <Command.Item value="toggle fullscreen" onSelect={run(() => doControl('fullscreen'))}>Toggle fullscreen</Command.Item>}
           <Command.Item value="ask jarvis type a command" onSelect={run(() => setTimeout(() => dispatchEvent(new Event('jarvis:focus-command')), 0))}>Ask JARVIS…</Command.Item>
         </Command.Group>
         <Command.Group heading="Windows">

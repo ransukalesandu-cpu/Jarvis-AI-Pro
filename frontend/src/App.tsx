@@ -9,6 +9,7 @@ import { PageView } from './ui/Pages';
 import { Tray, Windows } from './ui/Windows';
 import { Palette } from './ui/Palette';
 import { CommandBar } from './ui/CommandBar';
+import { Controls } from './ui/Controls';
 import { useWindows } from './workspace/windows';
 import { sendRequest } from './bridge/bridge';
 
@@ -54,6 +55,7 @@ export default function App() {
       <Windows />
       <Tray />
       <CommandBar />
+      <Controls />
       <Palette />
       <NavPanel />
       <SettingsPanel />

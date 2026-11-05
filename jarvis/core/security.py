@@ -517,6 +517,7 @@ _DANGEROUS_ACTIONS: dict[str, set[str]] = {
     # transaction. Browsing/searching and reading remain audited only.
     "browser_control": {
         "click", "type", "fill_form", "smart_click", "smart_type", "press",
+        "click_ref", "type_ref", "select_ref",
     },
     "desktop": {"wallpaper", "wallpaper_url", "organize", "clean", "task"},
     "desktop_control": {"wallpaper", "wallpaper_url", "organize", "clean", "task"},
@@ -667,7 +668,7 @@ def _personal_mode_relaxes(name: str, action: str) -> bool:
 
 
 _SAFE_ACTIONS: dict[str, set[str]] = {
-    "browser_control": {"switch", "list_browsers", "close", "close_all", "go_to", "search", "new_tab", "scroll", "get_text", "get_url", "close_tab", "screenshot", "back", "forward", "reload"},
+    "browser_control": {"snapshot", "switch", "list_browsers", "close", "close_all", "go_to", "search", "new_tab", "scroll", "get_text", "get_url", "close_tab", "screenshot", "back", "forward", "reload"},
     "desktop": {"current_wallpaper", "list", "stats"},
     "desktop_control": {"current_wallpaper", "list", "stats"},
     "file_controller": {"list", "read", "find", "largest", "disk_usage", "info"},

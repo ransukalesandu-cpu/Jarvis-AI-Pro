@@ -269,6 +269,16 @@ _TIERS: dict[str, str] = {
     # confirmation inside actions/self_heal.py. Keep provenance/rate controls.
     "self_heal":        TIER_DANGEROUS,
     "self_check":       TIER_SAFE,
+    # PC tools (actions/pc_tools.py). They used to fall through to the SENSITIVE
+    # default, so with Full Access off a shell command or file deletion ran with
+    # no confirmation while the older file_controller equivalent asked first.
+    "run_command":      TIER_DANGEROUS,   # arbitrary PowerShell / cmd
+    "ui_automate":      TIER_DANGEROUS,   # drives clicks and keystrokes
+    "open":             TIER_DANGEROUS,   # can launch any file, URL or program
+    "phone_control":    TIER_DANGEROUS,   # actions on the paired phone; fail closed
+    "files":            TIER_SENSITIVE,   # per-action rules in _DANGEROUS_ACTIONS
+    "software":         TIER_SENSITIVE,   # per-action rules in _DANGEROUS_ACTIONS
+    "email":            TIER_SENSITIVE,   # per-action rules in _DANGEROUS_ACTIONS
 
     # Autonomous work: steering/reading a task is sensitive, starting one is
     # dangerous (tier_for() narrows this again per operation). Individual steps
@@ -534,6 +544,9 @@ _DANGEROUS_ACTIONS: dict[str, set[str]] = {
     "phone_call": {"clear_messages"},
     "instagram_account": {"send_message", "reply", "publish_now", "schedule_post", "cancel_scheduled"},
     "email_gmail": {"send", "send_email", "delete", "trash", "archive"},
+    "email": {"send"},
+    "files": {"write", "move", "copy", "delete"},
+    "software": {"install", "upgrade", "uninstall"},
 }
 
 
@@ -580,6 +593,9 @@ def tier_for(name: str, params: dict | None = None) -> str:
                 info = None
             return TIER_SENSITIVE if info is not None and info.read_only else TIER_DANGEROUS
         return TIER_SENSITIVE
+    if name == "jarvis_settings":
+        # Changing a setting can weaken protections; reading one only discloses state.
+        return TIER_DANGEROUS if operation == "set" else TIER_SENSITIVE
     if name == "standing_orders":
         # Permanent rules steer every later session: only reading them is free.
         return TIER_SAFE if action == "list" else TIER_DANGEROUS
@@ -680,6 +696,9 @@ _SAFE_ACTIONS: dict[str, set[str]] = {
     "phone_call": {"get_availability", "list_messages", "play_message", "set_availability"},
     "instagram_account": {"inbox", "read_messages", "list_scheduled"},
     "email_gmail": {"inbox", "list", "read", "search", "get_email"},
+    "email": {"list", "search", "read", "draft"},
+    "files": {"search", "read", "list"},
+    "software": {"list", "search", "outdated"},
 }
 
 
@@ -944,6 +963,17 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
     tier = tier_for(name, params)
     auth = _auth_manager
     auth.get_state()
+
+    # Security V2: once a Guest session was started explicitly, the identity manager
+    # decides first and denies by default. Without one, nothing changes.
+    from jarvis.core import identity
+    ident = identity.get_identity_manager()
+    if ident.guest_mode_active():
+        decision = ident.authorize(name, tier)
+        if not decision.allowed:
+            audit("call", name, tier, "denied", f"guest session: {decision.reason}")
+            return (f"I can't do that in Guest Mode ({decision.category.replace('_', ' ')}). "
+                    "The owner has to sign in first.")
 
     # During Privacy Lock (including the post-cooldown PIN re-auth window), no
     # tool may produce data or trigger a side effect.

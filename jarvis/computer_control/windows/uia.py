@@ -434,11 +434,26 @@ class PywinautoBackend:
             return "unknown"
 
     def menu_select(self, handle: int, path: str) -> None:
-        window = self._uia_window(handle)
+        """Choose a menu item without simulated input where possible.
+
+        Classic Win32 menus: ``HwndWrapper.menu_select`` posts the item's
+        WM_COMMAND to the window (no mouse, no keyboard, works on a locked or
+        non-interactive desktop). Otherwise UI Automation expand/invoke.
+        """
+        errors = []
         try:
-            window.menu_select(str(path))
+            hw = self._hwnd(handle)
+            if hw.menu() is not None and hw.menu().item_count() > 0:
+                hw.menu_select(str(path))
+                return
         except Exception as exc:
-            raise BackendError(f"menu item '{path}' was not found: {exc}") from exc
+            errors.append(f"win32: {str(exc)[:80]}")
+        try:
+            self._uia_window(handle).menu_select(str(path))
+            return
+        except Exception as exc:
+            errors.append(f"uia: {str(exc)[:80]}")
+        raise BackendError(f"menu item '{path}' was not found ({'; '.join(errors)})")
 
     def send_text(self, handle: int, text: str) -> None:
         pywinauto, _D, _H = self._pw()

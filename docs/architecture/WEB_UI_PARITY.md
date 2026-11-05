@@ -15,7 +15,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not yet · 🔒 stays native on purpose 
 | One-shot AI provider/model/key-configured | ✅ | never sends a key |
 | CPU/RAM/disk/battery/network + history | ✅ | psutil in Python, 2-minute sparklines |
 | Hologram (HoloAvatar look, heart, orb, wires) | ✅ | verified in QtWebEngine; real-GPU/Windows look unconfirmed |
-| Performance tier (Auto/Full/Balanced/Lite) | ⬜ | web UI has its own reduced-motion only; no link to `PERF_TIER` |
+| Performance tier (Auto/Full/Balanced/Lite) | 🟡 | current tier (full/balanced/lite) shown read-only in Settings from `PERF_TIER`; choosing a tier stays native |
 
 ## 2. Workspace / shell (ui_menus)
 | Classic command | Web UI | Notes |

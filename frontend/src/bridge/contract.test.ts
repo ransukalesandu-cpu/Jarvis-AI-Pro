@@ -20,3 +20,10 @@ describe('parseHostEvent', () => {
     expect(parseHostEvent('[1,2]')).toBeNull();
   });
 });
+
+describe('ui.perf', () => {
+  it('accepts the three tiers and nothing else', () => {
+    for (const tier of ['full', 'balanced', 'lite']) expect(parseHostEvent(j({ type: 'ui.perf', tier }))).toEqual({ type: 'ui.perf', tier });
+    for (const tier of ['auto', 'turbo', '', 3, null]) expect(parseHostEvent(j({ type: 'ui.perf', tier }))).toBeNull();
+  });
+});

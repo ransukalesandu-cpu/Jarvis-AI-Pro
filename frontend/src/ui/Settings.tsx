@@ -1,11 +1,11 @@
 import { useUi } from '../store';
 import { motion, AnimatePresence } from 'motion/react';
 
-const LATER = ['Voice & Audio', 'AI Provider', 'Adaptive Performance', 'Notifications', 'Privacy & Security', 'Permissions', 'Workspace Preferences'];
+const LATER = ['Voice & Audio', 'AI Provider', 'Notifications', 'Privacy & Security', 'Permissions', 'Workspace Preferences'];
 
 /** Only settings that actually do something are interactive; the rest are listed as not yet connected. */
 export function SettingsPanel() {
-  const { settingsOpen, reducedMotion, setReducedMotion, clock24, setClock24, persona, link } = useUi();
+  const { settingsOpen, reducedMotion, setReducedMotion, clock24, setClock24, persona, perfTier, link } = useUi();
   return (
     <AnimatePresence>
       {settingsOpen && (
@@ -16,6 +16,7 @@ export function SettingsPanel() {
           <div className="row"><span>24-hour clock</span><button className="toggle" aria-pressed={clock24} onClick={() => setClock24(!clock24)}>{clock24 ? 'On' : 'Off'}</button></div>
           <h2>HOLOGRAM</h2>
           <div className="row"><span>Persona</span><span>{persona}</span></div>
+          <div className="row"><span>Performance tier</span><span>{perfTier ?? 'not reported'}</span></div>
           <h2>CONNECTION</h2>
           <div className="row"><span>Backend link</span><span>{link}</span></div>
           <h2>NOT YET CONNECTED</h2>

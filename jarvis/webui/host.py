@@ -124,6 +124,9 @@ class WebUIHost(QWidget):
     def set_muted(self, muted: bool) -> None:
         self.bridge.publish("assistant.muted", muted=bool(muted))
 
+    def set_perf_tier(self, tier: str) -> None:
+        self.bridge.publish("ui.perf", tier=tier)
+
     def set_persona(self, persona: str) -> None:
         self.bridge.publish("ui.persona", persona=persona)
 

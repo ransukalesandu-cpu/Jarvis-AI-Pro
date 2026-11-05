@@ -20,6 +20,7 @@ class FakeHost(QObject):
     def set_state(self, s): self.calls.append(("state", s))
     def set_level(self, v, src="output"): self.calls.append(("level", round(v, 3)))
     def set_persona(self, p): self.calls.append(("persona", p))
+    def set_perf_tier(self, t): self.calls.append(("perf", t))
     def set_muted(self, m): self.calls.append(("muted", m))
     def set_provider(self, **kw): self.calls.append(("provider", kw["provider"]))
 
@@ -57,6 +58,13 @@ def test_audio_is_throttled_but_silence_always_goes_through(rig):
     t[0] += AUDIO_MIN_INTERVAL
     bus.set(ui_state.AUDIO_LEVEL, 0.5)
     assert [c for c in host.calls if c[0] == "level"] == [("level", 0.2), ("level", 0.0), ("level", 0.5)]
+
+
+def test_perf_tier_only_known_values(rig):
+    bus, host = rig[0], rig[1]
+    bus.set(ui_state.PERF_TIER, "lite")
+    bus.set(ui_state.PERF_TIER, "turbo")
+    assert host.calls == [("perf", "lite")]
 
 
 def test_persona_only_known_values(rig):

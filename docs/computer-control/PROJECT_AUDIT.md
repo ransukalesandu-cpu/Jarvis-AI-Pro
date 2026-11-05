@@ -46,3 +46,34 @@ uses it. Read from source, not assumed.
 ## License / dependency check (Phase 0)
 
 No new dependency. `psutil` and `pillow` are already declared.
+
+## Project 1 — Windows native control (pywinauto) + Project 6 fallback input (pyautogui)
+
+**Upstream inspected:** pywinauto/pywinauto (BSD-3-Clause), asweigart/pyautogui (BSD-3-Clause).
+Both already declared in `requirements.txt` (`pywinauto; sys_platform == "win32"`, `pyautogui`),
+so no new dependency.
+
+What was taken (ideas and APIs, no vendored code):
+
+| upstream piece | used for |
+|---|---|
+| pywinauto `Desktop(backend="uia").windows()`, `element_info` (name, control_type, automation_id, class_name, runtime_id) | window + control discovery; refs are `<hwnd>:<runtime id>` |
+| UIA patterns via wrappers: `invoke()`, `set_edit_text()`, `get_value()`, `select()`, `toggle()` / `get_toggle_state()` | accessibility-first interaction; `click_input()` (real mouse) only when no pattern works |
+| UIA `CurrentIsPassword` | password-field detection; value never read |
+| Win32 `HwndWrapper`: `minimize/maximize/restore/move_window/close/set_focus/is_minimized/is_maximized` | reliable window state and geometry |
+| `menu_select("File->Save")` | menu paths |
+| `keyboard.send_keys` syntax (`{VK_CONTROL down}`, `{ENTER}`, brace escaping) | hotkeys and literal text into a named window |
+| pyautogui `FAILSAFE`, `size/position/moveTo/click/dragTo/scroll/write/hotkey` | fallback driver only |
+
+Not taken: pywinauto's `Application.start/connect` timing helpers (replaced by an explicit,
+interruptible wait-for-window in the controller), pyautogui `locateOnScreen` image search
+(Project 4 handles visual location with the hybrid order).
+
+Compatibility: pywinauto needs COM initialised per thread; the runner's worker threads call
+`CoInitializeEx(COINIT_APARTMENTTHREADED)` once each. Windows 11 Notepad (store app) launches
+through a stub process whose PID differs from the window's — the controller matches the new
+window by PID **or** by process name/title among windows that did not exist before launch.
+
+Existing modules: `actions/ui_interaction.py`'s exact-name, refuse-ambiguity rule is kept
+(ambiguous matches return an error listing the candidates); `actions/open_app.py`'s
+`_APP_ALIASES` table is reused for app-name resolution.

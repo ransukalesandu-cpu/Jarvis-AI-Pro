@@ -91,3 +91,22 @@ HMAC-chained security ledger.
 
 Hidden access, credential theft, security bypass, an unrestricted shell for the AI,
 destructive automatic retries, secrets in logs or commits.
+
+## 10. Windows controller specifics (Project 1 / 6)
+
+* **Policy sees the real target.** Before the policy runs, `cc_control` resolves the target
+  window and control (read-only) and adds the window title (`app`) and the control's real
+  accessible name (`label`). A control referenced only by `ref` or automation id therefore
+  cannot hide a "Delete"/"Send" label, and typing or hotkeys into a window titled
+  PowerShell/cmd/Terminal/Run/Registry Editor are HIGH even when the request did not name it.
+* **No answering dialogs for the owner.** Closing a window with unsaved work reports the
+  dialog text and buttons and stops; nothing is clicked automatically.
+* **Only own processes are force-closed**, and `kill` is HIGH (approval).
+* **Fallback input safeguards:** screen bounds, failsafe corners, max 6 inputs / 3 s and a
+  minimum gap (click-storm guard), a fingerprint re-check of the target area (refuses if the
+  screen changed since the target was located), coordinates from OCR/vision/model need
+  confidence ≥ 0.8 **and** a fingerprint, text typed in 200-char chunks with a stop check
+  between chunks, max 5000 chars.
+* **Password fields:** `set_text` into a UIA password field marks the call `is_password`
+  so the logged `text` becomes `[password-field]`; the value is never read back, listed or
+  returned.

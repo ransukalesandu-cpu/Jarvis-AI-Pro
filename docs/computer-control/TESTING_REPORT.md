@@ -49,3 +49,24 @@ comment, `hidden` attribute, zero-width characters), document and tool-output
 | "Jarvis, stop" during a real computer-control action | needs microphone + live session |
 | HUD interrupt button stops an action | needs the real window |
 | Live app RSS/CPU before/after (`bench baseline --pid`) | needs the owner's running app |
+
+## Project 1 — Windows native control (+ Project 6 fallback input)
+
+| suite | file | tests | where |
+|---|---|---|---|
+| controller on the fake desktop (apps, windows, controls, dialogs, password fields), fallback-input safeguards, tools through the runner (levels, enrichment, approval, audit redaction, stop), backend selection, send_keys escaping | `jarvis/tests/test_computer_control_windows.py` | 42 | Linux `checks` + `windows-ui-smoke` |
+| real pywinauto backend: app/window discovery, Notepad launch → type → Ctrl+S → file content verified → move/resize → minimize/restore → inspect → close; missing control reported | `jarvis/tests/test_computer_control_windows_real.py` | 3 | `windows-ui-smoke` (windows-latest); skipped on Linux |
+
+The real-desktop tests only touch the Notepad instances they start, on a temporary
+file, and force-close those PIDs in teardown.
+
+### Pending manual validation by the owner (Windows 10/11 desktop)
+
+| item | why CI cannot prove it |
+|---|---|
+| Windows 11 Store Notepad / Calculator (UWP) | windows-latest runs Windows Server (classic Notepad, no Store Calculator) |
+| Apps installed on the owner's PC (Chrome, VS Code, Office) via Start-menu discovery | runner has a different app set |
+| Fallback pointer input on a real screen (pyautogui + mss fingerprint) | CI has no interactive pointer verification |
+| Multi-monitor / high-DPI window geometry | runner has one virtual display |
+
+Whole repository after Project 1 (sandbox): 1702 passed, 8 skipped, 0 failed; ruff clean.

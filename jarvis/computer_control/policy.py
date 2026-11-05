@@ -282,7 +282,7 @@ class ActionPolicy:
                 reasons.append(f"'{Path(path).name or path}' is protected: {why}")
 
         label = " ".join(str(params.get(k) or "") for k in (
-            "target", "name", "label", "title", "text_label", "control", "button", "selector"))
+            "target", "name", "label", "title", "text_label", "control", "button", "selector", "path"))
         if name in ("element.click", "element.invoke", "input.click", "input.double_click",
                     "browser.click", "dialog.respond", "menu.select", "browser.press") \
                 and _DESTRUCTIVE_LABEL.search(label):
@@ -290,11 +290,11 @@ class ActionPolicy:
             reasons.append("the control looks destructive or outward-facing "
                            f"('{_DESTRUCTIVE_LABEL.search(label).group(0)}')")
 
-        if name in ("input.type", "element.set_text", "input.press"):
+        if name in ("input.type", "element.set_text", "input.press", "input.hotkey"):
             window = " ".join(str(params.get(k) or "") for k in ("window", "app", "target_app"))
             if _SHELL_WINDOW.search(window):
                 level = Level.HIGH
-                reasons.append("typing into a command shell or system tool")
+                reasons.append("typing or pressing keys in a command shell or system tool")
         if name in ("input.hotkey", "input.press"):
             keys = _hotkey_set(params)
             if any(combo <= keys for combo in _DANGEROUS_HOTKEYS):

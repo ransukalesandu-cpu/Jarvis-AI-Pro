@@ -44,6 +44,11 @@ SCENARIOS = {
                                "jarvis.computer_control.tools", "jarvis.actions.computer_control_engine"],
     "engine_only": ["jarvis.computer_control.runner", "jarvis.computer_control.tools"],
 }
+if os.name == "nt":
+    # Project 1: the real UI Automation backend (pywinauto + comtypes), Windows only.
+    SCENARIOS["engine_plus_uia_backend"] = ["jarvis.computer_control.tools",
+                                            "jarvis.computer_control.windows.uia", "pywinauto",
+                                            "pywinauto.keyboard"]
 
 
 def _probe(modules: list[str], idle: float = 1.0) -> dict:

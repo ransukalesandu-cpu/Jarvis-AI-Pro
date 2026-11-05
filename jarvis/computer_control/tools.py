@@ -41,7 +41,12 @@ def _register_engine(reg: SpecRegistry) -> None:
         handler=_stop, timeout=5.0, bypass_runner=True))
 
 
-_REGISTRARS = [_register_engine]
+def _register_windows(reg: SpecRegistry) -> None:
+    from jarvis.computer_control.windows import tools as windows_tools
+    windows_tools.register(reg)
+
+
+_REGISTRARS = [_register_engine, _register_windows]
 
 
 def build_registry() -> SpecRegistry:

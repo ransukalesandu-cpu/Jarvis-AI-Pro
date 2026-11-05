@@ -123,6 +123,27 @@ class LinkGate:
         return "done"
 
 
+class JobGate:
+    """Cancel one running background job by id. Stopping things is always allowed (like interrupt), but the page can only
+    name a job that Python itself lists as running, and only a few times a second."""
+
+    def __init__(self, running_ids: Callable[[], list[str]], cancel: Callable[[str], bool],
+                 clock: Callable[[], float] = time.monotonic):
+        self._running, self._cancel, self._clock = running_ids, cancel, clock
+        self._last = -1e9
+
+    def cancel(self, job_id) -> str:
+        if not isinstance(job_id, str) or not 0 < len(job_id) <= 24:
+            return "unavailable"
+        now = self._clock()
+        if now - self._last < 0.3:
+            return "rate_limited"
+        if job_id not in self._running():
+            return "noop"                    # already finished, or never existed
+        self._last = now
+        return "done" if self._cancel(job_id) else "noop"
+
+
 MODE_ACTIONS = ("mode_jarvis", "mode_bihansa")
 PERF_ACTIONS = ("perf_auto", "perf_full", "perf_balanced", "perf_lite")
 # Changing how JARVIS behaves (persona, performance) needs the same fully-normal state as unmuting the microphone.

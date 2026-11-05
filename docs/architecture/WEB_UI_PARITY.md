@@ -45,7 +45,7 @@ News: ✅ (read-only mirror of the headlines the HUD is showing, §22 of NEXT_GE
 | Neural hand control / camera preview | 🔒 / ⬜ |
 
 ## 5. Not yet built (needs a backend design, will not be faked)
-- Task events + cancellation, notification centre (no event source exists today).
+- Task events + cancellation: ✅ for **background jobs** (the only task source that exists: `core/jobs.JobManager`), see NEXT_GEN_UI.md §23. Still not built: per-tool-call progress (no event source) and a general notification centre beyond completion notices.
 - Persistent chat history and search (the log mirror is this session only).
 
 ## 6. Quality gates before flipping the default

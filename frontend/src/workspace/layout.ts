@@ -1,6 +1,6 @@
 import type { Page } from '../store';
 
-export const WINDOW_KINDS = ['monitor', 'models', 'activity', 'log', 'timer', 'bento', 'news'] as const;
+export const WINDOW_KINDS = ['monitor', 'models', 'activity', 'log', 'timer', 'bento', 'news', 'jobs'] as const;
 export type WinKind = (typeof WINDOW_KINDS)[number];
 export const WINDOW_STATES = ['normal', 'minimized', 'maximized'] as const;
 export type WinState = (typeof WINDOW_STATES)[number];
@@ -14,7 +14,7 @@ export const MIN_H = 180;
 export const MAX_WINDOWS = 12;
 export const TOP = 64;      // below the top bar
 export const MARGIN = 16;
-export const TITLES: Record<WinKind, string> = { monitor: 'System Monitor', models: 'AI Models', activity: 'Activity Center', log: 'Conversation Log', timer: 'Timer', bento: 'Dashboard', news: 'News' };
+export const TITLES: Record<WinKind, string> = { monitor: 'System Monitor', models: 'AI Models', activity: 'Activity Center', log: 'Conversation Log', timer: 'Timer', bento: 'Dashboard', news: 'News', jobs: 'Background Jobs' };
 
 const isNum = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 

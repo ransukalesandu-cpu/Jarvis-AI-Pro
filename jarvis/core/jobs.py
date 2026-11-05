@@ -50,6 +50,42 @@ class JobManager:
     def __init__(self, on_done: Callable[[Job], Any] | None = None):
         self._jobs: dict[str, Job] = {}
         self._on_done = on_done
+        self._listeners: list[Callable[[], None]] = []
+
+    def add_listener(self, fn: Callable[[], None]) -> Callable[[], None]:
+        """Call ``fn()`` (from whichever thread changed things) whenever a job starts or ends. Returns an unsubscribe."""
+        self._listeners.append(fn)
+
+        def remove() -> None:
+            if fn in self._listeners:
+                self._listeners.remove(fn)
+        return remove
+
+    def _notify(self) -> None:
+        for fn in list(self._listeners):
+            try:
+                fn()
+            except Exception:
+                failsoft.suppress("core.jobs:listener")
+
+    def snapshot(self) -> list[dict]:
+        """Plain, result-free view of the newest jobs for a display: id, name, status, start/finish (epoch seconds)."""
+        return [{"id": j.id, "name": j.name, "status": j.status, "started": j.started, "finished": j.finished or None}
+                for j in self.list()[:20]]
+
+    def request_cancel(self, job_id: str) -> bool:
+        """Like :meth:`cancel` but safe to call from any thread (the task lives on the live loop)."""
+        job = self.get(job_id)
+        if job is None or job.status != "running":
+            return False
+        job.cancel_event.set()
+        task = job.task
+        if task is not None:
+            try:
+                task.get_loop().call_soon_threadsafe(task.cancel)
+            except RuntimeError:        # loop already closed: nothing left to cancel
+                return False
+        return True
 
     def set_on_done(self, callback: Callable[[Job], Any] | None) -> None:
         self._on_done = callback
@@ -61,6 +97,7 @@ class JobManager:
         self._jobs[job.id] = job
         job.task = asyncio.get_running_loop().create_task(self._run(job, work))
         self._prune()
+        self._notify()
         return job
 
     async def _run(self, job: Job, work: Callable[[Job], Awaitable[Any]]) -> None:
@@ -77,6 +114,7 @@ class JobManager:
             job.result = speakable_error(job.name, exc)
         finally:
             job.finished = time.time()
+            self._notify()
             try:
                 from jarvis.core import action_log
                 action_log.record(job.name, {"job": job.id}, job.result, status=f"job_{job.status}",

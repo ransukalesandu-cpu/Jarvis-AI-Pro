@@ -18,6 +18,7 @@ MAX_REQUEST_CHARS = 16384          # upper bound; each request kind has a tighte
 
 ASSISTANT_STATES = frozenset({"idle", "sleeping", "listening", "thinking", "searching", "executing", "speaking", "error"})
 PERSONAS = frozenset({"jarvis", "bihansa"})
+JOB_STATES = frozenset({"running", "done", "failed", "cancelled"})
 PERF_TIERS = frozenset({"full", "balanced", "lite"})
 
 
@@ -64,6 +65,12 @@ _EVENTS = {
                    and isinstance(m["items"], list) and len(m["items"]) <= 20
                    and all(isinstance(i, dict) and set(i) == {"title", "source", "link"} and isinstance(i["title"], str) and 0 < len(i["title"]) <= 200
                            and isinstance(i["source"], str) and len(i["source"]) <= 80 and isinstance(i["link"], bool) for i in m["items"])),
+    "jobs.updated": ({"jobs"}, lambda m: isinstance(m["jobs"], list) and len(m["jobs"]) <= 20
+                     and all(isinstance(j, dict) and set(j) == {"id", "name", "status", "startedAt", "finishedAt"}
+                             and isinstance(j["id"], str) and 0 < len(j["id"]) <= 24
+                             and isinstance(j["name"], str) and 0 < len(j["name"]) <= 80
+                             and j["status"] in JOB_STATES and _num(j["startedAt"], 0, 4e12)
+                             and (j["finishedAt"] is None or _num(j["finishedAt"], 0, 4e12)) for j in m["jobs"])),
     "host.hello": ({"version"}, lambda m: _num(m["version"], 0, 1000)),
 }
 
@@ -97,6 +104,7 @@ _REQUESTS = {
     "command.submit": ({"text"}, lambda m: isinstance(m["text"], str) and len(m["text"]) <= 4 * MAX_TEXT),
     "control.do": ({"action"}, lambda m: m["action"] in ACTIONS),
     "news.open": ({"index"}, lambda m: isinstance(m["index"], int) and not isinstance(m["index"], bool) and 0 <= m["index"] < 20),
+    "job.cancel": ({"id"}, lambda m: isinstance(m["id"], str) and 0 < len(m["id"]) <= 24),
     "ping": ({"n"}, lambda m: isinstance(m["n"], int) and not isinstance(m["n"], bool) and 0 <= m["n"] < 2 ** 31),
 }
 

@@ -144,3 +144,11 @@ def test_news_is_mirrored_without_urls_in_the_event():
     assert contract.parse_request(json.dumps({"kind": "news.open", "index": 3})) is not None
     for bad in (-1, 20, True, "1"):
         assert contract.parse_request(json.dumps({"kind": "news.open", "index": bad})) is None
+
+
+def test_jobs_snapshot_is_forwarded(rig):
+    bus, host = rig[0], rig[1]
+    host.set_jobs = lambda rows: host.calls.append(("jobs", len(rows)))
+    bus.set(ui_state.JOBS, (("job1", "render", "running", 1.0, None),))
+    bus.set(ui_state.JOBS, "garbage")
+    assert host.calls == [("jobs", 1)]

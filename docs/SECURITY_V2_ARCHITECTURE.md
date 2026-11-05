@@ -55,3 +55,39 @@ Allowed transitions are listed in `_ALLOWED`; anything else raises `IdentityErro
 ## Limits
 
 In-process Python cannot stop code that already runs inside JARVIS from calling the manager directly; the proof object and frozen session stop accidents and logic bugs, not a compromised process.
+
+---
+
+# Phase 2 — multiple owners (`core/owner_registry.py`, `scripts/security_owners.py`)
+
+**Done and tested:** owner registry, per-owner PIN (Argon2) and per-owner Voice ID role, lockout, revocation,
+administrator rules, recovery code, local admin CLI. **Not done:** `AuthManager` and the running app do not
+consult the registry yet (Phase 3 switches the login path); the old single-PIN vault keeps working unchanged.
+
+## Owner model
+Each owner row: UUID, display name, Argon2 PIN hash, `is_admin`, own Voice ID role `owner-<id8>`, `voice_enrolled`,
+`status` (`active`/`revoked`), timestamps. Table `security_owners` lives in the existing owner SQLite store
+(`OwnerStore`); no new database. At most 8 owners.
+
+## Administration model
+- First owner (created only through the local `init` command, only while no owner exists) = primary administrator.
+- All owners have normal owner capabilities; administrators can additionally add, revoke, promote and demote.
+- Management requires a live owner session **and** a fresh step-up (PIN re-entry within 5 minutes).
+- The last active administrator cannot be revoked or demoted.
+- A Guest cannot enroll: `bootstrap_first_owner` refuses once any owner exists and `add_owner` demands an administrator session.
+- Because `init` is an unauthenticated first-run action, it is reachable only through the local CLI; no voice tool exposes it.
+
+## Authentication
+- `authenticate_pin(pin, owner_id="")` returns an `OwnerProof` or `None`. 3 wrong PINs lock **that owner** for 60 s, doubling per further failure up to 15 min; a locked owner refuses even the right PIN until the delay passes. Other owners are unaffected. Lockout state is in memory (a restart clears it), which is a known limit.
+- `authenticate_voice(audio, owner_id="")` verifies against each enrolled owner's own profile and returns the best match. It returns `None` when Voice ID is disabled or unavailable: it never uses `voice_id.identify_speaker`, whose fallback treats everyone as the owner when Voice ID is off.
+- `login(manager, proof)` is the only bridge to `IdentityManager`.
+- Voice alone is single-factor (`strength=1`); actions that need two factors use step-up with the PIN.
+
+## Recovery and lockout avoidance
+`init` prints a recovery code once; only its Argon2 hash is stored. `recover` takes the code and a new PIN, restores an administrator (never promotes a non-admin), clears that owner's lockout, and **rotates the code**. 5 wrong codes per run stops further attempts until restart. Losing both every PIN and the code means no in-app recovery: the owner must reset the owner database (`security_owners`) by hand, which is documented as a manual, data-destroying step.
+
+## Voice profiles
+One profile per owner, created by `enroll-voice` after PIN proof; re-enrolling replaces it; revocation deletes it. Audio is not stored. Embeddings stay local (DPAPI on Windows, AES-GCM elsewhere, from the existing `voice_id` module).
+
+## Not measured
+False-accept/false-reject rates, Sinhala vs English performance, and the Resemblyzer/SpeechBrain comparison need real recordings on the owner's Windows machine. No claim about accuracy is made here.

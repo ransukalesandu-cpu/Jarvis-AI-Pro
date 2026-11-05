@@ -38,7 +38,21 @@ def attach(window):
     for name, attr in ("interrupt", "_do_interrupt"), ("mute", "_toggle_mute"), ("unmute", "_toggle_mute"), ("fullscreen", "_toggle_fullscreen"):
         if callable(getattr(window, attr, None)):
             actions[name] = getattr(window, attr)
-    controls = ControlGate(gate, actions, lambda: bool(getattr(window, "_muted", False)))
+    already = {}
+    mode_btn = getattr(window, "_mode_btn", None)
+    if mode_btn is not None:
+        for i, persona in enumerate(("jarvis", "bihansa")):
+            actions[f"mode_{persona}"] = lambda i=i: mode_btn.setCurrentIndex(i)
+            already[f"mode_{persona}"] = lambda i=i: mode_btn.currentIndex() == i
+    if callable(getattr(window, "set_performance_budget", None)):
+        for choice in ("auto", "full", "balanced", "lite"):
+            actions[f"perf_{choice}"] = lambda c=choice: window.set_performance_budget(c, save=True)
+        from jarvis.core import ui_state
+        for choice in ("full", "balanced", "lite"):     # "auto" has no fixed tier to compare with, so it always applies
+            already[f"perf_{choice}"] = lambda c=choice: (getattr(window, "_perf_gov", None) is not None
+                                                          and bool(getattr(window._perf_gov, "pinned", False))
+                                                          and ui_state.bus().get(ui_state.PERF_TIER) == c)
+    controls = ControlGate(gate, actions, lambda: bool(getattr(window, "_muted", False)), already=already)
     host = WebUIHost(cw, gate=gate, controls=controls)
     host.setGeometry(cw.rect())
     cw.installEventFilter(_Fit(cw, host))

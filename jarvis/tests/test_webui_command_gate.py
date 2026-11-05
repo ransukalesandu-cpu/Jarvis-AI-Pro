@@ -180,3 +180,24 @@ def test_control_contract_and_bridge():
     assert calls == ["interrupt"] and got == [{"type": "control.result", "reason": "done"}]
     got.clear()
     WebUIBridge().request(json.dumps({"kind": "control.do", "action": "interrupt"}))   # no controls -> nothing happens
+
+
+@pytest.mark.parametrize("action", ["mode_bihansa", "perf_lite", "perf_auto"])
+@pytest.mark.parametrize("mgr,guest,reason", [(Mgr(lock=True), False, "locked"), (Mgr(pin=True), False, "auth_required"),
+                                              (Mgr(silent=True), False, "silent"), (Mgr(), True, "guest")])
+def test_persona_and_performance_changes_need_an_unlocked_session(action, mgr, guest, reason):
+    c, calls, _, _ = ctl(mgr, guest)
+    assert c.do(action) == reason and calls == []
+
+
+def test_persona_and_performance_apply_and_report_noop():
+    gate, _, _ = rig()
+    calls, t, cur = [], [0.0], {"persona": "jarvis"}
+    acts = {a: (lambda a=a: calls.append(a)) for a in ACTIONS}
+    already = {"mode_jarvis": lambda: cur["persona"] == "jarvis", "mode_bihansa": lambda: cur["persona"] == "bihansa"}
+    c = ControlGate(gate, acts, lambda: False, clock=lambda: t[0], already=already)
+    assert c.do("mode_jarvis") == "noop"
+    t[0] += 1
+    assert c.do("mode_bihansa") == "done" and calls == ["mode_bihansa"]
+    t[0] += 1
+    assert c.do("perf_full") == "done"          # no "already" check registered: it simply applies

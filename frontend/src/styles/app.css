@@ -169,3 +169,12 @@ button { font: inherit; color: inherit; }
 
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .region-wrap { display: contents; }
+
+.seg { display: inline-flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.settings-note { min-height: 1.2em; margin: 4px 0 0; font-size: 12px; opacity: .8; }
+
+.bento { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; }
+.bento > * { min-width: 0; }
+.bento-card { border: 1px solid var(--glass-border); border-radius: 12px; padding: 10px 12px; background: rgba(120,200,255,.04); }
+.bento-card.wide { grid-column: 1 / -1; }
+.bento-card h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }

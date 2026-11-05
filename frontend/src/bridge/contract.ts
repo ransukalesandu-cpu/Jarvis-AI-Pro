@@ -39,7 +39,7 @@ export type UiRequest =
 
 export const COMMAND_MAX = 500;
 export const COMMAND_REASONS = ['sent', 'empty', 'too_long', 'locked', 'auth_required', 'silent', 'guest', 'credential', 'rate_limited', 'unavailable', 'done', 'noop'] as const;
-export const CONTROL_ACTIONS = ['interrupt', 'mute', 'unmute', 'fullscreen'] as const;
+export const CONTROL_ACTIONS = ['interrupt', 'mute', 'unmute', 'fullscreen', 'mode_jarvis', 'mode_bihansa', 'perf_auto', 'perf_full', 'perf_balanced', 'perf_lite'] as const;
 export type ControlAction = (typeof CONTROL_ACTIONS)[number];
 export type CommandReason = (typeof COMMAND_REASONS)[number];
 export const COMMAND_STATES = ['ok', 'locked', 'auth_required', 'silent', 'guest', 'unavailable'] as const;

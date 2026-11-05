@@ -262,3 +262,11 @@ Tap first, sync later (`ux/actions.ts`): mic mute/unmute flips the UI at once; `
 ## 20. Accessibility audit (axe-core)
 
 An automated axe-core run inside the real QtWebEngine page (home, settings open, palette open, timer window open) found 3 serious/moderate rule failures: a labelled `div` with no role (hologram), controls whose `aria-label` did not contain their visible text (Island and widgets), and content outside landmarks. All fixed (visible text now forms the accessible name, with a visually hidden "Open ..." suffix; the stage and controls are landmarks). Result: 0 violations in those four states, no colour-contrast failures. This is an automated check only; it does not replace a manual NVDA pass, which is still open in the parity checklist.
+
+## 21. Persona, performance writes and the Dashboard window
+
+`control.do` gained `mode_jarvis`, `mode_bihansa`, `perf_auto|full|balanced|lite`. They use the same `ControlGate` as unmute: refused unless the assistant is in a fully normal state (not locked, awaiting a PIN, silent or in guest mode), rate limited, and answered `noop` when already in that state. Python applies them through the existing HUD methods (`_mode_btn`, `set_performance_budget(save=True)`), so behaviour and persistence match the classic menu; the page then learns the result from the normal `ui.persona` / `ui.perf` events. The page does not decide anything.
+
+New window kind `bento` ("Dashboard"): cards for assistant, model, CPU/RAM, network and storage from the data already mirrored; nothing invented ("not reported" / "collecting" when absent). An axe-core run in the real engine over Settings and the Dashboard window reports 0 violations.
+
+Deliberately not built (documented in the parity checklist): the native media/tool windows, wake, task events and notification centre, persistent chat history. Each needs a backend or a privacy design first.

@@ -79,7 +79,11 @@ class CommandGate:
         return "sent"
 
 
-ACTIONS = ("interrupt", "mute", "unmute", "fullscreen")
+MODE_ACTIONS = ("mode_jarvis", "mode_bihansa")
+PERF_ACTIONS = ("perf_auto", "perf_full", "perf_balanced", "perf_lite")
+# Changing how JARVIS behaves (persona, performance) needs the same fully-normal state as unmuting the microphone.
+GUARDED = frozenset({"unmute", *MODE_ACTIONS, *PERF_ACTIONS})
+ACTIONS = ("interrupt", "mute", "unmute", "fullscreen", *MODE_ACTIONS, *PERF_ACTIONS)
 
 
 class ControlGate:
@@ -87,8 +91,9 @@ class ControlGate:
     the microphone back on is not allowed from the page while locked / awaiting a PIN / silent / in guest mode."""
 
     def __init__(self, gate: CommandGate, actions: dict[str, Callable[[], None]], is_muted: Callable[[], bool],
-                 clock: Callable[[], float] = time.monotonic):
+                 clock: Callable[[], float] = time.monotonic, already: dict[str, Callable[[], bool]] | None = None):
         self._gate, self._actions, self._is_muted, self._clock = gate, actions, is_muted, clock
+        self._already = already or {}      # action -> "is it already in that state?" (answers "noop")
         self._last = -1e9
 
     def do(self, action) -> str:
@@ -104,7 +109,14 @@ class ControlGate:
             return "unavailable"
         if action == "mute" and muted or action == "unmute" and not muted:
             return "noop"
-        if action == "unmute":
+        check = self._already.get(action)
+        if check is not None:
+            try:
+                if check():
+                    return "noop"
+            except (AttributeError, RuntimeError, OSError):
+                return "unavailable"
+        if action in GUARDED:
             state = self._gate.availability()
             if state != "ok":
                 return state

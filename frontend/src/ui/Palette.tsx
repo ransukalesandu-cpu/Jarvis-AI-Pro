@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { sendRequest } from '../bridge/bridge';
 import type { ControlAction } from '../bridge/contract';
 import { useUi } from '../store';
+import { PERF_OPTS, PERSONA_OPTS } from './Settings';
 import { PAGES } from './Chrome';
 import { TITLES, type WinKind, validateLayout } from '../workspace/layout';
 import { useWindows } from '../workspace/windows';
@@ -39,6 +40,8 @@ export function Palette() {
           {connected && <Command.Item value="interrupt stop speaking" onSelect={run(() => doControl('interrupt'))}>Interrupt JARVIS</Command.Item>}
           {connected && <Command.Item value="microphone mute unmute" onSelect={run(() => doControl(muted ? 'unmute' : 'mute'))}>{muted ? 'Unmute microphone' : 'Mute microphone'}</Command.Item>}
           {connected && <Command.Item value="toggle fullscreen" onSelect={run(() => doControl('fullscreen'))}>Toggle fullscreen</Command.Item>}
+          {connected && PERSONA_OPTS.map((o) => <Command.Item key={o.action} value={`mode persona ${o.label}`} onSelect={run(() => doControl(o.action))}>{o.label} mode</Command.Item>)}
+          {connected && PERF_OPTS.map((o) => <Command.Item key={o.action} value={`performance tier fps ${o.label}`} onSelect={run(() => doControl(o.action))}>Performance: {o.label}</Command.Item>)}
           {canAsk && ASKS.map((a) => <Command.Item key={a.id} value={`${a.keywords} ${a.label}`} onSelect={run(() => sendRequest({ kind: 'command.submit', text: a.text }))}>{a.label}</Command.Item>)}
           <Command.Item value="ask jarvis type a command" onSelect={run(() => setTimeout(() => dispatchEvent(new Event('jarvis:focus-command')), 0))}>Ask JARVIS…</Command.Item>
         </Command.Group>

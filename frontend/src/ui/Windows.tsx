@@ -1,12 +1,13 @@
 import { Maximize2, Minimize2, Minus, X } from 'lucide-react';
 import { Rnd } from 'react-rnd';
+import { BentoContent } from './Bento';
 import { TimerContent } from './TimerWindow';
 import { MARGIN, MIN_H, MIN_W, TOP, TITLES, type WinKind } from '../workspace/layout';
 import { titleOf, useWindows } from '../workspace/windows';
 import { useUi } from '../store';
 import { ActivityContent, LogContent, ModelsContent, MonitorContent } from './Pages';
 
-const CONTENT: Record<WinKind, () => React.ReactElement> = { monitor: MonitorContent, models: ModelsContent, activity: ActivityContent, log: LogContent, timer: TimerContent };
+const CONTENT: Record<WinKind, () => React.ReactElement> = { monitor: MonitorContent, models: ModelsContent, activity: ActivityContent, log: LogContent, timer: TimerContent, bento: BentoContent };
 
 const STEP = 16;
 /** Keyboard equivalent of drag/resize: Alt+arrows move, Alt+Shift+arrows resize (when the window itself has focus). */
@@ -40,15 +41,15 @@ export function Windows() {
             onResizeStop={(_e, _dir, el, _delta, pos) => resize(w.id, pos.x, pos.y, el.offsetWidth, el.offsetHeight)}>
             <section role="dialog" aria-label={TITLES[w.kind]} className="win-inner" tabIndex={0}
               aria-keyshortcuts="Alt+ArrowKeys Alt+Shift+ArrowKeys" onKeyDown={(e) => keyboard(e, w.id, w.x, w.y, w.w, w.h)}>
-              <header className="win-title">
+              <div className="win-title">
                 <span>{titleOf(w)}</span>
                 <span className="win-actions">
                   <button aria-label={`Minimize ${titleOf(w)}`} onClick={() => minimize(w.id)}><Minus size={14} /></button>
                   <button aria-label={max ? `Restore ${titleOf(w)}` : `Maximize ${titleOf(w)}`} onClick={() => toggleMaximize(w.id)}>{max ? <Minimize2 size={14} /> : <Maximize2 size={14} />}</button>
                   <button aria-label={`Close ${titleOf(w)}`} onClick={() => close(w.id)}><X size={14} /></button>
                 </span>
-              </header>
-              <div className="win-body"><Body /></div>
+              </div>
+              <div className="win-body" tabIndex={0}><Body /></div>
             </section>
           </Rnd>
         );

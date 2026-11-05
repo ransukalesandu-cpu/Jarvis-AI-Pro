@@ -21,6 +21,7 @@ argon2-cffi>=23.1.0,<25  # Argon2id owner PIN/password hashing
 google-genai>=2.8.0,<3
 openai>=1.68,<3
 anthropic>=1.17,<2  # output_config and server-side fallbacks (ask_claude)
+mcp>=1.2,<3  # Model Context Protocol client (core/mcp_client.py)
 
 # ── Web search & browser control ──────────────────────────────────────────────
 requests>=2.31,<3

@@ -962,6 +962,11 @@ class JarvisLive(
         """Stop the Live run loop and its TaskGroup without reconnecting."""
         self._shutdown_requested = True
         hooks.emit("shutdown", {}, wait=3.0)
+        try:
+            from jarvis.core import mcp_client
+            mcp_client.shutdown_manager()
+        except Exception as exc:
+            print(f"[MCP] Shutdown failed: {type(exc).__name__}: {exc}")
         loop = getattr(self, "_loop", None)
         event = getattr(self, "_shutdown_event", None)
         if loop is not None and event is not None and loop.is_running():
@@ -1655,6 +1660,14 @@ class JarvisLive(
             print(f"[OwnerStore] Context unavailable: {type(exc).__name__}: {exc}")
         if owner_context:
             parts.append(owner_context)
+        try:
+            from jarvis.core import mcp_client
+            from jarvis.core.skills import get_skill_registry
+            for extra in (get_skill_registry().index_text(), mcp_client.get_manager().index_text()):
+                if extra:
+                    parts.append(extra)
+        except Exception as exc:
+            print(f"[Skills] Index unavailable: {type(exc).__name__}: {exc}")
         parts.append(build_brain_protocol())
         if self._live_switch_context:
             parts.append(
@@ -2802,6 +2815,11 @@ class JarvisLive(
         )
         hooks.get_hook_registry().notify = self.ui.write_log
         hooks.emit("startup", {"ledger_ok": bool(_ledger_ok)})
+        try:
+            from jarvis.core import mcp_client
+            mcp_client.get_manager().start_background()
+        except Exception as exc:
+            print(f"[MCP] Could not start: {type(exc).__name__}: {exc}")
         set_trim_notifier(self.ui.write_log)
 
         # Tell the device picker the exact rates the streams open at, from the

@@ -24,7 +24,7 @@ else:
 
 from PyQt6.QtCore import (
     QPointF,
-    QEvent, QEasingCurve, QLineF, QPropertyAnimation, QRectF, Qt, QTimer, QUrl, pyqtSignal,
+    QEvent, QEasingCurve, QLineF, QPropertyAnimation, QRectF, Qt, QTimer, QUrl, pyqtSignal, pyqtSlot,
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QFont, QImage, QKeySequence, QPainter,
@@ -618,9 +618,93 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
 
         self._stage = None        # heart, orb and energy wires (face mode)
 
+        # Neural Entity Engine 2.0 (WebGL, jarvis/hologram). When attached and ready it replaces
+        # the avatar + stage painters in face mode; otherwise those remain as the fallback.
+        self._holo = None
+        self._holo_out = 0.0          # playback level from the visualizer bridge (not the mic)
+        self._holo_last_end = 0.0
+
         self._tmr = QTimer(self)
         self._tmr.timeout.connect(self._step)
         self._tmr.start(16)
+
+    # ── Neural Entity Engine 2.0 ────────────────────────────────────────────
+    def attach_hologram(self, host) -> None:
+        """Place the WebGL hologram over the face band of this canvas."""
+        self._holo = host
+        host.setParent(self)
+        try:
+            from jarvis.audio.visualizer_bridge import get_visualizer_bridge
+            bridge = get_visualizer_bridge()
+            bridge.sig_output_energy.connect(self._on_holo_output)
+            bridge.sig_output_ended.connect(host.end_output)
+        except Exception:
+            failsoft.suppress('ui:HudCanvas.attach_hologram')
+        self._place_hologram()
+
+    def _holo_active(self) -> bool:
+        h = self._holo
+        return h is not None and self.hud_style == "face" and bool(getattr(h, "is_ready", False))
+
+    def _face_band(self) -> QRectF:
+        """The band the face occupies (same maths the painters use)."""
+        W, H = float(self.width()), float(self.height())
+        sy_status = H / 2 + min(W, H) * 0.40
+        top = 12.0
+        return QRectF(0.0, top, W, max(60.0, sy_status - 12.0 - top))
+
+    def _place_hologram(self) -> None:
+        h = self._holo
+        if h is None:
+            return
+        h.setGeometry(self._face_band().toRect())
+        want = self.hud_style == "face"
+        if h.isHidden() == want:       # isHidden: explicitly hidden (isVisible also needs the parent shown)
+            h.setVisible(want)
+        if want:
+            h.raise_()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._place_hologram()
+
+    @pyqtSlot(float, float, float)
+    def _on_holo_output(self, level: float, openness: float, width: float) -> None:
+        self._holo_out = max(0.0, min(1.0, float(level)))
+        self._holo_last_end = time.time()
+
+    def _drive_hologram(self, amp: float, v_level, v_open, v_wide) -> None:
+        """Feed state and the right audio side to the engine (called from the 60 Hz step)."""
+        h = self._holo
+        if h is None:
+            return
+        try:
+            if h.isHidden() == (self.hud_style == "face"):
+                self._place_hologram()
+            h.set_state(self.state)
+            if self.speaking:
+                # While speaking only OUTPUT audio may move the mouth: the viseme frame that is
+                # due now, else the playback level; never the microphone-polluted amp.
+                if v_level is not None:
+                    h.set_output_level(v_level, v_open, v_wide)
+                elif time.time() - self._holo_last_end < 0.25:
+                    h.set_output_level(self._holo_out)
+            else:
+                h.set_audio_energy(amp)
+        except Exception:
+            failsoft.suppress('ui:HudCanvas._drive_hologram')
+
+    def set_hologram_profile(self, profile_id: str) -> None:
+        if self._holo is not None:
+            self._holo.set_profile(profile_id)
+
+    def shutdown_hologram(self) -> None:
+        h, self._holo = self._holo, None
+        if h is not None:
+            try:
+                h.shutdown()
+            except Exception:
+                failsoft.suppress('ui:HudCanvas.shutdown_hologram')
 
     def glance(self, dx: float, dy: float, hold: float = 1.1) -> None:
         """Ask the avatar to look somewhere for a moment (see HoloAvatar.glance)."""
@@ -1066,6 +1150,8 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
             self._scale += (self._tgt_scale - self._scale) * sp
             self._halo  += (self._tgt_halo  - self._halo)  * sp
 
+        self._drive_hologram(amp, v_level, v_open, v_wide)
+
         self._blink_tick += 1
         if self._blink_tick >= 38:
             self._blink = not self._blink
@@ -1342,11 +1428,12 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
                 _tier = getattr(self, "_perf_tier", None)
                 if _tier is not None:
                     self._stage.wires, self._stage.pulses = _tier.wires, _tier.pulses
-            self._stage.paint(p, neck=_neck, orb=_orb, orb_r=_orb_r, heart=_heart,
-                              heart_r=_heart_r, t=_ui_state.clock().now,
-                              level=float(_ui_bus().get(_ui_state.AUDIO_LEVEL, 0.0) or 0.0),
-                              state="MUTED" if self.muted else self.state)
-            self._avatar.paint(p, cx, _head_cy, _r_head, _main, _acc, qcol(C.BG))
+            if not self._holo_active():
+                self._stage.paint(p, neck=_neck, orb=_orb, orb_r=_orb_r, heart=_heart,
+                                  heart_r=_heart_r, t=_ui_state.clock().now,
+                                  level=float(_ui_bus().get(_ui_state.AUDIO_LEVEL, 0.0) or 0.0),
+                                  state="MUTED" if self.muted else self.state)
+                self._avatar.paint(p, cx, _head_cy, _r_head, _main, _acc, qcol(C.BG))
 
         elif self.hud_style in ("neural", "neural_orb"):
             if self._hand_3d_active:
@@ -1837,23 +1924,17 @@ class MainWindow(QMainWindow):
         )
         _cam_v.addWidget(self._cam_live_lbl, stretch=1)
 
-        # Bihansa Mode Hologram & Preferences
+        # Bihansa preferences (backend unchanged). Bihansa is now a *profile* of the one WebGL
+        # hologram engine instead of a second widget, so it can never replace JARVIS permanently.
         try:
-            from jarvis.ui.hologram.bihansa_hologram import BihansaHologramWidget
             from jarvis.ui.hologram.bihansa_settings import BihansaModeSettings
             self._bihansa_settings = BihansaModeSettings()
-            self._bihansa_hologram = BihansaHologramWidget(self.centralWidget())
-            self._bihansa_hologram.set_reduced_motion(self._bihansa_settings.reduced_motion)
-            self._bihansa_hologram.set_glow_intensity(self._bihansa_settings.glow_intensity)
-            self._bihansa_hologram.set_animation_speed(self._bihansa_settings.animation_speed)
         except Exception:
             self._bihansa_settings = None
-            self._bihansa_hologram = None
+        self._attach_hologram_engine()
 
         self._hologram_mode_stack = QStackedWidget()
         self._hologram_mode_stack.addWidget(self.hud)
-        if self._bihansa_hologram is not None:
-            self._hologram_mode_stack.addWidget(self._bihansa_hologram)
 
         # Stack: 0 = animated HUD (mode stack), 1 = live camera
         self._hud_cam_stack = QStackedWidget()
@@ -4794,6 +4875,31 @@ class MainWindow(QMainWindow):
             self._immersive_overlay.hud.trigger_activity()
             self._immersive_overlay.hud.update()
 
+    def _attach_hologram_engine(self) -> None:
+        """Create the WebGL hologram over the HUD face band (falls back to the old painters)."""
+        if os.environ.get("JARVIS_HOLOGRAM", "").strip().lower() in ("0", "off", "false", "no"):
+            return
+        try:
+            from jarvis.hologram.host import HologramHost
+            from jarvis.memory.config_manager import get_assistant_mode
+            host = HologramHost(self.hud)
+            self.hud.attach_hologram(host)
+            host.set_profile("bihansa" if get_assistant_mode() == "bihansa" else "jarvis")
+            self._apply_hologram_preferences()
+        except Exception:
+            failsoft.suppress('ui:MainWindow._attach_hologram_engine')
+
+    def _apply_hologram_preferences(self) -> None:
+        host = getattr(self.hud, "_holo", None)
+        prefs = getattr(self, "_bihansa_settings", None)
+        if host is None or not prefs:
+            return
+        try:
+            host.set_reduced_motion(bool(prefs.reduced_motion))
+            host.set_glow_intensity(float(prefs.glow_intensity))
+        except Exception:
+            failsoft.suppress('ui:MainWindow._apply_hologram_preferences')
+
     def _refresh_assistant_mode_btn(self):
         from jarvis.memory.config_manager import get_assistant_mode
         mode = get_assistant_mode()
@@ -4802,8 +4908,7 @@ class MainWindow(QMainWindow):
             self._mode_btn.blockSignals(True)
             self._mode_btn.setCurrentIndex(idx)
             self._mode_btn.blockSignals(False)
-        if hasattr(self, "_hologram_mode_stack"):
-            self._hologram_mode_stack.setCurrentIndex(1 if mode == "bihansa" and self._bihansa_hologram else 0)
+        self.hud.set_hologram_profile("bihansa" if mode == "bihansa" else "jarvis")
 
     def _on_assistant_mode_selected(self, index: int):
         from jarvis.memory.config_manager import save_assistant_mode
@@ -4813,8 +4918,7 @@ class MainWindow(QMainWindow):
         save_assistant_mode(want)
         if hasattr(self, "_bihansa_settings") and self._bihansa_settings:
             self._bihansa_settings.assistant_mode = want
-        if hasattr(self, "_hologram_mode_stack"):
-            self._hologram_mode_stack.setCurrentIndex(1 if want == "bihansa" and self._bihansa_hologram else 0)
+        self.hud.set_hologram_profile(want)
         self._log.append_log(f"SYS: Assistant mode set to '{want.upper()}'.")
         if callable(getattr(self, "on_voice_change", None)):
             self.on_voice_change()
@@ -4828,11 +4932,7 @@ class MainWindow(QMainWindow):
             self._log.append_log(f"ERR: Failed to open Bihansa settings: {exc}")
 
     def _on_bihansa_settings_applied(self):
-        if hasattr(self, "_bihansa_settings") and self._bihansa_settings:
-            if hasattr(self, "_bihansa_hologram") and self._bihansa_hologram:
-                self._bihansa_hologram.set_reduced_motion(self._bihansa_settings.reduced_motion)
-                self._bihansa_hologram.set_glow_intensity(self._bihansa_settings.glow_intensity)
-                self._bihansa_hologram.set_animation_speed(self._bihansa_settings.animation_speed)
+        self._apply_hologram_preferences()
         self._refresh_assistant_mode_btn()
         if callable(getattr(self, "on_voice_change", None)):
             self.on_voice_change()
@@ -5992,12 +6092,6 @@ class MainWindow(QMainWindow):
                 overlay.hud.set_audio_level(level)
             except (RuntimeError, TypeError, ValueError):
                 pass
-        bihansa = getattr(self, "_bihansa_hologram", None)
-        if bihansa is not None:
-            try:
-                bihansa.set_audio_energy(level)
-            except (RuntimeError, TypeError, ValueError):
-                pass
 
     def _apply_visemes(self, frames, hop: float, at: float) -> None:
         """Apply mouth-animation frames only on the Qt GUI thread."""
@@ -6020,11 +6114,6 @@ class MainWindow(QMainWindow):
             self._jarvis_logo_overlay.set_state(state)
         if hasattr(self, "_immersive_overlay"):
             self._immersive_overlay.set_state(state)
-        if hasattr(self, "_bihansa_hologram") and self._bihansa_hologram is not None:
-            try:
-                self._bihansa_hologram.set_state(state)
-            except (RuntimeError, TypeError, ValueError):
-                pass
         self._refresh_wake_btns()
         if hasattr(self, "_core_status_lbl"):
             display = state.replace("_", " ").upper()
@@ -6211,6 +6300,10 @@ class MainWindow(QMainWindow):
         callback()
 
     def closeEvent(self, event):
+        try:
+            self.hud.shutdown_hologram()
+        except Exception:
+            failsoft.suppress('ui:MainWindow.closeEvent')
         if getattr(self, "_neural_hand_active", False):
             self._stop_neural_hand_control()
         try:
@@ -6263,6 +6356,8 @@ class _RootShim:
 
 class JarvisUI:
     def __init__(self, face_path: str, size=None):
+        from jarvis.hologram import prepare_qt
+        prepare_qt()
         self._app = QApplication.instance() or QApplication(sys.argv)
         self._app.setStyle("Fusion")
         self._win = MainWindow(face_path)

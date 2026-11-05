@@ -38,7 +38,7 @@ jarvis = "jarvis.main:main"
 include = ["jarvis*"]
 
 [tool.setuptools.package-data]
-jarvis = ["core/prompt.txt", "core/*.html", "core/face_model.obj", "assets/**/*", "config/*.json", "ui/assets/*", "dashboard/static/*"]
+jarvis = ["core/prompt.txt", "core/*.html", "core/face_model.obj", "assets/**/*", "config/*.json", "ui/assets/*", "dashboard/static/*", "hologram/**/*.html", "hologram/**/*.js", "hologram/**/*.mjs", "hologram/**/*.css"]
 
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"] }

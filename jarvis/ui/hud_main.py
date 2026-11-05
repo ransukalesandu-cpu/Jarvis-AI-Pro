@@ -27,9 +27,6 @@ from PyQt6.QtWidgets import (
 )
 
 from jarvis.audio.visualizer_bridge import get_visualizer_bridge, VisualizerBridge
-from jarvis.ui.hologram.wireframe_head import NeuralWireframeHead
-from jarvis.ui.hologram.bihansa_hologram import BihansaHologramWidget
-from jarvis.ui.hologram.neural_heart_reactor import NeuralHeartReactor
 from jarvis.ui.hologram.bihansa_settings import BihansaModeSettings, BihansaSettingsDialog
 from jarvis.ui.panels.hybrid_brain_panel import HybridBrainPanel
 from jarvis.ui.panels.security_panel import SecurityPanel
@@ -243,17 +240,19 @@ class HUDMainWindow(QMainWindow):
         stage_layout.setContentsMargins(0, 0, 0, 0)
         stage_layout.setSpacing(0)
 
-        self._visualizer_stack = QStackedWidget(self._hologram_stage)
-        self.wireframe_visualizer = NeuralWireframeHead(self)
-        self.bihansa_visualizer = BihansaHologramWidget(self)
-        self._visualizer_stack.addWidget(self.wireframe_visualizer)
-        self._visualizer_stack.addWidget(self.bihansa_visualizer)
-        self._visualizer_stack.setCurrentWidget(self.wireframe_visualizer)
-        stage_layout.addWidget(self._visualizer_stack, stretch=1)
+        # Neural Entity Engine 2.0: one WebGL scene (face, quantum heart, energy orb, wires)
+        # in a locked-down web view. Imported here so QtWebEngine loads only when the HUD builds.
+        try:
+            if os.environ.get("JARVIS_HOLOGRAM", "").strip().lower() in ("0", "off", "false", "no"):
+                raise RuntimeError("disabled by JARVIS_HOLOGRAM")
+            from jarvis.hologram.host import HologramHost
+            self.hologram = HologramHost(self._hologram_stage)
+        except Exception as exc:  # QtWebEngine missing or imported too late: keep the HUD alive
+            from jarvis.hologram.fallback import NullHologram
+            failsoft.suppress("ui.hud_main:hologram_host")
+            self.hologram = NullHologram(self._hologram_stage, f"Hologram unavailable ({type(exc).__name__})")
+        stage_layout.addWidget(self.hologram, stretch=1)
         stage_layout.addWidget(self._mini_orb, alignment=Qt.AlignmentFlag.AlignHCenter)
-
-        self._heart_reactor = NeuralHeartReactor(self._hologram_stage)
-        self._heart_reactor.raise_()
         center_col.addWidget(self._hologram_stage, stretch=1)
 
         self._lbl_hud_status = QLabel("● SYSTEM STANDBY")
@@ -378,8 +377,8 @@ class HUDMainWindow(QMainWindow):
         self._right_menu_hide_after_fade = False
         self._right_menu.hide()
 
-        self._bihansa_effects.toggled.connect(self.bihansa_visualizer.set_effects_enabled)
-        self._bihansa_voice_reactive.toggled.connect(self.bihansa_visualizer.set_voice_reactive)
+        self._bihansa_effects.toggled.connect(self.hologram.set_effects_enabled)
+        self._bihansa_voice_reactive.toggled.connect(self.hologram.set_voice_reactive)
 
         # The home page stays clean and centered. Telemetry lives on a distinct page.
         self._home_page = QWidget()
@@ -516,16 +515,9 @@ class HUDMainWindow(QMainWindow):
             frame_interval, particle_scale, glow_scale = 24, 0.82, 0.78
         else:
             frame_interval, particle_scale, glow_scale = 16, 1.0, 1.0
-        self.wireframe_visualizer.set_performance_budget(
-            frame_interval, particle_scale, glow_scale
-        )
-        self.bihansa_visualizer.set_performance_budget(
-            frame_interval, particle_scale, glow_scale
-        )
+        self.hologram.set_performance_budget(frame_interval, particle_scale, glow_scale)
         self._mini_orb.setFixedSize(40 if width < 720 or height < 420 else 48,
                                     40 if width < 720 or height < 420 else 48)
-        self._heart_reactor.setGeometry(stage.rect())
-        self._heart_reactor.raise_()
 
     def resizeEvent(self, event):
         """Schedule floating-child geometry after the native resize event returns."""
@@ -548,6 +540,10 @@ class HUDMainWindow(QMainWindow):
             failsoft.suppress("ui.hud_main:changeEvent")
 
     def closeEvent(self, event):
+        try:
+            self.hologram.shutdown()
+        except Exception:
+            failsoft.suppress("ui.hud_main:hologram_shutdown")
         controller = getattr(self, "_island_controller", None)
         if controller is not None:
             try:
@@ -763,13 +759,13 @@ class HUDMainWindow(QMainWindow):
 
     def _wire_signals(self):
         """Wire VisualizerBridge signals to UI components."""
-        self._bridge.sig_audio_energy.connect(self.wireframe_visualizer.set_audio_energy)
+        self._bridge.sig_audio_energy.connect(self._on_input_energy)
+        self._bridge.sig_output_energy.connect(self._on_output_energy)
+        self._bridge.sig_output_ended.connect(self.hologram.end_output)
         self._bridge.sig_audio_energy.connect(self._mini_orb.set_audio_energy)
-        self._bridge.sig_audio_energy.connect(self._heart_reactor.set_audio_energy)
         self._bridge.sig_audio_energy.connect(self._dashboard.set_audio_energy)
         self._bridge.sig_state_changed.connect(self._on_state_changed)
         self._bridge.sig_auth_state_changed.connect(self._on_auth_state_changed)
-        self._bridge.sig_audio_energy.connect(self.bihansa_visualizer.set_audio_energy)
         self.sig_viseme_schedule.connect(self._schedule_visemes)
         self.sig_avatar_text.connect(self._show_avatar_text)
         self.sig_hybrid_telemetry.connect(self._panel_brain.update_telemetry)
@@ -781,9 +777,8 @@ class HUDMainWindow(QMainWindow):
     def _set_bihansa_enabled(self, enabled: bool):
         """Switch only the central visualizer; normal JARVIS remains available."""
         enabled = bool(enabled)
-        self._visualizer_stack.setCurrentWidget(
-            self.bihansa_visualizer if enabled else self.wireframe_visualizer
-        )
+        # Profile switch only: the JARVIS profile is never replaced, just blended away from.
+        self.hologram.set_profile("bihansa" if enabled else "jarvis")
         self._mini_orb.set_bihansa_mode(enabled)
         self._dashboard.set_bihansa_mode(enabled)
         self._bihansa_toggle.setText("BIHANSA MODE: ON" if enabled else "BIHANSA MODE: OFF")
@@ -805,6 +800,17 @@ class HUDMainWindow(QMainWindow):
         else:
             # Palette/persona changes must not erase a live warning or state.
             self._on_state_changed(current_state)
+
+    @pyqtSlot(float)
+    def _on_input_energy(self, level: float) -> None:
+        """Microphone level. Ignored while JARVIS speaks so output never drives 'listening'."""
+        if getattr(self, "_hologram_state", "IDLE") not in ("SPEAKING", "RESPONDING"):
+            self.hologram.set_audio_energy(level)
+
+    @pyqtSlot(float, float, float)
+    def _on_output_energy(self, level: float, openness: float, width: float) -> None:
+        """Playback level (fallback when no viseme schedule exists)."""
+        self.hologram.set_output_level(level, None if openness < 0 else openness, width)
 
     @pyqtSlot(object, float, float)
     def _schedule_visemes(self, frames, hop: float, at: float):
@@ -834,12 +840,9 @@ class HUDMainWindow(QMainWindow):
             else:
                 shape = "m"
             delay_ms = max(0, int((start_at + index * frame_hop - time.time()) * 1000))
-            def apply_frame(lvl=level, selected=shape):
-                self.bihansa_visualizer.set_audio_energy(lvl)
-                for viseme_id in ("aa", "ee", "oh", "ou", "ch", "m"):
-                    self.bihansa_visualizer.set_viseme(
-                        viseme_id, 0.85 if viseme_id == selected else 0.0
-                    )
+            def apply_frame(lvl=level, op=openness, wd=width):
+                # Timed to the audio that is actually playing (output side, not the mic).
+                self.hologram.set_output_level(lvl, op, wd)
             QTimer.singleShot(delay_ms, apply_frame)
 
     @pyqtSlot(str)
@@ -865,21 +868,18 @@ class HUDMainWindow(QMainWindow):
         if hasattr(self, "_settings"):
             self._settings.setValue("accessibility/reduced_motion", enabled)
         bihansa_prefs = BihansaModeSettings(self._settings)
-        self.wireframe_visualizer.set_reduced_motion(enabled)
-        self.bihansa_visualizer.set_reduced_motion(enabled or bihansa_prefs.reduced_motion)
+        self.hologram.set_reduced_motion(enabled or bihansa_prefs.reduced_motion)
 
     def _apply_bihansa_preferences(self):
         """Apply persisted appearance preferences to the active hologram widget."""
         prefs = BihansaModeSettings(self._settings)
         global_reduced_motion = self._settings.value("accessibility/reduced_motion", False, type=bool)
-        self.wireframe_visualizer.set_reduced_motion(global_reduced_motion)
-        self.bihansa_visualizer.set_reduced_motion(global_reduced_motion or prefs.reduced_motion)
-        self.bihansa_visualizer.set_glow_intensity(prefs.glow_intensity)
-        self.bihansa_visualizer.set_animation_speed(prefs.animation_speed)
-        self.bihansa_visualizer.set_effects_enabled(
+        self.hologram.set_reduced_motion(global_reduced_motion or prefs.reduced_motion)
+        self.hologram.set_glow_intensity(prefs.glow_intensity)
+        self.hologram.set_effects_enabled(
             self._bihansa_effects.isChecked() if hasattr(self, "_bihansa_effects") else True
         )
-        self.bihansa_visualizer.set_voice_reactive(
+        self.hologram.set_voice_reactive(
             self._bihansa_voice_reactive.isChecked() if hasattr(self, "_bihansa_voice_reactive") else True
         )
         if hasattr(self, "_bihansa_toggle"):
@@ -894,11 +894,10 @@ class HUDMainWindow(QMainWindow):
     def _on_state_changed(self, state: str):
         st = str(state or "IDLE").upper()
         visual_state = "PRIVACY_LOCK" if self._privacy_locked else st
-        self.wireframe_visualizer.set_state(visual_state)
-        self.bihansa_visualizer.set_state(visual_state)
+        self._hologram_state = visual_state
+        self.hologram.set_state(visual_state)
         self._mini_orb.set_state(visual_state)
         self._dashboard.set_state(visual_state)
-        self._heart_reactor.set_state(visual_state)
         if self._privacy_locked:
             return
 
@@ -943,11 +942,10 @@ class HUDMainWindow(QMainWindow):
     def _handle_privacy_lock(self):
         """Engage privacy lockdown profile on HUD and trigger LockWorkStation."""
         self._privacy_locked = True
-        self.wireframe_visualizer.set_state("PRIVACY_LOCK")
-        self.bihansa_visualizer.set_state("PRIVACY_LOCK")
+        self._hologram_state = "PRIVACY_LOCK"
+        self.hologram.set_state("PRIVACY_LOCK")
         self._mini_orb.set_state("PRIVACY_LOCK")
         self._dashboard.set_state("PRIVACY_LOCK")
-        self._heart_reactor.set_state("PRIVACY_LOCK")
         self._lbl_hud_status.setText("⊘ PRIVACY LOCK ENGAGED")
         self._lbl_hud_status.setStyleSheet("color: #ff1744;")
         self._lock_banner.show()
@@ -1277,6 +1275,8 @@ class HologramHUDUI:
     """
 
     def __init__(self, bridge: Optional[VisualizerBridge] = None):
+        from jarvis.hologram import prepare_qt
+        prepare_qt()
         self._app = QApplication.instance() or QApplication(sys.argv)
         self._app.setStyle("Fusion")
         self.bridge = bridge or get_visualizer_bridge()

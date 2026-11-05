@@ -166,3 +166,6 @@ button { font: inherit; color: inherit; }
 .timer-face[data-finished="true"] { color: var(--accent-warn, #ffb454); }
 .timer-modes, .timer-presets, .timer-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .timer-status { margin: 0; font-size: 12px; opacity: .7; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.region-wrap { display: contents; }

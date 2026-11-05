@@ -258,3 +258,7 @@ Tap first, sync later (`ux/actions.ts`): mic mute/unmute flips the UI at once; `
 ## 19. Reply panel
 
 `ui/Reply.tsx` shows the latest exchange (your last line and JARVIS's answer, consecutive JARVIS lines joined, max 6) above the command bar. It is derived only from the existing log mirror, so it inherits the same redaction and the same rule that nothing is shown while locked, awaiting a PIN, silent or in guest mode. Read-only; text is rendered as plain text (escaped); dismissing hides it until the next reply. Limitation: it appears when Python writes the reply to the HUD log, so it is not a live token stream.
+
+## 20. Accessibility audit (axe-core)
+
+An automated axe-core run inside the real QtWebEngine page (home, settings open, palette open, timer window open) found 3 serious/moderate rule failures: a labelled `div` with no role (hologram), controls whose `aria-label` did not contain their visible text (Island and widgets), and content outside landmarks. All fixed (visible text now forms the accessible name, with a visually hidden "Open ..." suffix; the stage and controls are landmarks). Result: 0 violations in those four states, no colour-contrast failures. This is an automated check only; it does not replace a manual NVDA pass, which is still open in the parity checklist.

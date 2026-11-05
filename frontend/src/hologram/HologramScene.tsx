@@ -28,7 +28,6 @@ export function HologramScene() {
       gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
       dpr={[1, 2]}
       onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
-      aria-label="JARVIS hologram"
     >
       <FitCamera />
       <ambientLight intensity={1.1} color="#6a9bff" />

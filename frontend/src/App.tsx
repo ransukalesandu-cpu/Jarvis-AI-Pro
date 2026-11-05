@@ -48,7 +48,7 @@ export default function App() {
   }, [toggleNav, toggleSettings, setPalette]);
   return (
     <div className="app" data-page={pageOpen ? 'open' : 'home'} data-settings={settingsOpen ? 'open' : 'closed'} data-loading={loading ? 'true' : 'false'}>
-      <div className="stage"><Suspense fallback={null}><HologramScene /></Suspense></div>
+      <div className="stage" role="region" aria-label="JARVIS hologram"><Suspense fallback={null}><HologramScene /></Suspense></div>
       <div className="vignette" />
       <TopBar />
       <div className="widgets left"><ClockWidget /><BatteryWidget /><SystemWidget /></div>

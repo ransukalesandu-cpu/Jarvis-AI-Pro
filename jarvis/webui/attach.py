@@ -54,6 +54,14 @@ def attach(window):
                                                           and ui_state.bus().get(ui_state.PERF_TIER) == c)
     controls = ControlGate(gate, actions, lambda: bool(getattr(window, "_muted", False)), already=already)
     host = WebUIHost(cw, gate=gate, controls=controls)
+
+    def _open_link(url: str) -> None:
+        from PyQt6.QtCore import QUrl
+        from PyQt6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl(url))
+
+    from .command_gate import LinkGate
+    host.bridge.links = LinkGate(gate, host.news_urls, _open_link)
     host.setGeometry(cw.rect())
     cw.installEventFilter(_Fit(cw, host))
     host.show()

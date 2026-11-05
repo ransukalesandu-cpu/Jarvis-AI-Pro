@@ -201,3 +201,34 @@ def test_persona_and_performance_apply_and_report_noop():
     assert c.do("mode_bihansa") == "done" and calls == ["mode_bihansa"]
     t[0] += 1
     assert c.do("perf_full") == "done"          # no "already" check registered: it simply applies
+
+
+# ── headlines: open by index ────────────────────────────────────────────────
+from jarvis.webui.command_gate import LinkGate, safe_link  # noqa: E402
+
+
+def test_safe_link_accepts_only_plain_https():
+    assert safe_link("https://example.com/a?b=1") == "https://example.com/a?b=1"
+    for bad in ("http://example.com", "javascript:alert(1)", "file:///etc/passwd", "https://user:pw@example.com", "https://", "", None, "https://x.y/" + "a" * 2100):
+        assert safe_link(bad) is None
+
+
+def test_link_gate_opens_by_index_only_when_allowed():
+    opened, t = [], [0.0]
+    gate, _, _ = rig()
+    g = LinkGate(gate, lambda: ["https://a.example/1", "javascript:x", ""], opened.append, clock=lambda: t[0])
+    assert g.open(0) == "done" and opened == ["https://a.example/1"]
+    assert g.open(0) == "rate_limited"
+    t[0] += 2
+    assert g.open(1) == "unavailable" and g.open(2) == "unavailable" and g.open(5) == "unavailable"
+    for bad in (-1, 20, True, "0", None):
+        assert g.open(bad) == "unavailable"
+    assert opened == ["https://a.example/1"]
+
+
+@pytest.mark.parametrize("mgr,guest,reason", [(Mgr(lock=True), False, "locked"), (Mgr(pin=True), False, "auth_required"),
+                                              (Mgr(silent=True), False, "silent"), (Mgr(), True, "guest")])
+def test_link_gate_refused_while_locked(mgr, guest, reason):
+    opened = []
+    gate, _, _ = rig(mgr, guest)
+    assert LinkGate(gate, lambda: ["https://a.example/"], opened.append).open(0) == reason and opened == []

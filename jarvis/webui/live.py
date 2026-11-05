@@ -32,6 +32,7 @@ class LiveLink:
             self._bus.subscribe(ui_state.AUDIO_LEVEL, self._on_bus),
             self._bus.subscribe(ui_state.PERSONA, self._on_bus),
             self._bus.subscribe(ui_state.PERF_TIER, self._on_bus),
+            self._bus.subscribe(ui_state.NEWS, self._on_bus),
             self._bus.subscribe(ui_state.MUTED, self._on_bus),
             self._bus.subscribe(ui_state.PROVIDER, self._on_bus),
         ]
@@ -39,7 +40,7 @@ class LiveLink:
 
     def push_snapshot(self) -> None:
         self._push_provider()
-        for key in (ui_state.ASSISTANT, ui_state.PERSONA, ui_state.PERF_TIER, ui_state.MUTED):
+        for key in (ui_state.ASSISTANT, ui_state.PERSONA, ui_state.PERF_TIER, ui_state.NEWS, ui_state.MUTED):
             val = self._bus.get(key)
             if val is not None:
                 self._forward(key, val, force=True)
@@ -73,6 +74,9 @@ class LiveLink:
         elif key == ui_state.PERSONA:
             if str(value) in ("jarvis", "bihansa"):
                 self._host.set_persona(str(value))
+        elif key == ui_state.NEWS:
+            if isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], list):
+                self._host.set_news(value[0], value[1])
         elif key == ui_state.PERF_TIER:
             if str(value) in ("full", "balanced", "lite"):
                 self._host.set_perf_tier(str(value))

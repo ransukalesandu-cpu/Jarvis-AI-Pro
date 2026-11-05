@@ -270,3 +270,12 @@ An automated axe-core run inside the real QtWebEngine page (home, settings open,
 New window kind `bento` ("Dashboard"): cards for assistant, model, CPU/RAM, network and storage from the data already mirrored; nothing invented ("not reported" / "collecting" when absent). An axe-core run in the real engine over Settings and the Dashboard window reports 0 violations.
 
 Deliberately not built (documented in the parity checklist): the native media/tool windows, wake, task events and notification centre, persistent chat history. Each needs a backend or a privacy design first.
+
+## 22. News window (headline mirror)
+
+The native News window has no news source of its own: the headlines appear when JARVIS fetches news and pushes them to the HUD. The web News window therefore mirrors exactly that, with no new network code and no new data source.
+
+- HUD (`_publish_news`) puts `(heading, rows)` on the state bus under `NEWS`; `LiveLink` forwards it to `WebUIHost.set_news`.
+- The `news.items` event carries only `title`, `source` and a boolean `link` (at most 20 items, bounded lengths). Links never leave Python: `WebUIHost` keeps the list.
+- Opening an article is `news.open {index}`. `LinkGate` looks the URL up in Python's own list, accepts only plain `https` URLs with a host and no embedded credentials, refuses while locked / awaiting a PIN / silent / guest, rate limits to one per second, and hands the URL to the system browser. The page cannot supply a URL and cannot navigate itself (the web view's navigation allow-list is unchanged).
+- The window says "No headlines yet" until JARVIS has shown some; nothing is invented. Verified in the real engine: a `javascript:` link gets no Open button, a valid link opens through Python, an open attempt while locked is refused, axe-core reports 0 violations.

@@ -1,4 +1,5 @@
 import { Maximize2 } from 'lucide-react';
+import { Spark } from './Spark';
 import { useUi, type Page } from '../store';
 import { useWindows } from '../workspace/windows';
 import type { WinKind } from '../workspace/layout';
@@ -7,10 +8,15 @@ const fmt = (n: number | undefined | null, unit = '%') => (n === undefined || n 
 
 export function MonitorContent() {
   const m = useUi((s) => s.metrics);
+  const sr = useUi((s) => s.series);
   return (
     <>
       <h1>System Monitor</h1>
-      <p>Live values from the Python backend (psutil). History charts arrive in Phase 3.</p>
+      <p>Live values from the Python backend (psutil), last two minutes.</p>
+      <Spark label="CPU" data={sr.cpu} unit="%" max={100} />
+      <Spark label="RAM" data={sr.ram} unit="%" max={100} />
+      <Spark label="Network ↓" data={sr.down} unit=" KB/s" />
+      <Spark label="Network ↑" data={sr.up} unit=" KB/s" />
       <div className="row"><span>CPU</span><span>{fmt(m?.cpu)}</span></div>
       <div className="row"><span>RAM</span><span>{fmt(m?.ram)}</span></div>
       <div className="row"><span>Disk</span><span>{fmt(m?.disk)}</span></div>

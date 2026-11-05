@@ -197,3 +197,11 @@ Still open (Phase 3b): provider/model status (needs a real source), task events,
 - Tests: +3 Python, +1 Vitest. Full suite green.
 
 Still open: task events and notification centre (no backend event source exists yet — needs one designed rather than faked), System Monitor history charts, accessibility pass, Windows/real-GPU verification, parity checklist before flipping the default.
+
+## 14. Phase 3c status — monitor history and accessibility
+
+- **History charts**: the store keeps the last 120 real telemetry samples (CPU, RAM, network down/up). `Spark` is a dependency-free inline SVG (no Recharts needed, no bundle growth): no line without data ("collecting…"), and each chart has a text equivalent (`aria-label` with now/min/max) plus the numeric rows below it. A missing network sample is never invented.
+- **Keyboard**: a focused floating window moves with Alt+Arrows and resizes with Alt+Shift+Arrows (same clamping/snapping as the mouse). Windows are `role="dialog"` with labels; palette (Ctrl+K), nav and settings were already keyboard reachable; focus ring and reduced-motion handling were already in place.
+- Tests: Vitest 21 (series cap/honesty, Spark with/without data). Real QtWebEngine run shows live curves.
+
+Still open: task events + notification centre (needs a designed backend event source), Windows/real-GPU verification, full screen-reader pass with a real reader, parity checklist before the default flips.

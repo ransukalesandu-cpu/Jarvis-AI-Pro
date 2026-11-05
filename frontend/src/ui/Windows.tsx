@@ -7,6 +7,18 @@ import { ActivityContent, ModelsContent, MonitorContent } from './Pages';
 
 const CONTENT: Record<WinKind, () => React.ReactElement> = { monitor: MonitorContent, models: ModelsContent, activity: ActivityContent };
 
+const STEP = 16;
+/** Keyboard equivalent of drag/resize: Alt+arrows move, Alt+Shift+arrows resize (when the window itself has focus). */
+function keyboard(e: React.KeyboardEvent, id: string, x: number, y: number, w: number, h: number) {
+  if (!e.altKey || e.target !== e.currentTarget) return;
+  const dx = e.key === 'ArrowLeft' ? -STEP : e.key === 'ArrowRight' ? STEP : 0;
+  const dy = e.key === 'ArrowUp' ? -STEP : e.key === 'ArrowDown' ? STEP : 0;
+  if (!dx && !dy) return;
+  e.preventDefault();
+  const s = useWindows.getState();
+  if (e.shiftKey) s.resize(id, x, y, w + dx, h + dy); else s.move(id, x + dx, y + dy);
+}
+
 /** Floating glass windows. Closing a window only closes the view: backend tasks are never stopped by it. */
 export function Windows() {
   const { windows, viewport, focus, move, resize, close, minimize, toggleMaximize } = useWindows();
@@ -25,7 +37,8 @@ export function Windows() {
             onMouseDown={() => focus(w.id)} onDragStart={() => focus(w.id)}
             onDragStop={(_e, d) => move(w.id, d.x, d.y)}
             onResizeStop={(_e, _dir, el, _delta, pos) => resize(w.id, pos.x, pos.y, el.offsetWidth, el.offsetHeight)}>
-            <section role="dialog" aria-label={TITLES[w.kind]} className="win-inner">
+            <section role="dialog" aria-label={TITLES[w.kind]} className="win-inner" tabIndex={0}
+              aria-keyshortcuts="Alt+ArrowKeys Alt+Shift+ArrowKeys" onKeyDown={(e) => keyboard(e, w.id, w.x, w.y, w.w, w.h)}>
               <header className="win-title">
                 <span>{titleOf(w)}</span>
                 <span className="win-actions">

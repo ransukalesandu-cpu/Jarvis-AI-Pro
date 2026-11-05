@@ -6,12 +6,12 @@ REPLACED, NOT APPLICABLE.
 | # | Project | Status | PR | Merge commit |
 |---|---|---|---|---|
 | 0 | Foundation | MERGED | [#277](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/277) | e14d32e |
-| 1 | Windows native control (+6 fallback input) | TESTING | (this PR) | — |
-| 2 | Orchestrator (UFO²-inspired) | NOT STARTED | — | — |
+| 1 | Windows native control (+6 fallback input) | MERGED | [#278](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/278) | c82ece7 |
+| 2 | Orchestrator (UFO²-inspired) | TESTING | (this PR) | — |
 | 3 | Browser automation | NOT STARTED | — | — |
 | 4 | Visual understanding | NOT STARTED | — | — |
 | 5 | Workflow learning | NOT STARTED | — | — |
-| 6 | Fallback input | TESTING (folded into Project 1) | (Project 1 PR) | — |
+| 6 | Fallback input | MERGED (folded into Project 1) | see Project 1 | — |
 | 7 | MCP / Tool Registry | NOT STARTED | — | — |
 | 8 | Benchmarks | NOT STARTED | — | — |
 
@@ -49,3 +49,16 @@ REPLACED, NOT APPLICABLE.
 * **Tests:** 42 fake-backend tests + 3 real Notepad tests on windows-latest.
 * **Limitations:** see TESTING_REPORT.md "pending manual validation" (Store apps, owner's
   installed apps, real pointer input, multi-monitor/DPI).
+
+## Project 2 — Orchestrator (UFO²-inspired)
+
+* **Completed:** `orchestrator/` — `plan.py` (validated steps, dependency order via
+  `agent/dependency_graph`, `{{N.data.x}}` references), `planner.py` (local heuristic planner +
+  redacted cloud planner through HybridLLMRouter), `agents.py` (agent registry), `host.py` (Host
+  Agent: shared context, trace with redacted args, bounded recovery, file/window/text verification,
+  honest report), `jobs.py` (`cc_task` as a JobManager job, StateBus `computer_control` status, HUD
+  `CC:` log lines). Runner results now carry post-call redacted args (a password field found during
+  the call is masked in traces).
+* **Tests:** 25 orchestrator tests.
+* **Limitations:** web-UI panel for live cc status not built (status shows in the Jobs window and
+  the HUD log); cloud planning needs the owner's key.

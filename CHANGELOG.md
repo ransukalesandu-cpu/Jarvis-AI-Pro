@@ -7,6 +7,13 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Computer Control — Project 2: orchestrator** (`jarvis/computer_control/orchestrator/`). A
+  UFO²-inspired Host Agent: validated plans (dependency-ordered, `{{N.data.x}}` references between
+  steps), a local planner for common requests plus an optional redacted cloud planner, an agent
+  registry, bounded recovery (never for denied/cancelled/HIGH steps), per-step and file
+  verification, honest reports, and results-derived arguments treated as tainted. `cc_task` runs a
+  whole request as a JobManager job (Jobs window, Cancel, completion notice) with live status on the
+  StateBus and in the HUD log.
 - **Computer Control — Project 1: Windows native control** (`jarvis/computer_control/windows/`).
   One Windows Controller API over pywinauto UI Automation (accessibility first, Win32 for
   window geometry) with a fake desktop for tests: discover/launch/close apps, find/activate/

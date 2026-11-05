@@ -573,6 +573,10 @@ def tier_for(name: str, params: dict | None = None) -> str:
         return TIER_DANGEROUS if operation in {"forget", "clear"} else TIER_SENSITIVE
     if name == "self_heal" and operation == "check":
         return TIER_SAFE
+    if name in ("cc_emergency_stop", "cc_engine_status"):
+        # The computer-control emergency brake and its status are never gated;
+        # every other cc_* tool is still classified by the engine's own policy.
+        return TIER_SAFE
     if name == "autonomous_task":
         # Stopping must never be gated: it is the emergency brake and the runner
         # checks its cancellation event before every action. Reading progress,

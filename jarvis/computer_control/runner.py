@@ -71,6 +71,9 @@ class ActionResult:
     evidence: str = ""
     duration_ms: int = 0
     approval: str = ""
+    #: the call's arguments as finally seen by the handler, redacted (password
+    #: fields marked during the call are already masked here)
+    args: dict = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -184,7 +187,8 @@ class ActionRunner:
 
         def finish(status: str, message: str, level: Level = Level.LOW, **kw) -> ActionResult:
             result = ActionResult(action=action, status=status, message=message, level=level,
-                                  duration_ms=int((time.monotonic() - started) * 1000), **kw)
+                                  duration_ms=int((time.monotonic() - started) * 1000),
+                                  args=redact_params(params), **kw)
             audit.record(action, params, result.message, status=status, level=level.value,
                          duration_ms=result.duration_ms, job_id=job_id or None,
                          extra={"verified": result.verified, "approval": result.approval} if

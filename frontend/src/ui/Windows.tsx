@@ -1,11 +1,12 @@
 import { Maximize2, Minimize2, Minus, X } from 'lucide-react';
 import { Rnd } from 'react-rnd';
+import { TimerContent } from './TimerWindow';
 import { MARGIN, MIN_H, MIN_W, TOP, TITLES, type WinKind } from '../workspace/layout';
 import { titleOf, useWindows } from '../workspace/windows';
 import { useUi } from '../store';
 import { ActivityContent, LogContent, ModelsContent, MonitorContent } from './Pages';
 
-const CONTENT: Record<WinKind, () => React.ReactElement> = { monitor: MonitorContent, models: ModelsContent, activity: ActivityContent, log: LogContent };
+const CONTENT: Record<WinKind, () => React.ReactElement> = { monitor: MonitorContent, models: ModelsContent, activity: ActivityContent, log: LogContent, timer: TimerContent };
 
 const STEP = 16;
 /** Keyboard equivalent of drag/resize: Alt+arrows move, Alt+Shift+arrows resize (when the window itself has focus). */

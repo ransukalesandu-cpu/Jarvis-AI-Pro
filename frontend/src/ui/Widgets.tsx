@@ -11,11 +11,12 @@ function Bar({ value, low = false }: { value: number; low?: boolean }) {
 function Widget({ label, value, sub, icon, to, bar, low }: { label: string; value: string; sub?: string; icon: React.ReactNode; to: Page; bar?: number; low?: boolean }) {
   const go = useUi((s) => s.go);
   return (
-    <button className="widget glass" onClick={() => go(to)} aria-label={`${label}: ${value}. Open ${to}`}>
+    <button className="widget glass" onClick={() => go(to)}>
       <div className="label">{icon} {label}</div>
       <div className="value">{value}</div>
       {sub && <div className="sub">{sub}</div>}
       {bar !== undefined && <Bar value={bar} low={low} />}
+      <span className="sr-only">Open {to}</span>
     </button>
   );
 }
@@ -26,10 +27,11 @@ export function ClockWidget() {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => { const id = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(id); }, []);
   return (
-    <button className="widget glass" onClick={() => go(true)} aria-label="Time and date. Open settings">
+    <button className="widget glass" onClick={() => go(true)}>
       <div className="label">Time</div>
       <div className="value">{now.toLocaleTimeString([], { hour12: !clock24, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
       <div className="sub">{now.toLocaleDateString([], { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}</div>
+      <span className="sr-only">Open settings</span>
     </button>
   );
 }

@@ -34,7 +34,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not yet · 🔒 stays native on purpose 
 | `perf:*` | ⬜ | write path to the perf tier |
 
 ## 3. Tools / media windows (ui_menus `open:*`)
-YouTube Music, Music player, Video player, Image viewer, Timer, News, Downloads: ⬜ all. These are native windows with their own backends; the web UI can open them only through a typed, allow-listed "open window" request (not built).
+YouTube Music, Music player, Video player, Image viewer, News, Downloads: ⬜ all. Timer: ✅ (a real local window in the web UI; no backend needed). Opening the native ones from the page would be hidden under the web overlay, so each needs its own web window instead. These are native windows with their own backends; the web UI can open them only through a typed, allow-listed "open window" request (not built).
 
 ## 4. Controls in the classic side panel
 | Control | Web UI |

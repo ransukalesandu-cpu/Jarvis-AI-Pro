@@ -205,3 +205,15 @@ Still open: task events and notification centre (no backend event source exists 
 - Tests: Vitest 21 (series cap/honesty, Spark with/without data). Real QtWebEngine run shows live curves.
 
 Still open: task events + notification centre (needs a designed backend event source), Windows/real-GPU verification, full screen-reader pass with a real reader, parity checklist before the default flips.
+
+## 15. Command bar — the first write path
+
+`command.submit` is the only request that makes the assistant *do* something. Design:
+
+- **Gate in Python** (`jarvis/webui/command_gate.py`), not in the page. The classic typed-text path also takes the Privacy Lock PIN and the guest-mode `/owner <PIN>` credential, so the page must never become a credential entry point. The gate refuses to forward while the assistant is locked, waiting for a PIN, silent, or in guest mode, and refuses credential-shaped text (`/owner`, `/pin`, `/login`, `/password`) even when otherwise available. If safety cannot be determined, it is "unavailable" (fail closed).
+- Limits: 500 chars, control characters stripped, 0.5 s spacing and 30/min. The text is never logged or stored by the web layer and is cleared from the page once sent; the classic log line ("You: …") is written by the existing sink.
+- Availability is pushed to the page whenever it changes (checked on the 1 Hz tick), so the box disables itself and says "use the native prompt". Results come back as a closed set of reasons.
+- Forwarding reuses the classic `_submit_immersive_command`, so the existing wake/auth checks in `_on_text_command` still run after the gate.
+- Tests: Python 16 (all four lock states, credential shapes, limits, fail-closed, bridge round trip, change-only availability), Vitest 31; real QtWebEngine run shows send, then lock on PIN state.
+
+Not covered: showing JARVIS's reply as text in the page (needs a read-only, redacted log event).

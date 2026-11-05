@@ -12,9 +12,11 @@ class WebUIBridge(QObject):
     ready = pyqtSignal()               # the page connected and subscribed
     ping_received = pyqtSignal(int)    # heartbeat from the page
 
-    def __init__(self, parent=None, store: WorkspaceStore | None = None):
+    def __init__(self, parent=None, store: WorkspaceStore | None = None, gate=None):
         super().__init__(parent)
         self.store = store or WorkspaceStore()
+        self.gate = gate               # CommandGate or None (=> commands unavailable)
+        self._avail = None
 
     @pyqtSlot(str)
     def request(self, raw: str) -> None:  # noqa: D401 - Qt slot
@@ -36,6 +38,16 @@ class WebUIBridge(QObject):
             self._publish_list()
         elif msg["kind"] == "workspace.list":
             self._publish_list()
+        elif msg["kind"] == "command.submit":
+            self.publish("command.result", reason=self.gate.submit(msg["text"]) if self.gate else "unavailable")
+            self.refresh_availability()
+
+    def refresh_availability(self, force: bool = False) -> None:
+        """Tell the page whether typing a command is allowed right now (only when it changes)."""
+        state = self.gate.availability() if self.gate else "unavailable"
+        if force or state != self._avail:
+            self._avail = state
+            self.publish("command.availability", state=state)
 
     def _publish_list(self) -> None:
         self.publish("workspace.list", names=self.store.names())

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AssistantState, Battery, HostEvent, Net, Persona } from './bridge/contract';
+import type { AssistantState, Battery, CommandReason, CommandState, HostEvent, Net, Persona } from './bridge/contract';
 
 export type Page = 'home' | 'chat' | 'activity' | 'models' | 'research' | 'reminders' | 'apps' | 'files' | 'memory' | 'automation' | 'monitor' | 'security';
 
@@ -27,6 +27,7 @@ export interface UiState {
   workspaceNames: string[];
   paletteOpen: boolean;
   muted: boolean;
+  command: { state: CommandState; last: CommandReason | null };
   history: { at: number; state: AssistantState }[];
   setLink: (l: UiState['link']) => void;
   apply: (e: HostEvent) => void;
@@ -42,7 +43,7 @@ const prefersReduced = typeof matchMedia === 'function' && matchMedia('(prefers-
 
 export const useUi = create<UiState>((set) => ({
   link: 'connecting', assistant: 'idle', persona: 'jarvis', outputLevel: 0, inputLevel: 0,
-  series: EMPTY, metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, clock24: true, history: [], workspaceNames: [], paletteOpen: false, muted: false,
+  series: EMPTY, metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, clock24: true, history: [], workspaceNames: [], paletteOpen: false, muted: false, command: { state: 'unavailable', last: null },
   setLink: (link) => set({ link }),
   apply: (e) => set((s) => {
     switch (e.type) {
@@ -50,6 +51,8 @@ export const useUi = create<UiState>((set) => ({
       case 'assistant.audio_level': return e.source === 'output' ? { outputLevel: e.level } : { inputLevel: e.level };
       case 'system.metrics_updated': return { series: { cpu: push(s.series.cpu, e.cpu), ram: push(s.series.ram, e.ram), down: e.net ? push(s.series.down, e.net.downKBps) : s.series.down, up: e.net ? push(s.series.up, e.net.upKBps) : s.series.up }, metrics: { cpu: e.cpu, ram: e.ram, disk: e.disk, battery: e.battery, net: e.net } };
       case 'provider.changed': return { provider: { provider: e.provider, model: e.model, connected: e.connected, fallback: e.fallback } };
+      case 'command.availability': return { command: { ...s.command, state: e.state } };
+      case 'command.result': return { command: { ...s.command, last: e.reason } };
       case 'assistant.muted': return { muted: e.muted };
       case 'ui.persona': return { persona: e.persona };
       case 'workspace.list': return { workspaceNames: e.names };

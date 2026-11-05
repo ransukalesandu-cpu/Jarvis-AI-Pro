@@ -43,3 +43,16 @@ describe('metric series', () => {
     expect(useUi.getState().series.down.at(-1)).toBe(7);
   });
 });
+
+describe('command bar state', () => {
+  it('starts unavailable, follows the host, and parses only known values', () => {
+    expect(useUi.getState().command.state).toBe('unavailable');
+    expect(_parse(JSON.stringify({ type: 'command.availability', state: 'auth_required' }))).not.toBeNull();
+    expect(_parse(JSON.stringify({ type: 'command.availability', state: 'whenever' }))).toBeNull();
+    expect(_parse(JSON.stringify({ type: 'command.result', reason: 'sent' }))).not.toBeNull();
+    expect(_parse(JSON.stringify({ type: 'command.result', reason: 'oops' }))).toBeNull();
+    useUi.getState().apply({ type: 'command.availability', state: 'ok' });
+    useUi.getState().apply({ type: 'command.result', reason: 'rate_limited' });
+    expect(useUi.getState().command).toEqual({ state: 'ok', last: 'rate_limited' });
+  });
+});

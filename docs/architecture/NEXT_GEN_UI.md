@@ -177,3 +177,14 @@ Security/robustness: layouts are validated on both sides with the same schema (e
 Verification: tsc clean; Vitest 17/17; pytest 1399 passed / 4 skipped; real QtWebEngine run (3 windows placed in the gutters, autosave written, palette opened by Ctrl+K). Screenshots: `docs/images/next-gen-ui-phase2-*.png`.
 
 Not in Phase 2: live assistant wiring (state bus, audio, provider router), task events, charts, notification centre, Windows/real-GPU verification — Phase 3.
+
+## 12. Phase 3a status — live assistant wiring
+
+`JARVIS_UI=web` now mounts the React UI over the main window's central area and feeds it from the existing `ui_state` bus (the same source the classic HUD reads).
+
+- `jarvis/webui/live.py` — `LiveLink`: read-only bus → bridge forwarding of assistant state, audio level (20 Hz throttle; silence never dropped) and persona. Values with no contract name (e.g. the classic `MUTED` label) are dropped, not approximated. The state is re-sent whenever the page (re)loads.
+- `jarvis/webui/attach.py` — mounts the host, keeps it sized to the central widget via an event filter (no change to legacy `resizeEvent`). Does nothing unless `ui_mode() == "web"`.
+- `MainWindow._attach_web_ui` (one hook) and `bootstrap._prepare_web_ui` (QtWebEngine import before `QApplication`). Any failure prints and leaves the classic HUD running.
+- Tests: `test_webui_live.py` (6) + attach no-op test; real QtWebEngine run with the real bus (pre-load state, live update, resize).
+
+Still open (Phase 3b): provider/model status (needs a real source), task events, charts, notification centre, mute state in the contract, Windows/real-GPU verification, CI dist rebuild check, parity checklist before the default flips.

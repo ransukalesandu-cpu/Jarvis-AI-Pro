@@ -1,7 +1,7 @@
 """QWebEngineView host for the React UI: locked to the bundled dist, no remote content, off the record."""
 from __future__ import annotations
 
-from PyQt6.QtCore import QTimer, QUrl
+from PyQt6.QtCore import QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
@@ -34,6 +34,8 @@ class _LockedPage(QWebEnginePage):
 
 
 class WebUIHost(QWidget):
+    ready = pyqtSignal()   # emitted each time the page finishes loading (first load and reloads)
+
     def __init__(self, parent=None, *, debug: bool = False, workspace_path=None):
         super().__init__(parent)
         self._reloads = 0
@@ -75,6 +77,7 @@ class WebUIHost(QWidget):
     def _on_page_ready(self) -> None:
         self.bridge.publish("host.hello", version=HOST_VERSION)
         self._push_metrics()
+        self.ready.emit()
         if self.isVisible():
             self._timer.start()
 

@@ -1960,6 +1960,7 @@ class MainWindow(QMainWindow):
         # Quick-access drawer (floating overlay, built after central widget layout is done)
         self._quick_drawer = self._build_quick_drawer()
         QTimer.singleShot(0, self._ensure_island)   # Dynamic Island over the stage
+        QTimer.singleShot(0, self._attach_web_ui)   # opt-in (JARVIS_UI=web); no-op otherwise
         try:
             from jarvis.memory.config_manager import get_perf_tier
             self._perf_choice = get_perf_tier()
@@ -5978,6 +5979,14 @@ class MainWindow(QMainWindow):
         self._log.append_log(f"You: {txt}")
         if self.on_text_command:
             threading.Thread(target=self.on_text_command, args=(txt,), daemon=True).start()
+
+    def _attach_web_ui(self) -> None:
+        try:
+            from jarvis.webui.attach import attach
+            attach(self)
+        except Exception as exc:                      # the legacy HUD must always survive
+            self._web_ui = None
+            print(f"[JARVIS] Web UI unavailable, using the classic HUD: {type(exc).__name__}: {exc}")
 
     def _apply_audio_level(self, level: float) -> None:
         """Apply audio levels to HUD canvases on the Qt GUI thread only."""

@@ -15,6 +15,21 @@ from collections.abc import Callable
 from typing import Any
 
 
+def _prepare_web_ui() -> None:
+    """QtWebEngine must be imported (and GL contexts shared) before QApplication exists. Opt-in only."""
+    try:
+        from jarvis.webui import ui_mode
+
+        if ui_mode() != "web":
+            return
+        from PyQt6.QtCore import QCoreApplication, Qt
+        from PyQt6 import QtWebEngineWidgets  # noqa: F401
+
+        QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+    except Exception as exc:  # fall back to the classic HUD
+        print(f"[JARVIS] Web UI disabled: {type(exc).__name__}: {exc}")
+
+
 def run_application(
     *,
     headless_ui_factory: Callable[[], Any],
@@ -62,6 +77,7 @@ def run_application(
 
     if configure_graphics_backend:
         configure_graphics_backend()
+    _prepare_web_ui()
     app = QApplication.instance() or QApplication(sys.argv)
     app.setStyle("Fusion")
     startup: dict[str, Any] = {

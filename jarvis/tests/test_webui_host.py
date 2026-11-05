@@ -64,3 +64,15 @@ def test_ui_mode_defaults_to_legacy(monkeypatch):
     assert webui.ui_mode() == "legacy"
     monkeypatch.setenv("JARVIS_UI", "web")
     assert webui.ui_mode() == ("web" if webui.dist_ready() else "legacy")
+
+
+def test_attach_is_a_noop_unless_web_mode_is_requested(monkeypatch):
+    from jarvis.webui import attach as A
+
+    class W:  # attach must not even touch the window when the mode is legacy
+        def centralWidget(self): raise AssertionError("touched the window")
+
+    monkeypatch.delenv("JARVIS_UI", raising=False)
+    assert A.attach(W()) is None
+    monkeypatch.setenv("JARVIS_UI", "bogus")
+    assert A.attach(W()) is None

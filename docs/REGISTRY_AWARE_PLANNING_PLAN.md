@@ -74,8 +74,12 @@ log / task store and show it in the existing diagnostics view (`self_check`). No
   and security tiers; flag off by default.
 - Prompt size → top-K retrieval + 150-char cap.
 
-## 7. Decisions needed from the owner
-1. Approve this plan as written (A → B → C), or drop C?
-2. Should `registry_call` steps be allowed to use remote-device tools (phone/second PC) in
-   the first version, or local tools only?
-3. Default top-K (20)?
+## 7. Owner decisions (answered 2026-11-05)
+1. A → B → C approved as written (C included).
+2. `registry_call` is **local tools only** in the first version. Remote-device tools
+   (RemoteToolRegistry, hub-side registries) and `device` values other than "laptop" are
+   excluded from the catalog and rejected by the planner.
+3. Default top-K = 20.
+
+Delivery: one PR per phase, branches `feature/tool-catalog` (A), `feature/registry-call-step` (B),
+`feature/planning-stage-trace` (C). Merge only on the owner's explicit word.

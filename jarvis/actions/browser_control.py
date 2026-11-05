@@ -463,6 +463,8 @@ class _BrowserSession:
         self._pw:      Playwright     | None = None
         self._context: BrowserContext | None = None
         self._page:    Page           | None = None
+        from jarvis.core.page_snapshot import RefState
+        self._refs = RefState()
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -767,6 +769,23 @@ class _BrowserSession:
             return f"Pressed: {key}"
         except Exception as e:
             return f"Key error: {e}"
+
+    async def snapshot(self) -> str:
+        from jarvis.core import page_snapshot
+        return await page_snapshot.take_snapshot(await self._get_page(), self._refs)
+
+    async def click_ref(self, ref: str) -> str:
+        from jarvis.core import page_snapshot
+        return await page_snapshot.click_ref(await self._get_page(), self._refs, ref)
+
+    async def type_ref(self, ref: str, text: str, clear_first: bool = True, submit: bool = False) -> str:
+        from jarvis.core import page_snapshot
+        return await page_snapshot.type_ref(await self._get_page(), self._refs, ref, text,
+                                            clear_first=clear_first, submit=submit)
+
+    async def select_ref(self, ref: str, value: str) -> str:
+        from jarvis.core import page_snapshot
+        return await page_snapshot.select_ref(await self._get_page(), self._refs, ref, value)
 
     async def get_text(self) -> str:
         page = await self._get_page()
@@ -1131,6 +1150,16 @@ def browser_control(
         elif action == "type":
             result = sess.run(sess.type_text(
                 params.get("selector"), params.get("text", ""), params.get("clear_first", True)))
+        elif action == "snapshot":
+            result = injection_guard.wrap_untrusted(sess.run(sess.snapshot()), "browser_snapshot")
+        elif action == "click_ref":
+            result = sess.run(sess.click_ref(params.get("ref", "")))
+        elif action == "type_ref":
+            result = sess.run(sess.type_ref(
+                params.get("ref", ""), params.get("text", ""), params.get("clear_first", True),
+                bool(params.get("submit", False))))
+        elif action == "select_ref":
+            result = sess.run(sess.select_ref(params.get("ref", ""), params.get("value", params.get("text", ""))))
         elif action == "scroll":
             result = sess.run(sess.scroll(params.get("direction", "down"), int(params.get("amount", 500))))
         elif action == "fill_form":
@@ -1183,13 +1212,13 @@ def _log(player, text: str):
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "browser_control",
-    "description": "Controls web pages. Use action='view' to render an article/page inside the JARVIS HUD (especially when the user says 'show/open that article here' or 'in the HUD'); this is display-only and does not use the user's external browser. Use go_to/search/new_tab for the existing native browser. Other actions click/type/scroll/read/screenshot in the controlled browser. Always pass 'browser' when the user names one.",
+    "description": "Controls web pages. For reliable page interaction call action='snapshot' first: it lists the clickable/typeable elements as e-numbers; then use click_ref / type_ref / select_ref with those refs and read the reported result (URL change, field value) to confirm it worked; take a new snapshot after the page changes. Use action='view' to render an article/page inside the JARVIS HUD (especially when the user says 'show/open that article here' or 'in the HUD'); this is display-only and does not use the user's external browser. Use go_to/search/new_tab for the existing native browser. Other actions click/type/scroll/read/screenshot in the controlled browser. Always pass 'browser' when the user names one.",
     "parameters": {
         "type": "OBJECT",
         "properties": {
             "action": {
                 "type": "STRING",
-                "description": "view (internal HUD page/article) | go_to | search | click | type | scroll | fill_form | smart_click | smart_type | get_text | get_url | press | new_tab | close_tab | screenshot | back | forward | reload | switch | list_browsers | close | close_all"
+                "description": "view (internal HUD page/article) | go_to | search | snapshot | click_ref | type_ref | select_ref | click | type | scroll | fill_form | smart_click | smart_type | get_text | get_url | press | new_tab | close_tab | screenshot | back | forward | reload | switch | list_browsers | close | close_all"
             },
             "browser": {
                 "type": "STRING",
@@ -1246,6 +1275,18 @@ TOOL = {
             "clear_first": {
                 "type": "BOOLEAN",
                 "description": "Clear field before typing (default: true)"
+            },
+            "ref": {
+                "type": "STRING",
+                "description": "Element ref like e12 from the latest snapshot (click_ref, type_ref, select_ref)"
+            },
+            "value": {
+                "type": "STRING",
+                "description": "For select_ref: option label/value, or true/false for a checkbox"
+            },
+            "submit": {
+                "type": "BOOLEAN",
+                "description": "For type_ref: press Enter after typing"
             }
         },
         "required": [

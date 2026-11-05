@@ -8,6 +8,11 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Browser snapshots with element refs** (`core/page_snapshot.py`,
+  `docs/BROWSER_SNAPSHOT.md`). `browser_control` gained `snapshot`, `click_ref`,
+  `type_ref`, `select_ref`: the page is listed as `[e12] button "Go"` lines and
+  actions use those refs, refuse stale ones, and verify the outcome (URL/title change,
+  field value read back; passwords never read). Existing selector actions are unchanged.
 - **Skills + MCP client** (`docs/SKILLS_AND_MCP.md`). `SKILL.md` skills from
   `<user data>/skills/` (name + description in the prompt, body loaded on demand,
   instructions only, create/delete need confirmation). A real **MCP client**

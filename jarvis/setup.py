@@ -70,7 +70,18 @@ def _check_assets() -> None:
         )
 
 
+def _make_console_safe() -> None:
+    """Never let an unprintable symbol (⚙ ⚠ …) crash the installer on a legacy
+    Windows code page: replace what the console cannot show."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def main() -> None:
+    _make_console_safe()
     print(f"⚙  JARVIS AI setup — detected OS: {OS or 'unknown'}, "
           f"Python {sys.version_info[0]}.{sys.version_info[1]}")
     _check_python()

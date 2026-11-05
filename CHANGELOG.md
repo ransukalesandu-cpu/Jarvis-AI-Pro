@@ -44,6 +44,7 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   `catch_up`, `max_per_hour`. Existing `triggers.json` files load unchanged.
 
 ### Removed
+- `jarvis/LICENSE` (CC BY-NC 4.0). The repository now has a single license: the root Apache-2.0 `LICENSE`, as decided by the owner.
 
 - `core/mcp_hub.py` and its test: a local-only toy registry that nothing imported;
   replaced by `core/mcp_client.py`.

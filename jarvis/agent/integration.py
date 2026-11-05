@@ -157,6 +157,22 @@ class AgentService:
         except Exception:
             failsoft.suppress("agent.integration:shutdown")
 
+    def attach_tool_dispatch(self, dispatch: Callable[..., str] | None) -> None:
+        """Give plans the live session's ``dispatch(name, args, timeout)``.
+
+        It is the same registry layer a spoken tool call goes through (security
+        guard, device check, action log, timeouts). Without a live session no
+        ``registry_call`` step can run; it is blocked with a clear reason.
+        """
+        if dispatch is None:
+            self.runner.set_tool_runner(None)
+            return
+
+        def run(name: str, args: dict, timeout: float) -> str:
+            return dispatch(name, args, timeout)
+
+        self.runner.set_tool_runner(run)
+
     def attach_speaker(self, speak: Callable[[str], None] | None) -> None:
         """Give the agent the voice layer's speak function (from the tool ctx)."""
         self._speak = speak

@@ -32,6 +32,7 @@ from jarvis.agent.models import StepKind, Task, TaskStep
 from jarvis.agent.store import redact
 
 from jarvis.core import failsoft
+from jarvis.core.tool_runtime import result_status
 
 _MAX_OUTPUT = 6000
 _CLIP_HEAD = 1500
@@ -76,6 +77,37 @@ class StepResult:
         return cls(False, error="Stopped.", cancelled=True)
 
 
+_MAX_REF_CHARS = 2000
+_STEP_REF = re.compile(r"\{\{\s*step\s*:\s*([A-Za-z0-9_\-]+)\s*\}\}")
+
+
+class StepRefError(RuntimeError):
+    """A ``{{step:ID}}`` reference could not be filled in."""
+
+
+def resolve_step_refs(value: Any, task: Task) -> Any:
+    """Replace ``{{step:ID}}`` in string values with that step's (capped) output.
+
+    The text is substituted as plain data into an argument; it is never executed
+    or re-planned. A reference to a step that has not completed fails the step.
+    """
+    if isinstance(value, str):
+        def fill(match: re.Match) -> str:
+            ref = match.group(1)
+            for other in getattr(task, "steps", []) or []:
+                if other.id == ref:
+                    if other.state.value != "completed":
+                        raise StepRefError(f"Step '{other.title}' has not completed, so its output is unavailable.")
+                    return str(other.output or "")[:_MAX_REF_CHARS]
+            raise StepRefError(f"Unknown step reference {ref[:20]!r}.")
+        return _STEP_REF.sub(fill, value)
+    if isinstance(value, dict):
+        return {k: resolve_step_refs(v, task) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [resolve_step_refs(v, task) for v in value]
+    return value
+
+
 @dataclass
 class ExecutionContext:
     """Everything a handler may use. Injected, never looked up globally."""
@@ -92,6 +124,9 @@ class ExecutionContext:
         default_factory=policy_module.ExecutionPolicy
     )
     request_approval: Callable[[TaskStep, policy_module.Decision], bool] | None = None
+    #: ``(tool_name, args, timeout_s) -> result text``; runs one local JARVIS tool
+    #: through the normal registry layer (security guard, action log, timeouts).
+    tool_runner: Callable[[str, dict[str, Any], float], str] | None = None
     sleep: Callable[[float], None] = time.sleep
     clock: Callable[[], float] = time.monotonic
     emit: Callable[[str, dict[str, Any]], None] = lambda kind, data: None
@@ -125,6 +160,7 @@ class StepExecutor:
             StepKind.BROWSER_NAVIGATE: self._browser_navigate,
             StepKind.BROWSER_READ: self._browser_read,
             StepKind.BROWSER_FOLLOW_LINK: self._browser_follow_link,
+            StepKind.REGISTRY_CALL: self._registry_call,
             StepKind.VERIFY: self._verify,
             StepKind.NOTE: self._note,
         }
@@ -155,6 +191,35 @@ class StepExecutor:
         if ctx.cancel.is_set() and not result.ok:
             result.cancelled = True
         return result
+
+    # -- registry tools ----------------------------------------------------
+    def _registry_call(self, step: TaskStep, ctx: ExecutionContext) -> StepResult:
+        """Run one local tool by name. Only ever goes through ``ctx.tool_runner``."""
+        if not step.tool:
+            return StepResult.blocked_result("registry_call has no tool name.")
+        runner = ctx.tool_runner
+        if runner is None:
+            return StepResult.blocked_result(
+                "No tool runner is connected (the JARVIS voice session is not running)."
+            )
+        try:
+            args = resolve_step_refs(step.args, ctx.task)
+        except StepRefError as exc:
+            return StepResult.failure(str(exc))
+        timeout = min(
+            max(5.0, float(step.timeout_s)),
+            max(5.0, float(ctx.policy.command_timeout_s)),
+        )
+        ctx.log(f"registry_call -> {step.tool}")
+        text = str(runner(step.tool, args, timeout) or "")
+        evidence = {"tool": step.tool, "tool_risk": step.tool_risk, "untrusted_output": True}
+        if ctx.cancel.is_set():
+            return StepResult.stopped()
+        if result_status(text) == "error" or (
+            text.startswith("Action '") and "is not available" in text[:120]
+        ):
+            return StepResult.failure(text[:_MAX_OUTPUT], evidence=evidence)
+        return StepResult.success(text[:_MAX_OUTPUT] or "Done.", **evidence)
 
     # -- command execution -------------------------------------------------
     def _run_command(self, step: TaskStep, ctx: ExecutionContext) -> StepResult:

@@ -78,6 +78,7 @@ class TaskRunner:
         computer: Any | None = None,
         browser: Any | None = None,
         request_approval: Callable[[TaskStep, policy_module.Decision], bool] | None = None,
+        tool_runner: Callable[[str, dict, float], str] | None = None,
         before_step: Callable[[TaskStep], str | None] | None = None,
         on_milestone: Callable[[str], None] | None = None,
         logger: Callable[[str], None] | None = None,
@@ -108,6 +109,7 @@ class TaskRunner:
         self.computer = computer
         self.browser = browser
         self._approval = request_approval
+        self._tool_runner = tool_runner
         self._before_step = before_step
         self._milestone = on_milestone
         self._logger = logger or (lambda message: None)
@@ -646,6 +648,10 @@ class TaskRunner:
         with self._lock:
             self.store.append_event(task_id, {"kind": kind, **data})
 
+    def set_tool_runner(self, tool_runner: Callable[[str, dict, float], str] | None) -> None:
+        """Late-attach (or clear) the function that runs local registry tools."""
+        self._tool_runner = tool_runner
+
     def _context(self, task: Task) -> ExecutionContext:
         return ExecutionContext(
             task=task,
@@ -658,6 +664,7 @@ class TaskRunner:
             browser=self.browser,
             policy=self.engine.policy,
             request_approval=self._approval,
+            tool_runner=self._tool_runner,
             sleep=self._sleep,
             clock=self._monotonic,
             emit=lambda kind, data: self._append_worker_event(task.id, kind, data),

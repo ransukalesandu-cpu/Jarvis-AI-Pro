@@ -37,6 +37,9 @@ REASONS = frozenset({"guest_default_deny", "not_signed_in", "wrong_credential", 
 TIERS = frozenset({"SAFE", "SENSITIVE", "DANGEROUS"})
 _TOOL_RE = re.compile(r"^[a-z0-9_]{1,40}$")
 
+NOTICE_OFF = ("Guest Mode. You are not signed in as the owner, so some abilities are restricted. "
+              "Security monitoring is switched off, so nothing about this session is logged.")
+
 NOTICE = (
     "Guest Mode. You are not signed in as the owner, so some abilities are restricted. "
     "JARVIS keeps a short security log of this session: when it started and ended, and which "
@@ -87,6 +90,8 @@ class GuestAudit:
             from jarvis.core.owner_store import get_owner_store
             store = get_owner_store()
         store.ensure_schema(_SCHEMA)
+        from jarvis.core.security_settings import SCHEMA as _SETTINGS_SCHEMA
+        store.ensure_schema(_SETTINGS_SCHEMA)
         self._store = store
         self._clock = clock
         self._lock = threading.RLock()
@@ -97,6 +102,8 @@ class GuestAudit:
         """Store one event. Unknown event types are refused; unknown categories become 'unknown'."""
         if event_type not in EVENT_TYPES:
             raise GuestAuditError(f"unknown guest event type: {event_type!r}")
+        if not self.monitoring_enabled():
+            return None                                   # Security OFF: nothing new is written
         category = category if category in CATEGORIES else "unknown"
         outcome = outcome if outcome in OUTCOMES else "info"
         now = self._clock()
@@ -106,6 +113,11 @@ class GuestAudit:
                        (event_id, str(session_id)[:32], event_type, category, outcome, now,
                         now + RETENTION_SECONDS, json.dumps(clean_metadata(metadata), sort_keys=True)))
         return event_id
+
+    def monitoring_enabled(self) -> bool:
+        with self._store.connect() as db:
+            row = db.execute("SELECT value FROM security_settings WHERE key='guest_monitoring'").fetchone()
+        return True if row is None else row[0] == "on"
 
     # ── retention ────────────────────────────────────────────────────────────
     def purge_expired(self) -> int:

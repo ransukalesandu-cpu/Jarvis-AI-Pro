@@ -13,7 +13,7 @@ import threading
 from typing import Optional
 
 from jarvis.core import failsoft, identity
-from jarvis.core.guest_audit import NOTICE, get_guest_audit
+from jarvis.core.guest_audit import NOTICE, NOTICE_OFF, get_guest_audit
 
 
 class GuestService:
@@ -43,7 +43,7 @@ class GuestService:
             audit.purge_expired()
             audit.record(sess.session_id, "guest_session_started")
             audit.record(sess.session_id, "guest_notice_shown")
-            return NOTICE
+            return NOTICE if audit.monitoring_enabled() else NOTICE_OFF
 
     def record_denial(self, tool: str, tier: str, reason: str = "guest_default_deny") -> None:
         try:

@@ -269,6 +269,7 @@ _TIERS: dict[str, str] = {
     # confirmation inside actions/self_heal.py. Keep provenance/rate controls.
     "self_heal":        TIER_DANGEROUS,
     "self_check":       TIER_SAFE,
+    "security_settings": TIER_DANGEROUS,   # owner-only Security ON/OFF
     "guest_history":    TIER_DANGEROUS,   # owner-only; can delete audit records
     # PC tools (actions/pc_tools.py). They used to fall through to the SENSITIVE
     # default, so with Full Access off a shell command or file deletion ran with

@@ -21,7 +21,7 @@ Only the automation docs were read for this task; the rest of the project is cov
 | Main vs isolated target | ADOPT (as `mode`: `turn` / `task`) | `task` reuses `agent/runner.py` |
 | Webhooks with per-hook secret | ADOPT pattern, **stricter** | see security notes in the plan |
 | Lifecycle hooks | ADOPT pattern on top of `core/events.py` | bus already exists |
-| Running hook *scripts* from directories | REJECT for now | arbitrary code execution; in-process Python handlers only |
+| Running hook *scripts* from directories | ADOPT (owner decision) | subprocess + timeout + owner-only folder + ledger, see plan §3.4 |
 | Gmail PubSub watcher | REJECT | JARVIS already polls mail via `event_sources.py` |
 | Gateway process / new store file | REJECT | no second scheduler or database |
 

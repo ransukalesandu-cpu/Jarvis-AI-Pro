@@ -1,6 +1,6 @@
 # Gate A — Automation (cron, run history, webhooks, hooks)
 
-Status: **plan only, awaiting owner approval.** No code in this PR.
+Status: **approved by owner with decisions below.** No code in this PR.
 Scope: task 1 of the upgrade directive (OpenClaw phase 1). Research: `docs/research/openclaw-automation.md`.
 
 ## 1. What exists today (read from code)
@@ -27,7 +27,7 @@ Scope: task 1 of the upgrade directive (OpenClaw phase 1). Research: `docs/resea
 ## 3. Design
 ### 3.1 Cron expressions (PR A1)
 - New `Trigger.cron: str | None` and `Trigger.tz: str | None` (IANA, default local). Exactly one schedule field still required.
-- In-house parser `core/cron_expr.py` (5 fields: `*`, lists, ranges, `*/n`, `a-b/n`, month/day names, `Sun=0|7`), `next_after(now, tz)`. ~100 lines, no new dependency; property tests against a reference table. (Alternative: `croniter`, MIT — see open question 1.)
+- In-house parser (owner decision) `core/cron_expr.py` (5 fields: `*`, lists, ranges, `*/n`, `a-b/n`, month/day names, `Sun=0|7`), `next_after(now, tz)`. ~100 lines, no new dependency; property tests against a reference table. (Alternative: `croniter`, MIT — see open question 1.)
 - Persisted fields gain `cron`, `tz`, `catch_up`, `mode`, `max_per_hour`; old rows load unchanged.
 - `catch_up`: `"once"` (default for cron/daily: fire once when late) or `"skip"` (drop missed slots). Today's behaviour (late fire) = `"once"`.
 
@@ -38,15 +38,16 @@ Scope: task 1 of the upgrade directive (OpenClaw phase 1). Research: `docs/resea
 
 ### 3.3 Execution modes and safety (PR A1)
 - `mode="turn"` (today): inject spoken turn.
-- `mode="task"`: submit the prompt to `agent/runner.py` as a background task; the result is announced through the existing `_announcements` queue. Goes through the existing policy/tier gate; DANGEROUS steps still need a UI confirmation token, so unattended runs stop at that step and report.
+- `mode="task"` (runs even when the owner is away, per owner decision): submit the prompt to `agent/runner.py` as a background task; the result is announced through the existing `_announcements` queue. Goes through the existing policy/tier gate; DANGEROUS steps still need a UI confirmation token, so unattended runs stop at that step and report.
 - Failure policy: 3 consecutive failures → trigger auto-disabled + announcement. `max_per_hour` budget (default 12) and a global cap of 5 concurrent automation tasks. A trigger-run task may not create or edit triggers (prevents self-multiplying loops).
 
 ### 3.4 Lifecycle hooks (PR A2)
 - Add event sources to the existing bus: `startup`, `shutdown`, `session_start`, `session_end`, `trigger_fired`, `trigger_failed`, `task_finished`, `tool_error`, `privacy_lock`.
-- In-process Python handlers via `events.subscribe` plus `HOOKS = [...]` discovered like `TRIGGERS` in `actions/*.py` and plugins. Each handler runs with a 5 s timeout, errors are isolated and logged. **No arbitrary script execution from directories** (rejected from OpenClaw).
+- In-process Python handlers via `events.subscribe` plus `HOOKS = [...]` discovered like `TRIGGERS` in `actions/*.py` and plugins. Each handler runs with a 5 s timeout, errors are isolated and logged.
+- **Script hooks (owner decision: allowed, as in OpenClaw).** The owner can drop `.py`, `.ps1`, `.bat`, `.sh` files into `<user data>/hooks/<event>/`. They run as a subprocess (never in-process), JSON payload on stdin, 30 s timeout, output capped at 64 KB, working dir = the hook folder, minimal environment (no API keys passed). Guard rails: only that user-data folder is scanned (never the repo, downloads or paths coming from chat/web/tool output); JARVIS never writes into it on its own; each run is written to the security ledger; a hook that fails 3 times in a row is disabled and announced. A tool that tries to create a hook file is DANGEROUS tier and needs a UI confirmation.
 - Owner rules can already match these sources with no change.
 
-### 3.5 Webhooks (PR A3)
+### 3.5 Webhooks (PR A3) — DEFERRED by owner (not needed now)
 - New `dashboard/webhooks.py` with `register_webhook_routes(app)`, mounted on a **separate listener** (same pattern as the Twilio app) so tunnelling it cannot expose dashboard routes. **Off by default**; enabled by config `webhooks_enabled`.
 - `POST /hooks/<name>` only for hooks the owner created. Each hook has: own secret (stored in keyring, never in JSON/Git), optional HMAC-SHA256 signature header with timestamp (reject > 5 min old, nonce cache against replay), body ≤ 64 KB, per-hook rate limit (default 30/min), constant-time compare.
 - Payload is **untrusted data**: it becomes `events.emit("webhook", {"hook": name, "payload": <trimmed fields>})` and is passed through the existing injection guard; it is never used as a prompt directly. A hook maps to a fixed owner rule/action, so a caller can only trigger what the owner pre-approved.
@@ -72,9 +73,10 @@ Scope: task 1 of the upgrade directive (OpenClaw phase 1). Research: `docs/resea
 - Owner SQLite schema change → additive table only, no migration of existing data.
 
 ## 7. Delivery
-Three PRs, each < ~800 lines excluding tests: **A1** cron + history + run-now + modes, **A2** lifecycle hooks, **A3** webhooks.
+Three PRs, each < ~800 lines excluding tests: **A1** cron + history + run-now + modes, **A2** lifecycle hooks, **A3** webhooks (deferred; design kept for later).
 
-## 8. Open questions for the owner
-1. Cron parser: in-house (no dependency, recommended) or `croniter`?
-2. Webhooks: do you actually need them now (e.g. GitHub / IFTTT / phone shortcuts)? If not, A3 can wait.
-3. Should unattended `task` mode be allowed at all while the owner is away, or only while the app is open and unlocked (recommended)?
+## 8. Owner decisions
+1. Cron parser: **in-house**, no new dependency.
+2. Webhooks: **not needed now** — A3 deferred.
+3. Unattended background tasks: **allowed while the owner is away.** Safety stays: DANGEROUS-tier steps still stop for a UI confirmation, budgets and auto-disable apply, and results are announced when the owner returns.
+4. Script hooks: **allowed** (OpenClaw-style), with the guard rails in §3.4.

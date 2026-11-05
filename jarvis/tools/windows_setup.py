@@ -164,9 +164,13 @@ Runner = Callable[..., "subprocess.CompletedProcess"]
 def _run(args: Sequence[str], *, cwd: Path | None = None, timeout: float | None = None,
          capture: bool = True) -> subprocess.CompletedProcess:
     """Default runner. Kept thin so tests can replace it entirely."""
-    kwargs: dict[str, object] = {}
+    # The Windows console code page (cp1252/cp437) cannot print the symbols the
+    # installer uses, and a piped child inherits that code page. Force UTF-8 on
+    # both sides so a missing glyph can never abort an install.
+    kwargs: dict[str, object] = {"env": {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}}
     if capture:
-        kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                      encoding="utf-8", errors="replace")
     if cwd is not None:
         kwargs["cwd"] = str(cwd)
     if timeout is not None:

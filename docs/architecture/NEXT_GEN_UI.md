@@ -140,8 +140,23 @@ Licenses of repository pages for React Bits (MIT + Commons Clause), Lucide (ISC)
 
 Acceptance for flipping the default: original-look hologram verified against the legacy one; every nav item and widget bound to real data; voice in/out and Gemini Live unchanged; auth and Privacy Lock enforced on every sensitive request; adaptive performance does not hide the hologram or controls; full regression green; Windows run completed by the owner or a Windows CI job.
 
-## 9. Known gaps in this phase
+## 9. Phase 1 status (foundation)
 
-* No code has been written or run for the new frontend yet; the table in section 6 is registry metadata, not integration testing.
+Implemented on `feature/next-generation-ui-phase1` (stacked on Phase 0):
+* `frontend/` (React 19, TS 7, Vite 8, R3F, Zustand, Motion, lucide-react), design tokens as CSS variables, Vitest suite for the contract and store.
+* `jarvis/webui/`: locked `QWebEngineView` host, typed `QWebChannel` bridge with an allowlist both ways, real telemetry (psutil), `JARVIS_UI` switch (legacy stays default), standalone preview `python -m jarvis.webui`.
+* Hologram: shaded low-poly head from the legacy `get_head_mesh()` data (same geometry), orange eyes with blink, voice-driven jaw (output level only), heart, orb with state colours, energy wires.
+* Glass HUD: clock, battery, CPU/RAM/disk, AI brain, network, activity widgets bound to real events; hamburger navigation; settings panel; Home, Activity Center, AI Models and System Monitor pages with real data.
+* Not wired to the running assistant yet: `jarvis/webui` is a separate window. Feeding it from `ui_state`, the audio bridge and the provider router is Phase 3, together with the default flip.
+
+Pages that need a backend capability that does not exist yet (AI Chat, Web Research, Reminders, Applications, Files & Media, Memory, Automation, Security) are listed but disabled and labelled with their phase instead of shipping as decoration.
+
+Verification in the Linux sandbox: `tsc` clean, Vitest 5/5, full pytest 1380 passed / 4 skipped, and the built bundle was loaded in the real QtWebEngine (software WebGL): QWebChannel connected, real telemetry and injected state/provider events rendered, navigation and settings clicks worked. Screenshots: `docs/images/next-gen-ui-phase1*.png`.
+
+## 10. Known gaps in this phase
+
+* Windows desktop behaviour and real-GPU rendering are unverified (sandbox used software WebGL).
+* The new window is not connected to the live assistant yet (see section 9).
+* The base plate under the neck and bloom/post-processing from the legacy look are not reproduced yet.
 * Windows desktop behaviour is unverified.
 * `task.*` backend events do not exist yet.

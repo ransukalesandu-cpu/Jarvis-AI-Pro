@@ -5,6 +5,9 @@ __pycache__/
 *.so
 build/
 dist/
+# The web UI bundle is built from frontend/ and committed so Windows users never need Node.
+!jarvis/webui/dist/
+frontend/node_modules/
 *.egg-info/
 .eggs/
 

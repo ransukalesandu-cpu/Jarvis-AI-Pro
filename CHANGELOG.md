@@ -8,6 +8,14 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Automation A2: lifecycle hooks** (`core/hooks.py`, `docs/HOOKS.md`). Events
+  `startup`, `shutdown`, `session_start`, `session_end`, `trigger_fired`,
+  `trigger_failed`, `task_finished`, `tool_error`, `privacy_lock` run Python
+  `HOOKS` declared by actions/plugins and owner-created script hooks
+  (`.py/.ps1/.bat/.cmd/.sh`) from `<user data>/hooks/<event>/`. Scripts run as
+  separate processes (30 s, minimal environment, no shell, output capped), are
+  written to the security ledger and are switched off after 3 failures in a row.
+  Emitting never blocks the voice loop.
 - **Automation A1** (see `docs/plans/automation.md`). Triggers accept 5-field
   **cron expressions** with an IANA time zone (`core/cron_expr.py`, no new
   dependency), a `catch_up` policy (`once` fires a missed run late, `skip` drops

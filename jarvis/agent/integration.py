@@ -544,6 +544,10 @@ class AgentService:
                     self._last_task_snapshot = task
                     self._last_task_id = task.id
             self._announcer.announce(event)
+            if event.kind == "finished":
+                from jarvis.core import hooks
+                hooks.emit("task_finished", {"task_id": event.task_id, "state": event.state.value,
+                                             "message": str(event.message)[:300]})
         except Exception:
             failsoft.suppress("agent.integration:_on_event")
 

@@ -215,6 +215,27 @@ class TriggerSchedulerTests(unittest.IsolatedAsyncioTestCase):
         host.session.send_client_content.assert_not_awaited()
         self.assertIsNotNone(self.reg.get("reminder"))
 
+    async def test_lifecycle_hooks_fire_for_ok_and_failed_runs(self):
+        from jarvis.core import hooks
+        seen = []
+        reg = hooks.HookRegistry(Path(self.tmp.name) / "hooks")
+        for event in ("trigger_fired", "trigger_failed"):
+            reg.register(event, lambda e, p, _s=seen: _s.append((e, p["name"])), f"h_{event}")
+        hooks.reset_for_tests(reg)
+        self.addCleanup(hooks.reset_for_tests, None)
+        self.reg.register({"name": "a", "prompt": "p", "every_seconds": 60}, source="user", persist=True)
+        host = _Host()
+        await host._run_trigger(self.reg, self.reg.get("a"), "p")
+        host.session.send_client_content = AsyncMock(side_effect=RuntimeError("down"))
+        await host._run_trigger(self.reg, self.reg.get("a"), "p")
+        reg.emit("startup", {}, wait=2.0)
+        await asyncio.sleep(0.3)
+        for _ in range(20):
+            if len(seen) >= 2:
+                break
+            await asyncio.sleep(0.1)
+        self.assertEqual(sorted(seen), [("trigger_failed", "a"), ("trigger_fired", "a")])
+
     async def test_spoken_run_is_recorded(self):
         from jarvis.core import trigger_runs
         self.reg.register({"name": "reminder", "prompt": "p", "once_at": time.time() - 1},

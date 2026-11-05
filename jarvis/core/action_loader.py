@@ -215,6 +215,21 @@ def _collect_triggers(module, filename: str, logger: Callable[[str], None]) -> N
             logger(f"Trigger rejected in {filename}: {exc}")
 
 
+def _collect_hooks(module, filename: str, logger: Callable[[str], None]) -> None:
+    """Register a module's ``HOOKS`` list (see core/hooks.py). Never raises."""
+    rows = getattr(module, "HOOKS", None)
+    if not rows:
+        return
+    from jarvis.core.hooks import get_hook_registry
+    registry = get_hook_registry()
+    for row in rows if isinstance(rows, (list, tuple)) else [rows]:
+        try:
+            registry.register(row["event"], row["handler"], str(row.get("name") or ""))
+            logger(f"Hook registered: {row['event']} ({filename})")
+        except Exception as exc:
+            logger(f"Hook rejected in {filename}: {exc}")
+
+
 def discover_actions(actions_dir: Path, reserved_names: set[str] | None = None,
                      logger: Callable[[str], None] = print,
                      include: Callable[[Path], bool] | None = None) -> ActionRegistry:
@@ -254,6 +269,7 @@ def discover_actions(actions_dir: Path, reserved_names: set[str] | None = None,
                     raise
 
             _collect_triggers(module, path.name, logger)
+            _collect_hooks(module, path.name, logger)
             tool_dicts = _tool_dicts(module)
             if not tool_dicts:
                 continue   # not an action file — a helper/capture-only module

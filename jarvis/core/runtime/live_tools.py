@@ -15,7 +15,7 @@ from types import SimpleNamespace
 from jarvis.actions.background_monitor import add_monitor, list_monitors, remove_monitor
 from jarvis.actions.screen_processor import _capture_camera, _capture_screen
 from jarvis.actions.system_monitor import get_system_status
-from jarvis.core import action_log, failsoft, security, undo as undo_stack
+from jarvis.core import action_log, failsoft, hooks, security, undo as undo_stack
 from jarvis.core.jobs import get_job_manager
 from jarvis.core.tool_runtime import (
     ToolMeta, infer_risk, result_status, take_device, timeout_message,
@@ -101,6 +101,8 @@ class ToolDispatchMixin:
         action_log.record(name, args, result, status=status, risk=risk, device=device,
                           duration_ms=timer.ms)
         calls = self.__dict__.setdefault("_session_tool_calls", [])
+        if status == "error":
+            hooks.emit("tool_error", {"tool": name, "risk": risk, "result": str(result)[:300]})
         calls.append({"tool": name, "args": dict(args), "status": status, "risk": risk})
         del calls[:-200]
         return response

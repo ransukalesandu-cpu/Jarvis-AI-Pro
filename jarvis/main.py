@@ -147,6 +147,7 @@ from jarvis.core.plugin_loader        import discover_plugins
 from jarvis.core                      import confirm as confirm_gate
 from jarvis.core                      import audio_devices
 from jarvis.core                      import security
+from jarvis.core                      import hooks
 from jarvis.core                      import voice_id
 from jarvis.core.action_loader        import discover_actions
 from jarvis.core.echo                 import EchoGuard
@@ -960,6 +961,7 @@ class JarvisLive(
     def request_shutdown(self) -> None:
         """Stop the Live run loop and its TaskGroup without reconnecting."""
         self._shutdown_requested = True
+        hooks.emit("shutdown", {}, wait=3.0)
         loop = getattr(self, "_loop", None)
         event = getattr(self, "_shutdown_event", None)
         if loop is not None and event is not None and loop.is_running():
@@ -2798,6 +2800,8 @@ class JarvisLive(
         self.ui.write_log(
             ("SEC: " if _ledger_ok else "SECURITY ALERT: ") + _ledger_status
         )
+        hooks.get_hook_registry().notify = self.ui.write_log
+        hooks.emit("startup", {"ledger_ok": bool(_ledger_ok)})
         set_trim_notifier(self.ui.write_log)
 
         # Tell the device picker the exact rates the streams open at, from the
@@ -2865,6 +2869,7 @@ class JarvisLive(
                     asyncio.TaskGroup() as tg,
                 ):
                     self.session          = session
+                    hooks.emit("session_start", {"model": str(self._active_live_model)})
                     self._live_switch_context = ""
                     self.audio_in_queue   = asyncio.Queue()
                     self.out_queue        = asyncio.Queue(maxsize=200)
@@ -3234,6 +3239,7 @@ class JarvisLive(
                     "session_closed", speaking=self._is_speaking,
                     queued=self.audio_in_queue.qsize() if self.audio_in_queue else 0)
                 self.session = None
+                hooks.emit("session_end", {"turns": len(self._session_log)})
                 # Only save if there was a real conversation (≥3 turns)
                 if len(self._session_log) >= 3 and not self._shutdown_requested:
                     asyncio.create_task(self._save_session_summary())

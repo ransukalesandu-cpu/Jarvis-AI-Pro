@@ -9,7 +9,7 @@ session object, so every attribute they use is set up in ``JarvisLive.__init__``
 import asyncio
 import time
 from jarvis.actions.background_monitor import check_all as monitor_check_all, list_monitors
-from jarvis.core import security
+from jarvis.core import hooks, security
 from jarvis.memory.config_manager import get_memory_provider_access_enabled, get_quiet_hours
 from jarvis.memory.memory_manager import load_memory
 
@@ -209,6 +209,8 @@ class BackgroundServicesMixin:
     async def _finish_run(self, registry, trigger, run_id: int, ok: bool, detail: str) -> None:
         from jarvis.core import trigger_runs
         disabled = registry.record_result(trigger.name, ok)
+        hooks.emit("trigger_fired" if ok else "trigger_failed",
+                   {"name": trigger.name, "mode": trigger.mode, "detail": detail[:300]})
         try:
             if run_id:
                 await asyncio.to_thread(trigger_runs.update, run_id, "ok" if ok else "failed", detail)

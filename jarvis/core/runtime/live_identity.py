@@ -12,7 +12,7 @@ import re
 import secrets
 import threading
 import time
-from jarvis.core import failsoft, security, voice_id
+from jarvis.core import failsoft, hooks, security, voice_id
 from jarvis.core.runtime.live_constants import SEND_SAMPLE_RATE
 
 
@@ -277,6 +277,7 @@ class OwnerIdentityMixin:
 
     def _handle_privacy_lock_activated(self, message: str) -> None:
         """Thread-safe callback invoked by AuthManager after it persists the lock."""
+        hooks.emit("privacy_lock", {})
         loop = getattr(self, "_loop", None)
         if loop is None:
             try:

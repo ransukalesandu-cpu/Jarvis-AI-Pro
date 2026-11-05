@@ -51,10 +51,13 @@ export function SyncStatus() {
 }
 
 /** Skeleton of the page while the first data is loading (1 s to 10 s; later the SyncStatus shows progress). */
-export function StartupSkeleton() {
+export function useStartupLoading(): boolean {
   const a = usePhase('startup'); const b = usePhase('metrics');
-  const phase = a.phase !== 'none' ? a.phase : b.phase;
-  return phase === 'none' ? null : <PageSkeleton />;
+  return a.phase !== 'none' || b.phase !== 'none';
+}
+
+export function StartupSkeleton() {
+  return useStartupLoading() ? <PageSkeleton /> : null;
 }
 
 export function Toast() {

@@ -129,3 +129,18 @@ read-back except passwords, file on disk for downloads, file listed for uploads)
 page text as untrusted content. Login-state awareness: `state` reports "login form shown" /
 "signed in" from the snapshot. The Host Agent routes `cc_browser` steps to the new `browser`
 agent, so a task can mix browser and desktop steps.
+
+## Project 4 — Visual understanding (Agent-S, UI-TARS-desktop, OmniParser evaluated)
+
+| upstream | license | idea studied | decision |
+|---|---|---|---|
+| simular-ai/Agent-S | Apache-2.0 | grounding by combining accessibility tree and screenshot; reflection after actions | adopted as the **hybrid order** and per-action verification; no Agent-S code or models |
+| bytedance/UI-TARS-desktop | Apache-2.0 | a local VLM that maps screenshot → action/coordinates | **not adopted**: needs a large local model (owner decision 2: no large local models) |
+| microsoft/OmniParser | code MIT, icon-detection weights AGPL | parse a screenshot into a structured, ID'd element list before asking the LLM | idea adopted as "structured result first" (accessibility/DOM lists); its YOLO/Florence models are **not** loaded |
+
+`visual/perception.py` reuses the existing `agent/screen_capture.ScreenCapture` (on demand,
+downscaled, encoded frame released), `agent/screen_vision.GeminiVisionProvider` (hosted Gemini,
+same key) and `OcrEngine` (local Tesseract). Order: accessibility → DOM → OCR → vision; the first
+two return a control/element ref (no coordinates), the last two return coordinates with source,
+confidence and a fresh fingerprint so the guarded fallback input applies. Password fields from the
+UIA tree are painted black before any frame is sent; the vision reply is untrusted content.

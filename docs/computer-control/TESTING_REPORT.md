@@ -92,3 +92,12 @@ HUD log `CC:` lines, and a cloud-planned task with the owner's Gemini key.
 
 Pending owner validation: real Edge/Chrome launch through Playwright's installed channel, the
 JARVIS profile keeping a sign-in, a real download into `Downloads\JARVIS`, masked screenshot.
+
+## Project 4 — Visual understanding
+
+| suite | file | tests |
+|---|---|---|
+| hybrid order (accessibility first with no capture, DOM second, OCR third with fingerprint, vision last with password masking verified on the uploaded pixels), no vision when disallowed/unconfigured, vision reply fenced, OCR fallback, verify text; `cc_screen` click via control (no coordinates), via OCR (guarded coordinates), low-confidence vision refused, destructive target HIGH | `jarvis/tests/test_computer_control_visual.py` | 13 |
+
+Pending owner validation: hosted Gemini vision on the owner's screen (key + network), Tesseract
+installed on the owner's PC, masking on a real login window, multi-monitor offsets.

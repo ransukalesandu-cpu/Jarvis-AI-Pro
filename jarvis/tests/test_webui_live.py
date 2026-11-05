@@ -20,6 +20,8 @@ class FakeHost(QObject):
     def set_state(self, s): self.calls.append(("state", s))
     def set_level(self, v, src="output"): self.calls.append(("level", round(v, 3)))
     def set_persona(self, p): self.calls.append(("persona", p))
+    def set_muted(self, m): self.calls.append(("muted", m))
+    def set_provider(self, **kw): self.calls.append(("provider", kw["provider"]))
 
 
 @pytest.fixture
@@ -69,7 +71,7 @@ def test_snapshot_is_resent_when_page_reloads(rig):
     bus.set(ui_state.ASSISTANT, "thinking")
     host.calls.clear()
     host.ready.emit()
-    assert host.calls == [("state", "thinking")]
+    assert ("state", "thinking") in host.calls
 
 
 def test_close_unsubscribes(rig):
@@ -77,3 +79,33 @@ def test_close_unsubscribes(rig):
     link.close()
     bus.set(ui_state.ASSISTANT, "idle")
     assert host.calls == []
+
+
+def test_mute_is_forwarded(rig):
+    bus, host, _, _ = rig
+    bus.set(ui_state.MUTED, True)
+    bus.set(ui_state.MUTED, False)
+    assert host.calls == [("muted", True), ("muted", False)]
+
+
+def test_provider_comes_from_real_settings_and_never_leaks_a_key(rig, monkeypatch):
+    from jarvis.core import provider_settings as ps
+    from jarvis.webui import provider_info
+
+    monkeypatch.setattr(ps, "get_provider_settings", lambda: {
+        "provider": "anthropic", "openai_model_reasoning": "x", "anthropic_model_reasoning": "claude-sonnet-5-5",
+        "has_openai_key": False, "has_anthropic_key": True})
+    info = provider_info.snapshot()
+    assert info == {"provider": "Anthropic Claude", "model": "claude-sonnet-5-5", "connected": True, "fallback": False}
+    bus, host, _, _ = rig
+    bus.set(ui_state.PROVIDER, 1.0)
+    assert ("provider", "Anthropic Claude") in host.calls
+
+
+def test_provider_unknown_is_not_guessed(monkeypatch):
+    from jarvis.core import provider_settings as ps
+    from jarvis.webui import provider_info
+
+    def boom(): raise OSError("no config")
+    monkeypatch.setattr(ps, "get_provider_settings", boom)
+    assert provider_info.snapshot() is None

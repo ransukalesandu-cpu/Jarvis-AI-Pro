@@ -19,3 +19,13 @@ describe('store', () => {
     expect(useUi.getState().navOpen).toBe(false);
   });
 });
+
+import { parseHostEvent as _parse } from './bridge/contract';
+describe('assistant.muted', () => {
+  it('parses only booleans and updates the store', () => {
+    expect(_parse(JSON.stringify({ type: 'assistant.muted', muted: true }))).toEqual({ type: 'assistant.muted', muted: true });
+    expect(_parse(JSON.stringify({ type: 'assistant.muted', muted: 'yes' }))).toBeNull();
+    useUi.getState().apply({ type: 'assistant.muted', muted: true });
+    expect(useUi.getState().muted).toBe(true);
+  });
+});

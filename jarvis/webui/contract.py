@@ -46,6 +46,7 @@ _EVENTS = {
     "provider.changed": ({"provider", "model", "connected", "fallback"},
                          lambda m: _str(m["provider"]) and _str(m["model"], 120)
                          and isinstance(m["connected"], bool) and isinstance(m["fallback"], bool)),
+    "assistant.muted": ({"muted"}, lambda m: isinstance(m["muted"], bool)),
     "ui.persona": ({"persona"}, lambda m: m["persona"] in PERSONAS),
     "workspace.list": ({"names"}, lambda m: isinstance(m["names"], list) and len(m["names"]) <= 24
                        and all(isinstance(n, str) and 0 < len(n) <= 32 for n in m["names"])),

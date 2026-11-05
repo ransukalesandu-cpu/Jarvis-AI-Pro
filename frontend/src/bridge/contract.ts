@@ -16,6 +16,7 @@ export type HostEvent =
   | { type: 'assistant.audio_level'; level: number; source: 'input' | 'output' }
   | { type: 'system.metrics_updated'; cpu: number; ram: number; disk: number | null; battery: Battery | null; net: Net | null }
   | { type: 'provider.changed'; provider: string; model: string; connected: boolean; fallback: boolean }
+  | { type: 'assistant.muted'; muted: boolean }
   | { type: 'ui.persona'; persona: Persona }
   | { type: 'workspace.list'; names: string[] }
   | { type: 'workspace.loaded'; name: string; layout: Layout | null }
@@ -61,6 +62,8 @@ export function parseHostEvent(raw: unknown): HostEvent | null {
     case 'provider.changed':
       return str(m.provider) && str(m.model, 120) && typeof m.connected === 'boolean' && typeof m.fallback === 'boolean'
         ? { type: m.type, provider: m.provider, model: m.model, connected: m.connected, fallback: m.fallback } : null;
+    case 'assistant.muted':
+      return typeof m.muted === 'boolean' ? { type: m.type, muted: m.muted } : null;
     case 'ui.persona':
       return (PERSONAS as readonly unknown[]).includes(m.persona) ? { type: m.type, persona: m.persona as Persona } : null;
     case 'workspace.list':

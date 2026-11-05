@@ -41,14 +41,14 @@ master_voice.emb*
 *.emb.npy
 
 # JARVIS per-user credentials and runtime state (never commit these)
-JarvisAI/config/pin_vault.dat
-JarvisAI/config/auth_state.json
-JarvisAI/config/auth_state.json.tmp
-JarvisAI/config/voice_id.dat
-JarvisAI/config/voice_id.tmp
-JarvisAI/logs/
+jarvis/config/pin_vault.dat
+jarvis/config/auth_state.json
+jarvis/config/auth_state.json.tmp
+jarvis/config/voice_id.dat
+jarvis/config/voice_id.tmp
+jarvis/logs/
 # Autonomous task state (snapshots, journals, queue) is per-machine runtime data
-JarvisAI/memory/agent/
+jarvis/memory/agent/
 logs/
 master_voice.emb*
 Jarvis_Received_Files/

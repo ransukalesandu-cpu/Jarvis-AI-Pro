@@ -6,6 +6,32 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Restructured into a real `jarvis` Python package.** `JarvisAI/` is now
+  `jarvis/`; every first-party import is package-qualified (`from jarvis.core
+  import ...`) and only the repository root is on `sys.path`. Entry points:
+  `python main.py`, `python run.py`, `python -m jarvis` (new). The Windows BATs
+  (`Jarvis_Setup.bat`, `Run_Jarvis.bat`, `Repair_Memory_Audit.bat`) and
+  `requirements*.txt` now live at the repository root (single copy of each), and
+  the `.venv` is created there. All docs moved into `docs/`.
+  **Migration for existing checkouts:** git-ignored local files live under the
+  old `JarvisAI/` folder (`config/api_keys.json`, `config/pin_vault.dat`,
+  `config/voice_id.dat`, `memory/*.db`, `logs/`). Copy them into the matching
+  `jarvis/` sub-folder after pulling. Per-user data under `%LOCALAPPDATA%\JarvisAI`,
+  keyring entries and Qt settings keep their names, so nothing there moves.
+- Dynamic action/plugin modules are registered as `jarvis.actions.<name>` /
+  `jarvis.plugins.<name>`; the camera snapshot child process runs
+  `python -m jarvis.core.camera_snapshot`.
+
+### Removed
+
+- Dead modules nothing imported: `core/screen_agent`, `core/vad_stream`,
+  `core/stt`, `core/installer`, `core/self_healing_v2`, `voice/voice_engine`,
+  `voice/fillers`, `services/radar_engine`, `memory/autobiographical_memory`,
+  the duplicate `core/battery_status` (identical to `actions/battery_status`),
+  and the unused images `assets/bihansa_reference.png`, `config/hologram_face.png`.
+
 ### Added
 
 - **Hybrid brain: `ask_claude` tool** (`actions/ask_claude.py`): Gemini Live can

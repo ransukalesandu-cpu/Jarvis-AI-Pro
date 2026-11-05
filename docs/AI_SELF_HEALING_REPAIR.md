@@ -16,4 +16,4 @@ Add an optional diagnostic assistant for Python exceptions. The repair analyzer 
 This is a diagnostic/proposal foundation, not fully automatic self-healing yet. It is not connected to a global exception hook or approval UI. Do not apply model output directly. Future integration must show a patch preview, require explicit owner approval, validate paths and patch size, apply in an isolated repair branch/worktree, and run bounded syntax/tests before offering a specific safe revert. Never auto-merge, push to main, run model-provided shell commands, or perform destructive automatic Git resets.
 
 ## Validation
-Unit tests cover Groq-first routing, secret redaction, prompt bounds, and the non-auto-apply contract. Run from `JarvisAI/` with `python -m unittest discover -s tests -p "test_ai_error_repair.py"`. Full project CI/audio regression validation is still required before merge.
+Unit tests cover Groq-first routing, secret redaction, prompt bounds, and the non-auto-apply contract. Run from the repository root with `python -m unittest discover -s tests -p "test_ai_error_repair.py"`. Full project CI/audio regression validation is still required before merge.

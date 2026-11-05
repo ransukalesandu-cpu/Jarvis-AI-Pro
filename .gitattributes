@@ -19,4 +19,4 @@
 *.mp3 binary
 
 # Generated/vendored files that would only add noise to reviews.
-JarvisAI/dashboard/static/crypto-js.min.js linguist-vendored
+jarvis/dashboard/static/crypto-js.min.js linguist-vendored

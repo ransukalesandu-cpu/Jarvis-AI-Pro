@@ -69,7 +69,7 @@ _CATEGORY = {
     "standing_orders": "owner_memory", "jarvis_settings": "settings_write", "self_heal": "security_management",
     "self_update": "security_management", "email": "personal_data", "email_gmail": "personal_data",
     "calendar": "personal_data", "send_message": "personal_data", "weather_report": "general_chat",
-    "web_search": "general_chat", "quiz": "general_chat", "battery_status": "general_chat",
+    "guest_history": "guest_history", "web_search": "general_chat", "quiz": "general_chat", "battery_status": "general_chat",
 }
 
 

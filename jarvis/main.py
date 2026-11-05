@@ -973,6 +973,20 @@ class JarvisLive(
         except Exception as exc:
             print(f"[Agent] Could not check unfinished tasks: {type(exc).__name__}: {exc}")
 
+    def _start_guest_session(self) -> None:
+        """Show the Guest notice at start-up when owners exist and nobody has signed in yet."""
+        try:
+            from collections import deque
+            from jarvis.core.guest_session import get_guest_service
+            notice = get_guest_service().start()
+            if notice:
+                self.ui.write_log("SEC: " + notice)
+                self.__dict__.setdefault("_announcements", deque(maxlen=20)).append(
+                    "[Guest Mode is on. Briefly tell the speaker they are in Guest Mode, that a short security log "
+                    "of blocked actions is kept for 7 days, and that no conversation, audio or screen is recorded.]")
+        except Exception as exc:
+            print(f"[Guest] Could not start Guest Mode: {type(exc).__name__}: {exc}")
+
     def request_shutdown(self) -> None:
         """Stop the Live run loop and its TaskGroup without reconnecting."""
         self._shutdown_requested = True
@@ -2833,6 +2847,7 @@ class JarvisLive(
         hooks.get_hook_registry().notify = self.ui.write_log
         hooks.emit("startup", {"ledger_ok": bool(_ledger_ok)})
         self._announce_unfinished_tasks()
+        self._start_guest_session()
         try:
             from jarvis.core import mcp_client
             mcp_client.get_manager().start_background()

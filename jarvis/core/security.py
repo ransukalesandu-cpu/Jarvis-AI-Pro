@@ -269,6 +269,7 @@ _TIERS: dict[str, str] = {
     # confirmation inside actions/self_heal.py. Keep provenance/rate controls.
     "self_heal":        TIER_DANGEROUS,
     "self_check":       TIER_SAFE,
+    "guest_history":    TIER_DANGEROUS,   # owner-only; can delete audit records
     # PC tools (actions/pc_tools.py). They used to fall through to the SENSITIVE
     # default, so with Full Access off a shell command or file deletion ran with
     # no confirmation while the older file_controller equivalent asked first.
@@ -972,6 +973,8 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
         decision = ident.authorize(name, tier)
         if not decision.allowed:
             audit("call", name, tier, "denied", f"guest session: {decision.reason}")
+            from jarvis.core.guest_session import get_guest_service
+            get_guest_service().record_denial(name, tier)
             return (f"I can't do that in Guest Mode ({decision.category.replace('_', ' ')}). "
                     "The owner has to sign in first.")
 

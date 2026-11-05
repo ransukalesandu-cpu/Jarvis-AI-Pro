@@ -344,6 +344,12 @@ class BackgroundServicesMixin:
                 manager = security.get_auth_manager()
                 if manager.is_privacy_lock_active():
                     continue
+                from jarvis.core.guest_session import get_guest_service
+                guest = get_guest_service().handle_typed_text(str(text), manager.needs_pin())
+                if guest is not None:
+                    if guest[0] and guest[1]:
+                        self.__dict__.setdefault("_announcements", __import__("collections").deque(maxlen=20)).append(f"[{guest[1]}] Tell the owner briefly.")
+                    continue
                 if manager.needs_pin():
                     # Credential text from a paired dashboard is checked locally and
                     # is never sent to Gemini or written to logs/history.

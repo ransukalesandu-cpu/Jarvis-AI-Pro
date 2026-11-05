@@ -91,3 +91,17 @@ One profile per owner, created by `enroll-voice` after PIN proof; re-enrolling r
 
 ## Not measured
 False-accept/false-reject rates, Sinhala vs English performance, and the Resemblyzer/SpeechBrain comparison need real recordings on the owner's Windows machine. No claim about accuracy is made here.
+
+## Phase 3 — Guest Mode
+
+**Status: implemented locally (PARTIAL overall: no server copy yet, see Phase 4).**
+
+- **When it starts.** `GuestService.start()` runs at launch (`JarvisLive._start_guest_session`) only if the owner registry has at least one owner. Installs that still use the single legacy PIN are unchanged.
+- **Visible notice.** The notice (`guest_audit.NOTICE`) is written to the HUD log and read out once. It says what is logged (start/end, blocked actions as tool name + risk level + reason code) and what is not (speech, passwords, keystrokes, audio, screen), and that entries are deleted after 7 days.
+- **What is stored.** Only `guest_audit_events` rows: random session id, event type from a fixed list, category from a fixed list, outcome, timestamps, and up to three allowlisted metadata keys (`tool`, `tier`, `reason`). There is no free-text column; unknown keys and values are dropped before writing (tested).
+- **Isolation.** `guard()` denies by default for a Guest and records a `restricted_action_denied` event. The `guest_history` tool is DANGEROUS-tier, not on the Guest allowlist, and re-checks for an owner session inside its handler.
+- **Passwords.** Only `OwnerRegistry.authenticate_pin` (or voice) can end Guest Mode. Typed text counts as a credential attempt only when the legacy gate is asking for a PIN or the text starts with `/owner `; it is checked locally and never reaches the model or logs. A task/website password is checked by `verify_task_credential`, which cannot touch identity (tests cover both).
+- **Owner view.** After owner sign-in the owner is told what Guest sessions attempted since they last looked. `guest_history` offers `summary`, `latest` and `delete_latest` (needs `confirm=true`; deletion is re-read and verified before it is reported).
+- **Retention (local).** Rows carry `expires_at = ts + 7 days`; they are purged at Guest start and before every read. Server-side purge is Phase 4.
+
+**Known limits.** When owners exist, the legacy single PIN no longer signs anyone in as owner during a Guest session (by design: it has no owner identity). Voice sign-in during Guest Mode is not yet wired to the live audio path (the registry supports it). Windows behaviour and real microphone paths were not exercised here.

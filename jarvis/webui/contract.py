@@ -9,8 +9,10 @@ import json
 import math
 from typing import Any
 
-MAX_EVENT_CHARS = 4096
-MAX_REQUEST_CHARS = 512
+from .workspace_store import clean_name, validate_layout
+
+MAX_EVENT_CHARS = 16384
+MAX_REQUEST_CHARS = 16384          # upper bound; each request kind has a tighter cap below
 
 ASSISTANT_STATES = frozenset({"idle", "sleeping", "listening", "thinking", "searching", "executing", "speaking", "error"})
 PERSONAS = frozenset({"jarvis", "bihansa"})
@@ -45,6 +47,10 @@ _EVENTS = {
                          lambda m: _str(m["provider"]) and _str(m["model"], 120)
                          and isinstance(m["connected"], bool) and isinstance(m["fallback"], bool)),
     "ui.persona": ({"persona"}, lambda m: m["persona"] in PERSONAS),
+    "workspace.list": ({"names"}, lambda m: isinstance(m["names"], list) and len(m["names"]) <= 24
+                       and all(isinstance(n, str) and 0 < len(n) <= 32 for n in m["names"])),
+    "workspace.loaded": ({"name", "layout"}, lambda m: isinstance(m["name"], str) and 0 < len(m["name"]) <= 32
+                         and (m["layout"] is None or validate_layout(m["layout"]) is not None)),
     "host.hello": ({"version"}, lambda m: _num(m["version"], 0, 1000)),
 }
 
@@ -67,8 +73,14 @@ def encode_event(kind: str, **fields: Any) -> str | None:
     return text if len(text) <= MAX_EVENT_CHARS else None
 
 
+_NAME_OK = lambda m: clean_name(m["name"], allow_internal=True) is not None  # noqa: E731
+
 _REQUESTS = {
     "ready": (set(), lambda m: True),
+    "workspace.list": (set(), lambda m: True),
+    "workspace.load": ({"name"}, _NAME_OK),
+    "workspace.delete": ({"name"}, lambda m: clean_name(m["name"]) is not None),
+    "workspace.save": ({"name", "layout"}, lambda m: _NAME_OK(m) and validate_layout(m["layout"]) is not None),
     "ping": ({"n"}, lambda m: isinstance(m["n"], int) and not isinstance(m["n"], bool) and 0 <= m["n"] < 2 ** 31),
 }
 
@@ -80,6 +92,8 @@ def parse_request(raw: Any) -> dict | None:
     checks in Python; the page is never trusted to decide.
     """
     if not isinstance(raw, str) or not raw or len(raw) > MAX_REQUEST_CHARS:
+        return None
+    if len(raw) > 512 and '"kind":"workspace.save"' not in raw[:40]:   # only saving a layout may be large
         return None
     try:
         m = json.loads(raw)

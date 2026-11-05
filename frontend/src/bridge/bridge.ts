@@ -1,5 +1,6 @@
 import { encodeRequest, parseHostEvent, type UiRequest } from './contract';
 import { useUi } from '../store';
+import { useWindows } from '../workspace/windows';
 
 interface QtChannelObject { event: { connect: (fn: (s: string) => void) => void; disconnect?: (fn: (s: string) => void) => void }; request: (s: string) => void }
 declare global { interface Window { qt?: { webChannelTransport?: unknown }; QWebChannel?: new (t: unknown, cb: (c: { objects: Record<string, QtChannelObject> }) => void) => unknown } }
@@ -34,7 +35,10 @@ export async function startBridge(): Promise<void> {
       });
     });
     if (!channelObj) { store.setLink('detached'); return; }
-    onEvent = (raw: string) => { const ev = parseHostEvent(raw); if (ev) useUi.getState().apply(ev); };
+    onEvent = (raw: string) => { const ev = parseHostEvent(raw); if (!ev) return;
+      useUi.getState().apply(ev);
+      if (ev.type === 'workspace.loaded' && ev.layout) useWindows.getState().apply(ev.layout);
+      if (ev.type === 'host.hello') { sendRequest({ kind: 'workspace.list' }); sendRequest({ kind: 'workspace.load', name: '_last' }); } };
     channelObj.event.connect(onEvent);
     sendRequest({ kind: 'ready' });
   } catch {

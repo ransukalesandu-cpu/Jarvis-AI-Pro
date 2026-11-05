@@ -1,8 +1,11 @@
+import { Maximize2 } from 'lucide-react';
 import { useUi, type Page } from '../store';
+import { useWindows } from '../workspace/windows';
+import type { WinKind } from '../workspace/layout';
 
 const fmt = (n: number | undefined | null, unit = '%') => (n === undefined || n === null ? '--' : `${Math.round(n)}${unit}`);
 
-function Monitor() {
+export function MonitorContent() {
   const m = useUi((s) => s.metrics);
   return (
     <>
@@ -17,7 +20,7 @@ function Monitor() {
   );
 }
 
-function Models() {
+export function ModelsContent() {
   const p = useUi((s) => s.provider);
   return (
     <>
@@ -31,7 +34,7 @@ function Models() {
   );
 }
 
-function ActivityPage() {
+export function ActivityContent() {
   const history = useUi((s) => s.history);
   const a = useUi((s) => s.assistant);
   return (
@@ -50,7 +53,10 @@ export function PageView() {
   if (page === 'home') return null;
   return (
     <main className="page glass" aria-live="polite">
-      {page === 'monitor' ? <Monitor /> : page === 'models' ? <Models /> : page === 'activity' ? <ActivityPage /> : <h1>Not available yet</h1>}
+      {(page === 'monitor' || page === 'models' || page === 'activity') && (
+        <button className="toggle detach" onClick={() => { useWindows.getState().open(page as WinKind); useUi.getState().go('home'); }} aria-label="Open as floating window"><Maximize2 size={12} /> Window</button>
+      )}
+      {page === 'monitor' ? <MonitorContent /> : page === 'models' ? <ModelsContent /> : page === 'activity' ? <ActivityContent /> : <h1>Not available yet</h1>}
     </main>
   );
 }

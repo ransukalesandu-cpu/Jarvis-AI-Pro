@@ -1,6 +1,7 @@
 import { Bot, Brain, Clock, FolderOpen, Globe, Home, Menu, MonitorCog, Settings, Shield, Sparkles, Workflow, AppWindow, X } from 'lucide-react';
 import { useUi, type Page } from '../store';
 import { motion, AnimatePresence } from 'motion/react';
+import { Island } from './Island';
 
 export const PAGES: { id: Page; label: string; icon: React.ReactNode; ready: boolean; phase?: string }[] = [
   { id: 'home', label: 'Home', icon: <Home size={16} />, ready: true },
@@ -18,13 +19,13 @@ export const PAGES: { id: Page; label: string; icon: React.ReactNode; ready: boo
 ];
 
 export function TopBar() {
-  const { toggleNav, toggleSettings, assistant, navOpen, settingsOpen } = useUi();
+  const { toggleNav, toggleSettings, navOpen, settingsOpen } = useUi();
   return (
     <header className="topbar">
       <button className="icon-btn glass" onClick={() => toggleNav()} aria-label="Navigation menu" aria-expanded={navOpen} aria-controls="nav-panel">
         {navOpen ? <X size={18} /> : <Menu size={18} />}
       </button>
-      <div className="brand" aria-live="polite"><span className="dot" data-state={assistant} aria-hidden /> JARVIS · {assistant.toUpperCase()}</div>
+      <Island />
       <button className="icon-btn glass" onClick={() => toggleSettings()} aria-label="Settings" aria-expanded={settingsOpen} aria-controls="settings-panel"><Settings size={18} /></button>
     </header>
   );

@@ -160,3 +160,20 @@ Verification in the Linux sandbox: `tsc` clean, Vitest 5/5, full pytest 1380 pas
 * The base plate under the neck and bloom/post-processing from the legacy look are not reproduced yet.
 * Windows desktop behaviour is unverified.
 * `task.*` backend events do not exist yet.
+
+## 11. Phase 2 status — windows, palette, island, workspaces
+
+Built on the Phase 1 branch. All of it is real behaviour; nothing is decorative.
+
+| Piece | What it does | Where |
+|---|---|---|
+| Floating glass windows | Drag, resize, focus (z-order), minimise (tray), maximise, close. One window per kind: System Monitor, AI Models, Activity Center. New windows are placed in the side gutters, never over the hologram when avoidable; edge snap; tile; clamped to the viewport on resize. Closing a window never stops a backend task. | `frontend/src/workspace/`, `ui/Windows.tsx` |
+| Command palette | `Ctrl+K` (cmdk). Only implemented actions: navigate to ready pages, open/tile/minimise/close windows, settings, save/load/delete workspace. No fake commands. | `ui/Palette.tsx` |
+| Dynamic Island | Real assistant state, window count, offline marker; click opens the palette. | `ui/Island.tsx` |
+| Workspace persistence | Layout autosaved (debounced) as hidden `_last` and restored on connect; named workspaces via the palette. Stored by Python in `config/web_workspaces.json` (atomic write). | `jarvis/webui/workspace_store.py` |
+
+Security/robustness: layouts are validated on both sides with the same schema (exact keys, bounded numbers, max 12 windows, max 24 workspaces, names `[a-z0-9 _-]{1,32}`). A corrupt or outdated layout is dropped, never applied. Only `workspace.save` may exceed 512 chars; the cap for it is 16 KiB. `_last` cannot be deleted from JS. The legacy `workspaces.json` is untouched.
+
+Verification: tsc clean; Vitest 17/17; pytest 1399 passed / 4 skipped; real QtWebEngine run (3 windows placed in the gutters, autosave written, palette opened by Ctrl+K). Screenshots: `docs/images/next-gen-ui-phase2-*.png`.
+
+Not in Phase 2: live assistant wiring (state bus, audio, provider router), task events, charts, notification centre, Windows/real-GPU verification — Phase 3.

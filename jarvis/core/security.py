@@ -579,6 +579,9 @@ def tier_for(name: str, params: dict | None = None) -> str:
                 info = None
             return TIER_SENSITIVE if info is not None and info.read_only else TIER_DANGEROUS
         return TIER_SENSITIVE
+    if name == "standing_orders":
+        # Permanent rules steer every later session: only reading them is free.
+        return TIER_SAFE if action == "list" else TIER_DANGEROUS
     if name == "skills":
         # Saved skills steer every later session: changing them needs approval.
         if action in {"list", "use"}:

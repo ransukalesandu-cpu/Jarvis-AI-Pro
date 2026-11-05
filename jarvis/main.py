@@ -958,6 +958,21 @@ class JarvisLive(
         if loop and ev is not None:
             loop.call_soon_threadsafe(ev.set)
 
+    def _announce_unfinished_tasks(self) -> None:
+        """Tell the owner (once per start) about autonomous tasks a restart interrupted."""
+        try:
+            from collections import deque
+            from jarvis.agent.integration import get_service
+            pending = get_service().store.unfinished()
+            if pending:
+                queue = self.__dict__.setdefault("_announcements", deque(maxlen=20))
+                names = "; ".join(t.objective[:60] for t in pending[:3])
+                queue.append(
+                    f"[{len(pending)} autonomous task(s) were interrupted by the last shutdown: {names}] "
+                    "Tell the owner briefly and offer to resume them; do not resume unless they say so.")
+        except Exception as exc:
+            print(f"[Agent] Could not check unfinished tasks: {type(exc).__name__}: {exc}")
+
     def request_shutdown(self) -> None:
         """Stop the Live run loop and its TaskGroup without reconnecting."""
         self._shutdown_requested = True
@@ -1663,7 +1678,9 @@ class JarvisLive(
         try:
             from jarvis.core import mcp_client
             from jarvis.core.skills import get_skill_registry
-            for extra in (get_skill_registry().index_text(), mcp_client.get_manager().index_text()):
+            from jarvis.core import standing_orders
+            for extra in (standing_orders.prompt_block(), get_skill_registry().index_text(),
+                          mcp_client.get_manager().index_text()):
                 if extra:
                     parts.append(extra)
         except Exception as exc:
@@ -2815,6 +2832,7 @@ class JarvisLive(
         )
         hooks.get_hook_registry().notify = self.ui.write_log
         hooks.emit("startup", {"ledger_ok": bool(_ledger_ok)})
+        self._announce_unfinished_tasks()
         try:
             from jarvis.core import mcp_client
             mcp_client.get_manager().start_background()

@@ -7,6 +7,7 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Standing orders: permanent owner rules (`standing_orders` tool, owner DB, injected into every session prompt; add/remove/enable/disable need confirmation). Startup now tells the owner about autonomous tasks a restart interrupted (never resumes them on its own).
 
 - **Browser snapshots with element refs** (`core/page_snapshot.py`,
   `docs/BROWSER_SNAPSHOT.md`). `browser_control` gained `snapshot`, `click_ref`,

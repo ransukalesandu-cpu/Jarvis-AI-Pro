@@ -62,8 +62,6 @@ def run_application(
 
     if configure_graphics_backend:
         configure_graphics_backend()
-    from jarvis.hologram import prepare_qt
-    prepare_qt()
     app = QApplication.instance() or QApplication(sys.argv)
     app.setStyle("Fusion")
     startup: dict[str, Any] = {

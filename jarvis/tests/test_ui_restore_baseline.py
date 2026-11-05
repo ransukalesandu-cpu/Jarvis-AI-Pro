@@ -92,7 +92,7 @@ def test_hologram_theme_is_lightweight_and_qt_free():
 
 
 def test_the_hud_still_has_its_original_hologram_stack():
-    """The HUD keeps one hologram widget (the WebGL engine) inside the same stage container."""
+    """The restore must keep one face renderer and the separate Bihansa persona."""
     source = (UI_DIR / "hud_main.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     defined = {
@@ -100,14 +100,14 @@ def test_the_hud_still_has_its_original_hologram_stack():
     }
     assert {"HUDMainWindow", "HologramHUDUI"} <= defined
     for attribute in (
-        "self.hologram",
+        "self.wireframe_visualizer",
+        "self.bihansa_visualizer",
+        "self._visualizer_stack",
         "self._hologram_stage",
         "self._mini_orb",
+        "self._heart_reactor",
     ):
-        assert attribute in source, f"{attribute} is part of the HUD"
-    # No second, duplicate renderer may be built next to the engine.
-    for gone in ("NeuralWireframeHead", "BihansaHologramWidget", "NeuralHeartReactor"):
-        assert gone not in source, f"{gone} must not be reintroduced next to the WebGL engine"
+        assert attribute in source, f"{attribute} is part of the restored HUD"
 
 
 def test_the_autonomous_surfaces_are_still_opt_in():
@@ -121,15 +121,33 @@ def test_the_autonomous_surfaces_are_still_opt_in():
 
 
 def test_the_hologram_clears_to_the_backdrop_not_to_transparency():
-    """A transparent web view over an opaque parent composites to black on some Windows setups.
+    """``CompositionMode_Clear`` composites to black on a child widget.
 
-    The old QPainter hologram hit that exact bug, so the engine host paints the HUD backdrop
-    colour as its page background instead of transparency; the fix is pinned here.
+    That was a real regression once already; the revert restored the code that
+    had it, so the fix is pinned here.
     """
-    source = (UI_DIR.parent / "hologram" / "host.py").read_text(encoding="utf-8")
-    assert "backdrop_rgb" in source
-    assert re.search(r"setBackgroundColor\(QColor\(\*backdrop_rgb\(\)\)\)", source)
-    assert "QColor(0, 0, 0, 0)" not in source
+    renderers = (
+        UI_DIR / "hologram" / "wireframe_head.py",
+        UI_DIR / "hologram" / "bihansa_hologram.py",
+    )
+    # Match the *call*, not the word: the fixed code explains the old bug in a
+    # comment, and that comment must not fail its own regression test.
+    clear_call = re.compile(r"setCompositionMode\(\s*QPainter\.CompositionMode\."
+                            r"CompositionMode_Clear\s*\)")
+    source_call = re.compile(r"setCompositionMode\(\s*QPainter\.CompositionMode\."
+                             r"CompositionMode_Source\s*\)")
+    for path in renderers:
+        source = path.read_text(encoding="utf-8")
+        paint = source[source.index("    def paintEvent"):]
+        assert not clear_call.search(paint), (
+            f"{path.name} clears its frame to transparency, which paints black"
+        )
+        assert source_call.search(paint), (
+            f"{path.name} must repaint its frame in the HUD backdrop colour"
+        )
+        assert re.search(r"fillRect\(self\.rect\(\), ", paint), (
+            f"{path.name} must fill its own rect with that backdrop colour"
+        )
 
 
 def test_the_reverted_test_modules_are_not_referenced():

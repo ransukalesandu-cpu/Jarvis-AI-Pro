@@ -561,11 +561,6 @@ async def run_audio_playback(
                         host.ui.set_audio_level(level)
                     except Exception:
                         failsoft.suppress('core.audio_playback:set_audio_level')
-                    try:
-                        from jarvis.audio.visualizer_bridge import get_visualizer_bridge
-                        get_visualizer_bridge().push_output_energy(level)
-                    except Exception:
-                        failsoft.suppress('core.audio_playback:push_output_energy')
 
                 # Barge-in needs to know what we are playing, not just how loud:
                 # the guard subtracts this from the microphone.

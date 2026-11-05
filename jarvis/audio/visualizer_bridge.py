@@ -28,10 +28,6 @@ class VisualizerBridge(QObject):
 
     # Signals for UI binding
     sig_audio_energy = pyqtSignal(float)
-    # Playback (speaker) level, kept apart from the microphone level above:
-    # (level, mouth_openness, mouth_width); openness < 0 means "no mouth hint".
-    sig_output_energy = pyqtSignal(float, float, float)
-    sig_output_ended = pyqtSignal()
     sig_auth_state_changed = pyqtSignal(str)
     sig_state_changed = pyqtSignal(str)
     sig_telemetry_updated = pyqtSignal(dict)
@@ -125,20 +121,6 @@ class VisualizerBridge(QObject):
 
         self.sig_audio_energy.emit(val)
         return val
-
-    def push_output_energy(self, level: float, openness: float = -1.0, width: float = 0.0) -> None:
-        """Thread-safe: publish the level of audio being PLAYED (never raw samples)."""
-        try:
-            lv = max(0.0, min(1.0, float(level)))
-            op = max(-1.0, min(1.0, float(openness)))
-            wd = max(-1.0, min(1.0, float(width)))
-        except (TypeError, ValueError):
-            return
-        self.sig_output_energy.emit(lv, op, wd)
-
-    def end_output(self) -> None:
-        """Thread-safe: playback finished or was interrupted."""
-        self.sig_output_ended.emit()
 
     def update_auth_state(self, auth_state: str) -> None:
         """Thread-safe update of AuthState."""

@@ -141,7 +141,6 @@ function receive(raw) {
   return true;
 }
 
-let loseExt = null;
 window.__holo = Object.freeze({ receive });
 if (DEBUG) {
   window.__holoDebug = {
@@ -154,10 +153,8 @@ if (DEBUG) {
       return { size, face: { cx: pr(0, L.face.y)[0], top: top[1], bottom: bot[1], height: bot[1] - top[1] }, heart: rad(L.heart), orb: rad(L.orb) };
     },
     caps: () => ({ renderer: caps.rendererName, maxTexture: caps.maxTextureSize, tier: tierName }),
-    // The extension object must be fetched while the context is alive: getExtension() returns
-    // null on a lost context, which would make restoreContext() impossible to call.
-    loseContext: () => { loseExt = caps.gl.getExtension('WEBGL_lose_context'); loseExt?.loseContext(); return !!loseExt; },
-    restoreContext: () => { loseExt?.restoreContext(); return !!loseExt; },
+    loseContext: () => { const e = caps.gl.getExtension('WEBGL_lose_context'); e?.loseContext(); return !!e; },
+    restoreContext: () => { const e = caps.gl.getExtension('WEBGL_lose_context'); e?.restoreContext(); return !!e; },
     setTier: (n) => setTier(n, 'debug'),
     dispose: () => { life.dispose(); destroyEntities(); renderer.dispose(); },
     frames: () => renderer.info.render.frame,

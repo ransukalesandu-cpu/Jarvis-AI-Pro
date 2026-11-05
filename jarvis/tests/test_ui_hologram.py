@@ -22,13 +22,16 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from PyQt6.QtCore import QSettings, QEvent, QTimer, Qt, QPoint, QPropertyAnimation
-from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton
+from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton, QWidget
 from PyQt6.QtTest import QTest
 
 # Ensure QApplication exists before testing Qt widgets
 app = QApplication.instance() or QApplication(sys.argv)
 
 from jarvis.audio.visualizer_bridge import VisualizerBridge
+from jarvis.ui.hologram.wireframe_head import NeuralWireframeHead
+from jarvis.ui.hologram.bihansa_hologram import BihansaHologramWidget
+from jarvis.ui.hologram.neural_heart_reactor import NeuralHeartReactor
 from jarvis.ui.panels.hybrid_brain_panel import HybridBrainPanel
 from jarvis.ui.panels.security_panel import SecurityPanel
 from jarvis.ui.panels.memory_panel import MemoryPanel
@@ -129,17 +132,95 @@ class TestUIHologram(unittest.TestCase):
                 hud._set_bihansa_enabled(False)
                 self.assertEqual(hud._lbl_hud_status.text(), before)
 
-    def test_global_reduced_motion_applies_to_the_hologram(self):
+    def test_neural_wireframe_head_widget(self):
+        """Test 3D Wireframe Visualizer creation, state switching, and audio energy updates."""
+        head = NeuralWireframeHead()
+        self.assertIsNotNone(head)
+        self.assertEqual(head.get_state(), "IDLE")
+
+        # Test state switching across all required states
+        states = ["IDLE", "LISTENING", "THINKING", "SPEAKING", "PRIVACY_LOCK"]
+        for st in states:
+            head.set_state(st)
+            self.assertEqual(head.get_state(), st)
+
+        # Test audio energy update
+        head.set_audio_energy(0.75)
+        self.assertEqual(head._target_energy, 0.75)
+
+    def test_neural_face_landmarks_are_aligned_and_sculpted(self):
+        """The high-resolution mesh has readable facial landmarks, not a sphere."""
+        head = self._track_widget(NeuralWireframeHead())
+        self.assertGreaterEqual(len(head._feature_edges), 25)
+        self.assertEqual(len(head._eyes), 2)
+        left_eye = head._vertices[head._eyes[0]]
+        right_eye = head._vertices[head._eyes[1]]
+        self.assertLess(left_eye[0], 0.0)
+        self.assertGreater(right_eye[0], 0.0)
+        self.assertAlmostEqual(left_eye[0], -right_eye[0], delta=1e-6)
+        self.assertAlmostEqual(left_eye[1], right_eye[1], delta=1e-6)
+        self.assertAlmostEqual(left_eye[2], right_eye[2], delta=1e-6)
+
+        eye_socket = NeuralWireframeHead._head_surface(0.40, 0.18)[2]
+        brow = NeuralWireframeHead._head_surface(0.40, 0.33)[2]
+        upper_lip = NeuralWireframeHead._head_surface(0.0, -0.30)[2]
+        mouth_crease = NeuralWireframeHead._head_surface(0.0, -0.37)[2]
+        baseline_upper_lip = NeuralWireframeHead._head_surface(
+            0.0, -0.30, sculpt=False
+        )[2]
+        baseline_mouth_crease = NeuralWireframeHead._head_surface(
+            0.0, -0.37, sculpt=False
+        )[2]
+        self.assertLess(eye_socket, brow)
+        self.assertLess(mouth_crease, upper_lip)
+        self.assertLess(mouth_crease, baseline_mouth_crease)
+        self.assertGreater(
+            upper_lip - mouth_crease,
+            baseline_upper_lip - baseline_mouth_crease,
+        )
+        crown = NeuralWireframeHead._head_surface(0.0, 1.0)
+        chin = NeuralWireframeHead._head_surface(0.0, -1.0)
+        self.assertGreater(crown[1] - chin[1], 2.0)
+
+    def test_bihansa_hologram_widget(self):
+        """Test Bihansa 3D Neural Face visualizer creation, states, energy, visemes, and effects."""
+        bihansa = BihansaHologramWidget()
+        self.assertIsNotNone(bihansa)
+        self.assertEqual(bihansa.get_state(), "IDLE")
+
+        # Test state transitions
+        for st in ["IDLE", "LISTENING", "THINKING", "SPEAKING", "PRIVACY_LOCK"]:
+            bihansa.set_state(st)
+            self.assertEqual(bihansa.get_state(), st)
+
+        # Test audio energy update
+        bihansa.set_audio_energy(0.85)
+        self.assertEqual(bihansa._target_energy, 0.85)
+
+        # Test viseme blend weights extension API
+        bihansa.set_viseme("aa", 0.9)
+        self.assertEqual(bihansa._viseme_weights["aa"], 0.9)
+
+        # Test toggling effects & voice reactivity
+        bihansa.set_effects_enabled(False)
+        self.assertFalse(bihansa._effects_enabled)
+        bihansa.set_voice_reactive(False)
+        self.assertFalse(bihansa._voice_reactive)
+        self.assertEqual(bihansa._target_energy, 0.0)
+
+    def test_global_reduced_motion_applies_to_both_hologram_personas(self):
         """The accessibility toggle reduces motion for JARVIS and Bihansa."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
         toggle = hud._reduced_motion_toggle
 
         toggle.setChecked(True)
-        self.assertTrue(hud.hologram.reduced_motion)
+        self.assertTrue(hud.wireframe_visualizer._reduced_motion)
+        self.assertTrue(hud.bihansa_visualizer._reduced_motion)
         self.assertTrue(hud._settings.value("accessibility/reduced_motion", False, type=bool))
 
         toggle.setChecked(False)
-        self.assertFalse(hud.hologram.reduced_motion)
+        self.assertFalse(hud.wireframe_visualizer._reduced_motion)
+        self.assertFalse(hud.bihansa_visualizer._reduced_motion)
 
     def test_telemetry_panels_creation_and_updates(self):
         """Test modular telemetry panels."""
@@ -180,32 +261,38 @@ class TestUIHologram(unittest.TestCase):
 
         # Simulate state changes via bridge
         self.bridge.update_state("LISTENING")
-        self.assertEqual(hud.hologram.state, "listening")
+        self.assertEqual(hud.wireframe_visualizer.get_state(), "LISTENING")
+        self.assertEqual(hud.bihansa_visualizer.get_state(), "LISTENING")
 
         # Default mode is JARVIS (Bihansa toggle OFF)
         self.assertFalse(hud._bihansa_toggle.isChecked())
-        self.assertEqual(hud.hologram.profile, "jarvis")
+        self.assertEqual(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
 
         # Switch to Bihansa Mode
         hud._bihansa_toggle.setChecked(True)
         self.assertTrue(hud._bihansa_toggle.isChecked())
-        self.assertEqual(hud.hologram.profile, "bihansa")
+        self.assertEqual(hud._visualizer_stack.currentWidget(), hud.bihansa_visualizer)
 
         # Simulate PRIVACY_LOCK auth state change
         self.bridge.update_auth_state("PRIVACY_LOCK")
         self.assertFalse(hud._lock_banner.isHidden())
-        self.assertEqual(hud.hologram.state, "locked")
+        self.assertEqual(hud.wireframe_visualizer.get_state(), "PRIVACY_LOCK")
+        self.assertEqual(hud.bihansa_visualizer.get_state(), "PRIVACY_LOCK")
         self.assertEqual(hud._mini_orb._state, "PRIVACY_LOCK")
+        self.assertEqual(hud._heart_reactor._state, "PRIVACY_LOCK")
 
         # Audio state updates must not override an auth-only lock.
         self.bridge.update_state("SPEAKING")
-        self.assertEqual(hud.hologram.state, "locked")
+        self.assertEqual(hud.bihansa_visualizer.get_state(), "PRIVACY_LOCK")
+        self.assertEqual(hud.wireframe_visualizer.get_state(), "PRIVACY_LOCK")
         self.assertEqual(hud._mini_orb._state, "PRIVACY_LOCK")
+        self.assertEqual(hud._heart_reactor._state, "PRIVACY_LOCK")
 
         # Clear PRIVACY_LOCK
         self.bridge.update_auth_state("FULL_ACCESS")
         self.assertTrue(hud._lock_banner.isHidden())
-        self.assertEqual(hud.hologram.state, "speaking")
+        self.assertEqual(hud.bihansa_visualizer.get_state(), "SPEAKING")
+        self.assertEqual(hud.wireframe_visualizer.get_state(), "SPEAKING")
 
     def test_left_mega_menu_is_accessible_and_pointer_safe(self):
         """The edge trigger opens the rail; pointer and focus guards prevent flicker."""
@@ -325,23 +412,31 @@ class TestUIHologram(unittest.TestCase):
         overlay._submit()
         self.assertEqual(payloads, [{"gemini_api_key": replacement}])
 
+    def test_hologram_visualizers_use_transparent_backgrounds(self):
+        """Both original hologram renderers must preserve transparent pixels."""
+        for widget_type in (NeuralWireframeHead, BihansaHologramWidget):
+            widget = self._track_widget(widget_type())
+            self.assertTrue(
+                widget.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            )
+            self.assertFalse(
+                widget.testAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
+            )
+
     def test_bento_side_panels_keep_original_hologram_unchanged(self):
         """Modern side surfaces must not replace or reconfigure the original hologram."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
-        # One hologram widget (the WebGL engine host, or its inert stand-in); the old
-        # CPU-painted JARVIS/Bihansa widgets and the heart overlay no longer exist.
-        self.assertTrue(hasattr(hud, "hologram"))
-        self.assertFalse(hasattr(hud, "wireframe_visualizer"))
-        self.assertFalse(hasattr(hud, "bihansa_visualizer"))
-        self.assertFalse(hasattr(hud, "_heart_reactor"))
-        self.assertIs(hud.hologram.parentWidget(), hud._hologram_stage)
-        self.assertEqual(hud.hologram.profile, "jarvis")
+        self.assertIsInstance(hud.wireframe_visualizer, NeuralWireframeHead)
+        self.assertIsInstance(hud.bihansa_visualizer, BihansaHologramWidget)
+        self.assertEqual(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
 
         # The status orb remains below the hologram; the heart is a separate
         # transparent overlay and does not replace either original visualizer.
         self.assertIsInstance(hud._mini_orb, FloatingHolographicOrb)
         self.assertEqual(hud._mini_orb.size().width(), 48)
         self.assertEqual(hud._mini_orb.size().height(), 48)
+        self.assertIsInstance(hud._heart_reactor, NeuralHeartReactor)
+        self.assertIs(hud._heart_reactor.parentWidget(), hud._hologram_stage)
         self.assertIsInstance(hud._surface_brain, BentoPanelSurface)
         self.assertIsInstance(hud._surface_security, BentoPanelSurface)
         self.assertIsInstance(hud._surface_memory, BentoPanelSurface)
@@ -365,14 +460,16 @@ class TestUIHologram(unittest.TestCase):
         self.bridge.update_state("LISTENING")
         self.bridge.push_audio_energy(0.75)
         self.assertEqual(hud._mini_orb._state, "LISTENING")
-        self.assertEqual(hud.hologram.state, "listening")
+        self.assertEqual(hud._heart_reactor._state, "LISTENING")
+        self.assertEqual(hud.wireframe_visualizer.get_state(), "LISTENING")
+        self.assertEqual(hud.bihansa_visualizer.get_state(), "LISTENING")
 
         # Existing mode switching remains intact.
         hud._bihansa_toggle.setChecked(True)
-        self.assertEqual(hud.hologram.profile, "bihansa")
+        self.assertEqual(hud._visualizer_stack.currentWidget(), hud.bihansa_visualizer)
         self.assertTrue(hud._mini_orb._bihansa)
         hud._bihansa_toggle.setChecked(False)
-        self.assertEqual(hud.hologram.profile, "jarvis")
+        self.assertEqual(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
 
     def test_hologram_home_is_clean_and_dashboard_is_a_separate_page(self):
         """The main page stays hologram-first; bento telemetry is opened separately."""
@@ -382,8 +479,7 @@ class TestUIHologram(unittest.TestCase):
 
         self.assertIs(hud._workspace_stack.currentWidget(), hud._home_page)
         self.assertTrue(hud._left_rail.isHidden())
-        self.assertIs(hud.hologram.parentWidget(), hud._hologram_stage)
-        self.assertTrue(hud._home_page.isAncestorOf(hud.hologram))
+        self.assertIsInstance(hud._home_page.findChild(NeuralWireframeHead), NeuralWireframeHead)
         self.assertIsInstance(hud._dashboard, ModernDashboard)
         self.assertEqual(len(hud._dashboard._cards), 5)
         self.assertIsInstance(hud._dashboard._skeleton, SkeletonLoader)
@@ -684,6 +780,15 @@ class TestUIHologram(unittest.TestCase):
                 self.assertEqual(self.bridge.current_state, "SPEAKING")
                 hud_ui.set_audio_level(0.85)
 
+    def test_bihansa_render_quality_adapts_to_widget_size(self):
+        compact = BihansaHologramWidget._render_grid_dimensions(320, 320)
+        medium = BihansaHologramWidget._render_grid_dimensions(500, 500)
+        full = BihansaHologramWidget._render_grid_dimensions(900, 900)
+        self.assertLess(compact[0] * compact[1], medium[0] * medium[1])
+        self.assertLess(medium[0] * medium[1], full[0] * full[1])
+        self.assertLess(compact[2], medium[2])
+        self.assertLess(medium[2], full[2])
+
     def test_resize_event_defers_floating_child_geometry(self):
         """Resize work is coalesced until native Qt geometry processing returns."""
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
@@ -701,17 +806,57 @@ class TestUIHologram(unittest.TestCase):
         )
         self.assertEqual(hud._right_menu.x(), expected_x)
 
-    def test_responsive_hologram_budget_scales_the_engine_and_orb(self):
+    def test_responsive_hologram_budget_scales_both_personas_and_orb(self):
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
         hud._hologram_stage.resize(640, 380)
         hud._apply_hologram_stage_budget()
-        self.assertEqual(hud.hologram.budget, (33, 0.62, 0.58))
+        self.assertEqual(hud.wireframe_visualizer._frame_interval, 33)
+        self.assertEqual(hud.bihansa_visualizer._frame_interval, 33)
         self.assertEqual(hud._mini_orb.size().width(), 40)
+        self.assertEqual(hud._heart_reactor.geometry(), hud._hologram_stage.rect())
 
         hud._hologram_stage.resize(900, 650)
         hud._apply_hologram_stage_budget()
-        self.assertEqual(hud.hologram.budget, (16, 1.0, 1.0))
+        self.assertEqual(hud.wireframe_visualizer._frame_interval, 16)
+        self.assertEqual(hud.bihansa_visualizer._frame_interval, 16)
         self.assertEqual(hud._mini_orb.size().width(), 48)
+        self.assertEqual(hud._heart_reactor.geometry(), hud._hologram_stage.rect())
+
+    def test_bihansa_performance_budget_limits_particles_and_glow(self):
+        widget = self._track_widget(BihansaHologramWidget())
+        self.assertEqual(widget._visible_particle_count(), len(widget._particles))
+        widget.set_performance_budget(33, 0.5, 0.6)
+        self.assertEqual(widget._visible_particle_count(), round(len(widget._particles) * 0.5))
+        self.assertEqual(widget._frame_interval, 33)
+        self.assertAlmostEqual(widget._performance_glow_scale, 0.6)
+        widget.set_performance_budget(5, 2.0, 4.0)
+        self.assertEqual(widget._frame_interval, 16)
+        self.assertEqual(widget._visible_particle_count(), len(widget._particles))
+        self.assertEqual(widget._performance_glow_scale, 1.0)
+
+    def test_animation_engine_is_frame_rate_independent_and_finite(self):
+        from jarvis.ui.hologram.animation_engine import pulse, smooth_damp
+
+        one_frame = smooth_damp(0.0, 1.0, 1 / 60, 8.0)
+        two_half_frames = smooth_damp(
+            smooth_damp(0.0, 1.0, 1 / 120, 8.0), 1.0, 1 / 120, 8.0
+        )
+        self.assertAlmostEqual(one_frame, two_half_frames, places=5)
+        self.assertEqual(smooth_damp(0.25, 1.0, 0.0), 0.25)
+        self.assertEqual(smooth_damp(float("nan"), 1.0, 0.02), 0.0)
+        self.assertEqual(pulse(10.0, 1.0, reduced_motion=True), 0.5)
+        self.assertGreaterEqual(pulse(0.0, 1.0), 0.0)
+        self.assertLessEqual(pulse(0.0, 1.0), 1.0)
+
+    def test_neural_heart_reactor_tracks_clamped_audio_energy(self):
+        stage = self._track_widget(QWidget())
+        reactor = NeuralHeartReactor(stage)
+        reactor.set_audio_energy(0.75)
+        self.assertAlmostEqual(reactor._audio_energy, 0.75)
+        reactor.set_audio_energy(5.0)
+        self.assertEqual(reactor._audio_energy, 1.0)
+        reactor.set_audio_energy(float("nan"))
+        self.assertEqual(reactor._audio_energy, 0.0)
 
     def test_right_dropdown_uses_fade_transition(self):
         hud = self._track_widget(HUDMainWindow(bridge=self.bridge))
@@ -734,13 +879,13 @@ class TestUIHologram(unittest.TestCase):
         self.assertTrue(hud._dashboard_button.isHidden())
         self.assertEqual(hud._mini_orb.width(), 40)
         self.assertTrue(hud._left_rail.isHidden())
-        self.assertEqual(hud.hologram.profile, "jarvis")
+        self.assertIs(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
 
         hud.resize(900, 700)
         hud._apply_compact_layout()
         self.assertFalse(hud._dashboard_button.isHidden())
         self.assertEqual(hud._mini_orb.width(), 48)
-        self.assertEqual(hud.hologram.profile, "jarvis")
+        self.assertIs(hud._visualizer_stack.currentWidget(), hud.wireframe_visualizer)
 
 
 if __name__ == "__main__":

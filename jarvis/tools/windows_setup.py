@@ -451,8 +451,9 @@ def pip_install(
     *,
     cwd: Path | None = None,
     run: Runner = _run,
-    attempts: int = 2,
+    attempts: int = 3,
     failures: list[str] | None = None,
+    sleeper: Callable[[float], None] = time.sleep,
 ) -> bool:
     """Run a pip command with at most ``attempts`` tries.
 
@@ -462,6 +463,10 @@ def pip_install(
     into an infinite install loop.
     """
     command = [str(python), "-m", "pip", *args, "--disable-pip-version-check"]
+    if args and args[0] == "install":
+        # pip's own socket retries and a longer timeout absorb the dropped-connection
+        # failures (IncompleteRead) that weak or proxied networks produce mid-download.
+        command += ["--retries", "8", "--timeout", "60"]
     last = ""
     for attempt in range(1, max(1, attempts) + 1):
         result = run(command, cwd=cwd, timeout=3600)
@@ -479,7 +484,8 @@ def pip_install(
         )
         if attempt >= attempts or not transient:
             break
-        print(f"   ... network problem on attempt {attempt}; retrying once.")
+        print(f"   ... network problem on attempt {attempt}; retrying.")
+        sleeper(min(10.0, 3.0 * attempt))
     print(_short(last))
     return False
 
@@ -738,10 +744,9 @@ def install(
         print("\n  Upgrading pip (inside .venv only)...")
         if not pip_install(python, ["install", "--upgrade", "pip", "setuptools", "wheel"],
                            cwd=base, run=run):
-            raise SetupError(
-                "Could not upgrade pip. Check the internet connection or the proxy "
-                "settings, then run Install / Repair again."
-            )
+            # The pip already in the venv is good enough to install from; the real
+            # dependency step below decides whether the network is usable.
+            print("  [!] Could not upgrade pip (network?). Continuing with the pip that is installed.")
 
         print("\n  Installing JARVIS dependencies (this can take several minutes)...")
         install_dependencies(python, base, run=run)

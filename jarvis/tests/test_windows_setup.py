@@ -11,6 +11,7 @@ files themselves are covered by static assertions only (see
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -397,11 +398,39 @@ def test_install_stops_when_pip_fails(project, monkeypatch):
     """A failed pip step must never look like success."""
     monkeypatch.setattr(ws, "ensure_venv", lambda *a, **k: (make_venv(project), ["Using the existing .venv."]))
     monkeypatch.setattr(ws, "_required_imports_ok", lambda *a, **k: False)
-    monkeypatch.setattr(ws, "pip_install", lambda *a, **k: False)
+    monkeypatch.setattr(ws, "pip_install", lambda *a, **k: True)
+    monkeypatch.setattr(ws, "install_dependencies",
+                        lambda *a, **k: (_ for _ in ()).throw(ws.SetupError("pip failed")))
     monkeypatch.setattr(ws, "verify", lambda *a, **k: pytest.fail("verify must not run after a pip failure"))
 
     with pytest.raises(ws.SetupError):
         ws.install(project, run=FakeRun())
+
+
+def test_failed_pip_upgrade_is_not_fatal_when_dependencies_install(project, monkeypatch):
+    monkeypatch.setattr(ws, "ensure_venv", lambda *a, **k: (make_venv(project), ["Using the existing .venv."]))
+    monkeypatch.setattr(ws, "_required_imports_ok", lambda *a, **k: False)
+    monkeypatch.setattr(ws, "pip_install", lambda *a, **k: False)
+    monkeypatch.setattr(ws, "install_dependencies", lambda *a, **k: None)
+    monkeypatch.setattr(ws, "verify", lambda *a, **k: [])
+    assert ws.install(project, run=FakeRun()) == 0
+
+
+def test_pip_install_adds_retry_and_timeout_flags_and_waits_between_attempts(project):
+    waits = []
+    outputs = iter([("Connection broken: IncompleteRead", 1), ("ok", 0)])
+    run = FakeRun()
+    calls = []
+
+    def flaky(command, **kwargs):
+        calls.append(list(command))
+        out, code = next(outputs)
+        return subprocess.CompletedProcess(command, code, out, "")
+
+    assert ws.pip_install(Path("python.exe"), ["install", "x"], cwd=project, run=flaky,
+                          sleeper=waits.append) is True
+    assert "--retries" in calls[0] and "--timeout" in calls[0]
+    assert len(waits) == 1 and waits[0] > 0
 
 
 def test_install_failure_becomes_exit_code_1_at_the_cli(project, monkeypatch):
@@ -733,4 +762,4 @@ def test_paths_with_spaces_survive_quoting(project):
     assert len(str(project).split()) > 1             # sanity: the path really has a space
     argv = run.calls[0]
     assert " " in argv[0] and " " in argv[argv.index("-r") + 1]
-    assert len(argv) == 7                            # the manifest stayed one argument
+    assert len(argv) == 11                           # the manifest stayed one argument (+ retry flags)

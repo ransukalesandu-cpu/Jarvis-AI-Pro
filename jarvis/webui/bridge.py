@@ -12,10 +12,11 @@ class WebUIBridge(QObject):
     ready = pyqtSignal()               # the page connected and subscribed
     ping_received = pyqtSignal(int)    # heartbeat from the page
 
-    def __init__(self, parent=None, store: WorkspaceStore | None = None, gate=None, controls=None, links=None):
+    def __init__(self, parent=None, store: WorkspaceStore | None = None, gate=None, controls=None, links=None, jobs=None):
         super().__init__(parent)
         self.store = store or WorkspaceStore()
         self.controls = controls       # ControlGate or None
+        self.jobs = jobs               # JobGate or None
         self.links = links             # LinkGate or None
         self.gate = gate               # CommandGate or None (=> commands unavailable)
         self._avail = None
@@ -42,6 +43,8 @@ class WebUIBridge(QObject):
             self._publish_list()
         elif msg["kind"] == "control.do":
             self.publish("control.result", reason=self.controls.do(msg["action"]) if self.controls else "unavailable")
+        elif msg["kind"] == "job.cancel":
+            self.publish("control.result", reason=self.jobs.cancel(msg["id"]) if self.jobs else "unavailable")
         elif msg["kind"] == "news.open":
             self.publish("control.result", reason=self.links.open(msg["index"]) if self.links else "unavailable")
         elif msg["kind"] == "command.submit":

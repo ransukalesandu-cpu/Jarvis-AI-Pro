@@ -60,8 +60,16 @@ def attach(window):
         from PyQt6.QtGui import QDesktopServices
         QDesktopServices.openUrl(QUrl(url))
 
-    from .command_gate import LinkGate
+    from .command_gate import JobGate, LinkGate
     host.bridge.links = LinkGate(gate, host.news_urls, _open_link)
+    try:
+        from jarvis.core.jobs import get_job_manager
+        from .jobs_feed import JobsFeed
+        mgr = get_job_manager()
+        host.bridge.jobs = JobGate(lambda: [j.id for j in mgr.running()], mgr.request_cancel)
+        host._jobs_feed = JobsFeed(mgr)
+    except (ImportError, RuntimeError):
+        host.bridge.jobs = None
     host.setGeometry(cw.rect())
     cw.installEventFilter(_Fit(cw, host))
     host.show()

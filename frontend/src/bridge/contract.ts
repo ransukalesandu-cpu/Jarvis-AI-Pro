@@ -11,6 +11,9 @@ export const PERF_TIERS = ['full', 'balanced', 'lite'] as const;
 export type PerfTier = (typeof PERF_TIERS)[number];
 
 export interface Battery { percent: number; charging: boolean }
+export const JOB_STATES = ['running', 'done', 'failed', 'cancelled'] as const;
+export type JobState = (typeof JOB_STATES)[number];
+export interface JobRow { id: string; name: string; status: JobState; startedAt: number; finishedAt: number | null }
 export interface NewsItem { title: string; source: string; link: boolean }
 export interface Net { upKBps: number; downKBps: number }
 
@@ -22,6 +25,7 @@ export type HostEvent =
   | { type: 'assistant.muted'; muted: boolean }
   | { type: 'ui.persona'; persona: Persona }
   | { type: 'ui.perf'; tier: PerfTier }
+  | { type: 'jobs.updated'; jobs: JobRow[] }
   | { type: 'news.items'; heading: string; items: NewsItem[] }
   | { type: 'workspace.list'; names: string[] }
   | { type: 'workspace.loaded'; name: string; layout: Layout | null }
@@ -38,6 +42,7 @@ export type UiRequest =
   | { kind: 'workspace.save'; name: string; layout: Layout }
   | { kind: 'command.submit'; text: string }
   | { kind: 'news.open'; index: number }
+  | { kind: 'job.cancel'; id: string }
   | { kind: 'control.do'; action: ControlAction };
 
 export const COMMAND_MAX = 500;
@@ -92,6 +97,16 @@ export function parseHostEvent(raw: unknown): HostEvent | null {
       return (PERF_TIERS as readonly unknown[]).includes(m.tier) ? { type: m.type, tier: m.tier as PerfTier } : null;
     case 'ui.persona':
       return (PERSONAS as readonly unknown[]).includes(m.persona) ? { type: m.type, persona: m.persona as Persona } : null;
+    case 'jobs.updated': {
+      if (!Array.isArray(m.jobs) || m.jobs.length > 20) return null;
+      const jobs: JobRow[] = [];
+      for (const j of m.jobs as Record<string, unknown>[]) {
+        if (!j || typeof j !== 'object' || !str(j.id, 24) || !str(j.name, 80) || !(JOB_STATES as readonly unknown[]).includes(j.status)) return null;
+        if (!num(j.startedAt, 0, 4e12) || !(j.finishedAt === null || num(j.finishedAt, 0, 4e12))) return null;
+        jobs.push({ id: j.id, name: j.name, status: j.status as JobState, startedAt: j.startedAt as number, finishedAt: j.finishedAt as number | null });
+      }
+      return { type: m.type, jobs };
+    }
     case 'news.items': {
       if (!str(m.heading, 80) && m.heading !== '') return null;
       if (!Array.isArray(m.items) || m.items.length > 20) return null;

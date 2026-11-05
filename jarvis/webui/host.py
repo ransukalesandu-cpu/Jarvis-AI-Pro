@@ -137,6 +137,11 @@ class WebUIHost(QWidget):
                   "link": safe_link(r.get("url")) is not None} for r in rows]
         self.bridge.publish("news.items", heading=str(heading or "HEADLINES")[:80], items=items)
 
+    def set_jobs(self, rows) -> None:
+        jobs = [{"id": r[0], "name": r[1], "status": r[2], "startedAt": int(r[3] * 1000), "finishedAt": int(r[4] * 1000) if r[4] else None}
+                for r in list(rows)[:20]]
+        self.bridge.publish("jobs.updated", jobs=jobs)
+
     def set_perf_tier(self, tier: str) -> None:
         self.bridge.publish("ui.perf", tier=tier)
 

@@ -279,3 +279,13 @@ The native News window has no news source of its own: the headlines appear when 
 - The `news.items` event carries only `title`, `source` and a boolean `link` (at most 20 items, bounded lengths). Links never leave Python: `WebUIHost` keeps the list.
 - Opening an article is `news.open {index}`. `LinkGate` looks the URL up in Python's own list, accepts only plain `https` URLs with a host and no embedded credentials, refuses while locked / awaiting a PIN / silent / guest, rate limits to one per second, and hands the URL to the system browser. The page cannot supply a URL and cannot navigate itself (the web view's navigation allow-list is unchanged).
 - The window says "No headlines yet" until JARVIS has shown some; nothing is invented. Verified in the real engine: a `javascript:` link gets no Open button, a valid link opens through Python, an open attempt while locked is refused, axe-core reports 0 violations.
+
+## 23. Background Jobs window (task events and cancel)
+
+`core/jobs.JobManager` is the one real source of long-running work, so that is what the web UI shows; nothing is invented for other kinds of task.
+
+- `JobManager` gained `add_listener` (called when a job starts or ends, from whichever thread), `snapshot()` (id, name, status, start and finish times; no result and no description) and `request_cancel()` (thread-safe: it sets the cancel event and schedules `task.cancel` on the job's own loop). `cancel()` is unchanged.
+- `JobsFeed` publishes the snapshot on the state bus under `JOBS`; `LiveLink` forwards it as `jobs.updated` (at most 20 rows, bounded, closed status set). Results and descriptions never leave Python.
+- `job.cancel {id}` goes through `JobGate`: stopping work is always allowed (like interrupt), but only a job that Python lists as running can be named, answered `noop` otherwise, rate limited to ~3 per second.
+- The page shows a "Background Jobs" window (status, elapsed time, Cancel for running jobs), an "N jobs" chip in the Island, and a notice when a job it saw running ends (finished / failed / was cancelled). The first snapshot never produces notices, so old jobs do not announce themselves.
+- Verified in the real engine with a real `JobManager` on a separate asyncio thread: two jobs shown, completion notice, Cancel stopped the long job, axe-core 0 violations.

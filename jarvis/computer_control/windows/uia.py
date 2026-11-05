@@ -85,6 +85,55 @@ def hotkey_to_send_keys(keys: list[str]) -> str:
     return down + key + up
 
 
+def menu_label(raw: str) -> str:
+    """'&Save\tCtrl+S' -> 'save' (mnemonic and accelerator removed)."""
+    return " ".join(str(raw).split("\t", 1)[0].replace("&", "").split()).casefold().rstrip(".…")
+
+
+def split_menu_path(path: str) -> list[str]:
+    import re as _re
+    return [p for p in (x.strip() for x in _re.split(r"\s*-?>\s*", str(path))) if p]
+
+
+def win32_menu_command(hwnd: int, path: str) -> bool:
+    """Post the WM_COMMAND of a classic menu item. False when the window has no Win32 menu."""
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    menu = user32.GetMenu(hwnd)
+    if not menu:
+        return False
+    parts = split_menu_path(path)
+    if not parts:
+        raise BackendError("empty menu path")
+    buf = ctypes.create_unicode_buffer(256)
+    for depth, part in enumerate(parts):
+        want = menu_label(part)
+        count = user32.GetMenuItemCount(menu)
+        found = None
+        for i in range(max(0, count)):
+            user32.GetMenuStringW(menu, i, buf, 255, 0x0400)       # MF_BYPOSITION
+            if menu_label(buf.value) == want:
+                found = i
+                break
+        if found is None:
+            raise BackendError(f"'{part}' is not in the menu")
+        if depth == len(parts) - 1:
+            item_id = user32.GetMenuItemID(menu, found)
+            if item_id in (0, 0xFFFFFFFF, -1):
+                raise BackendError(f"'{part}' opens a submenu; name an item inside it")
+            state = user32.GetMenuState(menu, found, 0x0400)
+            if state & 0x0003:                                     # MF_GRAYED | MF_DISABLED
+                raise BackendError(f"'{part}' is disabled right now")
+            if not user32.PostMessageW(hwnd, 0x0111, item_id, 0):  # WM_COMMAND
+                raise BackendError("the window did not accept the menu command")
+            return True
+        menu = user32.GetSubMenu(menu, found)
+        if not menu:
+            raise BackendError(f"'{part}' has no submenu")
+    return False
+
+
 def _rect(wrapper) -> Optional[Rect]:
     try:
         r = wrapper.rectangle()
@@ -436,18 +485,18 @@ class PywinautoBackend:
     def menu_select(self, handle: int, path: str) -> None:
         """Choose a menu item without simulated input where possible.
 
-        Classic Win32 menus: ``HwndWrapper.menu_select`` posts the item's
-        WM_COMMAND to the window (no mouse, no keyboard, works on a locked or
-        non-interactive desktop). Otherwise UI Automation expand/invoke.
+        Classic Win32 menus are walked with the Win32 menu API and the item's
+        WM_COMMAND is posted to the window (no mouse, no keyboard, no focus change;
+        pywinauto's own menu_select focuses the window by moving the cursor, which
+        fails on a non-interactive desktop). Otherwise UI Automation expand/invoke.
         """
         errors = []
         try:
-            hw = self._hwnd(handle)
-            if hw.menu() is not None and hw.menu().item_count() > 0:
-                hw.menu_select(str(path))
+            if win32_menu_command(int(handle), str(path)):
                 return
-        except Exception as exc:
-            errors.append(f"win32: {str(exc)[:80]}")
+            errors.append("win32: no classic menu")
+        except BackendError as exc:
+            errors.append(f"win32: {exc}")
         try:
             self._uia_window(handle).menu_select(str(path))
             return

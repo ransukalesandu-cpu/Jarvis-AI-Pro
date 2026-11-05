@@ -458,3 +458,11 @@ class TestBackend:
         from jarvis.computer_control.windows.backend import BackendError
         with pytest.raises(BackendError):
             hotkey_to_send_keys(["hyper", "x"])
+
+
+def test_menu_label_and_path_helpers():
+    from jarvis.computer_control.windows.uia import menu_label, split_menu_path
+    assert menu_label("&Save\tCtrl+S") == "save"
+    assert menu_label("Save &As...") == "save as"
+    assert split_menu_path("File->Save As") == ["File", "Save As"]
+    assert split_menu_path("Format > Font") == ["Format", "Font"]

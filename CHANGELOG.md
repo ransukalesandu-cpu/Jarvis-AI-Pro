@@ -8,6 +8,14 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Skills + MCP client** (`docs/SKILLS_AND_MCP.md`). `SKILL.md` skills from
+  `<user data>/skills/` (name + description in the prompt, body loaded on demand,
+  instructions only, create/delete need confirmation). A real **MCP client**
+  (`core/mcp_client.py`, official `mcp` SDK, stdio servers from
+  `<user data>/mcp_servers.json`) exposed as one `mcp` tool: discovery, calls with
+  timeout, minimal child environment, untrusted-content wrapping, confirmation unless
+  the server marks the tool read-only, auto stop after repeated failures.
+  New dependency: `mcp>=1.2,<3`.
 - **Automation A2: lifecycle hooks** (`core/hooks.py`, `docs/HOOKS.md`). Events
   `startup`, `shutdown`, `session_start`, `session_end`, `trigger_fired`,
   `trigger_failed`, `task_finished`, `tool_error`, `privacy_lock` run Python
@@ -27,6 +35,11 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   started by a trigger cannot create or change triggers. The `proactive_triggers`
   voice tool gained `runs`, `run_now`, `enable`, `disable`, `cron`, `tz`, `mode`,
   `catch_up`, `max_per_hour`. Existing `triggers.json` files load unchanged.
+
+### Removed
+
+- `core/mcp_hub.py` and its test: a local-only toy registry that nothing imported;
+  replaced by `core/mcp_client.py`.
 
 ### Changed
 

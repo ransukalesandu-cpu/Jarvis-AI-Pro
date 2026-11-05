@@ -564,6 +564,25 @@ def tier_for(name: str, params: dict | None = None) -> str:
         if action == "stop":
             return TIER_SAFE
         return TIER_SENSITIVE if action in _AUTONOMOUS_SAFE_ACTIONS else TIER_DANGEROUS
+    if name == "mcp":
+        # External servers: reading what exists is safe; a call is only routine when the
+        # server itself marks the tool read-only, otherwise it needs a confirmation.
+        if action in {"list", "tools", "describe", "reload"}:
+            return TIER_SAFE
+        if action == "call":
+            try:
+                from jarvis.core import mcp_client
+                info = mcp_client.get_manager().tool_info(
+                    str((params or {}).get("server", "")).strip(), str((params or {}).get("tool", "")).strip())
+            except Exception:
+                info = None
+            return TIER_SENSITIVE if info is not None and info.read_only else TIER_DANGEROUS
+        return TIER_SENSITIVE
+    if name == "skills":
+        # Saved skills steer every later session: changing them needs approval.
+        if action in {"list", "use"}:
+            return TIER_SAFE
+        return TIER_DANGEROUS if action in {"create", "delete"} else TIER_SENSITIVE
     if name == "self_update":
         return TIER_SAFE if operation == "check" else TIER_DANGEROUS
     if name == "open_app":

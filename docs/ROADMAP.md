@@ -5,7 +5,7 @@ Updated by every task. Each task: Gate A (plan PR) → owner approval → Gate B
 | # | Task | Status |
 |---|------|--------|
 | 1 | Automation: cron + run history, lifecycle hooks, webhooks | Gate A approved. A1 (cron + history) in progress; A2 hooks next; A3 webhooks deferred |
-| 2 | Unified skills registry (`SKILL.md`) + MCP client | not started |
+| 2 | Unified skills registry (`SKILL.md`) + MCP client | implemented, in review (PR stacked on A2) |
 | 3 | Browser snapshot / ref interaction | not started |
 | 4 | Standing orders, sub-agents, resumable workflows | not started |
 | 5 | Memory upgrade (Supabase + pgvector) | not started |

@@ -6680,6 +6680,13 @@ class JarvisUI:
 
         return result[0]
 
+    def computer_control_prompt(self):
+        """Native approval prompt for HIGH-risk computer-control actions (Qt, never the web UI)."""
+        if not hasattr(self, "_win") or self._win is None:
+            return None
+        from jarvis.computer_control.qt_prompt import make_prompt
+        return make_prompt(lambda: self._win, self._win._pin_prompt_sig.emit)
+
     def show_camera_frame(self, img_bytes: bytes):
         """Thread-safe: show a webcam frame in the small overlay (screen captures)."""
         self._win._camera_sig.emit(img_bytes)

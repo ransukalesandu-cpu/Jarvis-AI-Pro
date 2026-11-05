@@ -1317,8 +1317,28 @@ class JarvisLive(
         except Exception:
             failsoft.suppress('main:JarvisLive._on_ptt')
 
+    def _bind_computer_control(self) -> None:
+        """Opt-in computer control (JARVIS_COMPUTER_CONTROL=1): bind the native approval prompt."""
+        try:
+            from jarvis.computer_control import approval as cc_approval, flags as cc_flags
+            if not cc_flags.enabled():
+                return
+            factory = getattr(self.ui, "computer_control_prompt", None)
+            prompt = factory() if callable(factory) else None
+            if prompt is not None:
+                cc_approval.bind_native_prompt(prompt)
+            self.ui.write_log("SYS: " + cc_flags.describe())
+        except Exception:
+            failsoft.suppress("main:JarvisLive._bind_computer_control")
+
     def interrupt(self) -> None:
         """Request a thread-safe stop of current speech and reopen the microphone."""
+        try:
+            # The HUD interrupt button (_do_interrupt) also stops computer control.
+            from jarvis.computer_control import estop
+            estop.trigger("interrupt button", source="interrupt")
+        except Exception:
+            failsoft.suppress("main:JarvisLive.interrupt:estop")
         loop = self._loop
         if loop is not None and loop.is_running():
             loop.call_soon_threadsafe(self._interrupt_on_loop)
@@ -2846,6 +2866,7 @@ class JarvisLive(
             turn_audio_provider=self._get_current_turn_audio,
             pin_prompt_callback=self._prompt_owner_pin,
         )
+        self._bind_computer_control()
         _ledger_ok, _ledger_status = security.verify_log()
         self.ui.write_log(
             ("SEC: " if _ledger_ok else "SECURITY ALERT: ") + _ledger_status

@@ -12,7 +12,6 @@ for p in (str(ROOT_DIR), str(ROOT_DIR / "jarvis")):
 
 from jarvis.agent.executor import StepResult  # noqa: E402
 from jarvis.agent.models import StepKind, StepState, TaskState, TaskStep  # noqa: E402
-from jarvis.agent.planner import Plan  # noqa: E402
 from jarvis.core import plan_trace  # noqa: E402
 from jarvis.tests.test_agent_runner import StubPlanner, make_runner  # noqa: E402
 

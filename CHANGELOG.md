@@ -7,6 +7,19 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Computer Control Engine — Phase 0 foundation** (`jarvis/computer_control/`,
+  `docs/computer-control/`). Off by default (`JARVIS_COMPUTER_CONTROL=1`, dry run with
+  `JARVIS_COMPUTER_CONTROL_DRY_RUN=1`). One pipeline for every engine action: flag →
+  emergency stop → LOW/MEDIUM/HIGH policy (default-allow folders, small protected list) →
+  native owner approval for HIGH (Qt prompt + AuthManager PIN, fail closed) → bounded
+  execution with timeout/cancel → verification (when a verifier or the handler provides
+  one; otherwise the result says "not independently verified") → audit with
+  password-field redaction. The older `computer_control` tool is unchanged and does not
+  use this pipeline.
+  Emergency stop is triggered by the stop word path and the HUD interrupt. Tools are
+  `ToolSpec`s registered through the existing action registry (`cc_engine_status`,
+  `cc_emergency_stop`). Mandatory prompt-injection test suite. Baseline benchmark:
+  `python -m jarvis.computer_control.bench baseline`.
 - Router: a provider that fails 3 times in a row is skipped for 60 s (never leaves an empty ladder).
 - Voice health: `core/live_health.py` counts connects, planned reconnects and unexpected drops; new read-only `self_check` tool reports them with unfinished tasks, failing triggers and handled errors.
 - Remote device nodes: MCP servers over streamable HTTP (`url` + `bearer_env` in `mcp_servers.json`, https required except localhost).

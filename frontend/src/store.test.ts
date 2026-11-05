@@ -29,3 +29,17 @@ describe('assistant.muted', () => {
     expect(useUi.getState().muted).toBe(true);
   });
 });
+
+import { SERIES_MAX } from './store';
+describe('metric series', () => {
+  it('records real samples, caps the length and never invents a network sample', () => {
+    useUi.setState({ series: { cpu: [], ram: [], down: [], up: [] } });
+    for (let i = 0; i < SERIES_MAX + 30; i++) useUi.getState().apply({ type: 'system.metrics_updated', cpu: i % 100, ram: 5, disk: null, battery: null, net: null });
+    const s = useUi.getState().series;
+    expect(s.cpu).toHaveLength(SERIES_MAX);
+    expect(s.cpu[s.cpu.length - 1]).toBe((SERIES_MAX + 29) % 100);
+    expect(s.down).toHaveLength(0);                       // net was null -> nothing drawn
+    useUi.getState().apply({ type: 'system.metrics_updated', cpu: 1, ram: 1, disk: null, battery: null, net: { downKBps: 7, upKBps: 2 } });
+    expect(useUi.getState().series.down.at(-1)).toBe(7);
+  });
+});

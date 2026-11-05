@@ -132,7 +132,7 @@ class HostAgent:
                 stop_status = "cancelled"
                 break
             if not result.ok:
-                result, entry = self._recover(ctx, step, result, entry, cancel_event)
+                result, entry = self._recover(ctx, step, result, entry, cancel_event, token)
             if result.ok and result.verified is not False:
                 done.add(step.index)
                 ctx.outputs[step.index] = {"data": result.data, "message": result.message,
@@ -209,7 +209,7 @@ class HostAgent:
         return result, entry
 
     def _recover(self, ctx: TaskContext, step: Step, result: ActionResult, entry: TraceEntry,
-                 cancel_event) -> tuple[ActionResult, TraceEntry]:
+                 cancel_event, token: estop.StopToken) -> tuple[ActionResult, TraceEntry]:
         if (result.status in NOT_RETRIED or result.level is Level.HIGH
                 or ctx.recoveries >= self.max_recoveries):
             return result, entry
@@ -225,7 +225,7 @@ class HostAgent:
         ctx.recoveries += 1
         last_result, last_entry = result, entry
         for item in extra[:3]:
-            if estop.token(cancel_event).stopped():
+            if token.stopped():                 # the task's own token: a stop since it began
                 break
             fake = Step(index=step.index, tool=str(item.get("tool")), args=dict(item.get("args") or {}),
                         description=str(item.get("description") or "recovery"), expect=step.expect,

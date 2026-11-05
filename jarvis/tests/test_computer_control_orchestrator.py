@@ -197,6 +197,25 @@ class TestHost:
         assert report.success and report.recoveries == 1
         assert any(t.recovery for t in report.trace)
 
+    def test_no_recovery_after_a_stop(self, env):
+        fake, specs = env
+        host = HostAgent(specs)
+        plan = host.plan_from("x", [
+            {"tool": "cc_app", "args": {"op": "launch", "name": "Calculator"}},
+            {"tool": "cc_control", "args": {"op": "invoke", "window": "Calculator", "name": "Multiply"}},
+        ])
+        original = host.agents.for_tool("cc_control").recover
+
+        def stop_then_recover(h, step, result):
+            estop.trigger("owner said stop")
+            return original(h, step, result)
+        host.agents.for_tool("cc_control").recover = stop_then_recover
+        try:
+            report = host.run(plan)
+        finally:
+            host.agents.for_tool("cc_control").recover = original
+        assert not report.success and not any(t.recovery for t in report.trace)
+
     def test_denied_high_step_is_not_retried(self, env):
         fake, specs = env
         host = HostAgent(specs)

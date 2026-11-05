@@ -7,6 +7,9 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Router: a provider that fails 3 times in a row is skipped for 60 s (never leaves an empty ladder).
+- Voice health: `core/live_health.py` counts connects, planned reconnects and unexpected drops; new read-only `self_check` tool reports them with unfinished tasks, failing triggers and handled errors.
+- Remote device nodes: MCP servers over streamable HTTP (`url` + `bearer_env` in `mcp_servers.json`, https required except localhost).
 - Optional semantic memory search (`JARVIS_MEMORY_EMBEDDINGS=1`): cached Gemini embeddings blended into retrieval, off by default, fail-soft. pgvector schema documented in `docs/sql/memory_pgvector.sql` (not applied/tested live).
 - Standing orders: permanent owner rules (`standing_orders` tool, owner DB, injected into every session prompt; add/remove/enable/disable need confirmation). Startup now tells the owner about autonomous tasks a restart interrupted (never resumes them on its own).
 

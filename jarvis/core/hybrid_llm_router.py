@@ -90,6 +90,10 @@ class HybridLLMRouter:
         self._provider_latency_ewma: dict[str, float] = {}
         self._provider_latency_samples: dict[str, int] = {}
         self._provider_failures: dict[str, int] = {name: 0 for name in _PROVIDER_ORDER}
+        # A provider that failed COOLDOWN_AFTER times in a row is skipped for
+        # COOLDOWN_SECONDS, so a dead endpoint does not cost a timeout per call.
+        self._cooldown_until: dict[str, float] = {}
+        self._clock = time.monotonic
 
     def _key(self, provider: str) -> str:
         return self.api_keys.get(provider, "") or os.getenv(_KEY_ENV.get(provider, ""), "").strip()
@@ -150,6 +154,16 @@ class HybridLLMRouter:
         chosen = provider_for(task, self.task_routing, status)
         return chosen if chosen in _PROVIDER_ORDER else self.preferred_provider
 
+    COOLDOWN_AFTER = 3
+    COOLDOWN_SECONDS = 60.0
+
+    def _usable(self, order: list[str]) -> list[str]:
+        """Drop providers in cooldown, but never return an empty ladder."""
+        now = self._clock()
+        with self._latency_lock:
+            live = [p for p in order if self._cooldown_until.get(p, 0.0) <= now]
+        return live or order
+
     def _provider_order(self, online: bool, preferred: str | None = None) -> list[str]:
         preferred = preferred or self.preferred_provider
         if not online:
@@ -198,7 +212,7 @@ class HybridLLMRouter:
         # preserving static order for providers with no measurements. Offline
         # mode still prioritizes Ollama. A provider without a key is skipped
         # below, so a task routed to it falls through this same ladder.
-        order = self._provider_order(online, first)
+        order = self._usable(self._provider_order(online, first))
 
         failures: list[str] = []
         for provider in order:
@@ -219,6 +233,7 @@ class HybridLLMRouter:
                 self._record_provider_latency(provider, provider_latency_ms)
                 with self._latency_lock:
                     self._provider_failures[provider] = 0
+                    self._cooldown_until.pop(provider, None)
                 result.update({
                     "provider": provider,
                     "provider_latency_ms": round(provider_latency_ms, 2),
@@ -237,6 +252,8 @@ class HybridLLMRouter:
                     self._provider_failures[provider] = (
                         self._provider_failures.get(provider, 0) + 1
                     )
+                    if self._provider_failures[provider] >= self.COOLDOWN_AFTER:
+                        self._cooldown_until[provider] = self._clock() + self.COOLDOWN_SECONDS
                 # Exception text can contain request details; log only the type.
                 failures.append(f"{provider}:{type(exc).__name__}")
                 logger.warning("Provider %s failed (%s); trying configured fallback",

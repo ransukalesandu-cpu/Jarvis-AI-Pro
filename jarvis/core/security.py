@@ -268,6 +268,7 @@ _TIERS: dict[str, str] = {
     # Health checks are read-only; actual repairs have their own individual
     # confirmation inside actions/self_heal.py. Keep provenance/rate controls.
     "self_heal":        TIER_DANGEROUS,
+    "self_check":       TIER_SAFE,
 
     # Autonomous work: steering/reading a task is sensitive, starting one is
     # dangerous (tier_for() narrows this again per operation). Individual steps

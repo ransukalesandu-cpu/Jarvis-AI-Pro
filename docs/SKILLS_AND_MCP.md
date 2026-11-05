@@ -34,3 +34,20 @@ Safety: only you can edit this file (JARVIS cannot); a server gets a minimal env
 from JARVIS); results are text-only, capped at 8000 characters and wrapped as untrusted external content; a `call` needs a
 confirmation unless the server marks that tool read-only; three failures in a row stop retries until `restart`.
 The old `core/mcp_hub.py` (a local-only registry that nothing used) was removed.
+
+## Remote device nodes (second PC, phone, server)
+
+A node is just an MCP server reachable over HTTP. In `mcp_servers.json`:
+
+```json
+{"servers": {"pc2": {"url": "https://pc2.example.com/mcp", "bearer_env": "PC2_TOKEN"}}}
+```
+
+- `https` is required; plain `http` only for `localhost`/`127.0.0.1`. No credentials inside the URL.
+- The token is read from the environment variable named in `bearer_env` (never stored in the file).
+- Tools appear like any other MCP tool (`mcp` action); a call is confirmed unless the tool is read-only.
+- Verified against a real streamable-HTTP server on loopback. Not verified over the internet or on Windows.
+
+## Self-check
+`self_check` (read-only) reports voice reconnect/drop counts (`core/live_health.py`), unfinished autonomous
+tasks, failing triggers and handled internal errors.

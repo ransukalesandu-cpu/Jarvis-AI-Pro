@@ -52,6 +52,9 @@ class ServerConfig:
     env: dict[str, str] = field(default_factory=dict)
     cwd: Optional[str] = None
     enabled: bool = True
+    # Remote "device node": an MCP server reached over streamable HTTP instead of stdio.
+    url: str = ""
+    bearer_env: str = ""      # name of an environment variable holding the token (never the token)
 
 
 @dataclass
@@ -98,8 +101,18 @@ def load_config(path: Optional[Path] = None) -> tuple[dict[str, ServerConfig], d
         try:
             if not NAME_RE.match(str(name)):
                 raise ValueError("server name must be letters, digits, '-' or '_' (max 32)")
-            if not isinstance(row, dict) or not str(row.get("command") or "").strip():
-                raise ValueError("a 'command' is required")
+            if not isinstance(row, dict):
+                raise ValueError("each server must be an object")
+            if row.get("url"):
+                url = validate_node_url(str(row["url"]))
+                bearer = str(row.get("bearer_env") or "").strip()
+                if bearer and not re.match(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$", bearer):
+                    raise ValueError("bearer_env must be an environment variable name")
+                servers[name] = ServerConfig(name, "", url=url, bearer_env=bearer,
+                                             enabled=bool(row.get("enabled", True)))
+                continue
+            if not str(row.get("command") or "").strip():
+                raise ValueError("a 'command' (or a 'url' for a remote node) is required")
             args = [str(a) for a in (row.get("args") or [])]
             env = {str(k): str(v) for k, v in (row.get("env") or {}).items()}
             servers[name] = ServerConfig(name, str(row["command"]).strip(), args, env,
@@ -107,6 +120,37 @@ def load_config(path: Optional[Path] = None) -> tuple[dict[str, ServerConfig], d
         except (ValueError, TypeError, AttributeError) as exc:
             problems[str(name)] = str(exc)
     return servers, problems
+
+
+def validate_node_url(url: str) -> str:
+    """Remote nodes must use https; plain http is accepted only for this computer (loopback)."""
+    from urllib.parse import urlparse
+    parsed = urlparse(url.strip())
+    if not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("node url must be a plain URL without credentials")
+    loopback = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+    if parsed.scheme != "https" and not (parsed.scheme == "http" and loopback):
+        raise ValueError("node url must be https (http is allowed only for localhost)")
+    return url.strip()
+
+
+async def _open_http(stack: AsyncExitStack, cfg: "ServerConfig"):
+    """Open a streamable-HTTP transport on either MCP SDK generation; returns (read, write)."""
+    headers = {}
+    if cfg.bearer_env:
+        token = os.environ.get(cfg.bearer_env, "")
+        if not token:
+            raise McpError(f"environment variable {cfg.bearer_env} is not set")
+        headers["Authorization"] = f"Bearer {token}"
+    try:                                           # SDK 2.x
+        from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client
+        client = create_mcp_http_client(headers=headers or None)
+        await stack.enter_async_context(client)
+        streams = await stack.enter_async_context(streamable_http_client(cfg.url, http_client=client))
+    except ImportError:                            # SDK 1.x
+        from mcp.client.streamable_http import streamablehttp_client
+        streams = await stack.enter_async_context(streamablehttp_client(cfg.url, headers=headers or None))
+    return streams[0], streams[1]
 
 
 def _child_env(extra: dict[str, str]) -> dict[str, str]:
@@ -213,9 +257,12 @@ class McpManager:
         cfg = state.config
         stack = AsyncExitStack()
         try:
-            params = StdioServerParameters(command=cfg.command, args=cfg.args,
-                                           env=_child_env(cfg.env), cwd=cfg.cwd)
-            read, write = await stack.enter_async_context(stdio_client(params))
+            if cfg.url:
+                read, write = await _open_http(stack, cfg)
+            else:
+                params = StdioServerParameters(command=cfg.command, args=cfg.args,
+                                               env=_child_env(cfg.env), cwd=cfg.cwd)
+                read, write = await stack.enter_async_context(stdio_client(params))
             session = await stack.enter_async_context(ClientSession(read, write))
             await session.initialize()
             listing = await session.list_tools()

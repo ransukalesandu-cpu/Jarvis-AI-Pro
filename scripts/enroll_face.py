@@ -12,8 +12,8 @@ import time
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-JARVIS_DIR = ROOT_DIR / "JarvisAI"
-for item in (ROOT_DIR, JARVIS_DIR):
+JARVIS_DIR = ROOT_DIR / "jarvis"
+for item in (ROOT_DIR,):
     if str(item) not in sys.path:
         sys.path.insert(0, str(item))
 
@@ -23,7 +23,7 @@ def main() -> int:
     parser.add_argument("--camera", type=int, default=0, help="Camera index (default 0)")
     args = parser.parse_args()
 
-    from security import face_auth
+    from jarvis.security import face_auth
 
     if not face_auth.backend_ready():
         print("Error: OpenCV (cv2) is required for face enrollment.")

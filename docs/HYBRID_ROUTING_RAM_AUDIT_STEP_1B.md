@@ -5,7 +5,7 @@ This phase preserves the Gemini Live voice/vision/tool pipeline and does not red
 
 ## Request-path trace (static inspection)
 
-- **Primary real-time voice/vision/tools:** `JarvisAI/main.py` uses the Google GenAI client and the Gemini Live session. This is not routed through `HybridLLMRouter`.
+- **Primary real-time voice/vision/tools:** `jarvis/main.py` uses the Google GenAI client and the Gemini Live session. This is not routed through `HybridLLMRouter`.
 - **Typed/text fallback when Gemini Live is disconnected:** `main.py` reads `config/api_keys.json`, creates `HybridLLMRouter`, calls `query()`, and presents a text answer. Its system prompt explicitly denies Live tool/computer-control capability.
 - **Hybrid text provider order:** preferred configured provider first, then configured cloud providers (Gemini, Groq, OpenAI, Claude). If the connectivity heuristic says offline, existing behavior tries local Ollama first and then configured cloud providers. This preserves the product's offline fallback; this PR does not silently disable it.
 - **One-shot provider settings:** `core/ai_providers.py` uses `core/provider_settings.py` and `ai_provider` for one-shot OpenAI/Anthropic work. **Local LLM backend setting:** `core/llm_client.py` uses `llm_provider` to select Ollama versus an OpenAI-compatible local server. These are different contracts. The hybrid text router now uses `hybrid_provider` when set, otherwise `ai_provider`; it no longer treats the local-backend `llm_provider` as the hybrid cloud preference. `anthropic` is mapped to the router's canonical `claude` label.

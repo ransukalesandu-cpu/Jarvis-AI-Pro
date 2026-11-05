@@ -8,12 +8,12 @@ import sys
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-JARVIS_DIR = ROOT_DIR / "JarvisAI"
-for item in (ROOT_DIR, JARVIS_DIR):
+JARVIS_DIR = ROOT_DIR / "jarvis"
+for item in (ROOT_DIR,):
     if str(item) not in sys.path:
         sys.path.insert(0, str(item))
 
-from security.auth_manager import AuthManager
+from jarvis.security.auth_manager import AuthManager
 
 
 def main() -> int:
@@ -43,7 +43,7 @@ def main() -> int:
         try:
             import numpy as np
             import sounddevice as sd
-            from core import voice_id
+            from jarvis.core import voice_id
 
             if not voice_id.backend_ready():
                 raise RuntimeError("Voice ID model/key-store dependencies are unavailable. Install the optional Voice ID dependencies, then run scripts/enroll_master.py.")

@@ -31,7 +31,7 @@ explicit and history is bounded.
 
 ## Validation
 
-From JarvisAI run:
+From the repository root run:
 python -m pytest tests/test_agent_workflows.py tests/test_agent_core.py tests/test_agent_runner.py -q
 
 Then run the full regression suite:

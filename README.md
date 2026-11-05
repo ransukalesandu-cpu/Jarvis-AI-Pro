@@ -59,19 +59,19 @@ mission transcript, and voice controls in one PyQt window.
 
 ### Live neural workspace
 
-![JARVIS desktop HUD with live neural visualization and system telemetry](JarvisAI/docs/images/jarvis-hud-telemetry.png)
+![JARVIS desktop HUD with live neural visualization and system telemetry](docs/images/jarvis-hud-telemetry.png)
 
 ### Settings and controls
 
-![JARVIS desktop HUD with the Settings and Controls panel open](JarvisAI/docs/images/jarvis-hud-settings.png)
+![JARVIS desktop HUD with the Settings and Controls panel open](docs/images/jarvis-hud-settings.png)
 
 ### Optional startup intro
 
 The startup intro plays inside the native application and can be skipped.
 
-![JARVIS startup intro showing its animated logo](JarvisAI/docs/images/jarvis-startup-intro-logo.png)
+![JARVIS startup intro showing its animated logo](docs/images/jarvis-startup-intro-logo.png)
 
-![JARVIS startup intro showing the system initialization progress animation](JarvisAI/docs/images/jarvis-startup-intro-progress.png)
+![JARVIS startup intro showing the system initialization progress animation](docs/images/jarvis-startup-intro-progress.png)
 
 ## Feature guide at a glance
 
@@ -153,7 +153,7 @@ Tap the orb on any device and say *"Which devices are online?"*. The device you 
 Try: *"Open YouTube on the tablet"* · *"What is on my phone screen?"* · *"Type hello into the phone"* · *"Send the latest report from my Downloads to my phone"* · *"Find last month's invoice PDF and show it on my phone"* · *"Revoke my phone"* (a lost phone loses access immediately).
 
 ### Moving the hub off the laptop (later)
-1. On the new host (Oracle free-tier ARM VM, Raspberry Pi, any Linux): clone the repo, `pip install -r JarvisAI/requirements-hub.txt`, install Tailscale, run `tailscale cert`, set `GEMINI_API_KEY`, `JARVIS_HUB_CERT`, `JARVIS_HUB_KEY` and `JARVIS_HUB_PUBLIC_URL`, then run `scripts/start_hub.sh`.
+1. On the new host (Oracle free-tier ARM VM, Raspberry Pi, any Linux): clone the repo, `pip install -r jarvis/requirements-hub.txt`, install Tailscale, run `tailscale cert`, set `GEMINI_API_KEY`, `JARVIS_HUB_CERT`, `JARVIS_HUB_KEY` and `JARVIS_HUB_PUBLIC_URL`, then run `scripts/start_hub.sh`.
 2. Re-pair the devices with the new pairing codes. On the laptop, set `"hub_url": "wss://new-host.tail1234.ts.net:8766"` and `"relay_port": 8765` in `agent.json`, so the USB tablet keeps using `localhost` through the agent.
 Nothing else changes: every hub setting comes from environment variables or `JARVIS_HUB_CONFIG`.
 
@@ -421,7 +421,7 @@ computer input that can submit or change data remain approval-gated. Email,
 Instagram, and phone plugin actions still require confirmation for every
 request.
 
-For a trusted single-user PC, an optional **Personal Mode** reduces repetitive confirmation banners for selected local desktop actions and safe folder/rename operations while retaining audit logs, rate limits, protected-path checks, provenance checks, and confirmations for overwrite-capable file operations, external communications, generated-code tasks, and other high-impact operations. Enable it locally through the `JARVIS_PERSONAL_MODE=1` process environment variable; it cannot be toggled by a voice or remote-tablet command. See [Personal Mode setup](JarvisAI/docs/PERSONAL_MODE.md).
+For a trusted single-user PC, an optional **Personal Mode** reduces repetitive confirmation banners for selected local desktop actions and safe folder/rename operations while retaining audit logs, rate limits, protected-path checks, provenance checks, and confirmations for overwrite-capable file operations, external communications, generated-code tasks, and other high-impact operations. Enable it locally through the `JARVIS_PERSONAL_MODE=1` process environment variable; it cannot be toggled by a voice or remote-tablet command. See [Personal Mode setup](jarvis/docs/PERSONAL_MODE.md).
 
 Unknown tools are **never automatically treated as SAFE**.
 
@@ -1207,7 +1207,7 @@ rate, correct-abstention rate, conservative token use, and latency. The saved
 baseline is in `eval/results/baseline.json`; a later run fails if recall@5
 regresses beyond the configured margin.
 
-From `JarvisAI/` run:
+From the repository root run:
 
 ```powershell
 python -m unittest discover -s tests -v
@@ -1322,7 +1322,7 @@ JARVIS operates on an **Autonomous Biometric Authority & Privacy Defense Model**
 
 ### Enrolling Owner Voice ID
 
-Run `python scripts/enroll_master.py` to record or enroll owner voice samples into the encrypted local Voice ID profile store (`JarvisAI/config/voice_id.dat`):
+Run `python scripts/enroll_master.py` to record or enroll owner voice samples into the encrypted local Voice ID profile store (`jarvis/config/voice_id.dat`):
 
 ```powershell
 python scripts/enroll_master.py
@@ -1745,7 +1745,7 @@ an action by itself.
   Holo animates the mesh in and out and uses the local MediaPipe face tracker;
   lighting, camera framing, and tracking confidence affect alignment.
 * The hand model, tracking code, scene, notes, and 3D props are bundled under
-  `JarvisAI/assets/holo/`. Video frames are processed in the local Qt WebEngine
+  `jarvis/assets/holo/`. Video frames are processed in the local Qt WebEngine
   view. The Holo gesture deck blocks requests to external hosts; its loopback-only
   helper serves the bundled assets and demo notes. The separate publisher article
   panel is limited to Newsfirst and Ada Derana. Use **CHOOSE NOTES FOLDER…**
@@ -1787,7 +1787,7 @@ an action by itself.
   checks for protected actions. The **STOP CAMERA** control always releases the
   webcam.
 * Say **“Jarvis, close Holo”** to close the panel and stop capture. The source
-  project's MIT license is retained at `JarvisAI/assets/holo/LICENSE`.
+  project's MIT license is retained at `jarvis/assets/holo/LICENSE`.
 
 ## Video player
 
@@ -2034,128 +2034,36 @@ The main application coordinates:
 # 🗂️ Project Structure
 
 ```text
-JarvisAI/
-│
-├── main.py
-├── ui.py
-├── setup.py
-├── requirements.txt
-├── requirements-voice-id.txt
-│
-├── actions/
-│   ├── web_search.py
-│   ├── screen_processor.py
-│   ├── background_monitor.py
-│   ├── proactive.py
-│   ├── proactive_planner.py
-│   ├── proactive_feedback.py
-│   ├── remember_intention.py
-│   ├── reminder.py
-│   ├── system_monitor.py
-│   ├── battery_status.py
-│   ├── computer_settings.py
-│   ├── computer_control.py
-│   ├── open_app.py
-│   ├── browser_control.py
-│   ├── file_controller.py
-│   ├── file_processor.py
-│   ├── send_message.py
-│   ├── weather_report.py
-│   ├── flight_finder.py
-│   ├── earth_globe.py
-│   ├── spotify_control.py
-│   ├── youtube_video.py
-│   ├── game_updater.py
-│   ├── code_helper.py
-│   ├── dev_agent.py
-│   ├── self_heal.py
-│   ├── holo_gestures.py
-│   └── desktop.py
-│
-├── plugins/
-│   ├── quiz.py
-│   ├── home_automation.py
-│   ├── printer_control.py
-│   ├── email_gmail.py
-│   ├── calendar_google.py
-│   ├── phone_call.py
-│   ├── instagram_account.py
-│   ├── deep_reasoning.py
-│   ├── _google_core.py
-│   └── _template.py
-│
-├── assets/
-│   ├── holo/                 # local hand/face tracking, neural hand control, 3D deck
-│   ├── neural/               # GPU neural visualization scene
-│   └── startup_intro.mp4     # optional user-provided intro clip
-│
-├── memory/
-│   ├── memory_manager.py
-│   ├── config_manager.py
-│   ├── voice_personality.py
-│   ├── memory_controller.py
-│   ├── semantic_memory.py
-│   ├── episodic_memory.py
-│   ├── procedural_memory.py
-│   ├── prospective_memory.py
-│   ├── autobiographical_memory.py
-│   ├── associative_memory.py
-│   ├── retrieval_engine.py
-│   ├── memory_scoring.py
-│   ├── consolidation.py
-│   ├── memory_reflection.py
-│   ├── memory_lifecycle.py
-│   ├── memory_audit.py
-│   ├── memory_scoring.json
-│   ├── planner_config.json
-│   └── long_term.json          # generated local memory; do not commit
-│
-├── core/
-│   ├── prompt.txt
-│   ├── security.py
-│   ├── sandbox.py
-│   ├── injection_guard.py
-│   ├── confirm.py
-│   ├── avatar.py
-│   ├── avatar_mesh.py
-│   ├── face_model.obj
-│   ├── neural_viz.py
-│   ├── viseme.py
-│   ├── echo.py
-│   ├── hotkey.py
-│   ├── undo.py
-│   ├── audio_devices.py
-│   ├── gemini.py
-│   ├── ai_providers.py
-│   ├── provider_settings.py
-│   ├── startup_video.py
-│   ├── clap_wake.py
-│   ├── wake_word.py
-│   ├── phone_proximity.py
-│   ├── hud_workspace.py
-│   ├── holo_gestures.py
-│   ├── earth_globe.py
-│   ├── earth_globe.html
-│   ├── plugin_loader.py
-│   └── action_loader.py
-│
-├── security/
-│   └── audit_log.jsonl        # generated local security log; do not commit
-│
-├── sandbox_runs/
-│   └── {temporary execution directories}
-│
-├── dashboard/
-│   └── server.py
-
-├── config/
-    ├── api_keys.json
-    ├── google_credentials.json
-    ├── google_token.json
-    └── certs/
-
-└── tests/
-    └── test_cognitive_memory.py
+Jarvis-AI-Pro/
+├── main.py              launcher (python main.py); also: python -m jarvis
+├── run.py / setup.py    launcher / one-time dependency setup
+├── Jarvis_Setup.bat     Windows: install / repair / verify / launch menu
+├── Run_Jarvis.bat       Windows: daily launcher
+├── Repair_Memory_Audit.bat
+├── requirements.txt     runtime dependencies (the only copy)
+├── requirements-voice-id.txt, requirements-dev.txt
+├── pyproject.toml       packaging, pytest, ruff, coverage
+├── docs/                design notes and guides (+ docs/images)
+├── scripts/             owner enrollment helpers, Windows ADB scripts
+├── supabase/            edge functions + migrations for personal memory
+└── jarvis/              the application package (import as `jarvis.*`)
+    ├── main.py          JarvisLive: Gemini Live session, reconnects, tasks
+    ├── core/            engine room: audio, Live API, security, providers, runtime mixins
+    ├── actions/         one file per capability; auto-discovered via a TOOL dict
+    ├── plugins/         heavier integrations (Gmail, Calendar, home automation, ...)
+    ├── agent/           autonomous task engine: planner, executor, runner, policy
+    ├── memory/          episodic / semantic / procedural / prospective memory
+    ├── security/        owner PIN, face + voice auth, lockdown, device identity
+    ├── ui/              PyQt6 HUD, hologram, panels
+    ├── dashboard/       FastAPI server + static UI for phone/tablet control
+    ├── services/        ADB phone bridge and device services
+    ├── voice/           speech helpers (sanitizer, persona, legacy speech engine)
+    ├── audio/           visualizer bridge
+    ├── config/          settings package + local, git-ignored config files
+    ├── assets/          holo workspace, branding, startup intro
+    ├── tools/           Windows installer logic, RAM profiler
+    ├── eval/, benchmarks/
+    └── tests/           pytest suite
 ```
 
 ---
@@ -2197,10 +2105,10 @@ git clone https://github.com/ranasukalesandu-cpu/Jarvis-AI-Pro.git
 ```
 
 …or download the ZIP from GitHub and extract it. Avoid extracting into
-`C:\Program Files` — JARVIS writes `logs/`, `memory/` and `config/` next to
-`main.py`, and a user account cannot write there.
+`C:\Program Files` — JARVIS writes `logs/`, `memory/` and `config/` inside the
+`jarvis/` folder, and a user account cannot write there.
 
-**3. Double-click `JarvisAI\Jarvis_Setup.bat`.** A menu appears:
+**3. Double-click `Jarvis_Setup.bat`.** A menu appears:
 
 | Choice | What it does |
 | --- | --- |
@@ -2211,7 +2119,7 @@ git clone https://github.com/ranasukalesandu-cpu/Jarvis-AI-Pro.git
 
 Choose **1**, wait for `[OK] Environment ready`, then choose **3**.
 
-**4. For every day after that, double-click `JarvisAI\Run_Jarvis.bat`.** It
+**4. For every day after that, double-click `Run_Jarvis.bat`.** It
 launches straight away (no dependency reinstall on every start) and only offers
 to run the installer when `.venv` is missing or unusable.
 
@@ -2251,7 +2159,7 @@ git clone https://github.com/Ninja2007S/Jarvis-AI.git
 Go to the folder containing `main.py`:
 
 ```powershell
-cd Jarvis-AI\JarvisAI
+cd Jarvis-AI-Pro
 ```
 
 Create the project's virtual environment:
@@ -2315,7 +2223,7 @@ git clone https://github.com/Ninja2007S/Jarvis-AI.git
 Go to the folder containing `main.py`:
 
 ```bash
-cd Jarvis-AI/JarvisAI
+cd Jarvis-AI-Pro
 ```
 
 Create a virtual environment:
@@ -2390,7 +2298,7 @@ git clone https://github.com/Ninja2007S/Jarvis-AI.git
 Go to the folder containing `main.py`:
 
 ```bash
-cd Jarvis-AI/JarvisAI
+cd Jarvis-AI-Pro
 ```
 
 Create a virtual environment:
@@ -2781,14 +2689,14 @@ python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\a
 python -m pip install -r requirements.txt -r requirements-dev.txt
 pre-commit install          # optional: runs the same checks before each commit
 python -m pytest            # ~400 tests, no API key or hardware required
-ruff check JarvisAI         # the lint gate CI enforces
+ruff check jarvis         # the lint gate CI enforces
 ```
 
 Notes for contributors:
 
 * `requirements.txt` is for **running** Jarvis; `requirements-dev.txt` is for
   **working on** it (pytest, coverage, ruff, pre-commit).
-* Tests are runnable from any directory — `JarvisAI/conftest.py` wires up
+* Tests are runnable from any directory — `jarvis/conftest.py` wires up
   `sys.path` and skips the GUI modules when Qt's system libraries (`libGL`,
   `libEGL`) are missing.
 * Lint runs as a ratchet: the rules that catch real runtime breakage (undefined

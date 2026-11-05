@@ -7,6 +7,7 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Optional semantic memory search (`JARVIS_MEMORY_EMBEDDINGS=1`): cached Gemini embeddings blended into retrieval, off by default, fail-soft. pgvector schema documented in `docs/sql/memory_pgvector.sql` (not applied/tested live).
 - Standing orders: permanent owner rules (`standing_orders` tool, owner DB, injected into every session prompt; add/remove/enable/disable need confirmation). Startup now tells the owner about autonomous tasks a restart interrupted (never resumes them on its own).
 
 - **Browser snapshots with element refs** (`core/page_snapshot.py`,

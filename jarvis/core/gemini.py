@@ -761,6 +761,18 @@ def _resolve_ladder(tier: str):
 # Main call
 # ---------------------------------------------------------------------------
 
+_REMOTE_CALL = None
+
+
+def set_remote_call(fn) -> None:
+    """Laptop agent: send every generation to the hub, which holds the keys.
+
+    ``fn(contents, tier, config, timeout_ms) -> text | None``.
+    """
+    global _REMOTE_CALL
+    _REMOTE_CALL = fn
+
+
 def call(
     contents,
     tier: str = FAST,
@@ -777,6 +789,10 @@ def call(
         - _Reply for Live
         - None if every rung fails
     """
+
+    if _REMOTE_CALL is not None:
+        text_reply = _REMOTE_CALL(contents, tier, config, timeout_ms)
+        return None if text_reply is None else _Reply(text_reply)
 
     # The selected external provider handles isolated text/image work. The
     # real-time voice session and Google-grounded search intentionally stay on

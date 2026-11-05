@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#04060c">
+<meta name="mobile-web-app-capable" content="yes">
+<title>JARVIS</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icons/icon-192.png">
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="state-disconnected">
+<header class="strip">
+  <span class="brand">JARVIS</span>
+  <span id="devices" class="devices" aria-label="Devices"></span>
+  <span id="active" class="active-chip" hidden></span>
+  <button id="settings-btn" class="icon-btn" aria-label="Settings">⚙</button>
+</header>
+<main class="stage">
+  <section class="orb-wrap">
+    <canvas id="orb" aria-label="JARVIS orb — tap to talk"></canvas>
+    <div id="state-label" class="state-label">Connecting…</div>
+    <div class="controls">
+      <button id="stop" class="stop" aria-label="Stop">■</button>
+      <label class="toggle"><input id="conversation" type="checkbox"><span>Conversation mode</span></label>
+    </div>
+    <form id="text-form" class="text-form" autocomplete="off">
+      <input id="text" placeholder="Type to JARVIS…" enterkeyhint="send">
+    </form>
+  </section>
+  <aside class="feed-wrap">
+    <h2>Activity</h2>
+    <ol id="feed" class="feed"></ol>
+  </aside>
+</main>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<dialog id="settings" class="settings">
+  <form method="dialog">
+    <h2>Settings</h2>
+    <label>Quality
+      <select id="quality">
+        <option value="auto">Auto</option>
+        <option value="full">Full</option>
+        <option value="reduced">Reduced</option>
+        <option value="minimal">Minimal</option>
+      </select>
+    </label>
+    <label class="toggle"><input id="show-fps" type="checkbox"><span>Show frame rate</span></label>
+    <p id="fps" class="muted"></p>
+    <p class="muted">This device: <b id="me"></b></p>
+    <button value="close">Close</button>
+  </form>
+</dialog>
+<div id="viewer" class="viewer" hidden>
+  <div class="viewer-bar"><span id="viewer-name"></span>
+    <a id="viewer-download" download>Download</a>
+    <button id="viewer-close" class="icon-btn" aria-label="Close">✕</button></div>
+  <div id="viewer-body" class="viewer-body"></div>
+</div>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

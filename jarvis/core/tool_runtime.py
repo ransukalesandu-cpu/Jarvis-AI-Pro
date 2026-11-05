@@ -28,7 +28,7 @@ MAX_TIMEOUT = 3600.0
 
 DEVICE_PARAMETER = {
     "type": "STRING",
-    "description": "Which device runs this. Optional; only 'laptop' is available now.",
+    "description": "Which device runs this: laptop (default), tablet, phone...",
 }
 
 
@@ -88,10 +88,22 @@ def with_device_parameter(declaration: dict) -> dict:
     return decl
 
 
+_DEVICE_RESOLVER = None
+
+
+def set_device_resolver(resolver) -> None:
+    """Hub mode: ``resolver(device) -> error sentence or ''`` decides which
+    device names exist (devices.json). Without one only "laptop" is valid."""
+    global _DEVICE_RESOLVER
+    _DEVICE_RESOLVER = resolver
+
+
 def take_device(args: dict) -> tuple[str, str]:
     """Remove ``device`` from ``args``. Returns (device, error_sentence_or_empty)."""
     raw = args.pop("device", None)
     device = str(raw or DEFAULT_DEVICE).strip().lower() or DEFAULT_DEVICE
+    if _DEVICE_RESOLVER is not None:
+        return device, _DEVICE_RESOLVER(device) or ""
     if device not in SUPPORTED_DEVICES:
         return device, (
             f"I can't run that on the {device} yet. Only the laptop is connected right now."

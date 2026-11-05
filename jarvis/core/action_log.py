@@ -28,6 +28,17 @@ _RESULT_CHARS = 400
 _ARG_CHARS = 300
 _lock = threading.Lock()
 _writes_since_trim = 0
+_listeners: list = []
+
+
+def add_listener(fn) -> None:
+    """Hear every new entry (the hub streams them to the web clients)."""
+    _listeners.append(fn)
+
+
+def remove_listener(fn) -> None:
+    if fn in _listeners:
+        _listeners.remove(fn)
 
 
 def log_path() -> Path:
@@ -90,6 +101,11 @@ def record(tool: str, args: dict | None, result: Any, *, status: str = "ok",
                 _trim(path)
     except Exception as exc:   # pragma: no cover - disk full / permissions
         print(f"[ActionLog] Could not write: {type(exc).__name__}: {exc}")
+    for listener in list(_listeners):
+        try:
+            listener(entry)
+        except Exception as exc:
+            print(f"[ActionLog] listener failed: {exc}")
     return entry
 
 

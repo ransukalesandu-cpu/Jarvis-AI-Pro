@@ -1,0 +1,9 @@
+# Minimal dependencies to run only the hub (python -m hub) on an always-on host
+# such as a Raspberry Pi or an ARM cloud VM. All have ARM64 wheels.
+# The laptop keeps using requirements.txt (desktop app + laptop agent).
+google-genai>=2.8.0,<3
+aiohttp>=3.9,<4
+numpy>=1.24,<3
+psutil>=5.9
+qrcode>=7,<9
+requests>=2.31,<3

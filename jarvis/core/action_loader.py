@@ -49,7 +49,7 @@ from jarvis.core.tool_runtime import ToolMeta, meta_from_declaration
 _NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,63}$")
 _DEFAULT_PARAMS = {"type": "OBJECT", "properties": {}}
 _CTX_KEYS = ("player", "speak", "response", "session_memory", "cancel_event",
-             "dispatch", "session_calls", "show_image", "start_background")
+             "dispatch", "session_calls", "show_image", "start_background", "device")
 
 
 # A tool may declare that the model should NOT be held up waiting for it.
@@ -216,7 +216,8 @@ def _collect_triggers(module, filename: str, logger: Callable[[str], None]) -> N
 
 
 def discover_actions(actions_dir: Path, reserved_names: set[str] | None = None,
-                     logger: Callable[[str], None] = print) -> ActionRegistry:
+                     logger: Callable[[str], None] = print,
+                     include: Callable[[Path], bool] | None = None) -> ActionRegistry:
     """
     Scans actions_dir for *.py files (skips files starting with '_'). A file is
     only treated as an action if it exposes a module-level TOOL dict; files
@@ -233,6 +234,8 @@ def discover_actions(actions_dir: Path, reserved_names: set[str] | None = None,
     for path in files:
         if path.name.startswith("_"):
             continue
+        if include is not None and not include(path):
+            continue          # e.g. the hub skips laptop-only tools (they run in the agent)
         try:
             module_name = f"jarvis.actions.{path.stem}"
             # Reuse the already-imported module when present so handlers are the

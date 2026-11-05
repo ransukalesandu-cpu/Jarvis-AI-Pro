@@ -10,6 +10,7 @@ import math
 from typing import Any
 
 from .command_gate import ACTIONS, AVAILABILITY, MAX_TEXT, REASONS
+from .redact import KINDS as LOG_KINDS, MAX_LINE
 from .workspace_store import clean_name, validate_layout
 
 MAX_EVENT_CHARS = 16384
@@ -54,6 +55,7 @@ _EVENTS = {
     "workspace.loaded": ({"name", "layout"}, lambda m: isinstance(m["name"], str) and 0 < len(m["name"]) <= 32
                          and (m["layout"] is None or validate_layout(m["layout"]) is not None)),
     "command.availability": ({"state"}, lambda m: m["state"] in AVAILABILITY),
+    "log.line": ({"tag", "text"}, lambda m: m["tag"] in LOG_KINDS and isinstance(m["text"], str) and 0 < len(m["text"]) <= MAX_LINE),
     "control.result": ({"reason"}, lambda m: m["reason"] in REASONS),
     "command.result": ({"reason"}, lambda m: m["reason"] in REASONS),
     "host.hello": ({"version"}, lambda m: _num(m["version"], 0, 1000)),

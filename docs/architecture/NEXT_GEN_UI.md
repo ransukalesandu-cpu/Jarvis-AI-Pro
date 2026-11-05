@@ -221,3 +221,20 @@ Not covered: showing JARVIS's reply as text in the page (needs a read-only, reda
 ## 16. Controls — interrupt, mute, fullscreen
 
 `control.do` (closed set: `interrupt`, `mute`, `unmute`, `fullscreen`) via `ControlGate` in Python. Rule: things that stop or quiet JARVIS are always allowed; turning the microphone back **on** is refused from the page while the assistant is locked, awaiting a PIN, silent, or in guest mode (same availability check as the command bar). Idempotent (`noop` when already in that state), 0.3 s spacing, unknown actions do nothing, missing sink means unavailable. Actions call the classic window methods, so there is one implementation. Tests: Python +8, Vitest +4; real QtWebEngine: mute works, unmute while locked is refused and the mic stays muted.
+
+## 17. Conversation log — read-only mirror
+
+A read-only view of the HUD log (You / JARVIS / System / Error / File lines). There is no request that writes to it.
+
+**The hazard found while designing it:** the classic typed-text box writes `You: <text>` to the log *before* it knows the text is a Privacy Lock PIN, so a PIN typed in the native prompt lands in the log. Forwarding the log naively would send PINs to the web layer. So:
+
+- `jarvis/core/log_tap.py`: a minimal observer hook called from `LogPanel.append_log` (the one choke point).
+- `LogFeed` judges every line **at the moment it is logged**, on the logging thread: if the assistant is not fully normal and unlocked (locked, awaiting PIN, silent, guest, or state unprovable) nothing is forwarded. A PIN logged while `auth_required` can never leak even if the PIN is accepted a moment later.
+- `redact.py`: `SEC:` lines and credential-shaped input are dropped; API keys, JWTs, bearer/token/password/pin assignments and any long opaque token become `[redacted]`; home folder names become `~`; control characters stripped; 400-char lines.
+- Rate limit: burst 40, then 10 lines/s. Page keeps the newest 200 lines; "Clear view" only clears the page's memory.
+- Page renders text as text (no HTML), `role="log"`, `aria-live="off"` to avoid flooding screen readers.
+- New window kind `log` (schema updated in Python and TS) and the `chat` page now shows it.
+
+Tests: Python +21 (kinds, 8 secret shapes, home folders, all five blocked states, PIN-then-verified, fail-closed, flood cap, unsubscribe, observer isolation), Vitest +3. Real QtWebEngine run shows redaction and that a PIN typed during `auth_required` never reaches the page.
+
+Not covered: persistent history (the log is this session only) and search.

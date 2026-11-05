@@ -137,7 +137,11 @@ class LogWidget(QTextEdit):
         self._sig.connect(self._enqueue)
 
     def append_log(self, text: str):
-        self._sig.emit(text)
+        try:
+            from jarvis.core import log_tap
+            log_tap.publish(text)          # lets the optional web UI mirror the log (read-only, filtered there)
+        finally:
+            self._sig.emit(text)
 
     def _enqueue(self, text: str):
         self._queue.append(text)

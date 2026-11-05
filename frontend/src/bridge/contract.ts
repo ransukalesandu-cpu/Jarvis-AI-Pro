@@ -23,6 +23,7 @@ export type HostEvent =
   | { type: 'command.availability'; state: CommandState }
   | { type: 'command.result'; reason: CommandReason }
   | { type: 'control.result'; reason: CommandReason }
+  | { type: 'log.line'; tag: LogTag; text: string }
   | { type: 'host.hello'; version: number };
 
 /** UI -> Python requests. Authorization always happens in Python; this list is only the shape. */
@@ -40,6 +41,10 @@ export type ControlAction = (typeof CONTROL_ACTIONS)[number];
 export type CommandReason = (typeof COMMAND_REASONS)[number];
 export const COMMAND_STATES = ['ok', 'locked', 'auth_required', 'silent', 'guest', 'unavailable'] as const;
 export type CommandState = (typeof COMMAND_STATES)[number];
+
+export const LOG_TAGS = ['you', 'ai', 'sys', 'err', 'file'] as const;
+export type LogTag = (typeof LOG_TAGS)[number];
+export const LOG_MAX_LINE = 400;
 
 export const MAX_EVENT_CHARS = 16384;
 const num = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
@@ -91,6 +96,8 @@ export function parseHostEvent(raw: unknown): HostEvent | null {
       return (COMMAND_STATES as readonly unknown[]).includes(m.state) ? { type: m.type, state: m.state as CommandState } : null;
     case 'command.result':
       return (COMMAND_REASONS as readonly unknown[]).includes(m.reason) ? { type: m.type, reason: m.reason as CommandReason } : null;
+    case 'log.line':
+      return (LOG_TAGS as readonly unknown[]).includes(m.tag) && str(m.text, LOG_MAX_LINE) ? { type: m.type, tag: m.tag as LogTag, text: m.text } : null;
     case 'control.result':
       return (COMMAND_REASONS as readonly unknown[]).includes(m.reason) ? { type: m.type, reason: m.reason as CommandReason } : null;
     case 'host.hello':

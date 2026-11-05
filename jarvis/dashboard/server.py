@@ -989,6 +989,11 @@ class DashboardServer:
             finally:
                 self._clients.discard(websocket)
 
+        # OpenAI-compatible API for the Jarvis Web UI (web/, NextChat-based).
+        # Disabled until JARVIS_WEB_API_KEY / web_chat_api_key is configured.
+        from jarvis.dashboard.openai_bridge import register_openai_routes
+        register_openai_routes(app)
+
         return app
 
     def _build_twilio_app(self) -> "FastAPI":

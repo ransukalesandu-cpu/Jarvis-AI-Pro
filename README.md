@@ -12,6 +12,29 @@ Built for **Windows, macOS, and Linux**, Jarvis combines the **Gemini Live API**
 
 ---
 
+# 🌐 Jarvis Web: chat UI with every NextChat feature
+
+The new [`web/`](web/README.md) folder is Jarvis's web and desktop chat app. It is
+built on [NextChat](https://github.com/ChatGPTNextWeb/NextChat) (MIT) and keeps
+all of its features: 15+ AI providers, masks and a prompt library, plugins and MCP,
+artifacts, Markdown/LaTeX/Mermaid, image input and generation, realtime voice and
+TTS, chat export, WebDAV/Upstash sync, access password, PWA, 20+ languages, and a
+Tauri desktop build.
+
+It also adds a **`jarvis` model** that answers with the Jarvis brain itself
+(Gemini → Groq → OpenAI → Claude → Ollama failover). Set `JARVIS_WEB_API_KEY`
+when you start Jarvis, then run the web UI against it:
+
+```bash
+cd web && yarn install
+BASE_URL=http://127.0.0.1:8000 OPENAI_API_KEY=$JARVIS_WEB_API_KEY \
+CUSTOM_MODELS=+jarvis@openai DEFAULT_MODEL=jarvis@openai yarn dev
+```
+
+See [`web/README.md`](web/README.md) for details.
+
+---
+
 # ✨ What is Jarvis AI?
 
 Jarvis AI is designed to feel less like a chatbot and more like a **personal computer companion**.

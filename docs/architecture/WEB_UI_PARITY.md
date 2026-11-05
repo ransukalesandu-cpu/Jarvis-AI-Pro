@@ -11,6 +11,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not yet · 🔒 stays native on purpose 
 | Audio level driving the hologram | ✅ | 20 Hz throttle |
 | Mic muted | ✅ | Island shows MIC MUTED |
 | Persona (JARVIS / BIHANSA) display | 🟡 | event exists; nothing publishes `PERSONA` on the bus yet |
+| Conversation log (read-only) | ✅ | redacted; nothing forwarded while locked / PIN needed / silent / guest (a typed PIN is logged by the classic box before it is recognised, so this is gated at log time) |
 | One-shot AI provider/model/key-configured | ✅ | never sends a key |
 | CPU/RAM/disk/battery/network + history | ✅ | psutil in Python, 2-minute sparklines |
 | Hologram (HoloAvatar look, heart, orb, wires) | ✅ | verified in QtWebEngine; real-GPU/Windows look unconfirmed |
@@ -26,8 +27,8 @@ Legend: ✅ done · 🟡 partial · ⬜ not yet · 🔒 stays native on purpose 
 | Settings (`settings`) | 🟡 | web settings panel covers motion + clock only |
 | System / Telemetry / Activity panels | ✅ | floating windows |
 | Dynamic Island | ✅ | real state, window count |
-| Ask JARVIS / text command bar (`ask`, Ctrl+L) | ⬜ | needs a request that feeds `on_text_command` — design + authorisation |
-| `ask:routines`, `ask:jobs`, `ask:recent_actions` | ⬜ | same dependency as the command bar |
+| Ask JARVIS / text command bar (`ask`, Ctrl+L) | ✅ | `command.submit` through `CommandGate`: refused while locked / PIN / silent / guest, credential-shaped text refused, limits, fail closed |
+| `ask:routines`, `ask:jobs`, `ask:recent_actions` | ⬜ | the command bar now exists; these just need palette entries that send the fixed ASK_TEXT |
 | Bento dashboard (`bento`) | ⬜ | |
 | `mode:jarvis` / `mode:bihansa` | ⬜ | write path (changes persona) |
 | `perf:*` | ⬜ | write path to the perf tier |
@@ -38,15 +39,14 @@ YouTube Music, Music player, Video player, Image viewer, Timer, News, Downloads:
 ## 4. Controls in the classic side panel
 | Control | Web UI |
 |---|---|
-| Interrupt (ESC), mute toggle, wake | ⬜ (write requests; need allow-list + rate limit) |
-| Fullscreen (F11) | ⬜ (window-level; trivial but must go through the host) |
+| Interrupt, mute / unmute | ✅ (`control.do`; unmute refused while locked / PIN / silent / guest). Wake: ⬜ |
+| Fullscreen | ✅ (`control.do`) |
 | AI provider / keys, Voice ID, Remote control, Memory, Plugins, Audio devices, Auto-start, Desktop shortcut, Customise assistant, Response personality, Bihansa settings | 🔒 until each has a designed request. Anything that stores or shows a secret stays native |
 | Neural hand control / camera preview | 🔒 / ⬜ |
 
 ## 5. Not yet built (needs a backend design, will not be faked)
 - Task events + cancellation, notification centre (no event source exists today).
-- Chat transcript / log feed in the page (needs a read-only log event with size bounds and redaction).
-- Command bar → backend (first real *write* path; must be one allow-listed request, validated in Python, logged).
+- Persistent chat history and search (the log mirror is this session only).
 
 ## 6. Quality gates before flipping the default
 1. Owner runs `JARVIS_UI=web` on Windows with a real GPU and confirms the hologram, windows, palette and a full voice conversation. (CI `windows-ui-smoke` only proves it starts.)
@@ -56,8 +56,8 @@ YouTube Music, Music player, Video player, Image viewer, Timer, News, Downloads:
 5. No new dependency without licence check; `dist/` freshness stays enforced by CI.
 
 ## 7. Suggested order
-1. Command bar (one allow-listed write request) — unlocks routines/jobs/recent actions.
-2. Mute/interrupt/fullscreen/persona/perf (small, allow-listed writes).
+1. ~~Command bar~~ ✅ · ~~mute/interrupt/fullscreen~~ ✅ · ~~read-only log~~ ✅
+2. Routines / jobs / recent actions palette entries; persona and performance tier writes (small, allow-listed).
 3. Settings parity (excluding secrets).
 4. Task events + notification centre (needs backend event publisher).
 5. Media/tool windows via an allow-listed "open window" request.

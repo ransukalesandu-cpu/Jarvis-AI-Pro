@@ -2783,17 +2783,7 @@ Third-party services and libraries remain subject to their own licenses and term
 
 Copyright © 2026 **Sathija Balachandra**
 
-This project is licensed under:
-
-**Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)**
-
-License:
-
-https://creativecommons.org/licenses/by-nc/4.0/
-
-Under this license, the project may be used, shared, and adapted for permitted non-commercial purposes, subject to the license terms and attribution requirements.
-
-**Commercial use is not permitted under the CC BY-NC 4.0 license.**
+This project is licensed under the **Apache License 2.0**. See the [`LICENSE`](./LICENSE) file in the repository root.
 
 Third-party components, libraries, services, and assets remain under their respective licenses.
 

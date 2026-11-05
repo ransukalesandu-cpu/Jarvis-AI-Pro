@@ -109,3 +109,11 @@ def test_provider_unknown_is_not_guessed(monkeypatch):
     def boom(): raise OSError("no config")
     monkeypatch.setattr(ps, "get_provider_settings", boom)
     assert provider_info.snapshot() is None
+
+
+def test_hud_publishes_persona_on_refresh_and_change():
+    """The HUD source must publish PERSONA where the assistant mode is applied, so the web page never shows a guess."""
+    import inspect
+    from jarvis import ui
+    src = inspect.getsource(ui.MainWindow._refresh_assistant_mode_btn) + inspect.getsource(ui.MainWindow._on_assistant_mode_selected)
+    assert src.count("_ui_state.PERSONA") == 2

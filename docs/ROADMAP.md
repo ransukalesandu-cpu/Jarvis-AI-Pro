@@ -15,3 +15,5 @@ Updated by every task. Each task: Gate A (plan PR) → owner approval → Gate B
 
 Done so far: `jarvis/` package restructure, dead-code removal, PRs #224 #225 #228 merged.
 Next exact action: finish PR A1 (cron expr, run history, run-now, task mode).
+
+- Task 6 (router/engine hardening): audited, already covered; see docs/research/router-engine-audit.md

@@ -25,9 +25,13 @@ from jarvis.agent.integration import get_service
 
 def autonomous_task(action: str = "status", objective: str = "", criteria=None,
                      task_id: str = "", name: str = "", workflow_id: str = "",
-                     speak=None, **_ignored) -> str:
+                     speak=None, dispatch=None, **_ignored) -> str:
     """Run `action` against the autonomous task engine and return a spoken reply."""
     service = get_service()
+    if dispatch is not None:
+        # Lets planned `registry_call` steps run local tools through the same
+        # registry layer as a spoken call (only used when registry planning is on).
+        service.attach_tool_dispatch(dispatch)
     return service.handle_tool(
         {"action": str(action or "status"), "objective": objective,
          "criteria": criteria or [], "task_id": task_id,

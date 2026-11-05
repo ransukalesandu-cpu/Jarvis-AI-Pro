@@ -148,6 +148,14 @@ def classify_step(step: TaskStep) -> tuple[Risk, str]:
         return Risk.WRITE, "writes a file inside the workspace"
     if step.kind is StepKind.SCREEN_ACTION:
         return Risk.CONSEQUENTIAL, "controls the desktop"
+    if step.kind is StepKind.REGISTRY_CALL:
+        # Fail closed: only a tool that declared itself read/write keeps a lower
+        # class; an undeclared or destructive tool needs explicit approval.
+        if step.tool_risk == "read":
+            return Risk.READ, f"runs the read-only tool {step.tool}"
+        if step.tool_risk == "write":
+            return Risk.WRITE, f"runs the tool {step.tool}"
+        return Risk.CONSEQUENTIAL, f"runs the tool {step.tool} (risk not declared or destructive)"
     return Risk.CONSEQUENTIAL, "unclassified step kind"
 
 

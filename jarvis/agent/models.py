@@ -78,6 +78,7 @@ class StepKind(str, Enum):
     BROWSER_NAVIGATE = "browser_navigate"   # navigate to a public HTTP(S) page
     BROWSER_READ = "browser_read"           # extract bounded visible page text
     BROWSER_FOLLOW_LINK = "browser_follow_link"  # follow a link without running page handlers
+    REGISTRY_CALL = "registry_call"  # run one local JARVIS tool by catalog name
     VERIFY = "verify"                # check the previous result, do not act
     NOTE = "note"                    # record an observation / decision
 
@@ -130,6 +131,9 @@ class TaskStep:
     path: str = ""
     content: str = ""
     target: str = ""                       # screen element label for SCREEN_ACTION
+    tool: str = ""                         # REGISTRY_CALL: catalog tool name
+    args: dict[str, Any] = field(default_factory=dict)   # REGISTRY_CALL: tool arguments
+    tool_risk: str = ""                    # REGISTRY_CALL: "read" | "write" | "destructive" | ""
     depends_on: list[int] = field(default_factory=list)
     expect: dict[str, Any] = field(default_factory=dict)
     max_retries: int = 1
@@ -184,6 +188,9 @@ class TaskStep:
             "path": self.path,
             "content": self.content,
             "target": self.target,
+            "tool": self.tool,
+            "args": dict(self.args),
+            "tool_risk": self.tool_risk,
             "depends_on": list(self.depends_on),
             "expect": dict(self.expect),
             "max_retries": self.max_retries,
@@ -212,6 +219,9 @@ class TaskStep:
             path=str(data.get("path") or ""),
             content=str(data.get("content") or ""),
             target=str(data.get("target") or ""),
+            tool=str(data.get("tool") or ""),
+            args=dict(data.get("args") or {}),
+            tool_risk=str(data.get("tool_risk") or ""),
             depends_on=_int_list(data.get("depends_on")),
             expect=dict(data.get("expect") or {}),
             max_retries=_int(data.get("max_retries"), 1),

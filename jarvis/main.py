@@ -875,6 +875,12 @@ class JarvisLive(
             logger=lambda msg: print(f"[Plugins] {msg}"),
             notify=lambda msg: self.ui.write_log(f"SYS: {msg}"),
         )
+        # Compact catalog of the local tools, read by the task planner when
+        # JARVIS_REGISTRY_PLANNING is on (core/tool_catalog.py). Read-only.
+        from jarvis.core import tool_catalog as _tool_catalog
+        _tool_catalog.set_default_provider(lambda: _tool_catalog.build_catalog(
+            inline=TOOL_DECLARATIONS,
+            registries=[self._action_registry, self._plugin_registry]))
         # Owner rules fire through this session (core/events.py, Module 6).
         from jarvis.core import events as _events
         _events.set_rule_executor(self._execute_rule_action)

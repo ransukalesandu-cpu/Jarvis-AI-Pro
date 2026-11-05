@@ -20,6 +20,7 @@ export interface UiState {
   clock24: boolean;
   workspaceNames: string[];
   paletteOpen: boolean;
+  muted: boolean;
   history: { at: number; state: AssistantState }[];
   setLink: (l: UiState['link']) => void;
   apply: (e: HostEvent) => void;
@@ -35,7 +36,7 @@ const prefersReduced = typeof matchMedia === 'function' && matchMedia('(prefers-
 
 export const useUi = create<UiState>((set) => ({
   link: 'connecting', assistant: 'idle', persona: 'jarvis', outputLevel: 0, inputLevel: 0,
-  metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, clock24: true, history: [], workspaceNames: [], paletteOpen: false,
+  metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, clock24: true, history: [], workspaceNames: [], paletteOpen: false, muted: false,
   setLink: (link) => set({ link }),
   apply: (e) => set((s) => {
     switch (e.type) {
@@ -43,6 +44,7 @@ export const useUi = create<UiState>((set) => ({
       case 'assistant.audio_level': return e.source === 'output' ? { outputLevel: e.level } : { inputLevel: e.level };
       case 'system.metrics_updated': return { metrics: { cpu: e.cpu, ram: e.ram, disk: e.disk, battery: e.battery, net: e.net } };
       case 'provider.changed': return { provider: { provider: e.provider, model: e.model, connected: e.connected, fallback: e.fallback } };
+      case 'assistant.muted': return { muted: e.muted };
       case 'ui.persona': return { persona: e.persona };
       case 'workspace.list': return { workspaceNames: e.names };
       case 'workspace.loaded': return e.layout ? { page: e.layout.page } : s;

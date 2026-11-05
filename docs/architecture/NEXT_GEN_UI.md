@@ -188,3 +188,12 @@ Not in Phase 2: live assistant wiring (state bus, audio, provider router), task 
 - Tests: `test_webui_live.py` (6) + attach no-op test; real QtWebEngine run with the real bus (pre-load state, live update, resize).
 
 Still open (Phase 3b): provider/model status (needs a real source), task events, charts, notification centre, mute state in the contract, Windows/real-GPU verification, CI dist rebuild check, parity checklist before the default flips.
+
+## 13. Phase 3b status — provider, mute, CI
+
+- **Mute**: new contract event `assistant.muted`; the classic `_toggle_mute` publishes `audio.muted` on the bus; the Island shows "MIC MUTED".
+- **Provider**: `provider_info.snapshot()` reads the real one-shot provider settings (never a key). Contract field `connected` means "API key configured" and the page labels it that way. Live voice is always Gemini Live and is stated as such. If settings cannot be read, nothing is sent and the page shows "not reported". Saving provider settings in the classic UI bumps `provider.active`, so the web UI re-reads.
+- **CI**: `.github/workflows/webui-checks.yml` runs tsc, Vitest, the build, and fails if the committed `jarvis/webui/dist` differs from a fresh build (the build was verified deterministic).
+- Tests: +3 Python, +1 Vitest. Full suite green.
+
+Still open: task events and notification centre (no backend event source exists yet — needs one designed rather than faked), System Monitor history charts, accessibility pass, Windows/real-GPU verification, parity checklist before flipping the default.

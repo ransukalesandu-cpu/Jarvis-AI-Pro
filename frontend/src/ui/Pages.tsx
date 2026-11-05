@@ -25,10 +25,10 @@ export function ModelsContent() {
   return (
     <>
       <h1>AI Models</h1>
-      <p>Read-only in Phase 1. Provider switching stays in the existing settings until a safe, authorised request exists for it.</p>
-      <div className="row"><span>Provider</span><span>{p?.provider ?? 'not reported'}</span></div>
+      <p>Read-only. Live voice always runs on Gemini Live. This is the one-shot text provider chosen in the classic settings; switching it stays there until a safe, authorised request exists for it.</p>
+      <div className="row"><span>Text provider</span><span>{p?.provider ?? 'not reported'}</span></div>
       <div className="row"><span>Model</span><span>{p?.model ?? '--'}</span></div>
-      <div className="row"><span>Connection</span><span>{p ? (p.connected ? 'connected' : 'offline') : '--'}</span></div>
+      <div className="row"><span>API key</span><span>{p ? (p.connected ? 'configured' : 'missing') : '--'}</span></div>
       <div className="row"><span>Fallback active</span><span>{p ? (p.fallback ? 'yes' : 'no') : '--'}</span></div>
     </>
   );

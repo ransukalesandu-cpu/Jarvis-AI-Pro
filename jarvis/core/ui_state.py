@@ -20,6 +20,7 @@ from typing import Any
 ASSISTANT = "assistant.state"      # idle / listening / thinking / speaking / sleeping / error
 AUDIO_LEVEL = "audio.level"        # 0..1, the voice being played or heard
 MUTED = "audio.muted"
+PROVIDER = "provider.active"      # bumped whenever the one-shot AI provider settings change
 PERSONA = "persona"                # jarvis / bihansa
 PERF_TIER = "perf.tier"            # full / balanced / lite
 WINDOWS = "windows"                # tuple of open window ids

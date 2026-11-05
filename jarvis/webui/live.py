@@ -10,6 +10,7 @@ import time
 
 from jarvis.core import ui_state
 
+from . import provider_info
 from .contract import ASSISTANT_STATES
 
 AUDIO_MIN_INTERVAL = 0.05  # 20 Hz is plenty for a level meter and keeps the bridge quiet
@@ -30,14 +31,22 @@ class LiveLink:
             self._bus.subscribe(ui_state.ASSISTANT, self._on_bus),
             self._bus.subscribe(ui_state.AUDIO_LEVEL, self._on_bus),
             self._bus.subscribe(ui_state.PERSONA, self._on_bus),
+            self._bus.subscribe(ui_state.MUTED, self._on_bus),
+            self._bus.subscribe(ui_state.PROVIDER, self._on_bus),
         ]
         host.ready.connect(self.push_snapshot)   # a (re)loaded page needs the current state again
 
     def push_snapshot(self) -> None:
-        for key in (ui_state.ASSISTANT, ui_state.PERSONA):
+        self._push_provider()
+        for key in (ui_state.ASSISTANT, ui_state.PERSONA, ui_state.MUTED):
             val = self._bus.get(key)
             if val is not None:
                 self._forward(key, val, force=True)
+
+    def _push_provider(self) -> None:
+        info = provider_info.snapshot()
+        if info:
+            self._host.set_provider(**info)
 
     def _on_bus(self, key: str, value) -> None:
         self._forward(key, value)
@@ -56,6 +65,10 @@ class LiveLink:
             if force or lvl == 0.0 or now - self._last_audio >= AUDIO_MIN_INTERVAL:
                 self._last_audio = now
                 self._host.set_level(lvl, "output")
+        elif key == ui_state.MUTED:
+            self._host.set_muted(bool(value))
+        elif key == ui_state.PROVIDER:
+            self._push_provider()
         elif key == ui_state.PERSONA:
             if str(value) in ("jarvis", "bihansa"):
                 self._host.set_persona(str(value))

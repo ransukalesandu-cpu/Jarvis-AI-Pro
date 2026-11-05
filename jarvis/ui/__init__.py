@@ -5211,6 +5211,7 @@ class MainWindow(QMainWindow):
         from jarvis.core.provider_settings import save_provider_settings
         try:
             save_provider_settings(**values)
+            _ui_bus().set(_ui_state.PROVIDER, time.monotonic())   # tells the web UI to re-read
             provider = values.get("provider", "gemini")
             label = {"gemini": "Gemini", "openai": "OpenAI GPT", "anthropic": "Anthropic Claude"}.get(provider, "Gemini")
             self._log.append_log(f"SYS: One-shot AI provider set to {label}. Live voice remains on Gemini.")
@@ -5943,6 +5944,7 @@ class MainWindow(QMainWindow):
 
     def _toggle_mute(self):
         self._muted = not self._muted
+        _ui_bus().set(_ui_state.MUTED, bool(self._muted))
         self.hud.muted = self._muted
         self._immersive_overlay.set_muted(self._muted)
         self._style_mute_btn()

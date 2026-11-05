@@ -1,0 +1,40 @@
+name: Web UI checks
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - "jarvis/webui/**"
+      - ".github/workflows/webui-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "jarvis/webui/**"
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx vitest run
+      - run: npm run build
+      # The built bundle is committed so Windows users need no Node. It must match the source.
+      - name: dist/ is up to date
+        working-directory: .
+        run: |
+          git add -N jarvis/webui/dist
+          git diff --exit-code --stat jarvis/webui/dist || { echo "::error::jarvis/webui/dist is stale. Run: cd frontend && npm run build, then commit it."; exit 1; }

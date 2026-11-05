@@ -26,6 +26,7 @@ PERF_TIER = "perf.tier"            # full / balanced / lite
 WINDOWS = "windows"                # tuple of open window ids
 FOCUS = "focus"                    # id of the focused window, or ""
 JOBS = "jobs"                      # tuple of job rows (see core.jobs.JobManager.snapshot)
+COMPUTER_CONTROL = "computer_control"  # {status, objective, step, message, active_app, job_id} of the running cc task
 NEWS = "news.items"                # (heading, [ {title, source, url}, ... ]) last headlines shown by the HUD
 
 ALL = "*"

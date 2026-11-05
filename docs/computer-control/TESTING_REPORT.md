@@ -68,5 +68,18 @@ file, and force-close those PIDs in teardown.
 | Apps installed on the owner's PC (Chrome, VS Code, Office) via Start-menu discovery | runner has a different app set |
 | Fallback pointer input on a real screen (pyautogui + mss fingerprint) | CI has no interactive pointer verification |
 | Multi-monitor / high-DPI window geometry | runner has one virtual display |
+| Typing/hotkeys into a window (SendInput) | the runner has no interactive input desktop; CI saves via the Win32 menu (WM_COMMAND) instead |
+
+The real-Notepad suite (launch → set_text → File->Save → file content verified → move/resize → minimize/restore → inspect → close) **passed on windows-latest** at 96ea340.
 
 Whole repository after Project 1 (sandbox): 1702 passed, 8 skipped, 0 failed; ruff clean.
+
+## Project 2 — Orchestrator
+
+| suite | file | tests |
+|---|---|---|
+| plan validation (unknown tools, cycles, references, ordering), heuristic and model planners (redaction, bad output, no recursion, no key), Host Agent (multi-app task, honest failure, unmet expectation, recovery ×2, no retry of denied HIGH, taint, file verification, emergency stop mid-task, progress), agent registry, cc_task as a JobManager job (status on StateBus, cancel via `request_cancel`, planning failure) | `jarvis/tests/test_computer_control_orchestrator.py` | 24 |
+
+Pending owner validation: a real multi-app task on the owner's PC through voice
+("Jarvis, open Notepad and type …"), the Jobs window showing `cc_task` with Cancel, the
+HUD log `CC:` lines, and a cloud-planned task with the owner's Gemini key.

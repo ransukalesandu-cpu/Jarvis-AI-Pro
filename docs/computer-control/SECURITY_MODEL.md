@@ -123,3 +123,15 @@ destructive automatic retries, secrets in logs or commits.
 * **Password fields:** `set_text` into a UIA password field marks the call `is_password`
   so the logged `text` becomes `[password-field]`; the value is never read back, listed or
   returned.
+
+## 11. Orchestrator specifics (Project 2)
+
+* Plans never change policy: every step still goes through the runner (policy, approval,
+  audit, timeout). A plan's `requested_level` can only raise a level.
+* Values taken from an earlier step's **result** (window titles, read text) are marked
+  tainted, which raises the step one level (MEDIUM → HIGH → approval).
+* `cc_task` cannot appear inside a plan (no recursion). Plans are capped at 25 steps.
+* Recovery never retries denied, cancelled or HIGH-risk steps; at most 3 recoveries per task.
+* The cloud planner receives a redacted objective and fenced, redacted context only.
+* `cc_emergency_stop` and `cc_engine_status` are SAFE in `core/security.tier_for` so the
+  brake is never behind a confirmation banner.

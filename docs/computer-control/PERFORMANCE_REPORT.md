@@ -27,6 +27,26 @@ Host: Linux x86_64 sandbox, Python 3.13, 4 CPUs, 15.7 GB RAM. Measured 2026-11-0
   p95 0.86 ms, max 5.2 ms. With a per-job `cancel_event` the worst case is bounded by
   `estop.POLL_S` = 20 ms plus the duration of the current primitive input call.
 
+## Windows measurement (windows-latest CI runner, 2026-11-05)
+
+Host: Windows Server 2025 (10.0.26100), Python 3.12.10, 4 CPUs, **16.0 GB RAM** — the same
+RAM class as the owner's target. Recorded by the `windows-ui-smoke` job (artifact
+`cc-baseline-windows`).
+
+| scenario | RSS before (MB) | RSS after (MB) | import (s) | idle CPU % | threads |
+|---|---|---|---|---|---|
+| python_bare | 16.9 | 16.9 | 0.0 | 0.0 | 4 |
+| jarvis_app_modules | 16.9 | 104.6 | 1.015 | 0.0 | 12 |
+| jarvis_app_plus_engine | 16.9 | 105.5 | 1.035 | 0.0 | 12 |
+| engine_only | 16.9 | 21.1 | 0.04 | 0.0 | 4 |
+| engine_plus_uia_backend (pywinauto + comtypes) | 17.0 | 46.2 | 0.243 | 0.0 | 8 |
+
+* Engine on top of the app modules: **+0.9 MB** RSS, 0 % idle CPU.
+* The UI Automation backend costs **+25.1 MB** (46.2 − 21.1) and is imported only the first time a
+  Windows control tool runs (lazy), never at startup.
+* Runner overhead: p50 0.591 ms, p95 0.672 ms. Emergency-stop latency (20 trials, 0 failed):
+  p50 **0.58 ms**, p95 0.63 ms, max 0.67 ms.
+
 ## Owner measurement (pending manual validation on Windows)
 
 1. Start JARVIS normally (`Run_Jarvis.bat`), wait until it is listening.
@@ -53,4 +73,5 @@ Filled in as each project merges (same commands, same host).
 
 | project | RSS delta vs baseline | idle CPU | notes |
 |---|---|---|---|
-| Phase 0 | +0.5 MB (app modules) | 0.0 % | lazy pool, no import-time threads |
+| Phase 0 | +0.5 MB Linux / +0.9 MB Windows (app modules) | 0.0 % | lazy pool, no import-time threads |
+| Project 1 | +25.1 MB when the UIA backend is first used (Windows) | 0.0 % | pywinauto/comtypes lazy-imported |

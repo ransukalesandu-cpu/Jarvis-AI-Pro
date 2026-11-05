@@ -77,3 +77,31 @@ window by PID **or** by process name/title among windows that did not exist befo
 Existing modules: `actions/ui_interaction.py`'s exact-name, refuse-ambiguity rule is kept
 (ambiguous matches return an error listing the candidates); `actions/open_app.py`'s
 `_APP_ALIASES` table is reused for app-name resolution.
+
+## Project 2 — Orchestrator inspired by Microsoft UFO²
+
+**Upstream inspected:** microsoft/UFO (MIT). Studied: HostAgent (request understanding,
+decomposition, application selection), AppAgents (per-application action with UIA/Win32/COM
+and app APIs), the shared "blackboard", per-step observation → action → verification,
+hybrid GUI + API actions, and recovery by re-observing and re-planning.
+
+Not imported: the UFO framework, its prompts, its LLM-per-step loop, its config system or
+its vision dependencies. Reasons: one cloud call per click is slow and costly, the framework
+expects its own agent registry and logging, and it would bypass JARVIS's policy/approval layer.
+
+JARVIS-native design (`jarvis/computer_control/orchestrator/`):
+
+| UFO² idea | JARVIS implementation |
+|---|---|
+| HostAgent | `host.HostAgent` — runs a validated plan, owns the task context, recovery and report |
+| AppAgents | `agents.AppAgent` descriptors in `AgentRegistry` (windows, engine; browser/visual/workflows register in later projects) — control stays in the controllers |
+| Blackboard | `host.TaskContext.outputs` + `{{N.data.field}}` references between steps |
+| Decomposition | `planner.heuristic_steps` (local, zero tokens) then `planner.ModelPlanner` (existing HybridLLMRouter, redacted prompt, JSON validated) |
+| Dependency graph | reused `agent/dependency_graph.topological_sort_steps` |
+| Verification | per-step `expect` (window / text / file) + controller verification; task succeeds only if no required step failed or went unverified |
+| Recovery | bounded (≤ 3 per task), agent-specific (wait for a slow window, loosen a control name, wait until a control is enabled); never for denied, cancelled or HIGH steps |
+| Execution trace | `TraceEntry` list with redacted args, level, verified, duration |
+
+Each task is a `JobManager` job (`cc_task`, `long_running=True`), so the Background Jobs
+window, Cancel, the Island chip and completion notices work unchanged. Live status goes to
+the StateBus key `computer_control` and the HUD log (`CC: …` lines).

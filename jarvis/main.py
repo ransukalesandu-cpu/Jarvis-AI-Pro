@@ -1328,6 +1328,16 @@ class JarvisLive(
             if prompt is not None:
                 cc_approval.bind_native_prompt(prompt)
             self.ui.write_log("SYS: " + cc_flags.describe())
+            from jarvis.core import ui_state as _cc_state
+
+            def _cc_status(_key, value) -> None:
+                # Live computer-control status in the HUD log (tasks also appear as jobs).
+                if not isinstance(value, dict) or value.get("phase") == "start":
+                    return
+                status = str(value.get("status") or "")
+                text = str(value.get("message") or "")[:160]
+                self.ui.write_log(f"CC: {status} — {text}" if text else f"CC: {status}")
+            _cc_state.bus().subscribe(_cc_state.COMPUTER_CONTROL, _cc_status)
         except Exception:
             failsoft.suppress("main:JarvisLive._bind_computer_control")
 

@@ -21,8 +21,8 @@ REPLACED, NOT APPLICABLE.
   estop wired to `_stop_everything` and `JarvisLive.interrupt`, audit, redaction,
   untrusted content, ToolSpec contract → existing action registry, runner, monitoring,
   baseline bench), `actions/computer_control_engine.py` (`cc_engine_status`,
-  `cc_emergency_stop`), 130 new tests incl. the injection suite, docs.
-* **Tests:** 1657 passed / 0 failed (sandbox); ruff clean.
+  `cc_emergency_stop`), 133 new tests incl. the injection suite, docs.
+* **Tests:** 1660 passed / 0 failed (sandbox); ruff clean.
 * **Performance:** engine +0.5 MB RSS over the app modules, 0 % idle CPU, runner
   p50 0.235 ms, stop latency p50 0.67 ms (PERFORMANCE_REPORT.md).
 * **Security findings:** none open. Two pre-existing main failures fixed (failsoft

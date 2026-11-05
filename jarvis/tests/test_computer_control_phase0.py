@@ -166,12 +166,15 @@ class TestPolicy:
             decision = ActionPolicy(auth=lambda a=auth: a).decide("window.list", {})
             assert not decision.allowed
 
-    def test_auth_failure_fails_closed(self):
+    def test_auth_failure_fails_closed(self, monkeypatch):
+        from jarvis.computer_control import policy as policy_mod
+        from jarvis.core import security
+
         def broken():
             raise RuntimeError("no auth")
-        policy = ActionPolicy(auth=lambda: AuthSnapshot(True, False))
-        assert not policy.decide("app.list", {}).allowed
-        assert broken  # the default view catches errors itself (see _default_auth)
+        monkeypatch.setattr(security, "get_auth_manager", broken)
+        assert policy_mod._default_auth() == AuthSnapshot(privacy_locked=True, owner_allowed=False)
+        assert not ActionPolicy().decide("app.list", {}).allowed
 
     def test_untrusted_origin_only_reads(self):
         assert self.policy.decide("browser.read", {}, origin=Origin.UNTRUSTED).allowed
@@ -268,6 +271,15 @@ class TestApproval:
         assert not approval.NativeApprover(prompt, auth_manager=_FakeAuth(pin=None, owner=False)).request(_req()).approved
         assert prompts == []
         assert approval.NativeApprover(prompt, auth_manager=_FakeAuth(pin=None, owner=True)).request(_req()).approved
+
+    def test_privacy_lock_during_the_prompt_denies(self):
+        auth = _FakeAuth(pin=None, owner=True)
+
+        def prompt(r, t):
+            auth.locked = True          # the lock comes on while the dialog is open
+            return approval.PromptAnswer(True)
+        result = approval.NativeApprover(prompt, auth_manager=auth).request(_req())
+        assert not result.approved and result.method == "privacy_lock"
 
     def test_prompt_crash_is_a_deny(self):
         def boom(r, t):
@@ -384,6 +396,22 @@ class TestRunner:
         t0 = time.perf_counter()
         result = make_runner().run_action("window.list", {}, lambda ctx: time.sleep(1.5), timeout=0.2)
         assert result.status == "timeout" and time.perf_counter() - t0 < 1.0
+
+    def test_handler_timeout_error_is_an_error_not_a_hang(self):
+        def raises_timeout(ctx):
+            raise TimeoutError("socket timed out")
+        t0 = time.perf_counter()
+        result = make_runner().run_action("window.list", {}, raises_timeout, timeout=5)
+        assert result.status == "error" and "socket timed out" in result.message
+        assert time.perf_counter() - t0 < 1.0
+
+    def test_error_text_is_redacted(self):
+        key = "AIzaSyA1234567890abcdefghijklmnopqrs"
+
+        def leaks(ctx):
+            raise RuntimeError(f"bad request with key={key}")
+        result = make_runner().run_action("window.list", {}, leaks)
+        assert key not in result.message and key not in result.speakable()
 
     def test_errors_are_reported_not_raised(self):
         def boom(ctx):

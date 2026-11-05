@@ -149,7 +149,9 @@ def _call_direct(spec: ToolSpec, params: dict, job_id: str) -> ActionResult:
         outcome = ActionOutcome.coerce(spec.handler(ctx))
         status = "ok" if outcome.ok else "failed"
     except Exception as exc:
-        outcome, status = ActionOutcome(ok=False, message=f"{spec.action} failed: {exc}"), "error"
+        from jarvis.computer_control.redaction import redact_text
+        outcome = ActionOutcome(ok=False, message=redact_text(f"{spec.action} failed: {exc}", 300))
+        status = "error"
     result = ActionResult(spec.action, status, outcome.message, Level.LOW, data=outcome.data,
                           verified=outcome.verified, evidence=outcome.evidence,
                           duration_ms=int((time.monotonic() - started) * 1000))

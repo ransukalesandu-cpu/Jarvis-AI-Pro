@@ -107,6 +107,13 @@ class NativeApprover:
 
         if answer is None:
             return ApprovalResult(False, "timeout", "The approval prompt was not answered.")
+        try:
+            # the lock may have come on while the prompt was open
+            if manager.is_privacy_lock_active():
+                return ApprovalResult(False, "privacy_lock",
+                                      "Privacy Lock became active while the prompt was open.")
+        except Exception:
+            return ApprovalResult(False, "none", "Owner authentication state could not be read.")
         if not answer.approved:
             return ApprovalResult(False, answer.method, "The owner declined.")
         if pin_enrolled:

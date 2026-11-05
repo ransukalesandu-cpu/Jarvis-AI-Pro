@@ -25,14 +25,18 @@ def _pin_enrolled() -> bool:
 
 
 def _show(parent: Any, request: ApprovalRequest) -> Optional[PromptAnswer]:
+    from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QInputDialog, QLineEdit, QMessageBox
 
     details = "\n".join(f"  {k}: {v}" for k, v in list(request.details.items())[:8])
     box = QMessageBox(parent)
     box.setIcon(QMessageBox.Icon.Warning)
+    # file names and labels come from the request: never render them as rich text
+    box.setTextFormat(Qt.TextFormat.PlainText)
     box.setWindowTitle("JARVIS — approve high-risk action")
-    box.setText(f"{request.summary}\n\nAction: {request.action}  (risk: {request.level.value})")
-    box.setInformativeText(f"Why approval is needed: {request.reason}")
+    # everything in the main (plain-text) label; the informative label's format is not settable
+    box.setText(f"{request.summary}\n\nAction: {request.action}  (risk: {request.level.value})\n\n"
+                f"Why approval is needed: {request.reason}")
     if details:
         box.setDetailedText(details)
     approve = box.addButton("Approve", QMessageBox.ButtonRole.AcceptRole)

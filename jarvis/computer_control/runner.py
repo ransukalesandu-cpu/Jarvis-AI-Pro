@@ -25,7 +25,7 @@ from typing import Any, Callable, Mapping, Optional
 from jarvis.computer_control import approval as approval_mod
 from jarvis.computer_control import audit, estop, flags
 from jarvis.computer_control.policy import ActionPolicy, Level, Origin, PolicyDecision
-from jarvis.computer_control.redaction import redact_params
+from jarvis.computer_control.redaction import redact_params, redact_text
 
 MAX_WORKERS = 4
 MAX_PENDING = 16
@@ -255,10 +255,12 @@ class ActionRunner:
                 else:
                     verified = bool(answer)
             except estop.EmergencyStopped as exc:
-                return finish("cancelled", f"Stopped during verification: {exc}.", decision.level,
+                return finish("cancelled", redact_text(f"Stopped during verification: {exc}.", 300),
+                              decision.level,
                               approval=approval_note)
             except Exception as exc:
-                verified, evidence = False, f"verification failed: {type(exc).__name__}: {exc}"
+                verified, evidence = False, redact_text(
+                    f"verification failed: {type(exc).__name__}: {exc}", 300)
         if not outcome.ok:
             status = "failed"
         elif verified is False:
@@ -283,7 +285,7 @@ class ActionRunner:
             try:
                 return "ok", call(), ""
             except estop.EmergencyStopped as exc:
-                return "cancelled", ActionOutcome(ok=False), f"Stopped: {exc}."
+                return "cancelled", ActionOutcome(ok=False), redact_text(f"Stopped: {exc}.", 300)
             except Exception as exc:
                 return "error", ActionOutcome(ok=False), _error_text(ctx.action, exc)
 
@@ -306,9 +308,10 @@ class ActionRunner:
                 outcome = future.result(timeout=max(0.0, min(estop.POLL_S, remaining)))
                 return "ok", outcome, ""
             except estop.EmergencyStopped as exc:
-                return "cancelled", ActionOutcome(ok=False), f"Stopped: {exc}."
-            except TimeoutError:
-                pass
+                return "cancelled", ActionOutcome(ok=False), redact_text(f"Stopped: {exc}.", 300)
+            except TimeoutError as exc:
+                if future.done():          # the handler raised it; not a poll timeout
+                    return "error", ActionOutcome(ok=False), _error_text(ctx.action, exc)
             except Exception as exc:
                 return "error", ActionOutcome(ok=False), _error_text(ctx.action, exc)
             reason = ctx.token.reason()
@@ -329,7 +332,7 @@ def _release_slot(_future: Future) -> None:
 
 def _error_text(action: str, exc: BaseException) -> str:
     detail = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
-    return f"{action} failed: {detail[:200]}"
+    return redact_text(f"{action} failed: {detail[:200]}", 300)
 
 
 _default_runner: Optional[ActionRunner] = None

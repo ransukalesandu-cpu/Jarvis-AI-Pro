@@ -78,36 +78,50 @@ def _runner_overhead(n: int = 500) -> dict:
 
 
 def _stop_latency(trials: int = 20) -> dict:
+    """Time from estop.trigger() to the runner returning 'cancelled'.
+
+    The trigger is only sent once the action is really running (its handler
+    signals), and a trial only counts when the result is 'cancelled'.
+    """
     from jarvis.computer_control import estop, flags
     from jarvis.computer_control.policy import ActionPolicy, AuthSnapshot
     from jarvis.computer_control.runner import ActionRunner
 
     run = ActionRunner(ActionPolicy(auth=lambda: AuthSnapshot(False, True)))
-    latencies = []
-
-    def busy(ctx):
-        while True:
-            ctx.wait(1.0)
+    latencies: list[float] = []
+    failed = 0
 
     with flags.override(enabled=True, dry_run=False):
         for _ in range(trials):
-            done = threading.Event()
-            stamp = {}
+            started, done = threading.Event(), threading.Event()
+            stamp: dict = {}
 
-            def go():
-                run.run_action("window.wait", {}, busy, timeout=30)
+            def busy(ctx, started=started):
+                started.set()
+                while True:
+                    ctx.wait(1.0)
+
+            def go(stamp=stamp, done=done, busy=busy):
+                stamp["result"] = run.run_action("window.wait", {}, busy, timeout=30)
                 stamp["end"] = time.perf_counter()
                 done.set()
 
             threading.Thread(target=go, daemon=True).start()
-            time.sleep(0.05)
+            if not started.wait(5):
+                failed += 1
+                continue
             t0 = time.perf_counter()
             estop.trigger("benchmark")
-            done.wait(5)
-            latencies.append((stamp.get("end", time.perf_counter()) - t0) * 1000)
+            if not done.wait(5) or stamp["result"].status != "cancelled":
+                failed += 1
+                continue
+            latencies.append((stamp["end"] - t0) * 1000)
+    if not latencies:
+        return {"trials": trials, "failed": failed, "p50_ms": None, "p95_ms": None, "max_ms": None}
     latencies.sort()
-    return {"trials": trials, "p50_ms": round(statistics.median(latencies), 2),
-            "p95_ms": round(latencies[int(trials * 0.95) - 1], 2), "max_ms": round(latencies[-1], 2)}
+    n = len(latencies)
+    return {"trials": trials, "failed": failed, "p50_ms": round(statistics.median(latencies), 2),
+            "p95_ms": round(latencies[max(0, int(n * 0.95) - 1)], 2), "max_ms": round(latencies[-1], 2)}
 
 
 def sample_process(pid: int, seconds: float = 30.0, interval: float = 0.5) -> dict:
@@ -161,6 +175,6 @@ def to_markdown(report: dict) -> str:
     lines += ["", f"Runner overhead ({ro['actions']} no-op LOW actions): p50 {ro['p50_ms']} ms, "
                   f"p95 {ro['p95_ms']} ms, max {ro['max_ms']} ms, CPU avg {ro['cpu_avg_percent']} %, "
                   f"RSS peak {ro['rss_peak_mb']} MB",
-              f"Emergency-stop latency ({sl['trials']} trials): p50 {sl['p50_ms']} ms, "
+              f"Emergency-stop latency ({sl['trials']} trials, {sl['failed']} failed): p50 {sl['p50_ms']} ms, "
               f"p95 {sl['p95_ms']} ms, max {sl['max_ms']} ms"]
     return "\n".join(lines)

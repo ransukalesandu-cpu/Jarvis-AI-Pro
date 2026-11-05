@@ -9,9 +9,9 @@ runs in the `windows-ui-smoke` job where possible and is otherwise listed as
 
 | suite | file | tests | result |
 |---|---|---|---|
-| flag, dry run, policy, approval, estop, runner, audit, contract | `jarvis/tests/test_computer_control_phase0.py` | 85 (1 Windows-only, skipped on Linux) | pass (Linux); Windows-only test runs in `windows-ui-smoke` |
+| flag, dry run, policy, approval, estop, runner, audit, contract | `jarvis/tests/test_computer_control_phase0.py` | 88 (1 Windows-only, skipped on Linux) | pass (Linux); Windows-only test runs in `windows-ui-smoke` |
 | prompt injection (mandatory) | `jarvis/tests/test_computer_control_injection.py` | 45 | pass |
-| whole repository | `python -m pytest -q` | 1657 passed, 5 skipped, 0 failed | pass (sandbox, Python 3.13) |
+| whole repository | `python -m pytest -q` | 1660 passed, 5 skipped, 0 failed | pass (sandbox, Python 3.13) |
 | lint | `ruff check jarvis` | 0 findings | pass |
 
 Before Phase 0, main @ 700f6e4 had 1 failing test

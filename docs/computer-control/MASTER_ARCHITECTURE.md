@@ -16,9 +16,12 @@ because an action was merely attempted.
 
 ## One pipeline, no side doors
 
-Every computer-control action — whether the model calls a `cc_*` tool, the
+Every action of the engine — whether the model calls a `cc_*` tool, the
 orchestrator runs a planned step, or a saved workflow replays — goes through
-`jarvis/computer_control/runner.py`:
+`jarvis/computer_control/runner.py`. **Exception:** the older tools
+`computer_control`, `desktop_automation` and `ui_interaction` (actions/) are not
+routed through the runner; they keep their existing gates (security.guard,
+confirm gate) and get neither the new policy nor verification (see PROJECT_AUDIT.md).
 
 ```
 feature flag ─► emergency stop ─► policy (LOW/MEDIUM/HIGH) ─► native approval (HIGH)
@@ -38,7 +41,7 @@ feature flag ─► emergency stop ─► policy (LOW/MEDIUM/HIGH) ─► native
 | Redaction | `redaction.py` (password fields, tokens, screenshot masking) | — |
 | Untrusted content | `untrusted.py` (fencing + injection markers) | content origin → only LOW |
 | Execute | `runner.py` (4 workers, 16 pending max) | `timeout` / `error` / `busy` |
-| Verify | spec/step verifier or handler `verified` flag | `unverified` (not ok) |
+| Verify | spec/step verifier or handler `verified` flag — optional: with neither, `verified` is `None` and non-LOW results say "not independently verified" | `unverified` (not ok) when a check fails |
 | Tool contract | `contract.py` (`ToolSpec` → existing `TOOL` declaration) | invalid spec rejected at load |
 | Monitoring | `monitoring.py` (psutil RSS/CPU/threads) | `None` values when psutil missing |
 

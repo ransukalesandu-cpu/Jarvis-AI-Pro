@@ -46,12 +46,17 @@ def _register_windows(reg: SpecRegistry) -> None:
     windows_tools.register(reg)
 
 
+def _register_browser(reg: SpecRegistry) -> None:
+    from jarvis.computer_control.browser import tools as browser_tools
+    browser_tools.register(reg)
+
+
 def _register_orchestrator(reg: SpecRegistry) -> None:
     from jarvis.computer_control.orchestrator import jobs
     jobs.register(reg)
 
 
-_REGISTRARS = [_register_engine, _register_windows, _register_orchestrator]
+_REGISTRARS = [_register_engine, _register_windows, _register_browser, _register_orchestrator]
 
 
 def build_registry() -> SpecRegistry:

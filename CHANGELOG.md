@@ -7,6 +7,11 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Computer Control — Project 3: browser** (`jarvis/computer_control/browser/`). `cc_browser` on
+  Playwright with the installed Edge/Chrome and JARVIS's own profile: navigate/search/tabs/snapshot
+  refs/read/click/fill/select/press/screenshot (password inputs masked)/download/upload, each
+  verified; page text is untrusted content; private URLs, sensitive form submits, payment fields
+  and uploads need approval.
 - **Computer Control — Project 2: orchestrator** (`jarvis/computer_control/orchestrator/`). A
   UFO²-inspired Host Agent: validated plans (dependency-ordered, `{{N.data.x}}` references between
   steps), a local planner for common requests plus an optional redacted cloud planner, an agent

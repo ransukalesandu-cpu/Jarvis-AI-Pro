@@ -94,8 +94,7 @@ class TestPlanner:
 
     def test_heuristic_leaves_complex_requests_to_the_model(self):
         for text in ("research three AI projects, compare them and save a report",
-                     "open Chrome and search for the latest AI research",
-                     "organize my project folder"):
+                     "organize my project folder", "open VS Code and inspect my project"):
             assert heuristic_steps(text) is None
 
     def test_model_planner_is_redacted_and_validated(self, env):

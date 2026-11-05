@@ -24,13 +24,17 @@ from jarvis.computer_control.redaction import redact_text
 from jarvis.computer_control.untrusted import UntrustedContent
 
 _SPLIT = re.compile(r"\s*(?:,\s*)?(?:\band then\b|\bthen\b|;|\band\b(?=\s+(?:open|launch|start|close|"
-                    r"minimi[sz]e|maximi[sz]e|switch|type|write|press|restore|bring)\b))\s*", re.I)
+                    r"minimi[sz]e|maximi[sz]e|switch|type|write|press|restore|bring|search|go)\b))\s*", re.I)
 _OPEN = re.compile(r"^(?:please\s+)?(?:open|launch|start|run)\s+(?:the\s+|my\s+)?(?P<app>.+?)"
                    r"(?:\s+app(?:lication)?)?$", re.I)
 _TYPE = re.compile(r"^(?:type|write|enter)\s+(?P<q>[\"'“])?(?P<text>.+?)(?(q)[\"'”])"
                    r"(?:\s+(?:in|into)\s+(?:it|(?:the\s+)?(?P<app>.+)))?$", re.I)
 _WINDOW_OP = re.compile(r"^(?P<op>close|minimi[sz]e|maximi[sz]e|restore|switch to|bring up|focus)\s+"
                         r"(?:the\s+)?(?P<app>.+?)(?:\s+window)?$", re.I)
+_SEARCH = re.compile(r"^(?:search|look up|google)\s+(?:the\s+web\s+|online\s+|google\s+)?(?:for\s+)?(?P<q>.+)$", re.I)
+_GOTO = re.compile(r"^(?:go to|open|visit|navigate to)\s+(?P<url>(?:https?://)?[\w.-]+\.[a-z]{2,}(?:/\S*)?)$", re.I)
+_BROWSERS = {"chrome": "chrome", "google chrome": "chrome", "edge": "msedge", "microsoft edge": "msedge",
+             "browser": "", "the browser": "", "web browser": ""}
 _PRESS = re.compile(r"^press\s+(?P<keys>[a-z0-9+ ]{1,30})(?:\s+in\s+(?P<app>.+))?$", re.I)
 
 _OP_MAP = {"close": "close", "minimise": "minimize", "minimize": "minimize", "maximise": "maximize",
@@ -56,10 +60,28 @@ def heuristic_steps(objective: str) -> Optional[list[dict]]:
     last_app = ""
     for part in parts:
         part = part.strip()
+        m = _GOTO.match(part)
+        if m:
+            steps.append({"tool": "cc_browser", "args": {"op": "navigate", "url": m.group("url")},
+                          "description": f"open {m.group('url')}"})
+            last_app = "browser"
+            continue
+        m = _SEARCH.match(part)
+        if m:
+            steps.append({"tool": "cc_browser", "args": {"op": "search", "query": m.group("q").strip()},
+                          "expect": {}, "description": f"search for {m.group('q').strip()}"})
+            last_app = "browser"
+            continue
         m = _OPEN.match(part)
+        if m and m.group("app").strip().lower() in _BROWSERS:
+            channel = _BROWSERS[m.group("app").strip().lower()]
+            steps.append({"tool": "cc_browser", "args": {"op": "open", **({"browser": channel} if channel else {})},
+                          "description": f"open {m.group('app').strip()}"})
+            last_app = "browser"
+            continue
         if m and not _TYPE.match(part):
             app = m.group("app").strip()
-            if re.search(r"\b(and|search|find|research|compare|save|organi[sz]e|inspect)\b", app, re.I):
+            if re.search(r"\b(and|search|find|research|compare|save|organi[sz]e|inspect|for)\b", app, re.I):
                 return None
             last_app = app
             steps.append({"tool": "cc_app", "args": {"op": "launch", "name": app},

@@ -83,3 +83,12 @@ Whole repository after Project 1 (sandbox): 1702 passed, 8 skipped, 0 failed; ru
 Pending owner validation: a real multi-app task on the owner's PC through voice
 ("Jarvis, open Notepad and type …"), the Jobs window showing `cc_task` with Cancel, the
 HUD log `CC:` lines, and a cloud-planned task with the owner's Gemini key.
+
+## Project 3 — Browser automation
+
+| suite | file | tests |
+|---|---|---|
+| controller on the fake browser (navigate/verify, URL rules, search, tabs, fenced page text with hidden-HTML injection, fresh-snapshot refs, password never read, login state, expectations, download/upload verification, masked screenshot, no browser installed), `cc_browser` policy (private URL approval, checkout/card fields HIGH, login submit approval with password redaction, upload HIGH, page text never a command), tasks (open Chrome and search; browser + desktop agents in one task) | `jarvis/tests/test_computer_control_browser.py` | 22 |
+
+Pending owner validation: real Edge/Chrome launch through Playwright's installed channel, the
+JARVIS profile keeping a sign-in, a real download into `Downloads\JARVIS`, masked screenshot.

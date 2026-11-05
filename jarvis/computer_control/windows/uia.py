@@ -374,7 +374,8 @@ class PywinautoBackend:
         try:
             return bool(wrapper.element_info.element.CurrentIsPassword)
         except Exception:
-            return False
+            failsoft.suppress("computer_control.windows.uia:is_password")
+            return True          # fail closed: never read a value that could not be classified
 
     def _value(self, wrapper, control_type: str) -> Optional[str]:
         if control_type not in ("Edit", "Document", "ComboBox", "Text"):
@@ -504,13 +505,32 @@ class PywinautoBackend:
             errors.append(f"uia: {str(exc)[:80]}")
         raise BackendError(f"menu item '{path}' was not found ({'; '.join(errors)})")
 
+    def _require_foreground(self, handle: int) -> None:
+        """Keys go to the focused window: refuse unless it belongs to the target's process."""
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        fg = int(user32.GetForegroundWindow() or 0)
+        if fg == int(handle):
+            return
+        want, got = wintypes.DWORD(0), wintypes.DWORD(0)
+        user32.GetWindowThreadProcessId(int(handle), ctypes.byref(want))
+        if fg:
+            user32.GetWindowThreadProcessId(fg, ctypes.byref(got))
+        if not fg or not want.value or want.value != got.value:
+            raise BackendError("the window could not be brought to the foreground, so no keys were sent "
+                               "(they would have gone to another program)")
+
     def send_text(self, handle: int, text: str) -> None:
         pywinauto, _D, _H = self._pw()
         self.activate(handle)
+        self._require_foreground(handle)
         pywinauto.keyboard.send_keys(escape_send_keys(text), with_spaces=True, with_tabs=True,
                                      with_newlines=True, pause=0.0)
 
     def send_hotkey(self, handle: int, keys: list[str]) -> None:
         pywinauto, _D, _H = self._pw()
         self.activate(handle)
+        self._require_foreground(handle)
         pywinauto.keyboard.send_keys(hotkey_to_send_keys(list(keys)), pause=0.0)

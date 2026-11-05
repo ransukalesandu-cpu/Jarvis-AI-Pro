@@ -99,6 +99,19 @@ destructive automatic retries, secrets in logs or commits.
   accessible name (`label`). A control referenced only by `ref` or automation id therefore
   cannot hide a "Delete"/"Send" label, and typing or hotkeys into a window titled
   PowerShell/cmd/Terminal/Run/Registry Editor are HIGH even when the request did not name it.
+* **Launching:** apps by name are LOW; launch arguments make it MEDIUM; launching by path,
+  URL, protocol (`ms-settings:`), script/shortcut extension or a built-in system binary that runs
+  code (mshta, wscript, rundll32, certutil, powershell, …) is HIGH.
+* **Coordinates from the model are never trusted.** `cc_pointer` click/double-click/right-click/
+  drag are HIGH (approval); a `source` of "owner"/"accessibility" in tool arguments is treated as
+  "model", so the confidence and fingerprint checks always apply. Routine clicks go through
+  `cc_control` (accessibility) or `cc_screen` (which locates the target itself).
+* **Keys only reach the intended program.** `cc_pointer` type/hotkey: the policy sees the real
+  foreground window title (unknown → HIGH). The UIA backend refuses to send keys when the
+  foreground window does not belong to the target window's process.
+* **Password detection fails closed:** if UIA cannot tell whether a field is a password field,
+  its value is not read.
+* **Enrichment only when the engine is on** and no stop is held.
 * **No answering dialogs for the owner.** Closing a window with unsaved work reports the
   dialog text and buttons and stops; nothing is clicked automatically.
 * **Only own processes are force-closed**, and `kill` is HIGH (approval).

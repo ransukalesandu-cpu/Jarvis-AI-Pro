@@ -416,10 +416,28 @@ class TestTools:
         raw = action_log.log_path().read_text(encoding="utf-8")
         assert "Pa55w0rd-XYZ" not in raw and "[password-field]" in raw
 
-    def test_pointer_tool_safeguards(self):
-        result = self.spec("cc_pointer").call({"op": "click", "x": 500, "y": 400, "source": "vision",
-                                               "confidence": 0.3, "fingerprint": 1})
-        assert result.status == "failed" and "Not sure" in result.message
+    def test_pointer_clicks_from_the_model_need_approval(self):
+        result = self.spec("cc_pointer").call({"op": "click", "x": 500, "y": 400, "source": "owner"})
+        assert result.status == "denied" and result.level is Level.HIGH
+
+    def test_pointer_safeguards_still_apply_after_approval(self):
+        class Yes:
+            def request(self, req, timeout=0):
+                return approval.ApprovalResult(True, "test", "")
+        approval.set_approver(Yes())
+        low = self.spec("cc_pointer").call({"op": "click", "x": 500, "y": 400, "source": "vision",
+                                            "confidence": 0.3, "fingerprint": 1})
+        assert low.status == "failed" and "Not sure" in low.message
+        # a model claiming source="owner" is treated as the model: a fingerprint is required
+        claimed = self.spec("cc_pointer").call({"op": "click", "x": 500, "y": 400, "source": "owner"})
+        assert claimed.status == "failed" and "fingerprint" in claimed.message
+
+    def test_pointer_typing_sees_the_focused_window(self, desk):
+        fake, c = desk
+        c.launch(ctx(), "Notepad")
+        fake.rename_window(fake.windows()[0].handle, "Windows PowerShell")
+        typed = self.spec("cc_pointer").call({"op": "type", "text": "Remove-Item C:\\ -Recurse"})
+        assert typed.status == "denied" and typed.level is Level.HIGH
 
     def test_emergency_stop_reaches_a_waiting_control_op(self, desk):
         fake, c = desk
@@ -436,6 +454,41 @@ class TestTools:
 
 
 # ── backend selection and pywinauto helpers ──────────────────────────────────
+class TestReviewFixes:
+    def test_window_handle_zero_is_not_the_active_window(self, desk):
+        fake, c = desk
+        c.launch(ctx(), "Notepad")
+        assert not WindowQuery(handle=0).empty() and not WindowQuery(pid=0).empty()
+        out = c.activate(ctx(), WindowQuery(handle=0))
+        assert not out.ok and "No window matches" in out.message
+
+    def test_close_app_without_windows_is_not_a_success(self, desk):
+        fake, c = desk
+        pid = fake.launch("notepad.exe", [])
+        for handle in [w.handle for w in fake.windows()]:
+            fake._windows.pop(handle)
+        out = c.close_app(ctx(), pid=pid)
+        assert not out.ok and "no window" in out.message
+
+    def test_click_verification_uses_a_fresh_baseline(self):
+        driver = FakeDriver()
+        driver.changes_on_click = False
+        fb = FallbackInput(driver, min_interval_s=0.0, max_hash_distance=8)
+        driver.screen[(500, 400)] = 0x0F0F0F0F ^ 0b11          # ambient drift since locating
+        out = fb.click(ctx(), Target(500, 400, source="vision", confidence=0.95, fingerprint=0x0F0F0F0F))
+        assert out.ok and out.verified is None                 # drift alone is not "the click worked"
+
+    def test_enrichment_does_not_touch_the_desktop_when_disabled(self, desk):
+        from jarvis.computer_control.tools import build_registry
+        fake, _c = desk
+        calls = []
+        fake.windows_orig = fake.windows
+        fake.windows = lambda: calls.append(1) or fake.windows_orig()
+        with flags.override(enabled=False):
+            out = build_registry().get("cc_control").call({"op": "click", "window": "Notepad", "name": "OK"})
+        assert out.status == "disabled" and calls == []
+
+
 class TestBackend:
     def test_non_windows_is_unavailable_with_a_reason(self, monkeypatch):
         monkeypatch.setattr(backend_mod.platform, "system", lambda: "Linux")
@@ -444,9 +497,11 @@ class TestBackend:
         assert isinstance(b, UnavailableBackend) and not b.available()[0]
         with pytest.raises(backend_mod.BackendUnavailable):
             b.windows()
-        out = WindowsController(b).list_windows
-        assert out
-        backend_mod.set_backend(None)
+        try:
+            with pytest.raises(backend_mod.BackendUnavailable):
+                WindowsController(b).list_windows(ctx())
+        finally:
+            backend_mod.set_backend(None)
 
     def test_send_keys_escaping(self):
         from jarvis.computer_control.windows.uia import escape_send_keys, hotkey_to_send_keys

@@ -161,6 +161,27 @@ def _enrich_control(params: dict) -> dict:
     return params
 
 
+def _enrich_pointer(params: dict) -> dict:
+    """Coordinates from the model are never trusted, and keys go to the focused window.
+
+    * click / double_click / right_click / drag at model-supplied coordinates are
+      HIGH (owner approval): use cc_control or cc_screen (which locates the
+      target itself) for anything routine;
+    * type / hotkey: the policy sees the real foreground window title (typing into
+      a shell is HIGH); if it cannot be read, fail closed to HIGH.
+    """
+    op = str(params.get("op") or "").lower()
+    params.pop("_trusted_source", None)
+    if op in ("click", "double_click", "right_click", "drag"):
+        params["requested_level"] = "high"
+    if op in ("type", "hotkey"):
+        try:
+            params["app"] = get_controller().window(WindowQuery()).title
+        except Exception:
+            params["requested_level"] = "high"
+    return params
+
+
 def register(reg: SpecRegistry) -> None:
     reg.register(ToolSpec(
         id="cc_app", action="app.list",
@@ -210,4 +231,5 @@ def register(reg: SpecRegistry) -> None:
             "confidence": {"type": "NUMBER"}, "fingerprint": {"type": INT},
             "target": {"type": S, "description": "What is being clicked (for the safety check)."}},
             "required": ["op"]},
-        handler=_pointer, timeout=20.0, action_for=lambda p: _op(p, POINTER_OPS, "position")))
+        handler=_pointer, timeout=20.0, action_for=lambda p: _op(p, POINTER_OPS, "position"),
+        enrich=_enrich_pointer))

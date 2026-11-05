@@ -309,6 +309,8 @@ class WindowsController:
                 return ActionOutcome(bool(ok), f"Force-closed process {target_pid}." if ok else
                                      f"Process {target_pid} could not be stopped.",
                                      verified=bool(gone), evidence="its windows are gone" if gone else "")
+            if not mine:
+                return _fail(f"Process {target_pid} has no window to close; use kill to stop it.")
             for w in mine:
                 if w.class_name not in DIALOG_CLASSES:
                     self.backend.close_window(w.handle)
@@ -580,8 +582,13 @@ class WindowsController:
 
         def target(prefix: str = "") -> Target:
             fp = params.get(prefix + "fingerprint")
+            # A source from tool arguments is never trusted: "owner"/"accessibility"
+            # would skip the confidence and fingerprint checks.
+            source = str(params.get("source") or "model").lower()
+            if source in ("owner", "accessibility") and not params.get("_trusted_source"):
+                source = "model"
             return Target(x=params.get(prefix + "x"), y=params.get(prefix + "y"),
-                          source=str(params.get("source") or "model"),
+                          source=source,
                           confidence=float(params.get("confidence", 1.0) or 0.0),
                           fingerprint=int(fp) if fp not in (None, "") else None,
                           label=str(params.get("target") or ""))

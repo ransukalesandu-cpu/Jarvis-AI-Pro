@@ -183,8 +183,8 @@ class WindowQuery:
                    active=bool(params.get("active", False)))
 
     def empty(self) -> bool:
-        return not any((self.title, self.title_contains, self.process_name, self.pid, self.handle,
-                        self.active))
+        return not (self.title or self.title_contains or self.process_name or self.active
+                    or self.pid is not None or self.handle is not None)
 
     def matches(self, w: WindowInfo) -> bool:
         if self.handle is not None and w.handle != self.handle:

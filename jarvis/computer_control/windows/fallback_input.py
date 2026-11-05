@@ -225,7 +225,7 @@ class FallbackInput:
         ctx.check()
         x, y = self.check_target(target)
         self._rate_check()
-        before = target.fingerprint if target.fingerprint is not None else self.driver.fingerprint(x, y)
+        before = self.driver.fingerprint(x, y)       # fresh baseline right before the click
         ctx.check()
         self.driver.click(x, y, button=button, clicks=clicks)
         ctx.wait(0.15)

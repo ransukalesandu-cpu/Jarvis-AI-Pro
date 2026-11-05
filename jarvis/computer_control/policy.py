@@ -149,6 +149,13 @@ _DANGEROUS_HOTKEYS = (
     {"win", "r"}, {"win", "x"}, {"ctrl", "shift", "esc"}, {"ctrl", "alt", "delete"},
     {"ctrl", "alt", "del"}, {"shift", "delete"}, {"shift", "del"}, {"win", "l"},
 )
+#: launching by path / URL / protocol / script: the model could run anything
+_LAUNCH_BY_PATH = re.compile(r"[\\/:]|\.(bat|cmd|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|hta|msi|msp|lnk|url|scr|com|"
+                             r"pif|cpl|reg|jar)$", re.I)
+#: built-in Windows programs that run arbitrary code or download files
+_LOLBINS = re.compile(r"^(mshta|wscript|cscript|rundll32|regsvr32|certutil|bitsadmin|msbuild|installutil|"
+                      r"regasm|regsvcs|cmstp|forfiles|pcalua|schtasks|at|sc|wmic|msiexec|curl|"
+                      r"powershell|pwsh|cmd|bash|wsl|ftp)(\.exe)?$", re.I)
 _SAFE_SCHEMES = ("http://", "https://", "about:blank")
 
 
@@ -307,10 +314,17 @@ class ActionPolicy:
             reasons.append("only http(s) addresses open without approval")
 
         if name == "app.launch":
+            raw = str(params.get("name") or params.get("path") or "").strip()
             target = " ".join(str(params.get(k) or "") for k in ("name", "path", "args"))
+            if _LAUNCH_BY_PATH.search(raw) or _LOLBINS.search(raw):
+                level = Level.HIGH
+                reasons.append("launching a program by path, URL, protocol, script or system binary")
             if _SHELL_WINDOW.search(target) or re.search(r"\b(setup|install|msiexec)\b", target, re.I):
                 level = Level.HIGH
                 reasons.append("launching a shell or an installer")
+            if params.get("args") and level is Level.LOW:
+                level = Level.MEDIUM
+                reasons.append("launch arguments change what the program does")
 
         if tainted and level is not Level.HIGH:
             level = level.raised()

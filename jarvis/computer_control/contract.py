@@ -106,7 +106,7 @@ class ToolSpec:
         params = {k: v for k, v in dict(params or {}).items() if k != "device"}
         if self.bypass_runner:
             return _call_direct(self, params, job_id)
-        if self.enrich is not None:
+        if self.enrich is not None and flags.enabled() and not _stop_held():
             try:
                 params = dict(self.enrich(dict(params)) or params)
             except Exception:
@@ -145,6 +145,11 @@ class ToolSpec:
             "available": flags.enabled,
             "cc_output_schema": self.output_schema,
         }
+
+
+def _stop_held() -> bool:
+    from jarvis.computer_control import estop
+    return estop.get().engaged
 
 
 def _call_direct(spec: ToolSpec, params: dict, job_id: str) -> ActionResult:

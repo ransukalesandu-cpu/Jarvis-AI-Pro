@@ -2924,6 +2924,8 @@ class JarvisLive(
                     self._briefing_task        = None
 
                     print("[JARVIS] Connected.")
+                    from jarvis.core import live_health
+                    live_health.record("connected")
                     if _resumed_with:
                         # The server restored its own in-flight turn; do not
                         # also replay the local fallback copy.
@@ -3053,6 +3055,8 @@ class JarvisLive(
                     self._retry_interrupted_request = self._inflight_user_text
                 if _is_reconnect_signal(e):
                     print("[JARVIS] Voluntary reconnect requested.")
+                    from jarvis.core import live_health
+                    live_health.record("voluntary_reconnect", getattr(self, "_reconnect_reason", ""))
                     if not _keep_context_of(e):
                         # A deliberate clean slate (voice change) — drop the
                         # handle so the next connect really does start empty.
@@ -3131,6 +3135,8 @@ class JarvisLive(
 
                 transient_live_disconnect = _is_transient_live_disconnect(e)
                 if transient_live_disconnect:
+                    from jarvis.core import live_health
+                    live_health.record("unexpected_drop", type(e).__name__)
                     self._conn_backoff = min(
                         max(getattr(self, "_conn_backoff", 3), 3) * 2, 60
                     )

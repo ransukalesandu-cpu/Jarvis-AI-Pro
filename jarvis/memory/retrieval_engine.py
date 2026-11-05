@@ -52,6 +52,10 @@ def retrieve(query: str, *, project: str = "", recent_events: list[str] | None =
     from jarvis.memory.memory_store import fts_candidates
     fts = dict(fts_candidates(MEMORY_PATH, query_text, limit=300))
     candidates: dict[str, float] = {}
+    from jarvis.memory import vector_index
+    vector_index.backfill_async([str(r.get("content", "")) for r in records])
+    vector_scores = vector_index.score_candidates(
+        query_text, {str(r.get("id", "")): str(r.get("content", "")) for r in records}) if query_terms else {}
     for row in records:
         rid = str(row.get("id", ""))
         lexical = fts.get(rid, 0.0)
@@ -65,7 +69,12 @@ def retrieve(query: str, *, project: str = "", recent_events: list[str] | None =
             relevance = max(relevance, .95)
         if project and str(row.get("project", "")).casefold() == project.casefold():
             relevance = min(1.0, relevance + .08)
-        if (lexical and overlap >= .25 or semantic >= .60) and relevance >= min_relevance:
+        vec = vector_scores.get(rid, 0.0)
+        if vec >= vector_index.VECTOR_ONLY_THRESHOLD:
+            # A real embedding says these mean the same thing even with no shared words.
+            relevance = max(relevance, min(1.0, vec))
+        if (lexical and overlap >= .25 or semantic >= .60
+                or vec >= vector_index.VECTOR_ONLY_THRESHOLD) and relevance >= min_relevance:
             candidates[rid] = relevance
 
     # Include linked causes/resolutions/related facts with explicit hop decay.

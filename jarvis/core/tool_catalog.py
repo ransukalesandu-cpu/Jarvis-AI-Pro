@@ -163,6 +163,8 @@ def build_catalog(*, inline: Iterable = (), registries: Iterable = ()) -> ToolCa
             try:
                 decls = list(reg.get_tool_declarations())
             except Exception:
+                from jarvis.core import failsoft
+                failsoft.suppress("core.tool_catalog:get_tool_declarations")
                 continue
             for decl in decls:
                 name = _decl_field(decl, "name", "")

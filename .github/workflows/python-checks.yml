@@ -171,7 +171,9 @@ jobs:
             jarvis/tests/test_security_v2_owners.py `
             jarvis/tests/test_security_v2_guest.py `
             jarvis/tests/test_security_v2_settings.py `
-            jarvis/tests/test_security_v2_hardening.py 2>&1 | Tee-Object -FilePath pytest-windows.log
+            jarvis/tests/test_security_v2_hardening.py `
+            jarvis/tests/test_computer_control_phase0.py `
+            jarvis/tests/test_computer_control_injection.py 2>&1 | Tee-Object -FilePath pytest-windows.log
           exit $LASTEXITCODE
 
       # The raw job log lives behind a signed blob URL that is not always

@@ -155,6 +155,11 @@ class ToolDispatchMixin:
             cancel.set()
             stopped.set()
         jobs_cancelled = self._job_manager().cancel_all()
+        try:
+            from jarvis.computer_control import estop
+            estop.trigger("stop requested", source="stop_everything")
+        except Exception:
+            failsoft.suppress("live_tools:_stop_everything:estop")
         return len(active), jobs_cancelled
 
     def _execute_rule_action(self, rule: dict, source: str, payload: dict) -> None:

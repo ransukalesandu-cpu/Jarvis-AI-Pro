@@ -1,12 +1,12 @@
+"""Launcher: ``python main.py`` -> ``jarvis.main``."""
 import sys
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent
-for p in [str(ROOT_DIR), str(ROOT_DIR / "JarvisAI"), str(ROOT_DIR / "voice")]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
-import JarvisAI.main as _jmain
+import jarvis.main as _jmain
 
 for _k, _v in _jmain.__dict__.items():
     if not _k.startswith("__"):

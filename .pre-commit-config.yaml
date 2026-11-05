@@ -21,7 +21,7 @@ repos:
       - id: check-yaml
       - id: check-toml
       - id: check-json
-        exclude: ^JarvisAI/dashboard/static/
+        exclude: ^jarvis/dashboard/static/
       - id: check-merge-conflict
       - id: check-added-large-files
         args: ["--maxkb=5120"]
@@ -36,4 +36,4 @@ repos:
       # Blocking: the same rule set CI enforces (see [tool.ruff.lint]).
       - id: ruff
         args: [--fix]
-        files: ^JarvisAI/.*\.py$
+        files: ^jarvis/.*\.py$

@@ -50,7 +50,7 @@ Thank you for helping improve Jarvis AI security.
 
 ## 🔐 Autonomous Biometric Authority & Authentication State Machine
 
-JARVIS uses a 4-state authentication state machine in `JarvisAI/security/auth_manager.py` backed by local Argon2id PIN vault hashing and DPAPI / native OS credential encryption:
+JARVIS uses a 4-state authentication state machine in `jarvis/security/auth_manager.py` backed by local Argon2id PIN vault hashing and DPAPI / native OS credential encryption:
 
 1. **`RESTRICTED_MODE` (Stranger Mode):** Default unverified state. Access is sandboxed to Tier-1 basic tasks (weather, time, web search, public telemetry reads).
 2. **`FULL_ACCESS_MODE` (Verified Owner):** Session-only verified state granted via local PIN entry or an enrolled owner match plus explicit anti-spoof verification of live speech. Speaker similarity, role labels, and disabled Voice ID never authorize access by themselves. Dangerous actions still require confirmation.

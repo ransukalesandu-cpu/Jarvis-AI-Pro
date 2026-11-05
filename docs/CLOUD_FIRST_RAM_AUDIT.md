@@ -27,8 +27,8 @@ what was **verified in the repository**, what was **measured**, and what still
 
 | Area | Where | State |
 | --- | --- | --- |
-| Entry point | `main.py` → `JarvisAI/main.py` (`main()`), `run.py` | single window: `HologramHUDUI`; the legacy `JarvisUI` is never instantiated (`main.py` refuses the fallback) |
-| Live voice | `JarvisAI/main.py` + `core/live_audio.py`, `core/audio_capture.py`, `core/audio_playback.py` | 16 kHz in / 24 kHz s16 mono out, prebuffer, barge-in, viseme synthesis |
+| Entry point | `main.py` → `jarvis/main.py` (`main()`), `run.py` | single window: `HologramHUDUI`; the legacy `JarvisUI` is never instantiated (`main.py` refuses the fallback) |
+| Live voice | `jarvis/main.py` + `core/live_audio.py`, `core/audio_capture.py`, `core/audio_playback.py` | 16 kHz in / 24 kHz s16 mono out, prebuffer, barge-in, viseme synthesis |
 | Text fallback routing | `core/hybrid_llm_router.py` (`HybridLLMRouter`) used by `agent/integration.py`, `core/ai_error_repair.py` | Gemini/Groq/OpenAI/Claude order, offline Ollama fallback |
 | Cloud AI proxy | `supabase/functions/jarvis-cloud-ai/index.ts` | server-side provider multiplexing with host-key signature auth |
 | Cloud memory | `core/personal_cloud_memory.py`, `supabase/functions/jarvis-personal-memory`, migration `202610270001_jarvis_personal_memory.sql` | RLS enabled on both tables, consent gated, allowlisted fact keys, local+server validators |
@@ -47,7 +47,7 @@ what was **verified in the repository**, what was **measured**, and what still
 
 * `alter table … enable row level security` on both personal-memory tables
   (`supabase/migrations/202610270001_jarvis_personal_memory.sql:9,29`).
-* No service-role key anywhere in the desktop code: `grep -rn "service_role" JarvisAI`
+* No service-role key anywhere in the desktop code: `grep -rn "service_role" jarvis`
   returns nothing; privileged work happens in the Edge Function.
 * Secret redaction runs before provider requests and before summaries are stored
   (`memory/memory_manager.py:1133 redact_sensitive_content`).
@@ -121,7 +121,7 @@ figure until it has been measured.**
 
 * Suite: **836 passed, 1 skipped, 109 subtests** (skip: camera test cannot load
   `cv2` because the sandbox has no real `libGL`; it passes on CI where
-  `libgl1`/`libegl1` are installed). `ruff check JarvisAI` clean.
+  `libgl1`/`libegl1` are installed). `ruff check jarvis` clean.
 * New regression guards: import-boundary tests (subprocess + meta-path recorder)
   that fail if the HUD import starts pulling Chromium, OpenCV or the WebEngine
   panels again.
@@ -132,14 +132,14 @@ figure until it has been measured.**
 
 | File | Why |
 | --- | --- |
-| `JarvisAI/core/qt_webengine.py` | new: one place that decides when Chromium loads; cached, thread-safe, honest about availability |
-| `JarvisAI/ui/__init__.py` | WebEngine, `EarthGlobePanel` and `HudWorkspace` imported on first use instead of at package import |
-| `JarvisAI/actions/screen_processor.py` | direct RGB→JPEG encode (no PNG round-trip); OpenCV loaded on first camera use |
-| `JarvisAI/tools/profile_ram.py` | RAM profiler (adopted from PR #143, split into testable helpers, `--label`/`--append`) |
-| `JarvisAI/tools/__init__.py` | package marker so the tool is importable from tests |
-| `JarvisAI/tests/test_lazy_ui_imports.py` | import-boundary + laziness + WebEngine helper + camera-fallback tests |
-| `JarvisAI/tests/test_screen_capture_encoding.py` | direct path, byte-identical output, fallbacks, mss-missing message |
-| `JarvisAI/tests/test_ram_profiler.py` | real-process sampling, CSV append, CLI validation |
+| `jarvis/core/qt_webengine.py` | new: one place that decides when Chromium loads; cached, thread-safe, honest about availability |
+| `jarvis/ui/__init__.py` | WebEngine, `EarthGlobePanel` and `HudWorkspace` imported on first use instead of at package import |
+| `jarvis/actions/screen_processor.py` | direct RGB→JPEG encode (no PNG round-trip); OpenCV loaded on first camera use |
+| `jarvis/tools/profile_ram.py` | RAM profiler (adopted from PR #143, split into testable helpers, `--label`/`--append`) |
+| `jarvis/tools/__init__.py` | package marker so the tool is importable from tests |
+| `jarvis/tests/test_lazy_ui_imports.py` | import-boundary + laziness + WebEngine helper + camera-fallback tests |
+| `jarvis/tests/test_screen_capture_encoding.py` | direct path, byte-identical output, fallbacks, mss-missing message |
+| `jarvis/tests/test_ram_profiler.py` | real-process sampling, CSV append, CLI validation |
 | `docs/CLOUD_FIRST_RAM_AUDIT.md` | this report |
 
 Nothing in `AuthManager`, `ActionDispatcher`, Privacy Lock, owner voice ID, PIN

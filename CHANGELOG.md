@@ -6,7 +6,52 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Restructured into a real `jarvis` Python package.** `JarvisAI/` is now
+  `jarvis/`; every first-party import is package-qualified (`from jarvis.core
+  import ...`) and only the repository root is on `sys.path`. Entry points:
+  `python main.py`, `python run.py`, `python -m jarvis` (new). The Windows BATs
+  (`Jarvis_Setup.bat`, `Run_Jarvis.bat`, `Repair_Memory_Audit.bat`) and
+  `requirements*.txt` now live at the repository root (single copy of each), and
+  the `.venv` is created there. All docs moved into `docs/`.
+  **Migration for existing checkouts:** git-ignored local files live under the
+  old `JarvisAI/` folder (`config/api_keys.json`, `config/pin_vault.dat`,
+  `config/voice_id.dat`, `memory/*.db`, `logs/`). Copy them into the matching
+  `jarvis/` sub-folder after pulling. Per-user data under `%LOCALAPPDATA%\JarvisAI`,
+  keyring entries and Qt settings keep their names, so nothing there moves.
+- Dynamic action/plugin modules are registered as `jarvis.actions.<name>` /
+  `jarvis.plugins.<name>`; the camera snapshot child process runs
+  `python -m jarvis.core.camera_snapshot`.
+
+### Removed
+
+- Dead modules nothing imported: `core/screen_agent`, `core/vad_stream`,
+  `core/stt`, `core/installer`, `core/self_healing_v2`, `voice/voice_engine`,
+  `voice/fillers`, `services/radar_engine`, `memory/autobiographical_memory`,
+  the duplicate `core/battery_status` (identical to `actions/battery_status`),
+  and the unused images `assets/bihansa_reference.png`, `config/hologram_face.png`.
+
 ### Added
+
+- **Hybrid brain: `ask_claude` tool** (`actions/ask_claude.py`): Gemini Live can
+  hand coding, planning, long reasoning and long writing to Claude (quick = fast
+  model, deep = strong model). Short spoken answer; long results saved under
+  Documents/JARVIS/Claude. Hidden until an Anthropic key is set. Claude model
+  defaults (`claude-sonnet-5-5` / `claude-haiku-5-5`) now live in one place
+  (`core/provider_settings.py`), and every Claude call is counted and logged with
+  model and token counts (`core/claude_usage.py`).
+- **Task-based routing** (`core/task_router.py`): optional `task_routing` setting
+  sends coding/planning/reasoning/writing to Claude and keeps voice, vision and
+  simple requests on Gemini; without the setting nothing changes.
+- **Text fallback with read-only tools** (`core/fallback_tools.py`): while Live is
+  down and an Anthropic key exists, Claude can call system status, battery,
+  weather, web search and (if allowed) memory recall, all through
+  `security.guard` and the action log.
+- **Live connection renewal and audio diagnostics**: JARVIS now handles Gemini
+  Live's `go_away` notice by renewing the connection after the current answer
+  instead of being cut off mid-sentence; `JARVIS_AUDIO_DEBUG=1` logs the speech
+  path's events to `logs/audio_debug.log` (`core/audio_debug.py`).
 
 - **HUD is clean by default**: the autonomous surfaces (dashboard card, `◉`
   rail button, menu entries) are opt-in via `autonomous_ui_enabled` /
@@ -84,6 +129,12 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   requirement files, and cancellation of superseded runs.
 
 ### Fixed
+
+- **Live playback after an interrupt**: when an interrupt aborted a speaker
+  write, the rest of the cancelled answer could play once the stream restarted.
+  A false (echo) barge-in no longer drops the words buffered in the playback
+  worker. A healthy high-latency speaker is no longer mistaken for a silent
+  endpoint and swapped mid-sentence.
 
 - **The hologram sat in a black rectangle.** Both renderers cleared to
   `transparent` with `CompositionMode_Clear`, which Qt composites as black on a

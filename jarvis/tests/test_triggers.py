@@ -138,6 +138,9 @@ class _Host:
         from jarvis.core.runtime.live_services import BackgroundServicesMixin as M
         self._proactive_turn_blocker = M._proactive_turn_blocker.__get__(self)
         self._fire_trigger = M._fire_trigger.__get__(self)
+        self._run_trigger = M._run_trigger.__get__(self)
+        self._finish_run = M._finish_run.__get__(self)
+        self._fire_task = M._fire_task.__get__(self)
         self._run_trigger_scheduler = M._run_trigger_scheduler.__get__(self)
         self.session = SimpleNamespace(send_client_content=AsyncMock())
         self._speaking_lock = threading.Lock()
@@ -157,11 +160,18 @@ class _Host:
 class TriggerSchedulerTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.tmp = tempfile.TemporaryDirectory()
+        from jarvis.core import owner_store, trigger_runs
         self.reg = TriggerRegistry(Path(self.tmp.name) / "t.json")
         trig_mod.reset_trigger_registry_for_tests(self.reg)
+        self.owner = owner_store.OwnerStore(Path(self.tmp.name) / "owner.db")
+        owner_store.reset_owner_store_for_tests(self.owner)
+        trigger_runs.reset_for_tests()
 
     async def asyncTearDown(self):
+        from jarvis.core import owner_store, trigger_runs
         trig_mod.reset_trigger_registry_for_tests(None)
+        owner_store.reset_owner_store_for_tests(None)
+        trigger_runs.reset_for_tests()
         self.tmp.cleanup()
 
     def test_blocker_never_talks_over_the_owner(self):
@@ -204,6 +214,68 @@ class TriggerSchedulerTests(unittest.IsolatedAsyncioTestCase):
         await self._run_scheduler(host)
         host.session.send_client_content.assert_not_awaited()
         self.assertIsNotNone(self.reg.get("reminder"))
+
+    async def test_spoken_run_is_recorded(self):
+        from jarvis.core import trigger_runs
+        self.reg.register({"name": "reminder", "prompt": "p", "once_at": time.time() - 1},
+                          source="user", persist=True)
+        await self._run_scheduler(_Host())
+        rows = trigger_runs.runs("reminder")
+        self.assertEqual([r["status"] for r in rows], ["ok"])
+        self.assertEqual(rows[0]["mode"], "turn")
+
+    async def test_failed_run_is_recorded_and_three_failures_disable(self):
+        from jarvis.core import trigger_runs
+        self.reg.register({"name": "flaky", "prompt": "p", "every_seconds": 30,
+                           "registered_at": time.time() - 1000, "max_per_hour": 99},
+                          source="user", persist=True)
+        host = _Host()
+        host.session.send_client_content = AsyncMock(side_effect=RuntimeError("socket closed"))
+        trig = self.reg.get("flaky")
+        for _ in range(3):
+            await host._run_trigger(self.reg, trig, "p")
+        rows = trigger_runs.runs("flaky", 10)
+        self.assertEqual(len(rows), 3)
+        self.assertTrue(all(r["status"] == "failed" and "socket closed" in r["detail"] for r in rows))
+        self.assertFalse(self.reg.get("flaky").enabled)
+        self.assertTrue(host._announcements)      # the owner is told it was switched off
+
+    async def test_task_mode_runs_while_owner_is_talking_and_announces_result(self):
+        from jarvis.agent.events import AgentEvent
+        from jarvis.agent.models import TaskState
+        from jarvis.core import trigger_runs
+        self.reg.register({"name": "nightly", "prompt": "tidy downloads", "mode": "task",
+                           "once_at": time.time() - 1}, source="user", persist=True)
+        subscribers = []
+        task = SimpleNamespace(id="t1")
+        service = SimpleNamespace(
+            start=MagicMock(return_value=task),
+            subscribe=lambda cb: (subscribers.append(cb), (lambda: None))[1],
+            store=SimpleNamespace(load=lambda _id: None))
+        host = _Host()
+        host._inflight_user_text = "owner is talking"      # blocks spoken turns only
+        with patch("jarvis.agent.integration.get_service", return_value=service):
+            await self._run_scheduler(host)
+            service.start.assert_called_once_with("tidy downloads", source="trigger")
+            host.session.send_client_content.assert_not_awaited()
+            self.assertEqual(trigger_runs.runs("nightly")[0]["status"], "started")
+            subscribers[0](AgentEvent(kind="finished", task_id="t1", state=TaskState.COMPLETED,
+                                      message="3 files moved"))
+            await asyncio.sleep(0.1)
+        self.assertEqual(trigger_runs.runs("nightly")[0]["status"], "ok")
+        self.assertIn("3 files moved", host._announcements[0])
+
+    async def test_task_mode_refused_start_is_a_failed_run(self):
+        from jarvis.core import trigger_runs
+        self.reg.register({"name": "nightly", "prompt": "x", "mode": "task",
+                           "once_at": time.time() - 1}, source="user", persist=True)
+        service = SimpleNamespace(start=MagicMock(side_effect=PermissionError("Privacy Lock is active.")),
+                                  subscribe=lambda cb: (lambda: None), store=None)
+        with patch("jarvis.agent.integration.get_service", return_value=service):
+            await self._run_scheduler(_Host())
+        row = trigger_runs.runs("nightly")[0]
+        self.assertEqual(row["status"], "failed")
+        self.assertIn("Privacy Lock", row["detail"])
 
 
 if __name__ == "__main__":

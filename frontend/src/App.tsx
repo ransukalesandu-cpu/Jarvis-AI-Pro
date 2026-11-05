@@ -9,7 +9,9 @@ import { PageView } from './ui/Pages';
 import { Tray, Windows } from './ui/Windows';
 import { Palette } from './ui/Palette';
 import { CommandBar } from './ui/CommandBar';
+import { ReplyPanel } from './ui/Reply';
 import { Controls } from './ui/Controls';
+import { PendingWatch, StartupSkeleton, useStartupLoading, SyncStatus, Toast } from './ui/Feedback';
 import { useWindows } from './workspace/windows';
 import { sendRequest } from './bridge/bridge';
 
@@ -22,6 +24,7 @@ export default function App() {
   const page = useUi((s) => s.page);
   const wins = useWindows((s) => s.windows);
   const setPalette = useUi((s) => s.setPalette);
+  const loading = useStartupLoading();
   useEffect(() => {
     const sync = () => useWindows.getState().setViewport({ w: innerWidth, h: innerHeight });
     sync();
@@ -44,21 +47,26 @@ export default function App() {
     return () => { removeEventListener('keydown', onKey); stopBridge(); };
   }, [toggleNav, toggleSettings, setPalette]);
   return (
-    <div className="app" data-page={pageOpen ? 'open' : 'home'} data-settings={settingsOpen ? 'open' : 'closed'}>
+    <div className="app" data-page={pageOpen ? 'open' : 'home'} data-settings={settingsOpen ? 'open' : 'closed'} data-loading={loading ? 'true' : 'false'}>
       <div className="stage"><Suspense fallback={null}><HologramScene /></Suspense></div>
       <div className="vignette" />
       <TopBar />
       <div className="widgets left"><ClockWidget /><BatteryWidget /><SystemWidget /></div>
       <div className="widgets right"><BrainWidget /><NetworkWidget /><ActivityWidget /></div>
       {link === 'detached' && <div className="banner glass" role="status">Backend not connected: showing no live data</div>}
+      <StartupSkeleton />
+      <SyncStatus />
       <PageView />
       <Windows />
       <Tray />
+      <ReplyPanel />
       <CommandBar />
       <Controls />
       <Palette />
       <NavPanel />
       <SettingsPanel />
+      <Toast />
+      <PendingWatch />
     </div>
   );
 }

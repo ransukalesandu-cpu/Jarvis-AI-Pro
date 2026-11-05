@@ -5,7 +5,7 @@ import { Island } from './Island';
 
 export const PAGES: { id: Page; label: string; icon: React.ReactNode; ready: boolean; phase?: string }[] = [
   { id: 'home', label: 'Home', icon: <Home size={16} />, ready: true },
-  { id: 'chat', label: 'AI Chat', icon: <Bot size={16} />, ready: false, phase: 'Phase 2' },
+  { id: 'chat', label: 'Conversation Log', icon: <Bot size={16} />, ready: true },
   { id: 'activity', label: 'Activity Center', icon: <Sparkles size={16} />, ready: true },
   { id: 'models', label: 'AI Models', icon: <Brain size={16} />, ready: true },
   { id: 'research', label: 'Web Research', icon: <Globe size={16} />, ready: false, phase: 'Phase 2' },

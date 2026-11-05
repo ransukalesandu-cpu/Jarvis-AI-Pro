@@ -118,6 +118,9 @@ class WebUIHost(QWidget):
     def set_level(self, level: float, source: str = "output") -> None:
         self.bridge.publish("assistant.audio_level", level=max(0.0, min(1.0, float(level))), source=source)
 
+    def push_log(self, tag: str, text: str) -> None:
+        self.bridge.publish("log.line", tag=tag, text=text)
+
     def set_muted(self, muted: bool) -> None:
         self.bridge.publish("assistant.muted", muted=bool(muted))
 

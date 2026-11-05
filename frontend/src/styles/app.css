@@ -121,3 +121,16 @@ button { font: inherit; color: inherit; }
 .controls button:disabled { opacity: 0.35; cursor: not-allowed; }
 .controls-note { font-size: 11px; color: var(--text-dim); max-width: 180px; }
 .controls-note:empty { display: none; }
+
+/* Conversation log */
+.logbox { max-height: 46vh; overflow: auto; margin: var(--space-3) 0; padding: var(--space-2); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-sm); scrollbar-width: thin; scrollbar-color: rgba(47, 155, 255, 0.4) transparent; color-scheme: dark; font-size: 13px; line-height: 1.45; }
+.win .logbox { max-height: none; height: calc(100% - 120px); min-height: 80px; }
+.log-line { display: flex; gap: var(--space-3); padding: 3px 0; }
+.log-tag { flex: 0 0 56px; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-faint); padding-top: 2px; }
+.log-text { word-break: break-word; }
+.log-you .log-text { color: var(--text); }
+.log-ai .log-text { color: var(--primary-bright); }
+.log-sys .log-text { color: var(--text-dim); }
+.log-err .log-text { color: #ff7a8a; }
+.log-file .log-text { color: #6ee7a8; }
+.log-empty { color: var(--text-faint); padding: var(--space-3); }

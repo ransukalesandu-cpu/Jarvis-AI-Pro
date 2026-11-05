@@ -45,5 +45,9 @@ def attach(window):
     host.show()
     host.raise_()
     host._live = LiveLink(host)
+    from .log_feed import LogFeed
+
+    host._log_feed = LogFeed(gate.availability, parent=host)
+    host._log_feed.line.connect(host.push_log)
     window._web_ui = host
     return host

@@ -56,3 +56,20 @@ describe('command bar state', () => {
     expect(useUi.getState().command).toEqual({ state: 'ok', last: 'rate_limited' });
   });
 });
+
+import { LOG_MAX } from './store';
+describe('log feed', () => {
+  it('parses only known tags and bounded text, keeps the newest lines', () => {
+    expect(_parse(JSON.stringify({ type: 'log.line', tag: 'you', text: 'hi' }))).not.toBeNull();
+    expect(_parse(JSON.stringify({ type: 'log.line', tag: 'root', text: 'hi' }))).toBeNull();
+    expect(_parse(JSON.stringify({ type: 'log.line', tag: 'you', text: '' }))).toBeNull();
+    expect(_parse(JSON.stringify({ type: 'log.line', tag: 'you', text: 'x'.repeat(401) }))).toBeNull();
+    useUi.setState({ log: [] });
+    for (let i = 0; i < LOG_MAX + 10; i++) useUi.getState().apply({ type: 'log.line', tag: 'sys', text: `l${i}` });
+    const l = useUi.getState().log;
+    expect(l).toHaveLength(LOG_MAX);
+    expect(l[l.length - 1].text).toBe(`l${LOG_MAX + 9}`);
+    useUi.getState().clearLog();
+    expect(useUi.getState().log).toHaveLength(0);
+  });
+});

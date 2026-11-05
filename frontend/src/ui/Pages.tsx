@@ -1,5 +1,7 @@
 import { Maximize2 } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import { Spark } from './Spark';
+import type { LogTag } from '../bridge/contract';
 import { useUi, type Page } from '../store';
 import { useWindows } from '../workspace/windows';
 import type { WinKind } from '../workspace/layout';
@@ -54,15 +56,46 @@ export function ActivityContent() {
   );
 }
 
+const TAG_LABEL: Record<LogTag, string> = { you: 'You', ai: 'JARVIS', sys: 'System', err: 'Error', file: 'File' };
+
+/** Read-only mirror of the assistant's log. Redacted and filtered in Python; nothing here can write back. */
+export function LogView({ lines, onClear }: { lines: { id: number; at: number; tag: LogTag; text: string }[]; onClear: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  useEffect(() => { const el = box.current; if (el && stick.current) el.scrollTop = el.scrollHeight; }, [lines]);
+  return (
+    <>
+      <h1>Conversation Log</h1>
+      <p>Read-only. Sensitive values are redacted, and nothing is shown while JARVIS is locked or asking for a PIN.</p>
+      <div className="logbox" ref={box} role="log" aria-label="Conversation log" aria-live="off" tabIndex={0}
+        onScroll={(e) => { const t = e.currentTarget; stick.current = t.scrollHeight - t.scrollTop - t.clientHeight < 24; }}>
+        {lines.length === 0 && <div className="log-empty">No messages yet this session.</div>}
+        {lines.map((l) => (
+          <div key={l.id} className={`log-line log-${l.tag}`}>
+            <span className="log-tag">{TAG_LABEL[l.tag]}</span><span className="log-text">{l.text}</span>
+          </div>
+        ))}
+      </div>
+      <button className="toggle" onClick={onClear} disabled={lines.length === 0}>Clear view</button>
+    </>
+  );
+}
+
+export function LogContent() {
+  const log = useUi((s) => s.log);
+  const clear = useUi((s) => s.clearLog);
+  return <LogView lines={log} onClear={clear} />;
+}
+
 export function PageView() {
   const page = useUi((s) => s.page) as Page;
   if (page === 'home') return null;
   return (
     <main className="page glass" aria-live="polite">
-      {(page === 'monitor' || page === 'models' || page === 'activity') && (
-        <button className="toggle detach" onClick={() => { useWindows.getState().open(page as WinKind); useUi.getState().go('home'); }} aria-label="Open as floating window"><Maximize2 size={12} /> Window</button>
+      {(page === 'monitor' || page === 'models' || page === 'activity' || page === 'chat') && (
+        <button className="toggle detach" onClick={() => { useWindows.getState().open((page === 'chat' ? 'log' : page) as WinKind); useUi.getState().go('home'); }} aria-label="Open as floating window"><Maximize2 size={12} /> Window</button>
       )}
-      {page === 'monitor' ? <MonitorContent /> : page === 'models' ? <ModelsContent /> : page === 'activity' ? <ActivityContent /> : <h1>Not available yet</h1>}
+      {page === 'monitor' ? <MonitorContent /> : page === 'models' ? <ModelsContent /> : page === 'activity' ? <ActivityContent /> : page === 'chat' ? <LogContent /> : <h1>Not available yet</h1>}
     </main>
   );
 }

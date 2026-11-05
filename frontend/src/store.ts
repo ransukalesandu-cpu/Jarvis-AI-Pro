@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AssistantState, Battery, CommandReason, CommandState, HostEvent, Net, Persona } from './bridge/contract';
+import type { AssistantState, Battery, CommandReason, CommandState, HostEvent, LogTag, Net, Persona } from './bridge/contract';
 
 export type Page = 'home' | 'chat' | 'activity' | 'models' | 'research' | 'reminders' | 'apps' | 'files' | 'memory' | 'automation' | 'monitor' | 'security';
 
@@ -7,6 +7,10 @@ export const SERIES_MAX = 120;   // ~2 minutes at the host's 1 Hz telemetry
 export interface Series { cpu: number[]; ram: number[]; down: number[]; up: number[] }
 const EMPTY: Series = { cpu: [], ram: [], down: [], up: [] };
 const push = (a: number[], v: number) => (a.length >= SERIES_MAX ? [...a.slice(a.length - SERIES_MAX + 1), v] : [...a, v]);
+
+export const LOG_MAX = 200;
+export interface LogLine { id: number; at: number; tag: LogTag; text: string }
+let logId = 0;
 
 export interface Provider { provider: string; model: string; connected: boolean; fallback: boolean }
 
@@ -29,6 +33,8 @@ export interface UiState {
   muted: boolean;
   command: { state: CommandState; last: CommandReason | null };
   control: CommandReason | null;
+  log: LogLine[];
+  clearLog: () => void;
   history: { at: number; state: AssistantState }[];
   setLink: (l: UiState['link']) => void;
   apply: (e: HostEvent) => void;
@@ -44,7 +50,7 @@ const prefersReduced = typeof matchMedia === 'function' && matchMedia('(prefers-
 
 export const useUi = create<UiState>((set) => ({
   link: 'connecting', assistant: 'idle', persona: 'jarvis', outputLevel: 0, inputLevel: 0,
-  series: EMPTY, metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, clock24: true, history: [], workspaceNames: [], paletteOpen: false, muted: false, command: { state: 'unavailable', last: null }, control: null,
+  series: EMPTY, metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, clock24: true, history: [], workspaceNames: [], paletteOpen: false, muted: false, command: { state: 'unavailable', last: null }, control: null, log: [],
   setLink: (link) => set({ link }),
   apply: (e) => set((s) => {
     switch (e.type) {
@@ -54,6 +60,7 @@ export const useUi = create<UiState>((set) => ({
       case 'provider.changed': return { provider: { provider: e.provider, model: e.model, connected: e.connected, fallback: e.fallback } };
       case 'command.availability': return { command: { ...s.command, state: e.state } };
       case 'command.result': return { command: { ...s.command, last: e.reason } };
+      case 'log.line': return { log: [...s.log.slice(-(LOG_MAX - 1)), { id: ++logId, at: Date.now(), tag: e.tag, text: e.text }] };
       case 'control.result': return { control: e.reason };
       case 'assistant.muted': return { muted: e.muted };
       case 'ui.persona': return { persona: e.persona };
@@ -63,6 +70,7 @@ export const useUi = create<UiState>((set) => ({
       default: return s;
     }
   }),
+  clearLog: () => set({ log: [] }),
   go: (page) => set({ page, navOpen: false }),
   toggleNav: (open) => set((s) => ({ navOpen: open ?? !s.navOpen, settingsOpen: false })),
   toggleSettings: (open) => set((s) => ({ settingsOpen: open ?? !s.settingsOpen, navOpen: false })),

@@ -2035,7 +2035,6 @@ JarvisAI/
 │   ├── episodic_memory.py
 │   ├── procedural_memory.py
 │   ├── prospective_memory.py
-│   ├── autobiographical_memory.py
 │   ├── associative_memory.py
 │   ├── retrieval_engine.py
 │   ├── memory_scoring.py

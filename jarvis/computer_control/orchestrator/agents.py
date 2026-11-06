@@ -90,6 +90,8 @@ def default_registry() -> AgentRegistry:
     reg.register(AppAgent("browser", "Web pages in the installed Edge/Chrome (Playwright).",
                           frozenset({"cc_browser"}), recover=_browser_recover,
                           apps=("msedge", "chrome")))
+    reg.register(AppAgent("visual", "On-demand screen understanding (accessibility, OCR, hosted vision).",
+                          frozenset({"cc_screen"})))
     reg.register(AppAgent("engine", "Engine status and emergency stop.",
                           frozenset({"cc_engine_status", "cc_emergency_stop"})))
     for extra in _EXTRA_AGENTS:

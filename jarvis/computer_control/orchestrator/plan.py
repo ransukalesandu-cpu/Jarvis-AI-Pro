@@ -25,6 +25,7 @@ class Step:
     depends_on: list = field(default_factory=list)
     expect: dict = field(default_factory=dict)  # {"window": "...", "text": "...", "file": "..."}
     optional: bool = False                      # failure does not fail the task
+    tainted: bool = False                       # args came from content (kept by saved workflows)
 
     def references(self) -> list[int]:
         return sorted({int(m.group(1)) for m in _REF.finditer(json.dumps(self.args, default=str))})
@@ -115,7 +116,8 @@ def build(objective: str, raw_steps: Iterable[dict], known_tools: Iterable[str],
         steps.append(Step(index=i, tool=tool, args=dict(args),
                           description=str(item.get("description") or "")[:200],
                           depends_on=list(deps), expect=dict(expect),
-                          optional=bool(item.get("optional", False))))
+                          optional=bool(item.get("optional", False)),
+                          tainted=bool(item.get("tainted", False))))
     for step in steps:
         for ref in step.references():
             if ref == step.index or not 0 <= ref < len(steps):

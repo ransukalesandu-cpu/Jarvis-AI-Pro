@@ -50,6 +50,7 @@ class TraceEntry:
     duration_ms: int
     recovery: bool = False
     args: dict = field(default_factory=dict)
+    tainted: bool = False
 
     def as_dict(self) -> dict:
         return dict(self.__dict__)
@@ -187,6 +188,7 @@ class HostAgent:
             return res, self._record(ctx, step, "error", res.message, None, "high", 0, "", "")
         raw_args = dict(args_override if args_override is not None else step.args)
         args, tainted = resolve_refs(raw_args, ctx.outputs)
+        tainted = tainted or step.tainted
         if step.tool == "cc_control" and str(args.get("op")) in ("invoke", "click", "menu"):
             args = {**self._expect_args(step), **args}
         ctx.current = step.description or step.tool
@@ -206,6 +208,7 @@ class HostAgent:
         entry = self._record(ctx, step, result.status, result.message, verified, result.level.value,
                              result.duration_ms, result.action, agent.name, recovery=recovery,
                              args=result.args or redact_params(args))
+        entry.tainted = tainted
         return result, entry
 
     def _recover(self, ctx: TaskContext, step: Step, result: ActionResult, entry: TraceEntry,

@@ -146,3 +146,19 @@ destructive automatic retries, secrets in logs or commits.
 * Password values are never read back, listed, logged, put in traces or approval details.
   Cookies are never read. Screenshots mask password inputs.
 * No automatic browser retries: after a re-render a ref may point at a different element.
+
+## 13. Visual specifics (Project 4)
+
+* A screenshot leaves the machine only for the hosted-vision step, after password-field
+  rectangles from the UI Automation tree are painted over (`redaction.mask_regions`).
+  Masking fails closed: if the windows cannot be listed, no frame is captured or uploaded
+  (`describe` falls back to local OCR); every visible window is scanned, and a window that
+  vanishes mid-scan is skipped on its own.
+* Vision and OCR text is untrusted content (fenced, injection-flagged).
+* `cc_screen` `click` acts through the control or page element when one was found; only OCR or
+  vision results use coordinates, and those need confidence ≥ 0.8 plus an unchanged screen
+  fingerprint. The policy sees the real label of what will be clicked (a read-only lookup
+  without vision), so "Delete …" stays HIGH.
+* A label that only OCR/vision reported is classified again before a coordinate click: if it
+  looks destructive but the request did not, the click is refused (ask for it by name so it
+  goes through approval). Screen labels and evidence in `cc_screen` messages are fenced.

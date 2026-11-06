@@ -7,6 +7,9 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Computer Control — Project 4: visual understanding** (`jarvis/computer_control/visual/`).
+  `cc_screen`: on-demand, hybrid locate (accessibility → page element → local OCR → hosted Gemini
+  vision with password fields painted out), safest-path click, describe, read, verify.
 - **Computer Control — Project 3: browser** (`jarvis/computer_control/browser/`). `cc_browser` on
   Playwright with the installed Edge/Chrome and JARVIS's own profile: navigate/search/tabs/snapshot
   refs/read/click/fill/select/press/screenshot (password inputs masked)/download/upload, each

@@ -8,8 +8,8 @@ REPLACED, NOT APPLICABLE.
 | 0 | Foundation | MERGED | [#277](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/277) | e14d32e |
 | 1 | Windows native control (+6 fallback input) | MERGED | [#278](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/278) | c82ece7 |
 | 2 | Orchestrator (UFO²-inspired) | MERGED | [#279](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/279) | 32bfc21 |
-| 3 | Browser automation | TESTING | (this PR) | — |
-| 4 | Visual understanding | NOT STARTED | — | — |
+| 3 | Browser automation | MERGED | [#280](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/280) | b8eb691 |
+| 4 | Visual understanding | TESTING | (this PR) | — |
 | 5 | Workflow learning | NOT STARTED | — | — |
 | 6 | Fallback input | MERGED (folded into Project 1) | see Project 1 | — |
 | 7 | MCP / Tool Registry | NOT STARTED | — | — |
@@ -72,3 +72,10 @@ REPLACED, NOT APPLICABLE.
 * **Tests:** 22 browser tests.
 * **Limitations:** real Edge/Chrome runs are pending owner validation; frames/shadow DOM not
   covered by the snapshot (as in `core/page_snapshot`).
+
+## Project 4 — Visual understanding
+
+* **Completed:** `visual/perception.py` (hybrid accessibility → DOM → OCR → hosted vision, masking,
+  fingerprints), `cc_screen` (locate, click by the safest path, describe, read, verify), visual agent.
+* **Tests:** 13 visual tests. No local vision model; 0 captures when accessibility/DOM suffice.
+* **Limitations:** hosted vision and Tesseract on the owner's PC pending validation.

@@ -144,3 +144,18 @@ same key) and `OcrEngine` (local Tesseract). Order: accessibility → DOM → OC
 two return a control/element ref (no coordinates), the last two return coordinates with source,
 confidence and a fresh fingerprint so the guarded fallback input applies. Password fields from the
 UIA tree are painted black before any frame is sent; the vision reply is untrusted content.
+
+## Project 5 — Workflow learning and reuse (OpenAdapt evaluated)
+
+**Upstream inspected:** OpenAdaptAI/OpenAdapt (MIT): records raw input events + screenshots,
+then replays or generalises them with a model. Not adopted as a dependency (heavy recording
+stack, local database, raw-input replay is fragile to layout changes).
+
+JARVIS records the **verified steps** of a finished task (tool + args + expectations) instead of
+raw input. `workflows/library.py`: draft only from a fully successful task, passwords turned into a
+`{{param:password}}` run-time parameter (never stored), redacted args, versioning (last 5 kept),
+bounded JSON file (40 workflows) in the user-data folder; outline + statistics mirrored to
+Supabase through the existing `workflow_save` operation (its schema stores titles/kinds only, so
+exact steps stay local — no Supabase schema change). `workflows/runner.py`: preflight validation
+(params present, tools exist, plan still valid), replay through the Host Agent with verification,
+success/failure tracking. Trusted only after 3 consecutive verified runs; one failure resets it.

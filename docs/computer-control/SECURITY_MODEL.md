@@ -162,3 +162,14 @@ destructive automatic retries, secrets in logs or commits.
 * A label that only OCR/vision reported is classified again before a coordinate click: if it
   looks destructive but the request did not, the click is refused (ask for it by name so it
   goes through approval). Screen labels and evidence in `cc_screen` messages are fenced.
+
+## 14. Workflow specifics (Project 5)
+
+* Saving a workflow is HIGH (native approval). Running one is HIGH until it has 3 consecutive
+  verified successes; one failure returns it to supervised.
+* Passwords are never stored: they become run-time parameters.
+* Run-time values arrive as a JSON string; secret-named keys inside JSON text
+  (`"password": "..."`) are scrubbed by `redaction.redact_text`, so they never reach the
+  approval details, the action log or the audit ledger.
+* Replays go through the same runner (policy, approval, audit, verification) as any task, and
+  `cc_workflow` / `cc_task` cannot appear inside a plan.

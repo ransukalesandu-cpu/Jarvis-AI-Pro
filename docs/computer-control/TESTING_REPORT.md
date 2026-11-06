@@ -101,3 +101,11 @@ JARVIS profile keeping a sign-in, a real download into `Downloads\JARVIS`, maske
 
 Pending owner validation: hosted Gemini vision on the owner's screen (key + network), Tesseract
 installed on the owner's PC, masking on a real login window, multi-monitor offsets.
+
+## Project 5 — Workflows
+
+| suite | file | tests |
+|---|---|---|
+| draft only from successful tasks, password → parameter, versions, trust after 3 verified runs and reset on a layout change, validation (missing params, removed tools), run-time password never written, save needs approval, untrusted run needs approval / trusted does not, list/show/validate/delete, not plannable | `jarvis/tests/test_computer_control_workflows.py` | 10 |
+
+Pending owner validation: Supabase metadata sync with the owner's cloud memory configured.

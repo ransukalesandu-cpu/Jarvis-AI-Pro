@@ -9,8 +9,8 @@ REPLACED, NOT APPLICABLE.
 | 1 | Windows native control (+6 fallback input) | MERGED | [#278](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/278) | c82ece7 |
 | 2 | Orchestrator (UFO²-inspired) | MERGED | [#279](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/279) | 32bfc21 |
 | 3 | Browser automation | MERGED | [#280](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/280) | b8eb691 |
-| 4 | Visual understanding | TESTING | (this PR) | — |
-| 5 | Workflow learning | NOT STARTED | — | — |
+| 4 | Visual understanding | MERGED | [#281](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/281) | dbb05b9 |
+| 5 | Workflow learning | TESTING | (this PR) | — |
 | 6 | Fallback input | MERGED (folded into Project 1) | see Project 1 | — |
 | 7 | MCP / Tool Registry | NOT STARTED | — | — |
 | 8 | Benchmarks | NOT STARTED | — | — |
@@ -79,3 +79,10 @@ REPLACED, NOT APPLICABLE.
   fingerprints), `cc_screen` (locate, click by the safest path, describe, read, verify), visual agent.
 * **Tests:** 13 visual tests. No local vision model; 0 captures when accessibility/DOM suffice.
 * **Limitations:** hosted vision and Tesseract on the owner's PC pending validation.
+
+## Project 5 — Workflow learning
+
+* **Completed:** `workflows/` (draft from verified tasks, password parameters, versions, bounded local
+  store, Supabase metadata sync, validation, replay, trust after 3 verified runs), `cc_workflow`.
+* **Tests:** 10 workflow tests.
+* **Limitations:** Supabase sync pending owner validation with cloud memory configured.

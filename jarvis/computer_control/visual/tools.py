@@ -5,10 +5,25 @@ from typing import Any, Mapping
 
 from jarvis.computer_control.contract import SpecRegistry, ToolSpec
 from jarvis.computer_control.runner import ActionContext, ActionOutcome
-from jarvis.computer_control.visual.perception import get_perception
+from jarvis.computer_control.untrusted import wrap
+from jarvis.computer_control.visual.perception import Located, get_perception
 
 OPS = {"locate": "screen.locate", "describe": "screen.analyze", "read": "screen.ocr",
        "verify": "verify", "click": "element.click"}
+
+
+#: where each locate source's text came from (all of it is screen/page content)
+_TEXT_SOURCE = {"accessibility": "window_text", "dom": "web_page", "ocr": "ocr", "vision": "vision_model"}
+
+
+def _fenced(found: Located, text: str, limit: int = 200) -> str:
+    """Screen-derived text (labels, evidence) bounded and fenced as untrusted content."""
+    return wrap(str(text or "")[:limit], _TEXT_SOURCE.get(found.source, "screenshot")).for_model(limit)
+
+
+def _not_found(found: Located, target: str) -> str:
+    return (f"Could not find the target on screen ({', '.join(found.tried)}). "
+            f"Requested: {_fenced(found, target)} Details: {_fenced(found, found.evidence)}")
 
 
 def _action_for(params: Mapping[str, Any]) -> str:
@@ -22,8 +37,8 @@ def _click(ctx: ActionContext) -> ActionOutcome:
     found = get_perception().locate(ctx, target, window=window,
                                     allow_vision=bool(ctx.params.get("allow_vision", True)))
     if not found.found:
-        return ActionOutcome(False, f"Could not find '{target}' on screen ({', '.join(found.tried)}): "
-                                    f"{found.evidence}", data={"located": found.as_dict()}, verified=False)
+        return ActionOutcome(False, _not_found(found, target), data={"located": found.as_dict()},
+                             verified=False)
     if found.source == "accessibility":
         from jarvis.computer_control.windows.controller import get_controller
         from jarvis.computer_control.windows.model import ElementQuery, WindowQuery
@@ -33,6 +48,18 @@ def _click(ctx: ActionContext) -> ActionOutcome:
         from jarvis.computer_control.browser.controller import get_controller as browser
         out = browser().click(ctx, found.ref, ctx.params)
     else:
+        # coordinates from OCR / hosted vision: the policy approved the *requested*
+        # target, so a destructive label that only the screen reported is refused here
+        from jarvis.computer_control.policy import ActionPolicy, Level
+        classify = ActionPolicy().classify
+        found_level, why = classify("element.click", {"label": found.label})
+        asked_level, _ = classify("element.click", {"target": target})
+        if found_level is Level.HIGH and asked_level is not Level.HIGH:
+            return ActionOutcome(False, "Refused: what was found on screen looks destructive or "
+                                        f"outward-facing ({'; '.join(why)}), but the request did not say so. "
+                                        f"Found: {_fenced(found, found.label)} "
+                                        "Ask for that control by name so it goes through approval.",
+                                 data={"located": found.as_dict()}, verified=False)
         from jarvis.computer_control.windows.controller import get_controller
         out = get_controller().pointer(ctx, "click", {"x": found.x, "y": found.y, "source": found.source,
                                                       "confidence": found.confidence,
@@ -64,9 +91,10 @@ def _handler(ctx: ActionContext) -> ActionOutcome:
     if op == "locate":
         found = perception.locate(ctx, str(p.get("target") or ""), window=str(p.get("window") or ""),
                                   allow_vision=bool(p.get("allow_vision", True)))
-        return ActionOutcome(found.found, (f"Found '{found.label}' via {found.source} "
-                                           f"(confidence {found.confidence:.2f})." if found.found else
-                                           f"Not found ({', '.join(found.tried)}): {found.evidence}"),
+        message = (f"Found via {found.source} (confidence {found.confidence:.2f}): "
+                   f"{_fenced(found, found.label)} {_fenced(found, found.evidence)}" if found.found else
+                   _not_found(found, str(p.get("target") or "")))
+        return ActionOutcome(found.found, message,
                              data={"located": found.as_dict()}, verified=found.found or None)
     if op == "describe":
         return perception.describe(ctx, str(p.get("question") or ""))

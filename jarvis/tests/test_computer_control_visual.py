@@ -240,23 +240,71 @@ class TestReviewFixes:
         assert out.ok and "Hosted vision skipped" in out.message and "local ocr only" in out.message.lower()
         assert not vision.images and capture.count == 0
 
-    def test_a_vanished_window_does_not_stop_the_scan(self, scene, monkeypatch):
-        desk, windows, _b, perception, _c, vision, _o, _dr = scene
+    @staticmethod
+    def _contoso_with_password(desk, windows):
         windows.launch(ctx(), "Calculator")
         windows.launch(ctx(), "Contoso Login")
         from jarvis.computer_control.windows.model import Rect
         desk.element_named("Contoso", "Password").rect = Rect(10, 10, 60, 30)
-        real = windows.backend.elements
-        handles = [w.handle for w in windows.backend.windows()]
-        gone = [h for h in handles if "Calculator" in next(
-            w.title for w in windows.backend.windows() if w.handle == h)]
+        return next(w.handle for w in windows.backend.windows() if "Calculator" in w.title)
 
-        def flaky(handle, depth=8):
-            if handle in gone:
-                raise RuntimeError("element is gone")
-            return real(handle, depth=depth)
+    def test_a_scan_failure_on_a_visible_window_blocks_the_upload(self, scene, monkeypatch):
+        desk, windows, _b, perception, capture, vision, _o, _dr = scene
+        calc = self._contoso_with_password(desk, windows)
+        real = windows.backend.elements
+
+        def flaky(handle, **kw):
+            if handle == calc:
+                raise RuntimeError("UIA wrapper error")          # the window is still there
+            return real(handle, **kw)
         monkeypatch.setattr(windows.backend, "elements", flaky)
+        with pytest.raises(RuntimeError):
+            perception.password_rects()
+        found = perception.locate(ctx(), "Gear")
+        assert not found.found and "not uploaded" in found.evidence
+        assert not vision.images and capture.count == 0
+
+    def test_a_window_that_really_closed_is_skipped(self, scene, monkeypatch):
+        desk, windows, _b, perception, _c, _v, _o, _dr = scene
+        calc = self._contoso_with_password(desk, windows)
+        real = windows.backend.elements
+
+        def closes(handle, **kw):
+            if handle == calc:
+                windows.backend.close_window(calc)                # gone mid-scan
+                raise RuntimeError("element is gone")
+            return real(handle, **kw)
+        monkeypatch.setattr(windows.backend, "elements", closes)
         assert len(perception.password_rects()) == 1
+
+    def test_an_incomplete_scan_blocks_the_upload(self, scene):
+        desk, windows, _b, perception, capture, vision, _o, _dr = scene
+        self._contoso_with_password(desk, windows)
+        perception.MASK_SCAN_LIMIT = 1                            # every window has more controls
+        found = perception.locate(ctx(), "Gear")
+        assert not found.found and "not uploaded" in found.evidence
+        assert not vision.images and capture.count == 0
+
+    def test_ambiguous_controls_are_refused_not_guessed(self, scene):
+        desk, windows, *_rest = scene
+        driver = scene[7]
+        windows.launch(ctx(), "Calculator")
+        import dataclasses
+        win = next(w for w in desk._windows.values() if "Calculator" in w.title)
+        win.elements.append(dataclasses.replace(desk.element_named("Calculator", "Seven")))
+        found = scene[3].locate(ctx(), "Seven", window="Calculator")
+        assert not found.found and "2 controls" in found.evidence and found.tried == ["accessibility"]
+        out = build_registry().get("cc_screen").call({"op": "click", "target": "Seven", "window": "Calculator"})
+        assert out.status == "failed" and driver.clicks == [] and desk.element_named("Calculator", "Display is 0")
+
+    def test_ambiguous_page_elements_are_refused(self, scene):
+        import dataclasses
+        _desk, _w, browser, perception, *_rest = scene
+        browser.navigate(ctx(), "https://news.test/")
+        page = browser.backend._page()
+        page.elements.append(dataclasses.replace(page.elements[0]))     # two identical links
+        found = perception.locate(ctx(), page.elements[0].name, window="Nothing open")
+        assert not found.found and "2 page elements match" in found.evidence
 
     def test_destructive_label_reported_by_vision_is_refused(self, scene):
         *_, vision, _o, driver = scene

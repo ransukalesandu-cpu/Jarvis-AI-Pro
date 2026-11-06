@@ -151,9 +151,13 @@ destructive automatic retries, secrets in logs or commits.
 
 * A screenshot leaves the machine only for the hosted-vision step, after password-field
   rectangles from the UI Automation tree are painted over (`redaction.mask_regions`).
-  Masking fails closed: if the windows cannot be listed, no frame is captured or uploaded
-  (`describe` falls back to local OCR); every visible window is scanned, and a window that
-  vanishes mid-scan is skipped on its own.
+  Masking fails closed: no frame is captured or uploaded (`describe` falls back to local OCR)
+  when the windows cannot be listed, when a window's scan is incomplete (an unreadable control,
+  or more than 3000 controls; the UIA walk covers the whole tree in strict mode), or when a scan
+  fails and a re-listing shows the window is still visible. Only a window shown to be gone or
+  minimized is skipped.
+* Ambiguity is refused: when several controls or page elements match a target, `cc_screen`
+  reports it and does not fall through to OCR/vision coordinates.
 * Vision and OCR text is untrusted content (fenced, injection-flagged).
 * `cc_screen` `click` acts through the control or page element when one was found; only OCR or
   vision results use coordinates, and those need confidence ≥ 0.8 plus an unchanged screen

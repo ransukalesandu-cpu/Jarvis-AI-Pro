@@ -197,9 +197,12 @@ class FakeDesktop:
         except (ValueError, IndexError) as exc:
             raise ElementGone(f"control {ref} no longer exists") from exc
 
-    def elements(self, handle: int, depth: int = 6, limit: int = 400) -> list[ElementInfo]:
+    def elements(self, handle: int, depth: Optional[int] = 6, limit: int = 400,
+                 strict: bool = False) -> list[ElementInfo]:
         with self._lock:
             w = self._win(handle)
+            if strict and len(w.elements) > limit:
+                raise BackendError(f"window {handle} has more than {limit} controls")
             out = []
             for i, e in enumerate(w.elements[:limit]):
                 out.append(ElementInfo(

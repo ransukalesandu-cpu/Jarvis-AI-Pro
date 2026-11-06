@@ -114,3 +114,18 @@ def test_missing_control_is_reported_not_guessed(real):
     query = WindowQuery(handle=int(launched.data["window"]["handle"]))
     out = controller.invoke(ctx(), query, ElementQuery(name="Definitely Not A Button 123"))
     assert not out.ok and "No control" in out.message
+
+
+def test_strict_full_tree_scan_for_the_password_mask(real):
+    """The mask scan walks the whole UIA tree and refuses to report an incomplete scan."""
+    from jarvis.computer_control.windows.backend import BackendError
+
+    backend, controller, ctx, started, tmp = real
+    launched = controller.launch(ctx(), "notepad.exe", [])
+    assert launched.ok and launched.verified, launched.message
+    started.append(int(launched.data["window"]["pid"]))
+    handle = int(launched.data["window"]["handle"])
+    full = backend.elements(handle, depth=None, limit=3000, strict=True)
+    assert len(full) >= 2 and not any(e.is_password for e in full)
+    with pytest.raises(BackendError):
+        backend.elements(handle, depth=None, limit=1, strict=True)

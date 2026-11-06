@@ -392,12 +392,15 @@ class PywinautoBackend:
                     continue
         return None
 
-    def elements(self, handle: int, depth: int = 6, limit: int = 400) -> list[ElementInfo]:
+    def elements(self, handle: int, depth: Optional[int] = 6, limit: int = 400,
+                 strict: bool = False) -> list[ElementInfo]:
         window = self._uia_window(handle)
         try:
-            controls = window.descendants(depth=int(depth))
+            controls = window.descendants(depth=int(depth)) if depth else window.descendants()
         except TypeError:
             controls = window.descendants()
+        if strict and len(controls) > int(limit):
+            raise BackendError(f"window {handle} has more than {limit} controls; the scan would be incomplete")
         out = []
         for i, c in enumerate(controls[: int(limit)]):
             try:
@@ -414,7 +417,9 @@ class PywinautoBackend:
                     is_password=password,
                     value=None if password else self._value(c, control_type),
                     window_handle=int(handle)))
-            except Exception:
+            except Exception as exc:
+                if strict:
+                    raise BackendError(f"control {i} of window {handle} could not be read") from exc
                 failsoft.suppress("computer_control.windows.uia:elements")
                 continue
         return out

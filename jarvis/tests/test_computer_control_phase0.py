@@ -494,6 +494,14 @@ class TestAudit:
         make_runner().run_action("input.type", {"text": f"my key is {key}"}, lambda ctx: "typed")
         assert key not in json.dumps(self._log_lines()[-1])
 
+    def test_secret_keys_inside_json_strings_are_scrubbed(self):
+        from jarvis.computer_control.redaction import redact_params, redact_text
+        secret = "hunter2-Sup3rSecret"
+        safe = redact_params({"op": "run", "params": '{"password": "%s", "user": "bob"}' % secret})
+        assert secret not in json.dumps(safe) and '"user": "bob"' in safe["params"]
+        assert secret not in redact_text('{"api_key":"%s"' % secret)      # malformed JSON too
+        assert redact_text('plain "text": "kept"') == 'plain "text": "kept"'
+
     def test_mask_regions_paints_password_fields(self):
         from PIL import Image
 

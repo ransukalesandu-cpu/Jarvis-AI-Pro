@@ -39,10 +39,17 @@ def is_password_target(params: Mapping[str, Any] | None) -> bool:
     return False
 
 
+#: a secret-named key inside JSON-looking text, e.g. a tool argument that arrives as a
+#: JSON string: '{"password": "..."}' -> '{"password": "[REDACTED]"}'
+_JSON_SECRET = re.compile(r'("[^"\\]{0,40}?(?:' + "|".join(SECRET_KEYS) + r')[^"\\]{0,40}?"\s*:\s*)'
+                          r'("(?:[^"\\]|\\.)*"|[^\s,}\]]+)', re.I)
+
+
 def redact_text(text: Any, limit: int = 2000) -> str:
     value = str(text if text is not None else "")
     for pattern in _EXTRA_PATTERNS:
         value = pattern.sub("[REDACTED]", value)
+    value = _JSON_SECRET.sub(lambda m: m.group(1) + '"[REDACTED]"', value)
     try:
         from jarvis.agent.store import redact
         return redact(value, limit)

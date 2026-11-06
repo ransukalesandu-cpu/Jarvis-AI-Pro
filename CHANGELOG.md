@@ -7,6 +7,10 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Computer Control — Project 5: workflows** (`jarvis/computer_control/workflows/`). `cc_workflow`
+  saves a verified task (owner approval), versions it, validates before every run, replays with
+  verification, and trusts it only after 3 consecutive verified runs; passwords become run-time
+  parameters; metadata mirrored to Supabase.
 - **Computer Control — Project 4: visual understanding** (`jarvis/computer_control/visual/`).
   `cc_screen`: on-demand, hybrid locate (accessibility → page element → local OCR → hosted Gemini
   vision with password fields painted out), safest-path click, describe, read, verify.

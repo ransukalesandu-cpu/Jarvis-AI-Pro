@@ -118,7 +118,7 @@ def heuristic_steps(objective: str) -> Optional[list[dict]]:
 
 
 #: tools a plan may not call (a task inside a task would recurse)
-NOT_PLANNABLE = frozenset({"cc_task"})
+NOT_PLANNABLE = frozenset({"cc_task", "cc_workflow"})
 
 
 def plannable(specs: SpecRegistry) -> list[str]:

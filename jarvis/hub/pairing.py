@@ -47,8 +47,9 @@ class TokenInfo:
 
 
 class TokenStore:
-    def __init__(self, path: Path, *, pairing_minutes: float = 15.0):
+    def __init__(self, path: Path, *, pairing_minutes: float = 15.0, roles: tuple[str, ...] = ROLES):
         self.path = Path(path)
+        self.roles = tuple(roles)
         self.pairing_seconds = pairing_minutes * 60
         self._lock = threading.Lock()
         self._codes: dict[str, PairingCode] = {}
@@ -77,8 +78,8 @@ class TokenStore:
 
     # ── pairing ───────────────────────────────────────────────────────────────
     def create_code(self, device: str, role: str = "client") -> PairingCode:
-        if role not in ROLES:
-            raise ValueError(f"role must be one of {ROLES}")
+        if role not in self.roles:
+            raise ValueError(f"role must be one of {self.roles}")
         code = "-".join(secrets.token_hex(2).upper() for _ in range(3))   # e.g. 3FA1-09BC-77DE
         pc = PairingCode(code, device, role, time.time() + self.pairing_seconds)
         with self._lock:

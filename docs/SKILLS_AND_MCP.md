@@ -47,6 +47,9 @@ A node is just an MCP server reachable over HTTP. In `mcp_servers.json`:
 - The token is read from the environment variable named in `bearer_env` (never stored in the file).
 - Tools appear like any other MCP tool (`mcp` action); a call is confirmed unless the tool is read-only.
 - Verified against a real streamable-HTTP server on loopback. Not verified over the internet or on Windows.
+- `"role": "worker"` marks a **JARVIS worker node** (`python -m jarvis.node`). Workers are never listed or
+  callable through the generic `mcp` tool; JARVIS reaches them only through `core/nodes` (placement, job
+  tracking, cancel). A worker entry must have `bearer_env`. See `docs/architecture/MULTI_DEVICE.md`.
 
 ## Self-check
 `self_check` (read-only) reports voice reconnect/drop counts (`core/live_health.py`), unfinished autonomous

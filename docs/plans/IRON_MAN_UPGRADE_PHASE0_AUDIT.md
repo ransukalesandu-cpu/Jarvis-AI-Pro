@@ -152,6 +152,12 @@ Complexity: S < 300 LOC, M < 1k, L < 3k, XL ≥ 3k (including tests).
 
 ### Phase 1 — Multi-device foundation (L)
 
+> **Status:** implemented on `claude/magical-maxwell-4k08ak` — see `docs/architecture/MULTI_DEVICE.md`.
+> Differences from the plan below: the node also has a CLI `token`/`rotate`/`revoke` (hash-only, effective
+> on the next request); a laptop fallback is supported by the router but not wired to any job type yet
+> (none can run locally in Phase 1); job processes are limited but not network-isolated (required before
+> Phase 3 engineering jobs).
+
 New — dedicated node (`jarvis/node/`):
 
 | File | Purpose |
@@ -287,13 +293,17 @@ numbers are claimed from this sandbox.
 
 These numbers are the "before" for the Phase 1 benchmark claim.
 
-## 8. Owner decisions needed
+## 8. Owner decisions (answered 2026-11-09)
 
-1. **Option A or B** (§4). Recommendation: B.
-2. **Dedicated device hardware and OS** (CPU architecture, RAM, Linux distribution or Windows).
-   This decides whether CadQuery/OCP and OpenModelica wheels/packages exist for it.
-3. **Phone approvals**: view-only (recommended for Phase 2) or approve with PIN re-entry.
-4. **Bihansa in the web hologram**: should the R3F scene render Bihansa, or does Bihansa stay in
-   the native HUD?
-5. **Laptop fallback when the node is offline**: never, or ask each time (recommended: ask, and
-   only for jobs that fit the laptop budget; engineering engines never run on the laptop).
+1. **Architecture: Option B.** Desktop mode stays on the laptop; the dedicated device runs a
+   headless worker node.
+2. **Dedicated device hardware: not decided yet.** The node is built hardware-agnostic (Linux,
+   Windows or macOS; x86 or ARM). Engineering engines are optional and detected at run time; their
+   install is verified on the real device when it exists.
+3. **Phone approvals: allowed, with PIN re-entry** on an owner-verified dashboard session
+   (Phase 2). Still subject to Privacy Lock, rate limits and the existing approval tiers.
+4. **Bihansa: remove from the whole system.** Done as its own focused PR (≈30 source files,
+   ≈400 references across the legacy HUD, web UI contract, frontend, settings and tests), not
+   mixed into a feature phase. This supersedes the directive's "preserve Bihansa" line.
+5. **Node offline: ask the owner each time** before any laptop fallback, and only for jobs that
+   fit the laptop budget. Engineering engines never run on the laptop.

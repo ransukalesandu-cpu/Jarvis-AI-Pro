@@ -7,6 +7,19 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Iron Man upgrade — Phase 1: dedicated worker node** (`jarvis/node/`, `jarvis/core/nodes/`,
+  `docs/architecture/MULTI_DEVICE.md`). `python -m jarvis.node serve` runs a headless MCP worker on the
+  dedicated device: versioned closed protocol, durable ledger with idempotent submit, leases (stale
+  results rejected), restart recovery (idempotent jobs re-queued once, others marked interrupted),
+  deadlines, per-device scoping, limited child processes. Tokens issued/rotated/revoked with
+  `python -m jarvis.node token|rotate|revoke` (hash-only storage, revocation effective immediately);
+  private addresses only, TLS off loopback. Laptop side: heartbeat registry (`node_online`/`node_offline`
+  hooks), resource-aware router (laptop-only and sensitive work stay home; engineering never falls back
+  to the laptop), remote jobs shown as normal background jobs with "waiting for node", cancel propagation
+  and no duplicates after lost replies or restarts. Voice tools `node_status` and `node_test`; web UI
+  "Worker Nodes" window (`nodes.updated`); owner-only read-only phone view (`GET /api/nodes` and a
+  header pill). Worker entries in `mcp_servers.json` (`"role": "worker"`) are hidden from the generic
+  `mcp` tool. No new laptop or frontend dependencies; `jarvis/requirements-node.txt` for the device.
 - **Iron Man upgrade — Phase 0 audit** (`docs/plans/IRON_MAN_UPGRADE_PHASE0_AUDIT.md`, docs only):
   gap tables for proactive intelligence, holographic 3D, engineering lab and multi-device; dependency
   decisions; a file-by-file plan for Phases 1–4; test baseline; owner decisions needed.

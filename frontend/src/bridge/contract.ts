@@ -14,6 +14,10 @@ export interface Battery { percent: number; charging: boolean }
 export const JOB_STATES = ['running', 'done', 'failed', 'cancelled'] as const;
 export type JobState = (typeof JOB_STATES)[number];
 export interface JobRow { id: string; name: string; status: JobState; startedAt: number; finishedAt: number | null }
+export const NODE_STATES = ['unknown', 'online', 'degraded', 'offline', 'incompatible', 'unconfigured'] as const;
+export type NodeState = (typeof NODE_STATES)[number];
+/** A worker node as Python reports it: name, status and coarse load only (no address, token or error text). */
+export interface NodeRow { name: string; status: NodeState; cpu: number | null; ramFreeMb: number | null; running: number | null; queued: number | null; lastOkAt: number | null }
 export interface NewsItem { title: string; source: string; link: boolean }
 export interface Net { upKBps: number; downKBps: number }
 
@@ -26,6 +30,7 @@ export type HostEvent =
   | { type: 'ui.persona'; persona: Persona }
   | { type: 'ui.perf'; tier: PerfTier }
   | { type: 'jobs.updated'; jobs: JobRow[] }
+  | { type: 'nodes.updated'; nodes: NodeRow[] }
   | { type: 'news.items'; heading: string; items: NewsItem[] }
   | { type: 'workspace.list'; names: string[] }
   | { type: 'workspace.loaded'; name: string; layout: Layout | null }
@@ -106,6 +111,17 @@ export function parseHostEvent(raw: unknown): HostEvent | null {
         jobs.push({ id: j.id, name: j.name, status: j.status as JobState, startedAt: j.startedAt as number, finishedAt: j.finishedAt as number | null });
       }
       return { type: m.type, jobs };
+    }
+    case 'nodes.updated': {
+      if (!Array.isArray(m.nodes) || m.nodes.length > 8) return null;
+      const nodes: NodeRow[] = [];
+      const opt = (v: unknown, hi: number): v is number | null => v === null || num(v, 0, hi);
+      for (const n of m.nodes as Record<string, unknown>[]) {
+        if (!isObj(n) || Object.keys(n).length !== 7 || !str(n.name, 32) || !(NODE_STATES as readonly unknown[]).includes(n.status)) return null;
+        if (!opt(n.cpu, 100) || !opt(n.ramFreeMb, 16_777_216) || !opt(n.running, 10_000) || !opt(n.queued, 10_000) || !opt(n.lastOkAt, 4e12)) return null;
+        nodes.push({ name: n.name, status: n.status as NodeState, cpu: n.cpu, ramFreeMb: n.ramFreeMb, running: n.running, queued: n.queued, lastOkAt: n.lastOkAt });
+      }
+      return { type: m.type, nodes };
     }
     case 'news.items': {
       if (!str(m.heading, 80) && m.heading !== '') return null;

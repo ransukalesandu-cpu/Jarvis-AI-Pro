@@ -142,6 +142,11 @@ class WebUIHost(QWidget):
                 for r in list(rows)[:20]]
         self.bridge.publish("jobs.updated", jobs=jobs)
 
+    def set_nodes(self, rows) -> None:
+        nodes = [{"name": r[0], "status": r[1], "cpu": r[2], "ramFreeMb": r[3], "running": r[4], "queued": r[5],
+                  "lastOkAt": int(r[6] * 1000) if r[6] else None} for r in list(rows)[:8]]
+        self.bridge.publish("nodes.updated", nodes=nodes)
+
     def set_perf_tier(self, tier: str) -> None:
         self.bridge.publish("ui.perf", tier=tier)
 

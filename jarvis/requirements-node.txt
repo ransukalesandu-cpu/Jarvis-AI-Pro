@@ -1,0 +1,10 @@
+# Minimal dependencies for the JARVIS worker node (python -m jarvis.node serve) on the
+# dedicated always-on device. The laptop keeps using requirements.txt; nothing here is
+# needed on the laptop. Engineering engines (Phase 3) will get their own optional file.
+#
+#     python -m pip install -r jarvis/requirements-node.txt
+#
+# mcp 2.x: the node uses mcp.server.mcpserver (MCPServer) and streamable HTTP.
+mcp>=2.3,<3
+uvicorn>=0.27,<1
+psutil>=5.9,<8

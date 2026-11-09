@@ -19,6 +19,7 @@ MAX_REQUEST_CHARS = 16384          # upper bound; each request kind has a tighte
 ASSISTANT_STATES = frozenset({"idle", "sleeping", "listening", "thinking", "searching", "executing", "speaking", "error"})
 PERSONAS = frozenset({"jarvis", "bihansa"})
 JOB_STATES = frozenset({"running", "done", "failed", "cancelled"})
+NODE_STATES = frozenset({"unknown", "online", "degraded", "offline", "incompatible", "unconfigured"})
 PERF_TIERS = frozenset({"full", "balanced", "lite"})
 
 
@@ -71,6 +72,14 @@ _EVENTS = {
                              and isinstance(j["name"], str) and 0 < len(j["name"]) <= 80
                              and j["status"] in JOB_STATES and _num(j["startedAt"], 0, 4e12)
                              and (j["finishedAt"] is None or _num(j["finishedAt"], 0, 4e12)) for j in m["jobs"])),
+    "nodes.updated": ({"nodes"}, lambda m: isinstance(m["nodes"], list) and len(m["nodes"]) <= 8
+                      and all(isinstance(n, dict) and set(n) == {"name", "status", "cpu", "ramFreeMb", "running", "queued", "lastOkAt"}
+                              and isinstance(n["name"], str) and 0 < len(n["name"]) <= 32 and n["status"] in NODE_STATES
+                              and (n["cpu"] is None or _num(n["cpu"], 0, 100))
+                              and (n["ramFreeMb"] is None or _num(n["ramFreeMb"], 0, 16_777_216))
+                              and (n["running"] is None or _num(n["running"], 0, 10_000))
+                              and (n["queued"] is None or _num(n["queued"], 0, 10_000))
+                              and (n["lastOkAt"] is None or _num(n["lastOkAt"], 0, 4e12)) for n in m["nodes"])),
     "host.hello": ({"version"}, lambda m: _num(m["version"], 0, 1000)),
 }
 

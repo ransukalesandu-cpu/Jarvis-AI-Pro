@@ -209,6 +209,13 @@ Try: *"Open YouTube on the tablet"* · *"What is on my phone screen?"* · *"Type
 2. Re-pair the devices with the new pairing codes. On the laptop, set `"hub_url": "wss://new-host.tail1234.ts.net:8766"` and `"relay_port": 8765` in `agent.json`, so the USB tablet keeps using `localhost` through the agent.
 Nothing else changes: every hub setting comes from environment variables or `JARVIS_HUB_CONFIG`.
 
+### Dedicated worker node (desktop mode)
+Separate from hub mode: keep desktop mode on the laptop and let an always-on device run background
+jobs. On that device run `python -m jarvis.node token laptop` and `scripts/start_node.sh`; on the
+laptop set the token in a user environment variable and add the node to `mcp_servers.json` with
+`"role": "worker"`. Then say *"node status"* or *"test the node"*, or open **Worker Nodes** in the web
+UI. Full setup, security model and measurements: [`docs/architecture/MULTI_DEVICE.md`](docs/architecture/MULTI_DEVICE.md).
+
 ## 🤖 Autonomous Task Agent, Screen Vision and Computer Use
 
 JARVIS can take a single instruction such as *“inspect my project, fix the

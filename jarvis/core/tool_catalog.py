@@ -31,8 +31,9 @@ _STOPWORDS = frozenset({
 })
 _STEM = 5            # compare words by their first 5 letters ("searching" ~ "search")
 
-# Tools a plan must never call: starting a task from inside a task would recurse.
-PLANNER_EXCLUDED = frozenset({"autonomous_task"})
+# Tools a plan must never call: starting a task from inside a task would recurse, and
+# node jobs are placed by core/nodes, not by a plan step (Phase 2 wires tasks to nodes).
+PLANNER_EXCLUDED = frozenset({"autonomous_task", "node_test"})
 
 
 @dataclass(frozen=True)

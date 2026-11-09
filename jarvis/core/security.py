@@ -269,6 +269,10 @@ _TIERS: dict[str, str] = {
     # confirmation inside actions/self_heal.py. Keep provenance/rate controls.
     "self_heal":        TIER_DANGEROUS,
     "self_check":       TIER_SAFE,
+    # Worker node (actions/node_jobs.py): status is read-only and carries no personal
+    # data; a test job sends work to another machine, so the owner must be verified.
+    "node_status":      TIER_SAFE,
+    "node_test":        TIER_SENSITIVE,
     "security_settings": TIER_DANGEROUS,   # owner-only Security ON/OFF
     "guest_history":    TIER_DANGEROUS,   # owner-only; can delete audit records
     # PC tools (actions/pc_tools.py). They used to fall through to the SENSITIVE

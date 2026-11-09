@@ -141,6 +141,7 @@
     <div class="logo"><em>J</em>ARVIS</div>
     <div class="pill" id="pill"><span class="dot"></span><span id="st">Connecting</span></div>
     <div class="enc-badge" id="enc">AES-256</div>
+    <div class="pill" id="nodes" hidden><span class="dot"></span><span id="nodes-txt"></span></div>
     <div class="spacer"></div>
     <div class="url">__IP__:__PORT__</div>
   </header>
@@ -771,6 +772,35 @@
       for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
       _playPhonePcm(bytes.buffer);
     };
+
+    // ── Worker node status (read-only; /api/nodes sends status and load only) ──
+    const nodesPill = document.getElementById('nodes'), nodesTxt = document.getElementById('nodes-txt');
+    const NODE_LABEL = {unknown:'Checking', online:'Online', degraded:'Low resources', offline:'Offline',
+                        incompatible:'Needs update', unconfigured:'Not set up'};
+    async function _refreshNodes() {
+      if (document.hidden || !_ownerVerified || _privacyLockActive) return;
+      try {
+        const r = await _authFetch('/api/nodes', {cache: 'no-store'});
+        if (!r.ok) { nodesPill.hidden = true; return; }
+        const data = await r.json();
+        const nodes = Array.isArray(data.nodes) ? data.nodes.slice(0, 4) : [];
+        if (!nodes.length) { nodesPill.hidden = true; return; }
+        const up = nodes.some(n => n.status === 'online' || n.status === 'degraded');
+        nodesPill.className = up ? 'pill on' : 'pill';
+        nodesTxt.textContent = nodes.map(n => {
+          const busy = typeof n.running_jobs === 'number' && n.running_jobs > 0 ? ` · ${n.running_jobs} running` : '';
+          return `${String(n.name).slice(0, 32)} · ${NODE_LABEL[n.status] || 'Unknown'}${busy}`;
+        }).join('  |  ');
+        const jobs = Array.isArray(data.jobs) ? data.jobs.slice(0, 5) : [];
+        nodesPill.title = jobs.length ? jobs.map(j => {
+          const pct = typeof j.progress === 'number' ? ` ${Math.round(j.progress * 100)}%` : '';
+          return `${String(j.kind).slice(0, 40)} on ${String(j.node).slice(0, 32)}: ${String(j.state).slice(0, 20)}${pct}`;
+        }).join('\n') : 'No remote jobs yet';
+        nodesPill.hidden = false;
+      } catch (_) { /* keep the last known state; the next poll retries */ }
+    }
+    setInterval(_refreshNodes, 10000);
+    document.addEventListener('visibilitychange', _refreshNodes);
   </script>
 </body>
 </html>

@@ -70,6 +70,14 @@ def attach(window):
         host._jobs_feed = JobsFeed(mgr)
     except (ImportError, RuntimeError):
         host.bridge.jobs = None
+    try:
+        from jarvis.core.nodes.registry import get_registry
+        from .nodes_feed import NodesFeed
+        registry = get_registry()
+        if registry.names():                     # no worker configured: nothing to show, nothing to run
+            host._nodes_feed = NodesFeed(registry)
+    except ImportError:
+        pass
     host.setGeometry(cw.rect())
     cw.installEventFilter(_Fit(cw, host))
     host.show()

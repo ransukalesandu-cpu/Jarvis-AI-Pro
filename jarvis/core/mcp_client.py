@@ -40,6 +40,9 @@ _ENV_KEEP = ("PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP"
              "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "LANG")
 
 
+WORKER_ROLES = ("", "worker")
+
+
 class McpError(RuntimeError):
     """A server could not be reached or a call failed."""
 
@@ -55,6 +58,9 @@ class ServerConfig:
     # Remote "device node": an MCP server reached over streamable HTTP instead of stdio.
     url: str = ""
     bearer_env: str = ""      # name of an environment variable holding the token (never the token)
+    # "worker" marks a JARVIS worker node (jarvis/node). Workers are used only through
+    # core/nodes (routing, policy, job tracking) and are never exposed as generic MCP tools.
+    role: str = ""
 
 
 @dataclass
@@ -108,8 +114,13 @@ def load_config(path: Optional[Path] = None) -> tuple[dict[str, ServerConfig], d
                 bearer = str(row.get("bearer_env") or "").strip()
                 if bearer and not re.match(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$", bearer):
                     raise ValueError("bearer_env must be an environment variable name")
+                role = str(row.get("role") or "").strip().lower()
+                if role not in WORKER_ROLES:
+                    raise ValueError("role must be omitted or \"worker\"")
+                if role == "worker" and not bearer:
+                    raise ValueError("a worker node needs bearer_env (the node refuses unpaired devices)")
                 servers[name] = ServerConfig(name, "", url=url, bearer_env=bearer,
-                                             enabled=bool(row.get("enabled", True)))
+                                             enabled=bool(row.get("enabled", True)), role=role)
                 continue
             if not str(row.get("command") or "").strip():
                 raise ValueError("a 'command' (or a 'url' for a remote node) is required")
@@ -220,6 +231,8 @@ class McpManager:
     # ── configuration ────────────────────────────────────────────────────────
     def reload(self) -> None:
         servers, problems = load_config(self._path)
+        # Worker nodes are reached only through core/nodes, never as generic MCP tools.
+        servers = {n: c for n, c in servers.items() if c.role != "worker"}
         with self._lock:
             self._problems = problems
             for name in list(self._servers):

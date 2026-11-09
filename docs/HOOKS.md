@@ -2,7 +2,9 @@
 
 JARVIS can run your own code when something happens. Events: `startup`, `shutdown`,
 `session_start`, `session_end`, `trigger_fired`, `trigger_failed`, `task_finished`,
-`tool_error`, `privacy_lock`. Owner rules (`core/events.py`) can match the same events.
+`tool_error`, `privacy_lock`, `node_online`, `node_offline`, `node_job_finished` (worker nodes,
+see `docs/architecture/MULTI_DEVICE.md`; payloads carry the node name, never a token).
+Owner rules (`core/events.py`) can match the same events.
 
 ## Script hooks (you create them)
 Put a file in `<user data>/hooks/<event>/` — on Windows `%LOCALAPPDATA%\jarvis\hooks\task_finished\notify.ps1`.

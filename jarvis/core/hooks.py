@@ -1,7 +1,8 @@
 """Lifecycle hooks: run owner code when something happens in JARVIS.
 
 Events: startup, shutdown, session_start, session_end, trigger_fired,
-trigger_failed, task_finished, tool_error, privacy_lock.
+trigger_failed, task_finished, tool_error, privacy_lock, node_online,
+node_offline, node_job_finished (worker nodes, core/nodes).
 
 Two kinds of hook, both fire on :func:`emit`:
 
@@ -40,7 +41,8 @@ from typing import Any, Callable, Optional
 from jarvis.core import failsoft
 
 EVENTS = ("startup", "shutdown", "session_start", "session_end", "trigger_fired",
-          "trigger_failed", "task_finished", "tool_error", "privacy_lock")
+          "trigger_failed", "task_finished", "tool_error", "privacy_lock",
+          "node_online", "node_offline", "node_job_finished")
 PY_TIMEOUT = 5.0
 SCRIPT_TIMEOUT = 30.0
 OUTPUT_LIMIT = 64 * 1024

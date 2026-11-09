@@ -716,6 +716,33 @@ class DashboardServer:
             state["handoff"] = bool(active_phone and state.get("phoneRouteActive", False))
             return JSONResponse(state, headers={"Cache-Control": "no-store"})
 
+        @app.get("/api/nodes")
+        async def nodes_status(req: Request):
+            """Read-only worker-node status and recent remote jobs for the phone (owner only).
+
+            Status and coarse load only: no node address, token, environment-variable
+            name, error text or job result is sent. Nothing here can submit or cancel work.
+            """
+            if not _owner_auth(req):
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            manager = _get_auth_manager_for_dashboard()
+            if manager and manager.is_privacy_lock_active():
+                return JSONResponse({"error": "Privacy Lock is active"}, status_code=423)
+            try:
+                from jarvis.core.nodes.jobs import get_remote_jobs
+                from jarvis.core.nodes.registry import get_registry
+                registry = get_registry()
+                keep = ("name", "status", "last_ok", "cpu_percent", "ram_available_mb", "running_jobs", "queued_jobs")
+                nodes = [{k: row[k] for k in keep} for row in registry.snapshot()]
+                jobs = []
+                if nodes:
+                    jobs = [{k: v for k, v in s.public().items() if k not in ("message", "error")}
+                            for s in get_remote_jobs().list(10)]
+            except Exception:
+                failsoft.suppress("dashboard.server:nodes_status")
+                return JSONResponse({"error": "Node status is unavailable"}, status_code=503)
+            return JSONResponse({"nodes": nodes, "jobs": jobs}, headers={"Cache-Control": "no-store"})
+
         @app.post("/api/revoke-devices")
         async def revoke_devices(req: Request):
             """Invalidate all persistent device tokens (admin action)."""

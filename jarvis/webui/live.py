@@ -34,6 +34,7 @@ class LiveLink:
             self._bus.subscribe(ui_state.PERF_TIER, self._on_bus),
             self._bus.subscribe(ui_state.NEWS, self._on_bus),
             self._bus.subscribe(ui_state.JOBS, self._on_bus),
+            self._bus.subscribe(ui_state.NODES, self._on_bus),
             self._bus.subscribe(ui_state.MUTED, self._on_bus),
             self._bus.subscribe(ui_state.PROVIDER, self._on_bus),
         ]
@@ -41,7 +42,7 @@ class LiveLink:
 
     def push_snapshot(self) -> None:
         self._push_provider()
-        for key in (ui_state.ASSISTANT, ui_state.PERSONA, ui_state.PERF_TIER, ui_state.NEWS, ui_state.JOBS, ui_state.MUTED):
+        for key in (ui_state.ASSISTANT, ui_state.PERSONA, ui_state.PERF_TIER, ui_state.NEWS, ui_state.JOBS, ui_state.NODES, ui_state.MUTED):
             val = self._bus.get(key)
             if val is not None:
                 self._forward(key, val, force=True)
@@ -78,6 +79,9 @@ class LiveLink:
         elif key == ui_state.JOBS:
             if isinstance(value, tuple):
                 self._host.set_jobs(value)
+        elif key == ui_state.NODES:
+            if isinstance(value, tuple):
+                self._host.set_nodes(value)
         elif key == ui_state.NEWS:
             if isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], list):
                 self._host.set_news(value[0], value[1])

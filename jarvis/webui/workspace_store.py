@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-WINDOW_KINDS = frozenset({"monitor", "models", "activity", "log", "timer", "bento", "news", "jobs"})
+WINDOW_KINDS = frozenset({"monitor", "models", "activity", "log", "timer", "bento", "news", "jobs", "nodes"})
 WINDOW_STATES = frozenset({"normal", "minimized", "maximized"})
 PAGES = frozenset({"home", "chat", "activity", "models", "research", "reminders", "apps", "files", "memory", "automation", "monitor", "security"})
 MAX_WINDOWS = 12

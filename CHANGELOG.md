@@ -7,6 +7,8 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Computer Control — Project 8: benchmarks** — `python -m jarvis.computer_control.bench suite`:
+  13 synthetic, non-destructive scenarios with state checkers and the master prompt's metrics.
 - **Computer Control — Project 7: registry** — `cc_file` (Recycle-Bin deletes, no silent overwrite)
   and an MCP/JSON-Schema adapter for listing the 11 computer-control tools (not served over MCP).
 - **Computer Control — Project 5: workflows** (`jarvis/computer_control/workflows/`). `cc_workflow`

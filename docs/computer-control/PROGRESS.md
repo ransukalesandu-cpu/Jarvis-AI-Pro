@@ -12,8 +12,8 @@ REPLACED, NOT APPLICABLE.
 | 4 | Visual understanding | MERGED | [#281](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/281) | dbb05b9 |
 | 5 | Workflow learning | MERGED | [#282](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/282) | 569d831 |
 | 6 | Fallback input | MERGED (folded into Project 1) | see Project 1 | — |
-| 7 | MCP / Tool Registry | TESTING | (this PR) | — |
-| 8 | Benchmarks | NOT STARTED | — | — |
+| 7 | MCP / Tool Registry | MERGED | [#283](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/283) | 6b05f7d |
+| 8 | Benchmarks | TESTING | (this PR) | — |
 
 ## Phase 0 — Foundation
 
@@ -92,3 +92,34 @@ REPLACED, NOT APPLICABLE.
 * **Completed:** all 11 tools verified in the real action registry and Tool Catalog, MCP descriptor /
   JSON-Schema adapter (listing only), `cc_file` with Recycle-Bin deletes and no silent overwrite.
 * **Tests:** 10 registry/file tests. MCP server exposure: NOT APPLICABLE (security; owner decision).
+
+## Project 8 — Benchmarks
+
+* **Completed:** `bench/suite.py` — 13 synthetic, non-destructive scenarios with state checkers;
+  `python -m jarvis.computer_control.bench suite`.
+* **Tests:** suite test (all scenarios pass, all metrics reported).
+
+## Final acceptance criteria (master prompt §15)
+
+| # | criterion | evidence | status |
+|---|---|---|---|
+| 1 | Unified Computer Control Engine | one runner pipeline for 11 tools (`computer_control/runner.py`, `contract.py`) | done |
+| 2 | Discovers and launches supported apps | `cc_app` list_installed/list_running/launch; real Notepad launch verified on windows-latest | done (owner's own apps pending) |
+| 3 | Controls Windows application interfaces | UIA set_text read-back, Win32 menu save, move/resize/min/restore/close verified on windows-latest | done |
+| 4 | Operates supported browsers | `cc_browser` on fake browser (22 tests); Playwright on installed Edge/Chrome | code done, real browser pending owner |
+| 5 | Understands screen content on demand | `cc_screen` hybrid order, 0 captures when accessibility/DOM suffice (tests) | done (hosted vision pending owner key) |
+| 6 | Executes multi-step tasks | Host Agent + `cc_task`; suite scenarios 1–6 | done |
+| 7 | Coordinates multiple apps | multi_app scenario: browser + desktop agents in one task | done |
+| 8 | Recovers from appropriate failures | bounded recovery (recovery_rate 1.0 in suite), dialogs reported not answered | done |
+| 9 | Verifies important results | per-step verification; verification scenario shows unmet expectation = failure | done |
+| 10 | Records and reuses validated workflows | `cc_workflow` with approval, versions, trust after 3 verified runs | done |
+| 11 | All tools in the existing Tool Registry | 11 tools loaded from `jarvis/actions`, in the Tool Catalog when enabled | done |
+| 12 | Owner authentication preserved | native approval via AuthManager/PIN, Privacy Lock, fail-closed (tests) | done (dialog pending owner) |
+| 13 | UI never freezes | all work on worker threads / jobs; approval marshalled to Qt via signal | done by design (owner check pending) |
+| 14 | Cancellation and emergency stop | stop latency p50 0.58 ms (Windows), cancellation scenario < 1 s | done |
+| 15 | Security and prompt-injection tests pass | 45 injection tests + security/injection scenarios | done |
+| 16 | Existing functionality intact | full suite green on every PR (Linux + windows-ui-smoke) | done |
+| 17 | RAM/CPU vs baseline acceptable for 16 GB | all 11 tools +7.3 MB / 0.05 s import, no threads, 0 % idle CPU (Linux); UIA +25 MB lazy (Windows runner, 16 GB) | done (live app pending owner) |
+| 18 | Documentation complete | `docs/computer-control/` 7 documents | done |
+| 19 | All applicable projects merged | see table above | see table |
+| 20 | Final evidence and limitations | TESTING_REPORT "pending manual validation" sections | done |

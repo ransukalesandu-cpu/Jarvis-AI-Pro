@@ -75,3 +75,57 @@ Filled in as each project merges (same commands, same host).
 |---|---|---|---|
 | Phase 0 | +0.5 MB Linux / +0.9 MB Windows (app modules) | 0.0 % | lazy pool, no import-time threads |
 | Project 1 | +25.1 MB when the UIA backend is first used (Windows) | 0.0 % | pywinauto/comtypes lazy-imported |
+| Project 2 | +4.2 MB (orchestrator import, Linux) | 0.0 % | planner calls the cloud model only when the local planner cannot |
+| Project 3 | +4.2 MB (controller import, Linux); browser itself not measured | 0.0 % | Playwright and the browser start only on the first `cc_browser` call; pending manual validation by the owner |
+| Project 4 | +3.7 MB (perception import, Linux) | 0.0 % | no capture, OCR or vision until asked; no local model |
+| Project 5 | +5.2 MB (workflows import, Linux) | 0.0 % | store read on demand |
+| Project 7 | +3.6 MB (files + MCP adapter import, Linux) | 0.0 % | adapter is listing/export only |
+| Project 8 | +6.9 MB (bench suite import, Linux) | 0.0 % | only loaded by `python -m jarvis.computer_control.bench` |
+
+## Projects 2–8 import cost (Linux dev container, 2026-11-09)
+
+Each row is measured in a fresh interpreter (median of 3) after importing the
+`jarvis.computer_control` package root. The rows overlap: each one includes the
+shared contract/policy/runner modules. Host: Linux x86_64, 4 vCPU, 16 GB.
+
+| subsystem | RSS before (MB) | RSS after (MB) | delta (MB) | import (s) | idle CPU % | threads |
+|---|---|---|---|---|---|---|
+| engine (tools registry, all 11 specs built) | 15.3 | 22.6 | +7.3 | 0.049 | 0.0 | 1 |
+| orchestrator (plan/planner/host/jobs) | 15.3 | 19.5 | +4.2 | 0.027 | 0.0 | 1 |
+| browser controller (Playwright not started) | 15.4 | 19.6 | +4.2 | 0.025 | 0.0 | 1 |
+| visual perception (no capture) | 15.4 | 19.1 | +3.7 | 0.023 | 0.0 | 1 |
+| workflows | 15.3 | 20.5 | +5.2 | 0.031 | 0.0 | 1 |
+| files + MCP adapter | 15.3 | 18.9 | +3.6 | 0.021 | 0.0 | 1 |
+| bench suite | 15.3 | 22.2 | +6.9 | 0.054 | 0.0 | 1 |
+
+The whole engine (all 11 tools) adds **+7.3 MB and 0.05 s** to the process, starts
+**no thread** and uses **no CPU while idle**. A real browser, UIA on a large window,
+OCR and hosted vision cost more when they are used; those are pending manual
+validation by the owner on Windows.
+
+## Benchmark suite (Project 8)
+
+`python -m jarvis.computer_control.bench suite`: 13 synthetic, non-destructive
+scenarios on the fake desktop and fake browser, each checked against the resulting
+state, not against what the agent reports. Run on the Linux dev container, 2026-11-09:
+
+| metric | value |
+|---|---|
+| scenarios | 13 (13 pass) |
+| task_completion_rate | 1.0 |
+| verified_success_rate | 0.429 (see below) |
+| failure_rate | 0.0 |
+| recovery_rate | 1.0 (1 of 1) |
+| avg_execution_s | 0.03 |
+| tool_executions | 47 |
+| cloud_requests | 0 |
+| RSS start / peak / end (MB) | 22.3 / 39.4 / 39.4 |
+| cancellation latency | 0.6 ms |
+
+`verified_success_rate` is strict: among the 7 multi-step tasks that succeeded,
+the share in which **every** step was independently verified. The other 4 each
+contain a step that is unverified by design: typing through the keyboard,
+password entry (never read back), or a dialog that is reported and not
+auto-answered. These scenarios measure the engine's control logic on fakes. They
+are not OSWorld/WindowsAgentArena results on real applications, which would need
+local VMs (not used, owner decision 2).

@@ -175,3 +175,12 @@ All 11 computer-control tools are ToolSpecs in the existing action registry
 used for listing/export only — JARVIS does **not** serve these tools over MCP (NOT APPLICABLE
 until the owner decides; recorded in SECURITY_MODEL.md). Added `cc_file` (files and folders) so
 "organize my project folder" has a verified, policy-checked tool.
+
+## Project 8 — Benchmarks (OSWorld, WindowsAgentArena evaluated)
+
+**Upstream inspected:** xlang-ai/OSWorld (Apache-2.0) and microsoft/WindowsAgentArena (MIT): real
+apps in VMs, tasks with scripted state checkers. Not adopted: VMs/Docker are excluded (owner
+decision 2) and the suites act on real systems. Taken: the **checker** design — each scenario has
+an expected outcome verified against state (files on disk, window list, page URL, approvals
+asked), not against what the agent says. `bench/suite.py` runs 13 scenarios on the fake desktop,
+fake browser and a temporary folder.

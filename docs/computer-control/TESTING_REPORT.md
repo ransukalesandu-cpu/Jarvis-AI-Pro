@@ -114,4 +114,13 @@ Pending owner validation: Supabase metadata sync with the owner's cloud memory c
 
 | suite | file | tests |
 |---|---|---|
-| all 11 tools registered once with the full contract, loaded from the real `jarvis/actions` folder without collisions, in the Tool Catalog only when enabled, MCP descriptors and JSON-Schema conversion, argument validation, no MCP server exposure; `cc_file` folder organisation, no silent overwrite, Recycle-Bin delete with approval, protected paths, file text as data | `jarvis/tests/test_computer_control_registry.py` | 10 |
+| all 11 tools registered once with the full contract, loaded from the real `jarvis/actions` folder without collisions, in the Tool Catalog only when enabled, MCP descriptors and JSON-Schema conversion, argument validation, no MCP server exposure; `cc_file` folder organisation, no silent overwrite, Recycle-Bin delete with approval, protected paths, quoted/variable paths, overwrite enforced in the handler, file text and names as data | `jarvis/tests/test_computer_control_registry.py` | 13 |
+
+## Project 8 — Benchmarks
+
+| suite | file | tests |
+|---|---|---|
+| the 13-scenario suite runs green, reports every metric, makes no cloud request, and gates every risky action | `jarvis/tests/test_computer_control_bench.py` | 1 |
+
+Suite results (13/13 pass, 0 cloud requests, 0.6 ms cancellation latency) and the
+meaning of each metric are in `PERFORMANCE_REPORT.md`.

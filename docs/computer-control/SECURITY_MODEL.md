@@ -186,3 +186,15 @@ destructive automatic retries, secrets in logs or commits.
   approval details, the action log or the audit ledger.
 * Replays go through the same runner (policy, approval, audit, verification) as any task, and
   `cc_workflow` / `cc_task` cannot appear inside a plan.
+
+## 15. Registry / MCP / files (Project 7)
+
+* No MCP server exposes computer-control tools (an external MCP client is not the owner).
+  Tools from external MCP servers JARVIS connects to keep the existing `core/security` gate.
+* `cc_file`: deletes go to the Recycle Bin and are HIGH; no silent overwrite (overwrite → HIGH);
+  protected paths → HIGH; read file text and listed file names are untrusted content.
+* The policy judges a path the way tools resolve it: `protected_path_reason` also checks the
+  quote-stripped, `%VAR%`/`$VAR`-expanded form, so `"%APPDATA%\…"` cannot reach a protected
+  file as a harmless-looking relative path.
+* `cc_file` overwrite is enforced twice: the policy raises it to HIGH, and the handler refuses
+  to replace a file unless the call was really approved HIGH (`ActionContext.level`).

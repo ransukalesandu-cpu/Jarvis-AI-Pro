@@ -92,6 +92,8 @@ def default_registry() -> AgentRegistry:
                           apps=("msedge", "chrome")))
     reg.register(AppAgent("visual", "On-demand screen understanding (accessibility, OCR, hosted vision).",
                           frozenset({"cc_screen"})))
+    reg.register(AppAgent("files", "Files and folders (Recycle Bin deletes, no silent overwrite).",
+                          frozenset({"cc_file"})))
     reg.register(AppAgent("engine", "Engine status and emergency stop.",
                           frozenset({"cc_engine_status", "cc_emergency_stop"})))
     for extra in _EXTRA_AGENTS:

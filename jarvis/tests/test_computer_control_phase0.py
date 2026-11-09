@@ -114,6 +114,14 @@ class TestPolicy:
         assert self.policy.classify("file.read", {"path": str(secret)})[0] is Level.HIGH
         assert self.policy.classify("file.copy", {"src": str(secret), "dst": "/tmp/k"})[0] is Level.HIGH
 
+    def test_quoted_or_variable_paths_are_judged_as_expanded(self, monkeypatch):
+        # cc_file strips quotes and expands variables, so the policy checks that form too
+        monkeypatch.setenv("CC_TEST_JARVIS", str(JARVIS_DIR))
+        for raw in ("$CC_TEST_JARVIS/config/api_keys.json", f'"{JARVIS_DIR / "config" / "api_keys.json"}"'):
+            assert protected_path_reason(raw, write=False), raw
+            assert self.policy.classify("file.read", {"path": raw})[0] is Level.HIGH, raw
+        assert protected_path_reason("$CC_TEST_UNSET_VAR/notes.txt", write=True) == ""
+
     def test_windows_system_dirs_are_protected(self, tmp_path, monkeypatch):
         fake_windows = tmp_path / "Windows"
         monkeypatch.setenv("SYSTEMROOT", str(fake_windows))

@@ -159,3 +159,19 @@ Supabase through the existing `workflow_save` operation (its schema stores title
 exact steps stay local — no Supabase schema change). `workflows/runner.py`: preflight validation
 (params present, tools exist, plan still valid), replay through the Host Agent with verification,
 success/failure tracking. Trusted only after 3 consecutive verified runs; one failure resets it.
+
+## Project 7 — MCP / Tool Registry (mediar-ai/terminator evaluated)
+
+**Upstream inspected:** mediar-ai/terminator (MIT): a Rust UI Automation engine exposed as an
+MCP server (open app, click, type, get tree). Not adopted: a second automation engine and a
+separate process duplicating pywinauto, and an MCP server would let another program drive the PC
+outside JARVIS's owner model.
+
+Taken: one tool per function with JSON Schema input, JSON result and an explicit risk annotation.
+All 11 computer-control tools are ToolSpecs in the existing action registry
+(`actions/computer_control_engine.py`), visible to the Tool Catalog and the planner when enabled.
+`integrations/mcp_adapter.py` converts them to MCP descriptors (`inputSchema`, `outputSchema`,
+`readOnlyHint`/`destructiveHint`, JARVIS risk/timeout/cancellable) and validates arguments; it is
+used for listing/export only — JARVIS does **not** serve these tools over MCP (NOT APPLICABLE
+until the owner decides; recorded in SECURITY_MODEL.md). Added `cc_file` (files and folders) so
+"organize my project folder" has a verified, policy-checked tool.

@@ -203,12 +203,30 @@ def _norm(path: Path) -> str:
 
 
 def protected_path_reason(path: Any, *, write: bool) -> str:
-    """Why ``path`` needs the owner's approval, or '' when it is default-allow."""
+    """Why ``path`` needs the owner's approval, or '' when it is default-allow.
+
+    Tools resolve a path argument more loosely than its raw text (``cc_file``
+    strips quotes and expands ``%VAR%`` / ``$VAR``), so the quote-stripped,
+    variable-expanded form is checked too: the policy must judge the path the
+    handler will actually touch.
+    """
     text = str(path or "").strip()
     if not text:
         return ""
     if "\x00" in text:
         return "the path contains a NUL byte"
+    candidates = [text]
+    expanded = os.path.expandvars(text.strip('"').strip())
+    if expanded and expanded != text:
+        candidates.append(expanded)
+    for candidate in candidates:
+        reason = _protected_one(candidate, write=write)
+        if reason:
+            return reason
+    return ""
+
+
+def _protected_one(text: str, *, write: bool) -> str:
     try:
         from jarvis.core import path_guard
         reason = path_guard.protected_reason(text, write=write)

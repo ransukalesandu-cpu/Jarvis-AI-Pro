@@ -82,6 +82,11 @@ def cmd_device_report() -> int:
     return 0
 
 
+def startup_script(exe: Path) -> str:
+    """Windows Startup-folder script: run the agent from the repository root."""
+    return f'@echo off\r\ncd /d "{_JARVIS.parent}"\r\nstart "" "{exe}" -m jarvis.laptop_agent\r\n'
+
+
 def cmd_install_startup() -> int:
     if os.name != "nt":
         print("Startup entries are only created on Windows; use your OS's autostart on others.")
@@ -90,7 +95,7 @@ def cmd_install_startup() -> int:
     script = folder / "JARVIS laptop agent.cmd"
     pythonw = Path(sys.executable).with_name("pythonw.exe")
     exe = pythonw if pythonw.exists() else Path(sys.executable)
-    script.write_text(f'@echo off\r\ncd /d "{_JARVIS}"\r\nstart "" "{exe}" -m laptop_agent\r\n', encoding="utf-8")
+    script.write_text(startup_script(exe), encoding="utf-8")
     print(f"Created {script}")
     return 0
 

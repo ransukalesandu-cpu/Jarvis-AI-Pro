@@ -148,7 +148,7 @@ Panels and cards provide viewing and navigation without requiring manual confirm
 
 ## 📱 Multi-device setup: laptop, tablet and phone
 
-JARVIS can run as one assistant across three devices. The **hub** (`python -m hub`) owns the Gemini session and every setting; the **laptop agent** (`python -m laptop_agent`) runs the laptop's tools and drives the tablet and phone over ADB; the tablet and phone open the **web client** in Chrome and install it as an app. Desktop mode (`python main.py`) still works exactly as before.
+JARVIS can run as one assistant across three devices. The **hub** (`python -m jarvis.hub`) owns the Gemini session and every setting; the **laptop agent** (`python -m jarvis.laptop_agent`) runs the laptop's tools and drives the tablet and phone over ADB; the tablet and phone open the **web client** in Chrome and install it as an app. Desktop mode (`python main.py`) still works exactly as before. Run the `python -m jarvis.…` commands below from the repository root (the folder that contains `jarvis/` and `scripts/`); the `scripts/start_*` launchers change to it for you and use `.venv` there if it exists.
 
 ```
  tablet (USB, adb reverse) ─┐                  ┌─ laptop agent ── ADB ── tablet / phone
@@ -180,10 +180,9 @@ The hub listens on `localhost:8765` (plain HTTP) and on the LAN/Tailscale addres
 
 ### 4. Pair and start the laptop agent
 ```powershell
-cd JarvisAI
-python -m laptop_agent pair "http://localhost:8765/pair?device=laptop&code=XXXX-XXXX-XXXX"
+python -m jarvis.laptop_agent pair "http://localhost:8765/pair?device=laptop&code=XXXX-XXXX-XXXX"
 scripts\start_agent.cmd
-python -m laptop_agent install-startup     # optional: start the agent with Windows
+python -m jarvis.laptop_agent install-startup     # optional: start the agent with Windows
 ```
 `scripts\start_jarvis_devices.cmd` starts the hub and the agent together. The agent keeps Windows awake while it runs (`"keep_awake": false` in `agent.json` turns that off). When the laptop is off or asleep, JARVIS says laptop, tablet and phone tools are unavailable.
 
@@ -192,10 +191,10 @@ python -m laptop_agent install-startup     # optional: start the agent with Wind
 2. On the tablet: *Settings → About → tap Build number 7 times*, then *Developer options → USB debugging* on. Plug in the USB cable and accept the prompt.
 3. The agent applies `adb reverse tcp:8765 tcp:8765` automatically, so the tablet reaches the hub at `localhost` with or without Wi-Fi.
 4. On the tablet open the tablet's pairing URL with `localhost`: `http://localhost:8765/pair?device=tablet&code=...`. After pairing, Chrome menu → **Install app**.
-5. Read its Android version and RAM: `python -m laptop_agent device-report`.
+5. Read its Android version and RAM: `python -m jarvis.laptop_agent device-report`.
 
 ### 6. Phone: wireless debugging, then install the app
-1. On the phone (Android 11+): *Developer options → Wireless debugging* on → **Pair device with pairing code**. On the laptop: `python -m laptop_agent adb-pair 192.168.1.50:37123 123456` (address and code from the phone's screen).
+1. On the phone (Android 11+): *Developer options → Wireless debugging* on → **Pair device with pairing code**. On the laptop: `python -m jarvis.laptop_agent adb-pair 192.168.1.50:37123 123456` (address and code from the phone's screen).
 2. Put the address shown under *Wireless debugging → IP address & port* into `devices.json` for the phone and restart the hub. The agent reconnects to it automatically while the phone is on the same network. (Away from home, phone *control* is unavailable until the Phase 3 phone app; talking to JARVIS from the phone still works over Tailscale.)
 3. On the phone open the phone's pairing URL (the `https://...ts.net:8766` one) and pair, then Chrome menu → **Install app**.
 

@@ -1,3 +1,4 @@
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -321,6 +322,60 @@ class TestLaunchersAndImports(unittest.TestCase):
         self.assertTrue((ROOT / "main.py").exists())
         self.assertTrue((ROOT / "setup.py").exists())
         self.assertTrue((ROOT / "requirements.txt").exists())
+
+
+class TestMultiDeviceLaunchers(unittest.TestCase):
+    """scripts/start_hub.* and start_agent.* run the packaged modules from the repo root."""
+
+    SCRIPTS = ROOT / "scripts"
+    MODULES = {"start_hub": "jarvis.hub", "start_agent": "jarvis.laptop_agent"}
+
+    def _read(self, name):
+        return (self.SCRIPTS / name).read_bytes().decode("utf-8")
+
+    def test_shell_launchers_cd_to_repo_root_and_run_package_modules(self):
+        for stem, module in self.MODULES.items():
+            with self.subTest(script=f"{stem}.sh"):
+                text = self._read(f"{stem}.sh")
+                match = re.search(r'^cd "\$\(dirname "\$0"\)/([^"]*)"', text, re.M)
+                self.assertIsNotNone(match, "launcher must cd relative to the script")
+                self.assertEqual((self.SCRIPTS / match.group(1)).resolve(), ROOT)
+                self.assertIn("[ -x .venv/bin/python ] && PY=.venv/bin/python", text)
+                self.assertIn(f'exec "$PY" -m {module} "$@"', text)
+                self.assertTrue((ROOT / Path(*module.split(".")) / "__main__.py").is_file())
+
+    def test_windows_launchers_cd_to_repo_root_and_run_package_modules(self):
+        for stem, module in self.MODULES.items():
+            with self.subTest(script=f"{stem}.cmd"):
+                text = self._read(f"{stem}.cmd")
+                self.assertNotIn("\n", text.replace("\r\n", ""), "cmd files need CRLF")
+                match = re.search(r'^cd /d "%~dp0([^"]*)"', text, re.M)
+                self.assertIsNotNone(match, "launcher must cd relative to the script")
+                target = (self.SCRIPTS / match.group(1).replace("\\", "/")).resolve()
+                self.assertEqual(target, ROOT)
+                self.assertIn('if exist ".venv\\Scripts\\python.exe"', text)
+                self.assertIn(f'"%PY%" -m {module} %*', text)
+
+    def test_combined_windows_launcher_starts_existing_scripts(self):
+        text = self._read("start_jarvis_devices.cmd")
+        names = re.findall(r"%~dp0([\w.]+\.cmd)", text)
+        self.assertEqual(sorted(names), ["start_agent.cmd", "start_hub.cmd"])
+        for name in names:
+            self.assertTrue((self.SCRIPTS / name).is_file(), name)
+
+    def test_no_launcher_uses_bare_hub_or_agent_modules(self):
+        for path in self.SCRIPTS.glob("start_*"):
+            text = path.read_text(encoding="utf-8")
+            with self.subTest(script=path.name):
+                self.assertNotRegex(text, r"-m (hub|laptop_agent)\b")
+                self.assertNotIn("JarvisAI", text)
+
+    def test_agent_startup_entry_runs_package_module_from_repo_root(self):
+        from jarvis.laptop_agent.__main__ import startup_script
+
+        text = startup_script(Path("C:/Python/pythonw.exe"))
+        self.assertIn(f'cd /d "{ROOT}"', text)
+        self.assertIn("-m jarvis.laptop_agent\r\n", text)
 
 
 if __name__ == "__main__":

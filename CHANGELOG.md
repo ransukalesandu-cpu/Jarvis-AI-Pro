@@ -7,6 +7,9 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Iron Man upgrade — Phase 0 audit** (`docs/plans/IRON_MAN_UPGRADE_PHASE0_AUDIT.md`, docs only):
+  gap tables for proactive intelligence, holographic 3D, engineering lab and multi-device; dependency
+  decisions; a file-by-file plan for Phases 1–4; test baseline; owner decisions needed.
 - **Computer Control — Project 8: benchmarks** — `python -m jarvis.computer_control.bench suite`:
   13 synthetic, non-destructive scenarios with state checkers and the master prompt's metrics.
 - **Computer Control — Project 7: registry** — `cc_file` (Recycle-Bin deletes, no silent overwrite)

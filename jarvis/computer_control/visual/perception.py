@@ -106,11 +106,16 @@ class Perception:
         return PyAutoGUIDriver().fingerprint(x, y)
 
     # ── password masking ─────────────────────────────────────────────────
+    #: most controls one window may have before its mask scan counts as incomplete
+    MASK_SCAN_LIMIT = 3000
+
     def password_rects(self) -> list[tuple[int, int, int, int]]:
         """Screen rectangles of password fields in every visible window (UIA), foreground first.
 
-        Fails closed: if the windows cannot be listed this raises, so no unchecked
-        frame is ever uploaded. Only a window that vanishes during the scan is skipped.
+        Fails closed: it raises when the windows cannot be listed, when a window's
+        scan is incomplete (an unreadable control, more than ``MASK_SCAN_LIMIT``
+        controls), or when a window's scan fails and a re-listing shows it is still
+        visible. A window is skipped only once it is shown to be gone or minimized.
         """
         rects: list[tuple[int, int, int, int]] = []
         controller = self.windows()
@@ -118,15 +123,20 @@ class Perception:
         visible.sort(key=lambda w: not w.active)
         for window in visible:
             try:
-                elements = controller.backend.elements(window.handle, depth=8)
-            except Exception:              # the window closed during the scan
-                from jarvis.core import failsoft
-                failsoft.suppress("computer_control.visual:password_rects")
-                continue
+                elements = controller.backend.elements(window.handle, depth=None,
+                                                       limit=self.MASK_SCAN_LIMIT, strict=True)
+            except Exception:
+                if self._still_visible(controller, window.handle):
+                    raise                          # cannot prove it has no password field
+                continue                           # it closed or was minimized during the scan
             for el in elements:
                 if el.is_password and el.rect is not None:
                     rects.append(el.rect.as_ltwh())
         return rects
+
+    @staticmethod
+    def _still_visible(controller, handle: int) -> bool:
+        return any(w.handle == handle and w.visible and not w.minimized for w in controller.backend.windows())
 
     def masked_shot(self):
         """Capture the screen with password fields painted over (PIL re-encode).
@@ -174,7 +184,13 @@ class Perception:
                        if target.casefold() in (e.name or "").casefold() and e.enabled]
             exact = [e for e in matches if e.name.casefold() == target.casefold()]
             pick = (exact or matches)
-            if len(pick) == 1 or exact:
+            if len(pick) > 1:
+                # refuse ambiguity: never act on an arbitrary one of several controls, and do
+                # not fall through to OCR/vision coordinates that could hit any of them
+                result.evidence = (f"{len(pick)} controls in '{w.title}' match; "
+                                   "name the one you mean more precisely")
+                return result
+            if pick:
                 el = pick[0]
                 cx, cy = el.rect.center if el.rect else (None, None)
                 return Located(True, "accessibility", el.name, 1.0, cx, cy, el.ref, w.title,
@@ -190,8 +206,14 @@ class Perception:
                 snap = browser.snapshot(ctx)
                 rows = [r for r in snap.data.get("elements", [])
                         if target.casefold() in str(r.get("name", "")).casefold()]
-                if rows:
-                    row = sorted(rows, key=lambda r: r.get("name", "").casefold() != target.casefold())[0]
+                exact_rows = [r for r in rows if str(r.get("name", "")).casefold() == target.casefold()]
+                pick_rows = exact_rows or rows
+                if len(pick_rows) > 1:
+                    result.evidence = (f"{len(pick_rows)} page elements match; "
+                                       "name the one you mean more precisely")
+                    return result
+                if pick_rows:
+                    row = pick_rows[0]
                     return Located(True, "dom", row.get("name", ""), 0.95, ref=row["ref"],
                                    window="browser", tried=result.tried, evidence=f"page element {row['ref']}")
         except Exception as exc:

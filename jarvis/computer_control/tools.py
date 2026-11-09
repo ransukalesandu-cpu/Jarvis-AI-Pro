@@ -61,7 +61,12 @@ def _register_orchestrator(reg: SpecRegistry) -> None:
     jobs.register(reg)
 
 
-_REGISTRARS = [_register_engine, _register_windows, _register_browser, _register_visual, _register_orchestrator]
+def _register_workflows(reg: SpecRegistry) -> None:
+    from jarvis.computer_control.workflows import tools as workflow_tools
+    workflow_tools.register(reg)
+
+
+_REGISTRARS = [_register_engine, _register_windows, _register_browser, _register_visual, _register_orchestrator, _register_workflows]
 
 
 def build_registry() -> SpecRegistry:

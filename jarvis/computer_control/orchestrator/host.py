@@ -51,6 +51,8 @@ class TraceEntry:
     recovery: bool = False
     args: dict = field(default_factory=dict)
     tainted: bool = False
+    #: arg names whose recorded value differs from what ran (redacted secret, truncated text)
+    altered: list = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return dict(self.__dict__)
@@ -209,6 +211,8 @@ class HostAgent:
                              result.duration_ms, result.action, agent.name, recovery=recovery,
                              args=result.args or redact_params(args))
         entry.tainted = tainted
+        safe = redact_params(args)
+        entry.altered = sorted(k for k in args if safe.get(k) != args[k])
         return result, entry
 
     def _recover(self, ctx: TaskContext, step: Step, result: ActionResult, entry: TraceEntry,

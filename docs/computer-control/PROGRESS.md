@@ -13,7 +13,7 @@ REPLACED, NOT APPLICABLE.
 | 5 | Workflow learning | MERGED | [#282](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/282) | 569d831 |
 | 6 | Fallback input | MERGED (folded into Project 1) | see Project 1 | — |
 | 7 | MCP / Tool Registry | MERGED | [#283](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/283) | 6b05f7d |
-| 8 | Benchmarks | TESTING | (this PR) | — |
+| 8 | Benchmarks | MERGED | [#284](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/284) | 13ae392 |
 
 ## Phase 0 — Foundation
 
@@ -121,5 +121,5 @@ REPLACED, NOT APPLICABLE.
 | 16 | Existing functionality intact | full suite green on every PR (Linux + windows-ui-smoke) | done |
 | 17 | RAM/CPU vs baseline acceptable for 16 GB | all 11 tools +7.3 MB / 0.05 s import, no threads, 0 % idle CPU (Linux); UIA +25 MB lazy (Windows runner, 16 GB) | done (live app pending owner) |
 | 18 | Documentation complete | `docs/computer-control/` 7 documents | done |
-| 19 | All applicable projects merged | see table above | see table |
+| 19 | All applicable projects merged | Phase 0 and Projects 1–8 merged (#277–#284; Project 6 folded into Project 1) | done |
 | 20 | Final evidence and limitations | TESTING_REPORT "pending manual validation" sections | done |

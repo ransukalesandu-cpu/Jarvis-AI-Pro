@@ -77,12 +77,15 @@ class Workflow:
 
     @property
     def key(self) -> str:
-        # distinct names must not share a key ("daily note" / "daily-note", non-ASCII names)
-        folded = " ".join(self.name.split()).casefold()
-        slug = re.sub(r"[^a-z0-9_-]+", "-", folded).strip("-")[:50] or "workflow"
-        if slug != folded:
-            slug += "-" + hashlib.sha1(folded.encode("utf-8")).hexdigest()[:8]
-        return slug
+        # readable slug + a hash of the whole normalized name, always: distinct names never
+        # share a key, even one that spells out another name's key ("daily-note-2cbd8000")
+        slug = re.sub(r"[^a-z0-9_-]+", "-", self.identity).strip("-")[:40] or "workflow"
+        return f"{slug}-{hashlib.sha256(self.identity.encode('utf-8')).hexdigest()[:16]}"
+
+    @property
+    def identity(self) -> str:
+        """The name as it is compared: whitespace-normalized and case-folded."""
+        return " ".join(self.name.split()).casefold()
 
     def as_dict(self) -> dict:
         data = asdict(self)
@@ -195,6 +198,10 @@ class LocalStore:
         with self._lock:
             data = self._load()
             versions = data.setdefault(wf.key, [])
+            if versions and _from_record(versions[-1]).identity != wf.identity:
+                # a key collision must never turn one workflow into a version of another
+                raise WorkflowError(f"'{wf.name}' clashes with the stored workflow "
+                                    f"'{versions[-1].get('name')}'; choose another name.")
             if new_version:
                 wf.version = (versions[-1]["version"] + 1) if versions else 1
                 versions.append(_to_record(wf))

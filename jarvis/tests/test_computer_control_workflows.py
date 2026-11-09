@@ -311,7 +311,20 @@ class TestReviewFixes:
             return Workflow(name=name, objective="", steps=[]).key
         assert len({key("daily note"), key("daily-note"), key("daily.note")}) == 3
         assert key("日報") != key("月報")
-        assert key("Daily  Note") == key("daily note") and key("daily-note") == "daily-note"
+        assert key("Daily  Note") == key("daily note")
+        # a name that spells out another name's key gets a different key too
+        assert key("daily note") != key(key("daily note")) and key("daily-note") != key(key("daily-note"))
+
+    def test_the_store_refuses_to_file_a_workflow_under_another_ones_key(self, env, monkeypatch):
+        _d, specs, store, _sync = env
+        from jarvis.computer_control.workflows.library import Workflow
+        store.put(draft_from_report(run_task(specs, NOTE_STEPS), "daily note"), new_version=True)
+        monkeypatch.setattr(Workflow, "key", property(lambda self: "forced-collision"))
+        store.path().write_text(json.dumps({"forced-collision": [
+            {**store.all()[0].as_dict(), "name": "daily note"}]}), encoding="utf-8")
+        with pytest.raises(WorkflowError, match="clashes"):
+            store.put(draft_from_report(run_task(specs, NOTE_STEPS), "other note"), new_version=True)
+        assert store.get("daily note").name == "daily note"
 
     def test_run_is_refused_when_the_workflow_changed_after_the_check(self, env, monkeypatch):
         _d, specs, store, _sync = env

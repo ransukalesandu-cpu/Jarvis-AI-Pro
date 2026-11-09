@@ -39,6 +39,8 @@ def _enrich(params: dict) -> dict:
         wf = get_store().get(str(params.get("name") or ""))
         if wf is None or not wf.trusted:
             params["requested_level"] = "high"
+        # the approval is for this version; the handler refuses if another one runs
+        params["workflow_version"] = wf.version if wf is not None else 0
     return params
 
 
@@ -77,6 +79,15 @@ def register(reg: SpecRegistry) -> None:
             wf = store.get(name)
             if wf is None:
                 return ActionOutcome(False, f"No workflow called '{name}'.")
+            # bind the decision to what runs: it may have changed since the policy looked
+            from jarvis.computer_control.policy import Level
+            approved_high = getattr(ctx, "level", None) is Level.HIGH
+            if not wf.trusted and not approved_high:
+                return ActionOutcome(False, f"'{name}' is no longer trusted, so it needs your approval; "
+                                            "ask again to run it.", verified=False)
+            if str(p.get("workflow_version") or "") != str(wf.version):
+                return ActionOutcome(False, f"'{name}' changed (now v{wf.version}) after it was checked; "
+                                            "ask again to run the current version.", verified=False)
             from jarvis.computer_control.orchestrator.jobs import run_detached
             try:
                 report = run_detached(ctx, lambda cancel: run_workflow(
@@ -102,6 +113,7 @@ def register(reg: SpecRegistry) -> None:
                      "need approval until they have 3 verified runs), delete."),
         input_schema={"type": "OBJECT", "properties": {
             "op": {"type": S, "enum": list(OPS)}, "name": {"type": S},
+            "workflow_version": {"type": "INTEGER", "description": "Set by JARVIS; leave empty."},
             "params": {"type": S, "description": 'JSON object of run-time values, e.g. {"password": "..."}'}},
             "required": ["op"]},
         handler=_wrap_params(handler), timeout=1800.0, long_running=False, action_for=_action_for,

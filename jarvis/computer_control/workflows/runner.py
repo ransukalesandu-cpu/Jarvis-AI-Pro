@@ -26,6 +26,16 @@ def fill_params(value, params: dict):
     return value
 
 
+def _has_password_param(value) -> bool:
+    if isinstance(value, str):
+        return PASSWORD_PARAM in value
+    if isinstance(value, dict):
+        return any(_has_password_param(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_has_password_param(v) for v in value)
+    return False
+
+
 def validate(wf: Workflow, specs: SpecRegistry, params: dict | None = None) -> list[str]:
     """Problems that stop the workflow from running now (empty list = ready)."""
     problems: list[str] = []
@@ -58,6 +68,10 @@ def run_workflow(wf: Workflow, specs: SpecRegistry, store: LocalStore, *, params
     raw = []
     for step in wf.steps:
         args = fill_params(step["args"], params)
+        if _has_password_param(step["args"]):
+            # mark it before the policy, approval, audit or a dry run see the filled value,
+            # even if the tool's own lookup of the target fails
+            args["is_password"] = True
         # a value that came from content when the workflow was recorded stays tainted on replay
         raw.append({"tool": step["tool"], "args": args, "description": step.get("description", ""),
                     "expect": step.get("expect") or {}, "tainted": bool(step.get("tainted"))})
@@ -71,10 +85,14 @@ def run_workflow(wf: Workflow, specs: SpecRegistry, store: LocalStore, *, params
 def record_result(wf: Workflow, report: TaskReport, store: LocalStore, duration_s: float) -> Workflow:
     if report.status == "cancelled":
         wf.last_result = "cancelled"
-    elif report.success:
+    elif report.success and report.steps_verified > 0:
         wf.successes += 1
         wf.streak += 1
         wf.last_result = "verified success"
+    elif report.success:
+        wf.successes += 1
+        wf.streak = 0                    # nothing was independently checked: no trust from it
+        wf.last_result = "success, not independently verified"
     else:
         wf.failures += 1
         wf.streak = 0                    # one failure: back to supervised

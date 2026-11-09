@@ -98,7 +98,8 @@ class ActionContext:
 
     def __init__(self, action: str, params: dict, token: estop.StopToken, *,
                  job_id: str = "", progress: Callable[[str], None] | None = None,
-                 deadline: float | None = None) -> None:
+                 deadline: float | None = None, level: "Level | None" = None,
+                 approval: str = "") -> None:
         self.action = action
         self.params = params
         self.token = token
@@ -106,6 +107,10 @@ class ActionContext:
         self._progress = progress
         self.deadline = deadline
         self.timed_out = threading.Event()
+        #: what the policy decided and how it was approved, so a handler that re-reads
+        #: state can refuse when the state no longer matches what was approved
+        self.level = level
+        self.approval = approval
 
     def check(self) -> None:
         if self.timed_out.is_set():
@@ -243,7 +248,8 @@ class ActionRunner:
         # 6. execute with timeout + cancel
         timeout = max(0.1, float(timeout or DEFAULT_TIMEOUT_S))
         ctx = ActionContext(action, params, token, job_id=job_id, progress=progress,
-                            deadline=time.monotonic() + timeout)
+                            deadline=time.monotonic() + timeout, level=decision.level,
+                            approval=approval_note)
         _emit({"phase": "start", "action": action, "job_id": job_id, "level": decision.level.value})
         status, outcome, error = self._execute(handler, ctx, timeout)
         if status != "ok":

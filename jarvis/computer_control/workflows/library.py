@@ -29,6 +29,7 @@ configured (best effort, metadata only — its schema stores titles and kinds).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import threading
@@ -76,7 +77,12 @@ class Workflow:
 
     @property
     def key(self) -> str:
-        return re.sub(r"[^a-z0-9_-]+", "-", self.name.casefold()).strip("-")[:60] or "workflow"
+        # distinct names must not share a key ("daily note" / "daily-note", non-ASCII names)
+        folded = " ".join(self.name.split()).casefold()
+        slug = re.sub(r"[^a-z0-9_-]+", "-", folded).strip("-")[:50] or "workflow"
+        if slug != folded:
+            slug += "-" + hashlib.sha1(folded.encode("utf-8")).hexdigest()[:8]
+        return slug
 
     def as_dict(self) -> dict:
         data = asdict(self)
@@ -111,9 +117,22 @@ def draft_from_report(report, name: str) -> Workflow:
         if entry.status != "ok" or entry.verified is False:
             raise WorkflowError(f"Step {index + 1} did not succeed, so the task cannot become a workflow.")
         args = dict(entry.args)
-        if args.get("is_password") or str(args.get("text")) == "[password-field]":
+        password = bool(args.get("is_password") or str(args.get("text")) == "[password-field]")
+        if entry.verified is not True and str(getattr(entry, "level", "")) != "low" and not password:
+            # only read-only steps, and password entry (never read back by design), may be
+            # kept without independent verification
+            raise WorkflowError(f"Step {index + 1} changed something but its result was not checked, "
+                                "so the task cannot become a workflow.")
+        if password:
             args["text"] = PASSWORD_PARAM
             params.add("password")
+        dropped = {"is_password", "label", "app", "_cc"} | ({"text"} if password else set())
+        lossy = [k for k in getattr(entry, "altered", []) or [] if k not in dropped]
+        if lossy:
+            # the trace holds a redacted/truncated copy; replaying it would type the wrong thing
+            raise WorkflowError(f"Step {index + 1} used a value that cannot be stored exactly "
+                                f"({', '.join(lossy)}: a secret or very long text), so the task "
+                                "cannot become a workflow.")
         args = {k: v for k, v in args.items() if k not in ("is_password", "label", "app", "_cc")}
         steps.append(WorkflowStep(tool=entry.tool, args=redact_params(args),
                                   description=redact_text(entry.description, 100),
@@ -140,10 +159,27 @@ class LocalStore:
         return self._path
 
     def _load(self) -> dict:
+        """The stored workflows. A missing file is empty; any other read error raises,
+        so ``put``/``delete`` never overwrite data they could not read. A corrupt file
+        is moved aside (kept for recovery) before it is treated as empty."""
         try:
             data = json.loads(self.path().read_text(encoding="utf-8"))
-            return data if isinstance(data, dict) else {}
-        except (OSError, ValueError):
+        except FileNotFoundError:
+            return {}
+        except ValueError:
+            aside = self.path().with_name(f"{self.path().stem}.corrupt-{int(time.time())}.json")
+            self.path().replace(aside)
+            return {}
+        if not isinstance(data, dict):
+            raise WorkflowError(f"{self.path().name} does not hold a workflow table; it was left as is.")
+        return data
+
+    def _load_quiet(self) -> dict:
+        try:
+            return self._load()
+        except (OSError, WorkflowError):
+            from jarvis.core import failsoft
+            failsoft.suppress("computer_control.workflows:load")
             return {}
 
     def _save(self, data: dict) -> None:
@@ -172,13 +208,13 @@ class LocalStore:
 
     def get(self, name: str, version: Optional[int] = None) -> Optional[Workflow]:
         key = Workflow(name=name, objective="", steps=[]).key
-        versions = self._load().get(key) or []
+        versions = self._load_quiet().get(key) or []
         if version is not None:
             versions = [v for v in versions if v.get("version") == version]
         return _from_record(versions[-1]) if versions else None
 
     def all(self) -> list[Workflow]:
-        return [_from_record(v[-1]) for v in self._load().values() if v]
+        return [_from_record(v[-1]) for v in self._load_quiet().values() if v]
 
     def delete(self, name: str) -> bool:
         with self._lock:

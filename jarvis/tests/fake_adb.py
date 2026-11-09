@@ -4,10 +4,11 @@
 FAKE_ADB_STATE points at {"devices": {"SERIAL": {"state": "device", "usb": true,
 "packages": [...]}}, "log": [...]} ; every call is appended to "log".
 """
+import contextlib
 import json
 import os
-import shutil
 import sys
+import tempfile
 
 def _png(w=4, h=4) -> bytes:
     import struct
@@ -23,8 +24,35 @@ def _png(w=4, h=4) -> bytes:
 PNG = _png()
 
 
+@contextlib.contextmanager
+def _exclusive(path):
+    """Serialise the read-modify-write of the state file across concurrent adb calls
+    (the agent's heartbeat polls adb while a test command runs)."""
+    with open(path + ".lock", "a+b") as lock:
+        if os.name == "nt":
+            import msvcrt
+            lock.seek(0)
+            msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
 def main(argv):
     path = os.environ["FAKE_ADB_STATE"]
+    with _exclusive(path):
+        return _run(path, argv)
+
+
+def _run(path, argv):
     with open(path, encoding="utf-8") as fh:
         state = json.load(fh)
     serial = None
@@ -74,9 +102,10 @@ def main(argv):
             out = devs[serial].get("model", "X") + "\n"
         else:
             out = f"ran: {line}\n"
-    with open(path + ".tmp", "w", encoding="utf-8") as fh:
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or ".", suffix=".tmp")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(state, fh)
-    shutil.move(path + ".tmp", path)
+    os.replace(tmp, path)                  # readers always see a whole file
     sys.stdout.write(out)
     return code
 

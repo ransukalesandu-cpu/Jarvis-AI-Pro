@@ -172,6 +172,15 @@ destructive automatic retries, secrets in logs or commits.
 * Saving a workflow is HIGH (native approval). Running one is HIGH until it has 3 consecutive
   verified successes; one failure returns it to supervised.
 * Passwords are never stored: they become run-time parameters.
+* On replay, a step whose saved text is the password parameter is marked `is_password`
+  before the policy, approval, audit or a dry run sees the filled value, even when the
+  tool's own lookup of the target fails.
+* Only exact, checked steps are saved: a step whose recorded arguments were redacted or
+  truncated (a secret, very long text) or whose state change was not independently verified
+  (password entry excepted) makes the save fail. A run with no verified step earns no trust.
+* A run's approval is bound to what runs: the handler refuses if the workflow lost its
+  trust or changed version between the policy check and execution.
+* The store never overwrites what it could not read; a corrupt file is kept aside.
 * Run-time values arrive as a JSON string; secret-named keys inside JSON text
   (`"password": "..."`) are scrubbed by `redaction.redact_text`, so they never reach the
   approval details, the action log or the audit ledger.

@@ -10,9 +10,9 @@ REPLACED, NOT APPLICABLE.
 | 2 | Orchestrator (UFO²-inspired) | MERGED | [#279](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/279) | 32bfc21 |
 | 3 | Browser automation | MERGED | [#280](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/280) | b8eb691 |
 | 4 | Visual understanding | MERGED | [#281](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/281) | dbb05b9 |
-| 5 | Workflow learning | TESTING | (this PR) | — |
+| 5 | Workflow learning | MERGED | [#282](https://github.com/ransukalesandu-cpu/Jarvis-AI-Pro/pull/282) | 569d831 |
 | 6 | Fallback input | MERGED (folded into Project 1) | see Project 1 | — |
-| 7 | MCP / Tool Registry | NOT STARTED | — | — |
+| 7 | MCP / Tool Registry | TESTING | (this PR) | — |
 | 8 | Benchmarks | NOT STARTED | — | — |
 
 ## Phase 0 — Foundation
@@ -86,3 +86,9 @@ REPLACED, NOT APPLICABLE.
   store, Supabase metadata sync, validation, replay, trust after 3 verified runs), `cc_workflow`.
 * **Tests:** 10 workflow tests.
 * **Limitations:** Supabase sync pending owner validation with cloud memory configured.
+
+## Project 7 — MCP / Tool Registry
+
+* **Completed:** all 11 tools verified in the real action registry and Tool Catalog, MCP descriptor /
+  JSON-Schema adapter (listing only), `cc_file` with Recycle-Bin deletes and no silent overwrite.
+* **Tests:** 10 registry/file tests. MCP server exposure: NOT APPLICABLE (security; owner decision).

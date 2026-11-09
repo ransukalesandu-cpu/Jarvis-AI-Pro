@@ -109,3 +109,9 @@ installed on the owner's PC, masking on a real login window, multi-monitor offse
 | draft only from successful tasks, password → parameter, versions, trust after 3 verified runs and reset on a layout change, validation (missing params, removed tools), run-time password never written, save needs approval, untrusted run needs approval / trusted does not, list/show/validate/delete, not plannable | `jarvis/tests/test_computer_control_workflows.py` | 10 |
 
 Pending owner validation: Supabase metadata sync with the owner's cloud memory configured.
+
+## Project 7 — Registry / MCP / files
+
+| suite | file | tests |
+|---|---|---|
+| all 11 tools registered once with the full contract, loaded from the real `jarvis/actions` folder without collisions, in the Tool Catalog only when enabled, MCP descriptors and JSON-Schema conversion, argument validation, no MCP server exposure; `cc_file` folder organisation, no silent overwrite, Recycle-Bin delete with approval, protected paths, file text as data | `jarvis/tests/test_computer_control_registry.py` | 10 |

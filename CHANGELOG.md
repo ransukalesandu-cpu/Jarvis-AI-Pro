@@ -7,6 +7,8 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Computer Control — Project 7: registry** — `cc_file` (Recycle-Bin deletes, no silent overwrite)
+  and an MCP/JSON-Schema adapter for listing the 11 computer-control tools (not served over MCP).
 - **Computer Control — Project 5: workflows** (`jarvis/computer_control/workflows/`). `cc_workflow`
   saves a verified task (owner approval), versions it, validates before every run, replays with
   verification, and trusts it only after 3 consecutive verified runs; passwords become run-time

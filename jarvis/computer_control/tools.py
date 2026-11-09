@@ -56,6 +56,11 @@ def _register_visual(reg: SpecRegistry) -> None:
     visual_tools.register(reg)
 
 
+def _register_files(reg: SpecRegistry) -> None:
+    from jarvis.computer_control import files
+    files.register(reg)
+
+
 def _register_orchestrator(reg: SpecRegistry) -> None:
     from jarvis.computer_control.orchestrator import jobs
     jobs.register(reg)
@@ -66,7 +71,7 @@ def _register_workflows(reg: SpecRegistry) -> None:
     workflow_tools.register(reg)
 
 
-_REGISTRARS = [_register_engine, _register_windows, _register_browser, _register_visual, _register_orchestrator, _register_workflows]
+_REGISTRARS = [_register_engine, _register_windows, _register_browser, _register_visual, _register_files, _register_orchestrator, _register_workflows]
 
 
 def build_registry() -> SpecRegistry:

@@ -41,8 +41,7 @@ from jarvis.agent.models import (
 from jarvis.agent.planner import PlanError, TaskPlanner
 from jarvis.agent.parallel_engine import ParallelStepEngine
 from jarvis.agent.performance import PerformanceMonitor
-from jarvis.agent.store import redact
-from jarvis.agent.cloud_store import CloudTaskStore
+from jarvis.agent.store import TaskStore, redact
 
 from jarvis.core import failsoft, plan_trace
 
@@ -88,7 +87,9 @@ class TaskRunner:
         wait_cancel: Callable[[float], bool] | None = None,
     ):
         self.workspace = Path(workspace).resolve() if workspace else _default_workspace()
-        self.store = store if store is not None else CloudTaskStore()
+        # The service passes the owner's chosen store (agent/storage.py); a bare
+        # runner keeps tasks locally, like the service default.
+        self.store = store if store is not None else TaskStore()
         self.bus = bus or EventBus()
         self.config = config or RunnerConfig()
         self.parallel_engine = ParallelStepEngine(
@@ -166,7 +167,7 @@ class TaskRunner:
                 )
             self._queue_reservations.add(task.id)
         try:
-            # CloudTaskStore performs synchronous network I/O; never hold the
+            # The cloud store performs synchronous network I/O; never hold the
             # runner lock while persisting so status/cancel remain responsive.
             self.store.save(task)
             self.store.append_event(task.id, {

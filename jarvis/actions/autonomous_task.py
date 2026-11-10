@@ -23,19 +23,33 @@ from __future__ import annotations
 from jarvis.agent.integration import get_service
 
 
-def autonomous_task(action: str = "status", objective: str = "", criteria=None,
-                     task_id: str = "", name: str = "", workflow_id: str = "",
-                     speak=None, dispatch=None, **_ignored) -> str:
-    """Run `action` against the autonomous task engine and return a spoken reply."""
+_FIELDS = ("action", "objective", "criteria", "task_id", "name", "workflow_id")
+
+
+def autonomous_task(parameters: dict | None = None, *, speak=None, dispatch=None,
+                    **fields) -> str:
+    """Run the requested action against the autonomous task engine; return a spoken reply.
+
+    The action registry calls every handler as ``handler(parameters=<model args>, ...)``
+    (core/action_loader._call_handler), so the model's arguments arrive in
+    ``parameters``. Keyword fields are still accepted for direct callers; the
+    registry's dict wins when both are given.
+    """
+    args = {key: fields[key] for key in _FIELDS if key in fields}
+    if isinstance(parameters, dict):
+        args.update({key: parameters[key] for key in _FIELDS if key in parameters})
     service = get_service()
     if dispatch is not None:
         # Lets planned `registry_call` steps run local tools through the same
         # registry layer as a spoken call (only used when registry planning is on).
         service.attach_tool_dispatch(dispatch)
     return service.handle_tool(
-        {"action": str(action or "status"), "objective": objective,
-         "criteria": criteria or [], "task_id": task_id,
-         "name": name, "workflow_id": workflow_id},
+        {"action": str(args.get("action") or "status"),
+         "objective": str(args.get("objective") or ""),
+         "criteria": args.get("criteria") or [],
+         "task_id": str(args.get("task_id") or ""),
+         "name": str(args.get("name") or ""),
+         "workflow_id": str(args.get("workflow_id") or "")},
         speak=speak,
     )
 

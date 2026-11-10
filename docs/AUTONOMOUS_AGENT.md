@@ -32,7 +32,7 @@ actions/autonomous_task.py ──► agent/integration.py (AgentService)
 | --- | --- | --- |
 | Plan an objective | `agent/planner.py` | The configured text model (`core/hybrid_llm_router.py`) produces a validated JSON plan; without a model a deterministic engineering plan is used and any step that genuinely needs a model is reported as blocked. |
 | Run steps with recovery | `agent/runner.py` | Retries only transient failures, exponential backoff, per-step and per-task retry budgets, wall-clock deadline, loop detection, and bounded parallel layers for independent read-only file steps. |
-| Persist and resume | `agent/store.py` | Atomic JSON snapshot + fsynced JSONL journal per task; a crash or restart resumes at the step cursor. |
+| Persist and resume | `agent/storage.py` → `agent/store.py` (default) or `agent/cloud_store.py` | Local by default: atomic JSON snapshot + fsynced JSONL journal per task, every string redacted; a crash or restart resumes at the step cursor. Supabase instead when `autonomous_task_storage` is `cloud` (no local copy, fails closed). |
 | Pause / resume / stop | runner + HUD + Dynamic Island | Stop is immediate and is classified `SAFE`, so it is never gated. |
 | Read the screen | `agent/screen_capture.py`, `agent/screen_vision.py` | On-demand capture (mss, Pillow fallback), downscaled JPEG, mouse/keyboard-free OCR (Tesseract), Gemini/OpenAI vision, accessibility tree lookup. |
 | Act on the desktop | `agent/computer_use.py`, `agent/accessibility.py` | Click/type/keys/scroll/focus by *named target*; validated bounds and confidence; re-observation after every action; dry-run mode. |
@@ -85,9 +85,16 @@ variable where noted.
 | `autonomous_voice_updates` | `true` | Spoken milestone announcements. |
 | `autonomous_ui_enabled` | `false` (`JARVIS_AUTONOMOUS_UI=1`) | Draw the autonomous HUD surfaces (card, rail button, menu entries). Off by default so the HUD keeps its clean composition. |
 | `vision_model` | `gemini-2.5-flash` (`JARVIS_VISION_MODEL`) | Gemini vision model id. |
+| `autonomous_task_storage` | `local` (`JARVIS_AGENT_STORAGE`) | `local` keeps tasks on this PC and needs no account. `cloud` keeps them only in Supabase (needs `SUPABASE_URL`, `SUPABASE_ANON_KEY` and a signed-in identity); when that is missing or unreachable the task does not start and the reason is spoken — it never falls back to local. Any other value means `local`. |
 
-Task state is written to `jarvis/memory/agent/` (git-ignored). Override with
-`JARVIS_AGENT_DIR` — the test suite uses this to stay out of the checkout.
+With local storage (the default), task state is written to `jarvis/memory/agent/`
+(git-ignored). Override with `JARVIS_AGENT_DIR` — the test suite uses this to stay
+out of the checkout. `autonomous_task status`, the HUD status and `self_check` name
+the storage in use (never its path) and, for cloud, what is missing.
+
+Switching storage does not move existing tasks: tasks saved in Supabase stay there
+and are visible again with `autonomous_task_storage = "cloud"`. Saved workflow
+templates (`save_workflow`, `run_workflow`) are still Supabase-only.
 
 ### The HUD surfaces are opt-in
 

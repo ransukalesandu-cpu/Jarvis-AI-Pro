@@ -6,6 +6,20 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Autonomous tasks work again from voice and without Supabase.** The `autonomous_task` handler read
+  keyword arguments while the action registry passes `parameters=`, so every call — including
+  `run` — was treated as `status` and no task could be started by voice. Separately, the agent's
+  default store was Supabase-only, so without Supabase every start/status/list failed with
+  "Supabase personal memory configuration is incomplete" (also breaking `mode="task"` triggers).
+  Tasks are now stored locally by default (`agent/store.py`: redacted, atomic, fsynced);
+  `autonomous_task_storage = "cloud"` (or `JARVIS_AGENT_STORAGE=cloud`) keeps the Supabase-only
+  mode, which still fails closed and now says exactly what is missing. `self_check` and the agent
+  status name the storage in use. Existing cloud tasks are not moved. Saved workflow templates stay
+  cloud-only. See docs/research/JARVIS_SYSTEM_AUDIT.md (B1).
+- `scripts/start_hub.*` / `start_agent.*` run `python -m jarvis.hub` / `jarvis.laptop_agent` from the
+  repository root (broken since the package restructure).
+
 ### Added
 - **Computer Control — Project 8: benchmarks** — `python -m jarvis.computer_control.bench suite`:
   13 synthetic, non-destructive scenarios with state checkers and the master prompt's metrics.

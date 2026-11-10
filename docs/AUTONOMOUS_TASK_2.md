@@ -55,11 +55,15 @@ The workflow library is imported lazily and uses the existing Supabase Auth sess
 keeping startup and local memory cost negligible.
 
 
-## Cloud-only persistence (current architecture)
+## Cloud persistence (optional since 2026-11-10)
 
-Autonomous task snapshots, restart checkpoints, task history, event journals,
-reports and explicitly saved workflow templates are stored in the user's
-Supabase Auth-scoped cloud account. The desktop agent uses the authenticated
+Task storage is local by default (`agent/store.py`, see AUTONOMOUS_AGENT.md); the
+cloud store below is used only when the owner sets `autonomous_task_storage` to
+`cloud`. Saved workflow templates are always cloud-only.
+
+With cloud storage chosen, autonomous task snapshots, restart checkpoints, task
+history, event journals and reports — and, always, explicitly saved workflow
+templates — are stored in the user's Supabase Auth-scoped cloud account. The desktop agent uses the authenticated
 `jarvis-personal-memory` Edge Function; it does not write these records to
 `memory/agent`, JSON files or SQLite. Cloud writes fail closed when the
 Supabase session or network is unavailable: there is no local persistence

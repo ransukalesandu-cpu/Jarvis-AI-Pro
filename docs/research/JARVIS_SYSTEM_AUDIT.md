@@ -117,6 +117,12 @@ Status vocabulary from the directive §6.3.
 * **Fix (owner decision, Q1):** choose the store in one place (`agent/integration.py`). Use the existing local `agent.store.TaskStore` (redacted, fsynced, atomic) by default. Use `CloudTaskStore` only when Supabase is configured, signed in and consented, optionally mirroring to local. Never claim a cloud save that didn't happen. Report the active store and the reason in `autonomous_task status` and `self_check`.
 * **Verify:** a new test builds `AgentService()` with no Supabase environment and starts, lists and resumes a task after a simulated restart. The existing cloud tests stay green. Owner: say "start a task to list my Downloads folder" with Supabase unset and see it run.
 
+### B1b — `autonomous_task` ignored the model's arguments on the registry path (P0, critical, confidence high; found while implementing P0-1)
+
+* **Where:** `jarvis/actions/autonomous_task.py:26` declared `autonomous_task(action="status", objective="", …, **_ignored)`, but `core/action_loader._call_handler` (`action_loader.py:142-152`) calls every handler as `handler(parameters=<model args>, …)`. The arguments landed in `**_ignored`, so **every** call — `run`, `stop`, `pause`, `save_workflow` — reached the agent as `action="status"` with an empty objective. It was like this since the tool was created (#226). The "before" probe in §15 therefore only ever exercised the status path.
+* **Why it was invisible:** the tests call `AgentService.handle_tool` directly, never through the registry. No other action or plugin has this signature (checked for all 70 actions; plugins use `run(parameters, …)`).
+* **Fix (P0-1):** the handler reads `parameters`; keyword fields still work for direct callers. Covered by `test_agent_storage.RegistryDispatchTests` (fails on the old handler).
+
 ### B2 — Computer Control has no owner activation, status or diagnostics surface (P0, high, confidence high)
 
 * **Where:** `jarvis/computer_control/flags.py:33-38` (environment variable or in-process override only). `jarvis/actions/computer_control_engine.py` registers the tools with `available()` false while disabled. Repo-wide grep: no UI, settings or voice code calls `flags.set_overrides` or reads a persisted setting. `main.py:1320-1342` binds the approval prompt only when the flag is already on at start-up.
@@ -266,6 +272,8 @@ The Phase 0 audit and the Computer Control docs already evaluated UFO², Playwri
 ## 12. P0 remediation plan (one PR each, in this order)
 
 ### P0-1 Agent persistence works without Supabase (fixes B1) — S/M
+
+**Status: implemented on `claude/zealous-volta-haz97s` (2026-11-10), together with the B1b dispatch fix.**
 
 * **Change:** `jarvis/agent/integration.py` (store selection), `jarvis/agent/runner.py:91` (same default), `jarvis/agent/cloud_store.py` (expose `configured()` / reason), `jarvis/actions/autonomous_task.py` (status shows store and reason), `jarvis/actions/self_check.py` (report the reason), `docs/AUTONOMOUS_AGENT.md`, README.
 * **Don't change:** `core/personal_cloud_memory.py` request and signing code, edge functions, migrations.

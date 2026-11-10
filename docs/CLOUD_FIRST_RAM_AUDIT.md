@@ -210,6 +210,11 @@ To verify cloud memory on your machine (read-only checks first):
 
 ## Cloud-only persistence update
 
+> **Superseded 2026-11-10:** autonomous task storage is local by default again and
+> Supabase is an owner choice (`autonomous_task_storage = "cloud"`); see
+> `docs/AUTONOMOUS_AGENT.md` and `docs/research/JARVIS_SYSTEM_AUDIT.md` (B1).
+> Saved workflow templates remain cloud-only. The text below describes the cloud mode.
+
 Autonomous task state and saved workflow templates now use Supabase tables
 `jarvis_agent_tasks`, `jarvis_agent_task_events` and `jarvis_agent_workflows`.
 The desktop app does not persist task history or workflow templates to local

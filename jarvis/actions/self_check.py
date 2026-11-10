@@ -7,11 +7,22 @@ from jarvis.core import failsoft, live_health
 def _agent_line() -> str:
     try:
         from jarvis.agent.integration import get_service
-        unfinished = get_service().store.unfinished()
-        return f"Autonomous tasks waiting to resume: {len(unfinished)}." if unfinished else "No unfinished autonomous tasks."
+        service = get_service()
     except Exception:
         failsoft.suppress("self_check:agent")
-        return "Autonomous task state unavailable."
+        return "Autonomous task engine unavailable."
+    storage = service.storage_sentence()
+    if service.storage_problem():
+        return storage                   # already says what is missing and how to fix it
+    try:
+        unfinished = service.store.unfinished()
+    except Exception as exc:
+        failsoft.suppress("self_check:agent")
+        from jarvis.agent.store import redact
+        return f"{storage} Task state unavailable: {redact(exc, 160)}"
+    waiting = (f"Autonomous tasks waiting to resume: {len(unfinished)}." if unfinished
+               else "No unfinished autonomous tasks.")
+    return f"{storage} {waiting}"
 
 
 def _trigger_line() -> str:

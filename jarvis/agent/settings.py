@@ -15,6 +15,8 @@ Keys (all optional):
     autonomous_max_runtime_s  number hard wall-clock budget per task
     autonomous_retry_budget   number retries across a task
     autonomous_screen_paused  bool   owner turned screen access off
+    autonomous_task_storage   str    "local" (default) or "cloud" (Supabase);
+                                     JARVIS_AGENT_STORAGE overrides it
     vision_model              str    Gemini vision model id
 """
 
@@ -31,6 +33,17 @@ def _truthy(value: Any, default: bool) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).strip().casefold() in {"1", "true", "yes", "y", "on", "enabled"}
+
+
+TASK_STORAGE_LOCAL = "local"
+TASK_STORAGE_CLOUD = "cloud"
+_TASK_STORAGE_CHOICES = frozenset({TASK_STORAGE_LOCAL, TASK_STORAGE_CLOUD})
+
+
+def _task_storage(value: Any) -> str:
+    """Unknown or empty values mean local: cloud storage is only ever an explicit choice."""
+    text = str(value or "").strip().casefold()
+    return text if text in _TASK_STORAGE_CHOICES else TASK_STORAGE_LOCAL
 
 
 def _number(value: Any, default: float, *, low: float, high: float) -> float:
@@ -58,6 +71,10 @@ class AgentSettings:
     # deliberately clean. The engine, the voice tool and the report work either
     # way.
     ui_enabled: bool = False
+    # Where task snapshots, journals and reports are kept. Local by default so
+    # autonomous work never depends on an optional cloud account; "cloud" keeps
+    # the earlier Supabase-only behaviour (no local copy, fails closed).
+    task_storage: str = TASK_STORAGE_LOCAL
 
     @classmethod
     def load(cls, config: dict[str, Any] | None = None) -> "AgentSettings":
@@ -80,6 +97,8 @@ class AgentSettings:
             autonomy_voice_updates=_truthy(data.get("autonomous_voice_updates"), True),
             ui_enabled=_truthy(env.get("JARVIS_AUTONOMOUS_UI")
                                or data.get("autonomous_ui_enabled"), False),
+            task_storage=_task_storage(env.get("JARVIS_AGENT_STORAGE")
+                                       or data.get("autonomous_task_storage")),
         )
         return settings
 
@@ -101,6 +120,7 @@ class AgentSettings:
             "vision_model": self.vision_model,
             "autonomy_voice_updates": self.autonomy_voice_updates,
             "ui_enabled": self.ui_enabled,
+            "task_storage": self.task_storage,
         }
 
     def capability_notes(self) -> list[str]:
@@ -130,10 +150,13 @@ def save_settings(values: dict[str, Any]) -> None:
         "autonomous_enabled", "autonomous_allow_shell", "autonomous_allow_files",
         "autonomous_allow_desktop", "autonomous_dry_run", "autonomous_max_runtime_s",
         "autonomous_retry_budget", "autonomous_max_steps", "autonomous_screen_paused",
-        "autonomous_voice_updates", "autonomous_ui_enabled", "vision_model",
+        "autonomous_voice_updates", "autonomous_ui_enabled", "autonomous_task_storage",
+        "vision_model",
     ):
         if key in values:
             data[key] = values[key]
+    if "autonomous_task_storage" in values:
+        data["autonomous_task_storage"] = _task_storage(values["autonomous_task_storage"])
     write_api_config(data)
 
 

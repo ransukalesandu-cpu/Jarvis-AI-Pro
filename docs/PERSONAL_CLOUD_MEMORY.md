@@ -34,13 +34,15 @@ One value per key is kept, so a later directly stated correction replaces the pr
 The Edge Function uses the existing per-user nonce/replay protection and cloud daily quota. Its database calls use the authenticated user ID; client input never chooses a different user ID.
 
 
-## Cloud-only autonomous task data
+## Autonomous task data in the cloud (optional)
 
-The autonomous agent's task snapshots, checkpoints, event history, reports and
-saved workflow templates are also persisted in Supabase, scoped to the same
-stable Auth identity. They are not written to local JSON, SQLite or the
-`memory/agent` directory. If cloud persistence is unavailable, JARVIS must
-report the failure rather than silently saving the data locally.
+Autonomous tasks are stored locally by default. When the owner sets
+`autonomous_task_storage` to `cloud`, task snapshots, checkpoints, event
+history and reports are persisted in Supabase instead, scoped to the same stable
+Auth identity, and are not written to local JSON, SQLite or the `memory/agent`
+directory. Saved workflow templates always use Supabase. If cloud persistence is
+unavailable, JARVIS reports the failure rather than silently saving the data
+locally.
 
 Only the refresh token needed to authenticate to Supabase remains in the
 operating system credential vault. The service-role key stays server-side.

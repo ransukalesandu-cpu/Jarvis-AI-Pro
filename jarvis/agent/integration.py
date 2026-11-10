@@ -34,7 +34,10 @@ from jarvis.agent.screen_capture import ScreenCapture
 from jarvis.agent.screen_vision import OcrEngine, ScreenVision
 from jarvis.agent.settings import AgentSettings
 from jarvis.agent.store import redact
-from jarvis.agent.cloud_store import CloudTaskStore
+from jarvis.agent.storage import (
+    TASK_STORAGE_CLOUD, cloud_configuration_problem, cloud_unavailable_message,
+    injected_choice, select_task_store,
+)
 from jarvis.agent.voice import SpeechAnnouncer, VoiceCommandRouter, status_sentence
 
 from jarvis.core import failsoft
@@ -53,6 +56,10 @@ def _repo_root() -> Path:
 class AgentService:
     """Process-wide facade used by the voice tool, the HUD and tests."""
 
+    # Replaced in __init__; the default keeps status and error paths working on
+    # instances built without __init__ (tests use AgentService.__new__).
+    storage = injected_choice()
+
     def __init__(
         self,
         *,
@@ -70,7 +77,11 @@ class AgentService:
         self.settings = settings or AgentSettings.load()
         self.workspace = Path(workspace).resolve() if workspace else _repo_root()
         self.bus = bus or EventBus()
-        self.store = store if store is not None else CloudTaskStore()
+        # Local by default; Supabase only when the owner chose it (agent/storage.py).
+        if store is not None:
+            self.store, self.storage = store, injected_choice()
+        else:
+            self.store, self.storage = select_task_store(self.settings)
         self._log = logger_ or (lambda message: logger.info("%s", message))
         self._announcer = SpeechAnnouncer(enabled=self.settings.autonomy_voice_updates)
         self._router = VoiceCommandRouter()
@@ -195,6 +206,10 @@ class AgentService:
             raise PermissionError(
                 "Owner verification is required before starting an autonomous task."
             )
+        problem = self.storage_problem()
+        if problem:
+            # Fail before anything is queued: a task that cannot be saved must not run.
+            raise RuntimeError(cloud_unavailable_message(problem))
         task = self.runner.start(text, criteria=criteria, source=source)
         with self._lock:
             self._last_task_id = task.id
@@ -265,8 +280,23 @@ class AgentService:
         state["task"] = task.to_dict() if task else None
         state["settings"] = self.settings.as_dict()
         state["capabilities"] = self.capabilities()
-        state["storage_backend"] = str(getattr(self.store, "root", "injected"))
+        # A label, never a path: status is read back to the cloud model.
+        state["storage_backend"] = self.storage.label
+        state["storage"] = {"kind": self.storage.kind, "label": self.storage.label,
+                            "problem": self.storage_problem()}
         return state
+
+    def storage_problem(self) -> str:
+        """Why the chosen task storage cannot work, or "" (local storage needs nothing)."""
+        if self.storage.kind == TASK_STORAGE_CLOUD:
+            return cloud_configuration_problem()
+        return ""
+
+    def storage_sentence(self) -> str:
+        problem = self.storage_problem()
+        if problem:
+            return cloud_unavailable_message(problem)
+        return f"Autonomous task storage: {self.storage.label}."
 
     def capabilities(self) -> dict[str, Any]:
         try:
@@ -402,6 +432,9 @@ class AgentService:
             return str(exc)
         except Exception as exc:
             self._log(f"Agent tool error: {redact(exc, 300)}")
+            problem = self.storage_problem()
+            if problem:
+                return cloud_unavailable_message(problem)
             return f"The agent could not complete that request: {redact(exc, 200)}"
 
     # ── settings -----------------------------------------------------------

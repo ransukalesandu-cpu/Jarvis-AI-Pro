@@ -12,12 +12,26 @@ from jarvis.computer_control.runner import ActionContext, ActionOutcome
 
 
 def _status(ctx: ActionContext) -> ActionOutcome:
+    """Engine state and per-part readiness. Works while the engine is off or in dry-run
+    (that is when the owner most needs it), but only for the verified owner."""
+    from jarvis.computer_control import readiness
+    from jarvis.computer_control.runner import get_runner
+
+    # The same owner / Privacy Lock view the runner's policy uses for every action.
+    auth = get_runner().policy.auth()
+    if auth.privacy_locked:
+        raise PermissionError("Privacy Lock is active. Computer-control status is hidden.")
+    if not auth.owner_allowed:
+        raise PermissionError("Owner verification is required to see computer-control status.")
     stop = estop.get()
     last = stop.last
-    data = {"enabled": flags.enabled(), "dry_run": flags.dry_run(),
+    checks = readiness.report()
+    data = {"enabled": flags.enabled(), "dry_run": flags.dry_run(), "source": flags.source(),
+            "saved_setting": flags.saved_setting(),
             "stop_engaged": stop.engaged, "stop_generation": stop.generation,
-            "last_stop": last.reason if last else ""}
-    return ActionOutcome(True, flags.describe(), data=data)
+            "last_stop": last.reason if last else "",
+            "checks": [check.as_dict() for check in checks]}
+    return ActionOutcome(True, readiness.summary(checks), data=data)
 
 
 def _stop(ctx: ActionContext) -> ActionOutcome:
@@ -31,8 +45,12 @@ def _stop(ctx: ActionContext) -> ActionOutcome:
 def _register_engine(reg: SpecRegistry) -> None:
     reg.register(ToolSpec(
         id="cc_engine_status", action="engine.status",
-        description="Computer control engine status: whether it is on, dry-run mode, and the emergency stop.",
-        handler=_status, timeout=5.0))
+        description=("Computer control status: whether the engine is on (and why not), dry-run, "
+                     "and which parts are ready on this computer (Windows apps, browser, OCR, "
+                     "hosted vision, approval prompt, emergency stop). Use when the owner asks "
+                     "whether or why JARVIS can or cannot control the computer. Read-only; "
+                     "to turn it on or off use jarvis_settings with setting=computer_control."),
+        handler=_status, timeout=10.0, bypass_runner=True, always_available=True))
     reg.register(ToolSpec(
         id="cc_emergency_stop", action="engine.stop",
         description="Emergency stop: immediately stop every running computer-control action.",

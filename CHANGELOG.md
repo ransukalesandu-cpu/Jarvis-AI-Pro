@@ -6,6 +6,17 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Computer Control: owner switch and readiness report** (audit P0-2, B2). Say "turn on computer
+  control" (owner only, explained confirmation) — saved as `computer_control_enabled`, applied by
+  restarting the voice session once; `computer_control_dry_run` likewise. The environment
+  variables still override and JARVIS says so. `cc_engine_status` is now offered even while the
+  engine is off, works in dry-run, is owner-only and audited, and reports per part what is ready
+  and why not (`computer_control/readiness.py`: Windows/pywinauto, Edge/Chrome + Playwright,
+  Tesseract, Gemini vision key configured, approval prompt, emergency stop). The native approval
+  prompt is bound at start-up even while off, so turning it on needs no restart. Default
+  unchanged: off.
+
 ### Fixed
 - **Autonomous tasks work again from voice and without Supabase.** The `autonomous_task` handler read
   keyword arguments while the action registry passes `parameters=`, so every call — including

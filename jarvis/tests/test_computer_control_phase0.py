@@ -550,7 +550,9 @@ class TestContract:
         assert {"cc_engine_status", "cc_emergency_stop"} <= registry.names(), logs
         assert registry.meta("cc_engine_status").risk == "read"
         with flags.override(enabled=False):
-            assert not [d for d in registry.get_tool_declarations() if d["name"].startswith("cc_")]
+            # Only the read-only status tool, so the owner can ask why it is off.
+            assert [d["name"] for d in registry.get_tool_declarations()
+                    if d["name"].startswith("cc_")] == ["cc_engine_status"]
         with flags.override(enabled=True):
             names = {d["name"] for d in registry.get_tool_declarations()}
             assert "cc_engine_status" in names

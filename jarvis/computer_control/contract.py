@@ -65,9 +65,14 @@ class ToolSpec:
     #: cc_file with op="delete" -> "file.delete". Default: ``action``.
     action_for: Optional[Callable[[Mapping[str, Any]], str]] = None
     summary_for: Optional[Callable[[Mapping[str, Any]], str]] = None
-    #: Only for ``engine.stop``: stopping must work even while a stop is held,
-    #: so it is logged but not routed through the runner's stop check.
+    #: Only for ``engine.stop`` and ``engine.status``: stopping must work even while
+    #: a stop is held, and the status must explain the engine while it is off, so
+    #: both are logged but not routed through the runner's flag/stop/dry-run checks.
+    #: The status handler does its own owner and Privacy Lock check.
     bypass_runner: bool = False
+    #: Offered to the model even while the engine is off (``engine.status`` only),
+    #: so the owner can ask why computer control is unavailable.
+    always_available: bool = False
     #: Read-only lookup run before the policy so it judges what will really be
     #: touched (e.g. a control given only by ref gets its accessible name added
     #: as ``label``, so a "Delete" button is HIGH however it was referenced).
@@ -88,8 +93,10 @@ class ToolSpec:
         if not callable(self.handler):
             raise ContractError(f"{self.id}: handler is not callable")
         _check_schema(self.id, self.input_schema)
-        if self.bypass_runner and self.action != "engine.stop":
-            raise ContractError(f"{self.id}: only engine.stop may bypass the runner")
+        if self.bypass_runner and self.action not in _DIRECT_ACTIONS:
+            raise ContractError(f"{self.id}: only engine.stop/engine.status may bypass the runner")
+        if self.always_available and self.action != "engine.status":
+            raise ContractError(f"{self.id}: only engine.status may be offered while the engine is off")
         if not (0 < float(self.timeout) <= 3600):
             raise ContractError(f"{self.id}: timeout out of range")
 
@@ -142,9 +149,16 @@ class ToolSpec:
             "risk": self.level.tool_risk,
             "timeout": float(self.timeout) + 5.0,     # the runner times out first
             "long_running": bool(self.long_running),
-            "available": flags.enabled,
+            "available": _always if self.always_available else flags.enabled,
             "cc_output_schema": self.output_schema,
         }
+
+
+_DIRECT_ACTIONS = frozenset({"engine.stop", "engine.status"})
+
+
+def _always() -> bool:
+    return True
 
 
 def _stop_held() -> bool:
@@ -163,6 +177,9 @@ def _call_direct(spec: ToolSpec, params: dict, job_id: str) -> ActionResult:
     try:
         outcome = ActionOutcome.coerce(spec.handler(ctx))
         status = "ok" if outcome.ok else "failed"
+    except PermissionError as exc:         # the handler's own owner / Privacy Lock check
+        outcome = ActionOutcome(ok=False, message=str(exc)[:300])
+        status = "denied"
     except Exception as exc:
         from jarvis.computer_control.redaction import redact_text
         outcome = ActionOutcome(ok=False, message=redact_text(f"{spec.action} failed: {exc}", 300))

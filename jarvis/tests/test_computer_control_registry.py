@@ -42,7 +42,9 @@ def test_tool_catalog_and_planner_see_them_only_when_enabled(tmp_path):
     (tmp_path / "cc.py").write_text("from jarvis.actions.computer_control_engine import TOOLS\n")
     registry = discover_actions(tmp_path, logger=lambda m: None)
     with flags.override(enabled=False):
-        assert not [n for n in build_catalog(registries=[registry]).names() if n.startswith("cc_")]
+        # Only the read-only status tool stays, so the owner can ask why it is off.
+        assert [n for n in build_catalog(registries=[registry]).names()
+                if n.startswith("cc_")] == ["cc_engine_status"]
     with flags.override(enabled=True):
         catalog = build_catalog(registries=[registry])
         assert EXPECTED <= set(catalog.names())

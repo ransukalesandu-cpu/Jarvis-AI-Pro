@@ -284,6 +284,8 @@ The Phase 0 audit and the Computer Control docs already evaluated UFO², Playwri
 
 ### P0-2 Computer Control activation, status and diagnostics (fixes B2) — M
 
+**Status: backend and voice path implemented on `claude/zealous-volta-haz97s` (2026-11-10).** Not in this change: the legacy HUD settings row and the web UI status window (P0-2b), because neither UI can be exercised in the audit container; voice and `cc_engine_status` cover the owner path meanwhile.
+
 * **Change:**
   * `jarvis/computer_control/flags.py`: read a persisted owner setting in addition to the environment variable; the variable still wins; default stays OFF.
   * New `jarvis/computer_control/readiness.py`: platform, pywinauto import, Playwright + channel, Tesseract, vision key *presence* (never values), approval prompt bound, estop state. Each check gets a reason code.

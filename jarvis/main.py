@@ -1318,16 +1318,21 @@ class JarvisLive(
             failsoft.suppress('main:JarvisLive._on_ptt')
 
     def _bind_computer_control(self) -> None:
-        """Opt-in computer control (JARVIS_COMPUTER_CONTROL=1): bind the native approval prompt."""
+        """Bind computer control's native approval prompt, status feed and on/off listener.
+
+        Done even while the engine is off (binding only stores a function), so the
+        owner can turn it on later by voice without restarting. The engine itself
+        stays off until the owner opts in (computer_control/flags.py).
+        """
         try:
             from jarvis.computer_control import approval as cc_approval, flags as cc_flags
-            if not cc_flags.enabled():
-                return
             factory = getattr(self.ui, "computer_control_prompt", None)
             prompt = factory() if callable(factory) else None
             if prompt is not None:
                 cc_approval.bind_native_prompt(prompt)
-            self.ui.write_log("SYS: " + cc_flags.describe())
+            if cc_flags.enabled():
+                self.ui.write_log("SYS: " + cc_flags.describe())
+            cc_flags.add_listener(self._on_computer_control_setting)
             from jarvis.core import ui_state as _cc_state
 
             def _cc_status(_key, value) -> None:
@@ -1340,6 +1345,23 @@ class JarvisLive(
             _cc_state.bus().subscribe(_cc_state.COMPUTER_CONTROL, _cc_status)
         except Exception:
             failsoft.suppress("main:JarvisLive._bind_computer_control")
+
+    def _on_computer_control_setting(self, enabled_changed: bool, enabled: bool) -> None:
+        """The owner turned computer control on or off: re-send the tool list.
+
+        Tool declarations are fixed when a Live session connects, so the session is
+        rebuilt. Like a voice change, it starts fresh (no resumption handle) so the
+        server cannot restore the previous tool set. Dry-run alone needs no rebuild:
+        the runner reads it on every action."""
+        if not enabled_changed:
+            return
+        try:
+            from jarvis.computer_control import flags as cc_flags
+            self.ui.write_log("SYS: " + cc_flags.describe() + " Restarting the voice session to update tools.")
+        except Exception:
+            failsoft.suppress("main:JarvisLive._on_computer_control_setting:log")
+        self.request_reconnect(keep_context=False,
+                               reason=f"computer control {'on' if enabled else 'off'}")
 
     def interrupt(self) -> None:
         """Request a thread-safe stop of current speech and reopen the microphone."""

@@ -7,9 +7,23 @@ covered by `jarvis/tests/test_computer_control_phase0.py` and
 
 ## 1. Off by default
 
-`JARVIS_COMPUTER_CONTROL=1` opts in. Without it no `cc_*` tool is offered to the
-model (`available` returns False) and the runner answers `disabled`.
-`JARVIS_COMPUTER_CONTROL_DRY_RUN=1` classifies, approves and logs but never executes.
+The engine is off until the owner opts in. Precedence (`flags.py`): test override →
+`JARVIS_COMPUTER_CONTROL` / `JARVIS_COMPUTER_CONTROL_DRY_RUN` when set (`0` forces off) →
+the owner's saved setting (`computer_control_enabled` / `computer_control_dry_run` in
+`config/api_keys.json`) → off.
+
+The saved setting is changed only through `jarvis_settings` (`setting=computer_control`):
+the outer guard classes every `set` as DANGEROUS (owner + confirmation banner), and turning
+the engine **on** shows a second, explanatory confirmation. A change re-sends the tool list by
+starting a fresh Live session.
+
+While off, the only `cc_*` tool offered to the model is `cc_engine_status` (read-only,
+`always_available`), so the owner can ask why. It bypasses the runner's flag, stop and dry-run
+checks — like `engine.stop` — but performs its own check against the runner policy's auth view:
+denied without verified owner access and during Privacy Lock; every call is audited. Its
+readiness report (`readiness.py`) launches nothing, makes no network request and reports only
+whether a vision key is *configured*. Every other action still answers `disabled` from the
+runner. Dry-run classifies, approves and logs but never executes (status is not affected).
 
 ## 2. Levels (decided from the action, never from the plan's wording)
 

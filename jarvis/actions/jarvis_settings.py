@@ -6,6 +6,7 @@ changes are persisted and take effect when the Live session reconnects.
 """
 from __future__ import annotations
 
+from jarvis.computer_control import flags as cc_flags
 from jarvis.memory import config_manager as cfg
 from jarvis.core import confirm as confirm_gate
 from jarvis.memory.voice_personality import (
@@ -59,7 +60,25 @@ _BOOL_SETTINGS = {
         cfg.get_personal_cloud_memory_enabled, cfg.save_personal_cloud_memory_enabled,
         "Store directly stated personal profile facts in the user's Supabase account and recall them for personalized answers.",
     ),
+    # Effective values (an environment variable can override the saved choice);
+    # the setters return the owner-facing sentence from computer_control.flags.
+    "computer_control": (
+        cc_flags.enabled, lambda value: cc_flags.save_setting(enabled=value),
+        "Let JARVIS operate Windows apps, the browser and files through the Computer Control Engine.",
+    ),
+    "computer_control_dry_run": (
+        cc_flags.dry_run, lambda value: cc_flags.save_setting(dry_run=value),
+        "Computer control checks and logs actions but never performs them.",
+    ),
 }
+
+_CC_ENABLE_DETAIL = (
+    "JARVIS will be able to open and operate Windows apps, your installed Edge/Chrome "
+    "(its own profile) and files when you ask. Every action still goes through the "
+    "computer-control policy: risky steps ask you first, passwords are masked, Privacy Lock "
+    "and Guest Mode still block it, and 'Jarvis, stop' halts it at once. The voice session "
+    "restarts once so the new tools become available. You can turn it off the same way."
+)
 _ENUM_SETTINGS = {
     "media_resolution": (
         cfg.get_media_resolution, cfg.save_media_resolution, cfg.MEDIA_RESOLUTIONS,
@@ -94,6 +113,8 @@ def _current_settings() -> dict:
         "morning_brief": cfg.get_brief_enabled(),
         "memory_provider_access": cfg.get_memory_provider_access_enabled(),
         "personal_cloud_memory": cfg.get_personal_cloud_memory_enabled(),
+        "computer_control": cc_flags.enabled(),
+        "computer_control_dry_run": cc_flags.dry_run(),
         "media_resolution": cfg.get_media_resolution(),
         "hud_style": cfg.get_hud_style(),
         "neural_render_scale": cfg.get_neural_render_scale(),
@@ -140,6 +161,15 @@ def _set_setting(setting: str, raw_value) -> str:
         getter, setter, _description = _BOOL_SETTINGS[setting]
         if getter() == parsed:
             return f"{setting} is already {'on' if parsed else 'off'}."
+        if setting == "computer_control" and parsed:
+            return confirm_gate.request(
+                key="jarvis-settings-computer-control",
+                title="Turn on computer control",
+                detail=_CC_ENABLE_DETAIL,
+                run=lambda: setter(True),
+            )
+        if setting in ("computer_control", "computer_control_dry_run"):
+            return setter(parsed)
         if setting == "personal_cloud_memory":
             if parsed:
                 def _enable_personal_cloud_memory():
@@ -277,7 +307,8 @@ TOOL = {
         "preferences. Use operation=get to read all settings or one named setting. Use "
         "operation=set to change exactly one setting using its setting name and value. "
         "Examples: set voice to 'female' (Kore), startup_intro to 'off', wake_word to "
-        "'on', media_resolution to 'high', personality_mode to 'concise'. Never invent "
+        "'on', media_resolution to 'high', personality_mode to 'concise', computer_control to 'on' "
+        "(lets JARVIS operate Windows apps and the browser; asks for confirmation). Never invent "
         "unsupported settings or values. Ask the user to clarify if the requested setting "
         "or value is ambiguous. Never change API keys, security controls, files, or OS settings. "
         "Voice/personality changes are persisted and apply after the Live session reconnects."
@@ -294,7 +325,8 @@ TOOL = {
                 "enum": [
                     "assistant_mode", "voice", "personality_mode", "startup_intro",
                     "wake_word", "push_to_talk", "thinking", "proactive_audio",
-                    "morning_brief", "memory_provider_access", "personal_cloud_memory", "media_resolution",
+                    "morning_brief", "memory_provider_access", "personal_cloud_memory",
+                    "computer_control", "computer_control_dry_run", "media_resolution",
                     "hud_style", "neural_render_scale", "assistant_name", "user_name",
                 ],
                 "description": "Exact setting to read or change.",

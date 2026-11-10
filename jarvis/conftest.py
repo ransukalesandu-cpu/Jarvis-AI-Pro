@@ -43,6 +43,17 @@ if _entry in sys.path:
     sys.path.remove(_entry)
 sys.path.insert(0, _entry)
 
+# The owner's saved computer-control choice lives in config/api_keys.json. Tests
+# get an in-memory store (off) instead, so a developer who turned the engine on
+# neither changes test results nor has the file rewritten by a test.
+from jarvis.computer_control import flags as _cc_flags  # noqa: E402
+
+TEST_CC_SAVED: dict = {}
+_cc_flags._read_saved = lambda: {_cc_flags.KEY_ENABLED: TEST_CC_SAVED.get(_cc_flags.KEY_ENABLED) is True,
+                                 _cc_flags.KEY_DRY_RUN: TEST_CC_SAVED.get(_cc_flags.KEY_DRY_RUN) is True}
+_cc_flags._write_saved = TEST_CC_SAVED.update
+_cc_flags.reload_saved()
+
 
 def _qt_is_importable() -> bool:
     """True when PyQt6 can actually load (needs libGL/libEGL on Linux)."""

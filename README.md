@@ -1419,6 +1419,26 @@ Jarvis can interact with the operating system through voice commands.
 
 High-impact computer and file operations are subject to the Jarvis security and confirmation system.
 
+### Computer Control Engine (Windows, opt-in)
+
+The verified engine in `jarvis/computer_control/` (Windows apps and controls, the installed
+Edge/Chrome, on-demand screen reading, files, multi-step `cc_task`, saved workflows) is **off
+until you turn it on**:
+
+* Say *"turn on computer control"*. JARVIS asks you to confirm on screen (owner only; Privacy
+  Lock and Guest Mode block it), saves the choice, and restarts the voice session once so the new
+  tools are available. *"Turn off computer control"* reverses it.
+  *"computer control dry run on"* makes it check and log actions without performing them.
+* Ask *"can you control my computer?"* or *"why is computer control off?"* at any time — the
+  `cc_engine_status` tool is available even while the engine is off and reports, per part,
+  what is ready and why not (Windows only, pywinauto, installed Edge/Chrome, Tesseract, Gemini
+  vision key configured, approval prompt, emergency stop). It never reveals key values.
+* `JARVIS_COMPUTER_CONTROL=1` / `=0` in the environment still works and overrides the saved
+  setting; JARVIS says so if you try to change it while the variable is set.
+
+See [docs/computer-control/SECURITY_MODEL.md](docs/computer-control/SECURITY_MODEL.md) for the
+risk levels, approvals and emergency stop.
+
 ---
 
 # 📧 Email & Calendar

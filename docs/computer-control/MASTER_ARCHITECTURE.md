@@ -33,7 +33,8 @@ feature flag ─► emergency stop ─► policy (LOW/MEDIUM/HIGH) ─► native
 
 | Stage | Module | Fail mode |
 |---|---|---|
-| Feature flag | `flags.py` (`JARVIS_COMPUTER_CONTROL`, `JARVIS_COMPUTER_CONTROL_DRY_RUN`) | off by default → `disabled` |
+| Feature flag | `flags.py` (`JARVIS_COMPUTER_CONTROL`, `JARVIS_COMPUTER_CONTROL_DRY_RUN`, or the owner's saved `computer_control` setting via `jarvis_settings`) | off by default → `disabled`; `cc_engine_status` stays available |
+| Readiness | `readiness.py` | per-part checks with reason codes for `cc_engine_status` |
 | Emergency stop | `estop.py` (generation counter + optional latch) | `cancelled` |
 | Policy | `policy.py` (`ActionPolicy`) | `denied`; unknown action → HIGH |
 | Approval | `approval.py` (`NativeApprover` → AuthManager / PIN; `qt_prompt.py`) | no approver → deny |

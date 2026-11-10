@@ -50,7 +50,9 @@ from jarvis.computer_control import flags as _cc_flags  # noqa: E402
 
 TEST_CC_SAVED: dict = {}
 _cc_flags._read_saved = lambda: {_cc_flags.KEY_ENABLED: TEST_CC_SAVED.get(_cc_flags.KEY_ENABLED) is True,
-                                 _cc_flags.KEY_DRY_RUN: TEST_CC_SAVED.get(_cc_flags.KEY_DRY_RUN) is True}
+                                 _cc_flags.KEY_DRY_RUN: TEST_CC_SAVED.get(_cc_flags.KEY_DRY_RUN) is True,
+                                 _cc_flags.KEY_ROUTING: _cc_flags._routing_value(
+                                     TEST_CC_SAVED.get(_cc_flags.KEY_ROUTING))}
 _cc_flags._write_saved = TEST_CC_SAVED.update
 _cc_flags.reload_saved()
 

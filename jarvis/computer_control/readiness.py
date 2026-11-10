@@ -190,3 +190,8 @@ def summary(checks: list[Check] | None = None) -> str:
     if blocked:
         parts.append("Not ready — " + " ".join(blocked))
     return " ".join(parts)
+
+
+# Public single-part checks (computer_control/routing.py asks only these at connect time).
+windows_check = _windows
+browser_check = _browser

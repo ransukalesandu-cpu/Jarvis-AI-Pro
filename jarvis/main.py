@@ -1346,14 +1346,15 @@ class JarvisLive(
         except Exception:
             failsoft.suppress("main:JarvisLive._bind_computer_control")
 
-    def _on_computer_control_setting(self, enabled_changed: bool, enabled: bool) -> None:
-        """The owner turned computer control on or off: re-send the tool list.
+    def _on_computer_control_setting(self, tools_changed: bool, enabled: bool) -> None:
+        """The owner turned computer control on/off or changed its tool routing:
+        re-send the tool list.
 
         Tool declarations are fixed when a Live session connects, so the session is
         rebuilt. Like a voice change, it starts fresh (no resumption handle) so the
         server cannot restore the previous tool set. Dry-run alone needs no rebuild:
         the runner reads it on every action."""
-        if not enabled_changed:
+        if not tools_changed:
             return
         try:
             from jarvis.computer_control import flags as cc_flags
@@ -1541,6 +1542,19 @@ class JarvisLive(
     def _keep_declaration(self, declaration: dict) -> bool:
         return True
 
+    def _computer_control_routing(self) -> tuple[dict, frozenset]:
+        """Readiness of the parts routing depends on, and the tools to hide (computed once
+        per connect). Any failure hides nothing: the older tools stay available."""
+        try:
+            from jarvis.computer_control import routing as cc_routing
+            if cc_routing.active_mode() not in ("prefer_engine", "engine_only"):
+                return {}, frozenset()
+            ready = cc_routing._ready(("windows", "browser"))
+            return ready, cc_routing.hidden_tools(ready)
+        except Exception:
+            failsoft.suppress("main:JarvisLive._computer_control_routing")
+            return {}, frozenset()
+
     def _held_audio_state(self) -> HeldAudio:
         """Held-audio state, created on first use (tests build hosts via __new__)."""
         held = self.__dict__.get("_held_audio")
@@ -1713,11 +1727,14 @@ class JarvisLive(
         # discovered. Rename the assistant, add a plugin or move to another OS
         # and this follows without anyone editing a prompt.
         # Every tool also takes the optional `device` argument (core/tool_runtime.py).
+        # While computer control is on, its routing mode may hide older desktop/browser
+        # tools whose replacement is ready here (computer_control/routing.py).
+        _cc_ready, _cc_hidden = self._computer_control_routing()
         _all_decls = [with_device_parameter(d) for d in (
             TOOL_DECLARATIONS
             + self._action_registry.get_tool_declarations()
             + self._plugin_registry.get_tool_declarations())
-            if self._keep_declaration(d)]
+            if self._keep_declaration(d) and d.get("name") not in _cc_hidden]
         _names = {(d.get("name") if isinstance(d, dict) else getattr(d, "name", ""))
                   for d in _all_decls}
         sys_prompt = _render_prompt(sys_prompt, {
@@ -1766,6 +1783,14 @@ class JarvisLive(
                 "the user asks for it again in the active session.\n"
                 + self._live_switch_context
             )
+        try:
+            from jarvis.computer_control import routing as _cc_routing
+            _cc_block = _cc_routing.prompt_block(_names, ready=_cc_ready or None)
+        except Exception:
+            failsoft.suppress("main:JarvisLive:computer_control_prompt_block")
+            _cc_block = ""
+        if _cc_block:
+            parts.append(_cc_block)
         if "deep_reasoning" in _names:
             parts.append(
                 "[TASK-BASED MODEL ROUTING]\n"

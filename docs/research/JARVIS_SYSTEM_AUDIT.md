@@ -300,6 +300,8 @@ The Phase 0 audit and the Computer Control docs already evaluated UFO², Playwri
 
 ### P0-3 One tool per job when Computer Control is on (addresses B3) — S/M + measurement
 
+**Status (2026-11-10): implemented on `claude/zealous-volta-haz97s`; measurement pending.** Step 1's harness exists (`python -m jarvis.eval.tool_choice --live`, owner key) but has not been run, so the default is the non-destructive `prefer_engine` (routing prompt section, nothing hidden). `engine_only` (hide superseded tools when ready) is available as a setting; make it the default only if the live eval shows a clear gain. Descriptions of the older tools were not reworded: the routing section is added only when the engine is on, so nothing mentions a cc_* tool the model does not have.
+
 * **Step 1, measure (no code change):** a 30-utterance tool-selection eval run against the real Live model with CC off and on, recording the first tool chosen (owner key; script kept under `jarvis/eval/`, results without transcripts).
 * **Step 2, change:** `JarvisLive._keep_declaration` (`main.py:1519`) hides the superseded tools (`computer_control`, `ui_interaction`, `ui_automate`, `see_screen`, `files`, `browser_control`; `open_app` stays for websites and URIs) when CC is enabled *and* readiness says the Windows backend is usable. Behind a reversible setting. Soften "Always/MUST" wording in descriptions that conflict; update `prompt.txt:152` to route multi-step desktop work to `cc_task`.
 * **Tests:** declaration-set snapshot tests for CC off, on+ready and on+unsupported; no tool name lost when CC is off.

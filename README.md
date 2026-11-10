@@ -1435,6 +1435,16 @@ until you turn it on**:
   vision key configured, approval prompt, emergency stop). It never reveals key values.
 * `JARVIS_COMPUTER_CONTROL=1` / `=0` in the environment still works and overrides the saved
   setting; JARVIS says so if you try to change it while the variable is set.
+* **Tool routing** (`computer_control_tool_routing`, only while the engine is on) decides how
+  JARVIS chooses between the engine and the older desktop tools that do similar jobs:
+  `prefer_engine` (default) tells the model to use the `cc_*` tools for apps, windows, web pages
+  and multi-step desktop work; `engine_only` also hides the older `computer_control`,
+  `ui_interaction`, `ui_automate` and `browser_control` tools — each only when its replacement is
+  ready on this PC; `both` offers everything with no guidance. Say *"set computer control tool
+  routing to engine only"*. The voice session restarts once to apply it.
+* Measure which mode works best for you (needs your Gemini key; sends 30 short typed requests per
+  mode and never executes a tool): `python -m jarvis.eval.tool_choice --live`.
+  Without `--live` it is an offline check that no mode leaves a request without a tool.
 
 See [docs/computer-control/SECURITY_MODEL.md](docs/computer-control/SECURITY_MODEL.md) for the
 risk levels, approvals and emergency stop.

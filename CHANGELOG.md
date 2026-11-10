@@ -16,6 +16,15 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   Tesseract, Gemini vision key configured, approval prompt, emergency stop). The native approval
   prompt is bound at start-up even while off, so turning it on needs no restart. Default
   unchanged: off.
+- **Computer Control: tool routing** (audit P0-3, B3). While the engine is on, the model gets a
+  `[COMPUTER CONTROL ROUTING]` section steering apps, windows, web pages and multi-step desktop
+  work to the `cc_*` tools (`computer_control_tool_routing = prefer_engine`, the default);
+  `engine_only` additionally hides `computer_control`, `ui_interaction`, `ui_automate` and
+  `browser_control` when the part replacing each is ready (never on Linux, never without
+  Edge/Chrome); `both` restores the previous behaviour. Files, `open_app`, `screen_process` and
+  `autonomous_task` are never hidden. `python -m jarvis.eval.tool_choice` checks offline that no
+  mode leaves any of 30 requests without a tool; `--live` measures which tool the real Live model
+  picks per mode without executing anything.
 
 ### Fixed
 - **Autonomous tasks work again from voice and without Supabase.** The `autonomous_task` handler read

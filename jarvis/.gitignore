@@ -100,3 +100,4 @@ config/supabase_auth_refresh.dat
 config/supabase_auth_refresh.tmp
 *.emb
 *.emb.npy
+eval/results/tool_choice_latest.json

@@ -80,6 +80,12 @@ _CC_ENABLE_DETAIL = (
     "restarts once so the new tools become available. You can turn it off the same way."
 )
 _ENUM_SETTINGS = {
+    "computer_control_tool_routing": (
+        cc_flags.tool_routing, lambda value: cc_flags.save_setting(routing=value),
+        cc_flags.ROUTING_MODES,
+        "While computer control is on: both (offer every tool), prefer_engine (steer to the "
+        "cc_* tools) or engine_only (also hide the older desktop/browser tools it replaces).",
+    ),
     "media_resolution": (
         cfg.get_media_resolution, cfg.save_media_resolution, cfg.MEDIA_RESOLUTIONS,
         "Screenshot/camera detail level: default, low, medium, or high.",
@@ -115,6 +121,7 @@ def _current_settings() -> dict:
         "personal_cloud_memory": cfg.get_personal_cloud_memory_enabled(),
         "computer_control": cc_flags.enabled(),
         "computer_control_dry_run": cc_flags.dry_run(),
+        "computer_control_tool_routing": cc_flags.tool_routing(),
         "media_resolution": cfg.get_media_resolution(),
         "hud_style": cfg.get_hud_style(),
         "neural_render_scale": cfg.get_neural_render_scale(),
@@ -240,11 +247,15 @@ def _set_setting(setting: str, raw_value) -> str:
     if setting in _ENUM_SETTINGS:
         getter, setter, choices, _description = _ENUM_SETTINGS[setting]
         choice = lowered
+        if setting == "computer_control_tool_routing":
+            choice = choice.replace("-", "_").replace(" ", "_")
         if choice not in choices:
             return f"Invalid {setting}. Choose one of: {', '.join(choices)}."
         if getter() == choice:
             return f"{setting.replace('_', ' ')} is already {choice}."
-        setter(choice)
+        result = setter(choice)
+        if setting == "computer_control_tool_routing":
+            return result                  # says whether the session restarts / env decides
         return f"Saved {setting.replace('_', ' ')} as {choice}."
 
     if setting == "neural_render_scale":
@@ -326,7 +337,8 @@ TOOL = {
                     "assistant_mode", "voice", "personality_mode", "startup_intro",
                     "wake_word", "push_to_talk", "thinking", "proactive_audio",
                     "morning_brief", "memory_provider_access", "personal_cloud_memory",
-                    "computer_control", "computer_control_dry_run", "media_resolution",
+                    "computer_control", "computer_control_dry_run",
+                    "computer_control_tool_routing", "media_resolution",
                     "hud_style", "neural_render_scale", "assistant_name", "user_name",
                 ],
                 "description": "Exact setting to read or change.",

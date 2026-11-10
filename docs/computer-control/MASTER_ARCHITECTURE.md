@@ -35,6 +35,7 @@ feature flag ─► emergency stop ─► policy (LOW/MEDIUM/HIGH) ─► native
 |---|---|---|
 | Feature flag | `flags.py` (`JARVIS_COMPUTER_CONTROL`, `JARVIS_COMPUTER_CONTROL_DRY_RUN`, or the owner's saved `computer_control` setting via `jarvis_settings`) | off by default → `disabled`; `cc_engine_status` stays available |
 | Readiness | `readiness.py` | per-part checks with reason codes for `cc_engine_status` |
+| Tool routing | `routing.py` (+ `jarvis/eval/tool_choice.py`) | while on: routing prompt section (`prefer_engine`), optionally hides superseded older tools when their replacement is ready (`engine_only`) |
 | Emergency stop | `estop.py` (generation counter + optional latch) | `cancelled` |
 | Policy | `policy.py` (`ActionPolicy`) | `denied`; unknown action → HIGH |
 | Approval | `approval.py` (`NativeApprover` → AuthManager / PIN; `qt_prompt.py`) | no approver → deny |

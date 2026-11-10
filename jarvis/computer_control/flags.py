@@ -30,14 +30,22 @@ from typing import Callable, Iterator, Optional
 
 ENV_ENABLED = "JARVIS_COMPUTER_CONTROL"
 ENV_DRY_RUN = "JARVIS_COMPUTER_CONTROL_DRY_RUN"
+ENV_ROUTING = "JARVIS_COMPUTER_CONTROL_TOOL_ROUTING"
 KEY_ENABLED = "computer_control_enabled"
 KEY_DRY_RUN = "computer_control_dry_run"
+KEY_ROUTING = "computer_control_tool_routing"
+#: How the model is steered while the engine is on (computer_control/routing.py):
+#: "both" offers every tool as before; "prefer_engine" (default) adds routing
+#: guidance to the system prompt; "engine_only" also hides the older desktop and
+#: browser tools whose replacement is ready on this computer.
+ROUTING_MODES = ("both", "prefer_engine", "engine_only")
+DEFAULT_ROUTING = "prefer_engine"
 _TRUE = frozenset({"1", "true", "on", "yes", "enabled"})
 
 _lock = threading.Lock()
 _enabled_override: Optional[bool] = None
 _dry_run_override: Optional[bool] = None
-_saved: Optional[dict[str, bool]] = None          # cache of the owner's saved setting
+_saved: Optional[dict] = None                   # cache of the owner's saved setting
 _listeners: list[Callable[[bool, bool], None]] = []
 
 
@@ -53,15 +61,21 @@ def _env_true(name: str) -> bool:
     return bool(_env(name))
 
 
-def _read_saved() -> dict[str, bool]:
+def _routing_value(value) -> str:
+    text = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    return text if text in ROUTING_MODES else DEFAULT_ROUTING
+
+
+def _read_saved() -> dict:
     """The owner's saved choice from config/api_keys.json (missing or unreadable -> off)."""
     try:
         from jarvis.memory.config_manager import load_api_keys
         data = load_api_keys()
     except Exception:
-        return {KEY_ENABLED: False, KEY_DRY_RUN: False}
+        return {KEY_ENABLED: False, KEY_DRY_RUN: False, KEY_ROUTING: DEFAULT_ROUTING}
     data = data if isinstance(data, dict) else {}
-    return {KEY_ENABLED: data.get(KEY_ENABLED) is True, KEY_DRY_RUN: data.get(KEY_DRY_RUN) is True}
+    return {KEY_ENABLED: data.get(KEY_ENABLED) is True, KEY_DRY_RUN: data.get(KEY_DRY_RUN) is True,
+            KEY_ROUTING: _routing_value(data.get(KEY_ROUTING))}
 
 
 def _write_saved(values: dict[str, bool]) -> None:
@@ -78,6 +92,18 @@ def _saved_value(key: str) -> bool:
         if _saved is None:
             _saved = _read_saved()
         return bool(_saved.get(key, False))
+
+
+def tool_routing() -> str:
+    """"both", "prefer_engine" or "engine_only" (only meaningful while the engine is on)."""
+    global _saved
+    env = str(os.environ.get(ENV_ROUTING, "")).strip()
+    if env:
+        return _routing_value(env)
+    with _lock:
+        if _saved is None:
+            _saved = _read_saved()
+        return _routing_value(_saved.get(KEY_ROUTING))
 
 
 def source() -> str:
@@ -108,12 +134,19 @@ def dry_run() -> bool:
     return env if env is not None else _saved_value(KEY_DRY_RUN)
 
 
-def saved_setting() -> dict[str, bool]:
+def saved_setting() -> dict:
     """The saved owner setting (what the environment variables would override)."""
-    return {"enabled": _saved_value(KEY_ENABLED), "dry_run": _saved_value(KEY_DRY_RUN)}
+    global _saved
+    with _lock:
+        if _saved is None:
+            _saved = _read_saved()
+        routing = _routing_value(_saved.get(KEY_ROUTING))
+    return {"enabled": _saved_value(KEY_ENABLED), "dry_run": _saved_value(KEY_DRY_RUN),
+            "tool_routing": routing}
 
 
-def save_setting(*, enabled: Optional[bool] = None, dry_run: Optional[bool] = None) -> str:
+def save_setting(*, enabled: Optional[bool] = None, dry_run: Optional[bool] = None,
+                 routing: Optional[str] = None) -> str:
     """Persist the owner's choice and notify listeners. Returns a sentence for the owner.
 
     Callers are responsible for authorization: this is reached only through
@@ -125,6 +158,8 @@ def save_setting(*, enabled: Optional[bool] = None, dry_run: Optional[bool] = No
         updates[KEY_ENABLED] = bool(enabled)
     if dry_run is not None:
         updates[KEY_DRY_RUN] = bool(dry_run)
+    if routing is not None:
+        updates[KEY_ROUTING] = _routing_value(routing)
     if not updates:
         return describe()
     with _lock:
@@ -132,13 +167,17 @@ def save_setting(*, enabled: Optional[bool] = None, dry_run: Optional[bool] = No
             _saved = _read_saved()
         before = dict(_saved)
     was_enabled = enabled_value_for(before)
+    routing_before = tool_routing()
     _write_saved(updates)                     # raises if the config cannot be written
     with _lock:
         _saved = {**before, **updates}
     enabled_now = _effective_enabled()     # `enabled` is a parameter here
+    # The model's tool list changes when the engine turns on/off, or when the
+    # routing mode changes while it is on. Dry-run alone never changes it.
+    tools_changed = (was_enabled != enabled_now) or (enabled_now and routing_before != tool_routing())
     for listener in list(_listeners):
         try:
-            listener(bool(was_enabled != enabled_now), enabled_now)
+            listener(bool(tools_changed), enabled_now)
         except Exception:
             from jarvis.core import failsoft
             failsoft.suppress("computer_control.flags:listener")
@@ -146,6 +185,10 @@ def save_setting(*, enabled: Optional[bool] = None, dry_run: Optional[bool] = No
     if enabled is not None and _env(ENV_ENABLED) is not None and _env(ENV_ENABLED) != bool(enabled):
         note = (f" The saved setting changed, but {ENV_ENABLED} is set in the environment and "
                 "still decides; remove it for the saved setting to apply.")
+    if routing is not None:
+        note += f" Tool routing: {tool_routing()}."
+        if str(os.environ.get(ENV_ROUTING, "")).strip():
+            note += f" ({ENV_ROUTING} is set in the environment and decides.)"
     return describe() + note
 
 
@@ -159,7 +202,7 @@ def enabled_value_for(saved: dict[str, bool]) -> bool:
 
 
 def add_listener(listener: Callable[[bool, bool], None]) -> None:
-    """``listener(enabled_changed, enabled)`` after every :func:`save_setting`."""
+    """``listener(tools_changed, enabled)`` after every :func:`save_setting`."""
     with _lock:
         if listener not in _listeners:
             _listeners.append(listener)

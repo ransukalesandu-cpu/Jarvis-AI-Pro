@@ -1,0 +1,30 @@
+{"id": "app_open", "text": "Open Notepad.", "accept": ["open_app", "desktop_automation", "software"], "engine": ["cc_app", "cc_task"]}
+{"id": "app_close", "text": "Close the Calculator window.", "accept": ["computer_settings", "desktop_automation"], "engine": ["cc_app", "cc_window"]}
+{"id": "app_list", "text": "Which apps are running right now?", "accept": ["system_status", "system_info"], "engine": ["cc_app"]}
+{"id": "window_move", "text": "Move the Excel window to the left half of the screen.", "accept": ["computer_settings"], "engine": ["cc_window"]}
+{"id": "window_min", "text": "Minimise the File Explorer window.", "accept": ["computer_settings"], "engine": ["cc_window"]}
+{"id": "button", "text": "Click the Save button in Notepad.", "accept": ["ui_interaction", "computer_control"], "engine": ["cc_control", "cc_screen"]}
+{"id": "hotkey", "text": "Press Ctrl+S in the Word window.", "accept": ["computer_control", "computer_settings"], "engine": ["cc_control"]}
+{"id": "type_into", "text": "Type 'meeting at 3pm' into the open Notepad window.", "accept": ["computer_control", "computer_settings", "ui_automate"], "engine": ["cc_control", "cc_task"]}
+{"id": "toggle", "text": "In Windows Settings, click the Bluetooth toggle to turn it on.", "accept": ["ui_interaction", "computer_settings", "ui_automate"], "engine": ["cc_control", "cc_task", "cc_screen"]}
+{"id": "menu", "text": "Use the File menu in Notepad to choose Save As.", "accept": ["ui_interaction", "computer_control", "ui_automate"], "engine": ["cc_control", "cc_task"]}
+{"id": "multi_notepad", "text": "Open Notepad, write a shopping list with milk and eggs, and save it to my Desktop as list.txt.", "accept": ["ui_automate", "autonomous_task"], "engine": ["cc_task"]}
+{"id": "multi_paint", "text": "Open Paint and draw a rectangle.", "accept": ["ui_automate"], "engine": ["cc_task"]}
+{"id": "multi_installer", "text": "Go through the installer window and click Next until it finishes.", "accept": ["ui_automate", "ui_interaction"], "engine": ["cc_task", "cc_control"]}
+{"id": "multi_two_apps", "text": "Copy the first line from the open Notepad file and paste it into a new Word document.", "accept": ["ui_automate", "computer_control"], "engine": ["cc_task"]}
+{"id": "web_click", "text": "On the web page that's open, find the login button and click it.", "accept": ["browser_control", "ui_interaction"], "engine": ["cc_browser", "cc_screen"]}
+{"id": "web_fill", "text": "On the page that's open, fill the search box with 'weather Colombo' and press Enter.", "accept": ["browser_control"], "engine": ["cc_browser"]}
+{"id": "web_read", "text": "Read me the headlines on the current web page.", "accept": ["browser_control", "screen_process", "see_screen"], "engine": ["cc_browser", "cc_screen"]}
+{"id": "web_tab", "text": "In my browser, open a new tab and go to github.com.", "accept": ["browser_control", "open_app", "open"], "engine": ["cc_browser"]}
+{"id": "web_open", "text": "Open youtube.com.", "accept": ["open_app", "open", "browser_control", "youtube_video", "cc_browser"], "engine": []}
+{"id": "screen_look", "text": "What's on my screen?", "accept": ["screen_process", "see_screen"], "engine": []}
+{"id": "screen_click", "text": "Find the word 'Submit' on the screen and click it.", "accept": ["ui_interaction", "computer_control"], "engine": ["cc_screen", "cc_control"]}
+{"id": "screen_verify", "text": "Is the word 'Error' visible on my screen?", "accept": ["screen_process", "see_screen", "ui_interaction"], "engine": ["cc_screen"]}
+{"id": "file_delete", "text": "Delete the file old_notes.txt from my Desktop.", "accept": ["file_controller", "files"], "engine": ["cc_file"]}
+{"id": "file_mkdir", "text": "Make a folder called Projects in my Documents.", "accept": ["file_controller", "files"], "engine": ["cc_file"]}
+{"id": "file_find", "text": "Find all PDF files in my Downloads folder.", "accept": ["files", "file_controller"], "engine": ["cc_file"]}
+{"id": "eng_tests", "text": "Run this project's tests, fix the failures and report back.", "accept": ["autonomous_task", "dev_agent", "run_command", "code_helper"], "engine": []}
+{"id": "volume", "text": "Turn the volume down to 30 percent.", "accept": ["computer_settings"], "engine": []}
+{"id": "brightness", "text": "Set the screen brightness to 50.", "accept": ["computer_settings"], "engine": []}
+{"id": "weather", "text": "What's the weather in Colombo?", "accept": ["weather_report", "web_search"], "engine": []}
+{"id": "status", "text": "Can you control my computer right now?", "accept": ["self_check", "cc_engine_status"], "engine": ["cc_engine_status"]}

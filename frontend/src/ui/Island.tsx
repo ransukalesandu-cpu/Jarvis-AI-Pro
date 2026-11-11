@@ -1,3 +1,4 @@
+import { isActiveJob } from '../bridge/contract';
 import { useUi } from '../store';
 import { useWindows } from '../workspace/windows';
 
@@ -8,7 +9,7 @@ export function Island() {
   const link = useUi((s) => s.link);
   const muted = useUi((s) => s.muted);
   const wins = useWindows((s) => s.windows);
-  const running = useUi((s) => s.jobs?.filter((j) => j.status === 'running').length ?? 0);
+  const running = useUi((s) => s.jobs?.filter((j) => isActiveJob(j.status)).length ?? 0);
   const minimised = wins.filter((w) => w.state === 'minimized').length;
   return (
     <button className="island glass" onClick={() => setPalette(true)}>

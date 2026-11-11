@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { usePending } from './ux/pending';
 import type { AssistantState, Battery, CommandReason, CommandState, HostEvent, JobRow, LogTag, NewsItem, Net, Persona, PerfTier } from './bridge/contract';
+import { isActiveJob } from './bridge/contract';
 
 export type Page = 'home' | 'chat' | 'activity' | 'models' | 'research' | 'reminders' | 'apps' | 'files' | 'memory' | 'automation' | 'monitor' | 'security';
 
@@ -90,10 +91,12 @@ export const useUi = create<UiState>((set) => ({
   setPalette: (open) => set((s) => ({ paletteOpen: open ?? !s.paletteOpen })),
 }));
 
-/** Notices for jobs that were running in the previous snapshot and have now ended. The first snapshot never notifies. */
+/** Notices for jobs that were active (running, waiting or paused) in the previous snapshot and have now ended.
+ *  Moving between active states (an autonomous task pausing or waiting for approval) is not an ending. The first snapshot never notifies. */
 export function finishedNow(prev: JobRow[] | null, next: JobRow[]): string[] {
   if (!prev) return [];
   const was = new Map(prev.map((j) => [j.id, j.status]));
   const words = { done: 'finished', failed: 'failed', cancelled: 'was cancelled' } as const;
-  return next.filter((j) => was.get(j.id) === 'running' && j.status !== 'running').map((j) => `Job “${j.name}” ${words[j.status as keyof typeof words]}`);
+  return next.filter((j) => { const before = was.get(j.id); return before !== undefined && isActiveJob(before) && j.status in words; })
+    .map((j) => `Job “${j.name}” ${words[j.status as keyof typeof words]}`);
 }

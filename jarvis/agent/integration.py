@@ -159,6 +159,13 @@ class AgentService:
 
     # ── lifecycle ─────────────────────────────────────────────────────────
     def shutdown(self) -> None:
+        source = getattr(self, "_job_source", None)
+        if source is not None:
+            try:
+                source.close()
+            except Exception:
+                failsoft.suppress("agent.integration:shutdown:job_source")
+            self._job_source = None
         try:
             self.runner.shutdown()
         except Exception:
@@ -218,6 +225,12 @@ class AgentService:
 
     def stop(self, reason: str = "Stopped by the owner.") -> bool:
         return self.runner.cancel(reason)
+
+    def cancel_task(self, task_id: str, reason: str = "Stopped by the owner.") -> bool:
+        """Cancel one running or queued task, leaving the rest of the queue alone.
+
+        Like ``stop`` this needs no owner check: stopping is always allowed."""
+        return self.runner.cancel_task(task_id, reason)
 
     def pause(self) -> bool:
         return self.runner.pause()
@@ -655,11 +668,25 @@ class AgentService:
 
 
 def get_service() -> AgentService:
-    """Return the process-wide service, creating it on first use."""
+    """Return the process-wide service, creating it on first use.
+
+    The process-wide service also shows its tasks in the shared job list
+    (agent/jobs_source.py); services built directly (tests) do not."""
     global _SERVICE
     with _SERVICE_LOCK:
         if _SERVICE is None:
             _SERVICE = AgentService()
+            try:
+                from jarvis.agent.jobs_source import AgentJobSource
+                _SERVICE._job_source = AgentJobSource(_SERVICE)
+            except Exception:
+                failsoft.suppress("agent.integration:job_source")
+        return _SERVICE
+
+
+def existing_service() -> AgentService | None:
+    """The process-wide service if it was already created, else None (never creates it)."""
+    with _SERVICE_LOCK:
         return _SERVICE
 
 

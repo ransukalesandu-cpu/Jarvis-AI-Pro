@@ -9,6 +9,15 @@ never talks over the owner.
 Jobs run as asyncio tasks on the live loop. Blocking work inside a job goes
 through ``asyncio.to_thread``. ``cancel`` stops the task; work already running
 in a thread is told through ``job.cancel_event`` and should check it.
+
+**Sources.** Other engines with their own lifecycle (the autonomous agent's
+TaskRunner, ``agent/jobs_source.py``) register a :class:`JobSource` instead of
+being wrapped in fake jobs. Their rows appear in :meth:`JobManager.snapshot`
+(the web UI Jobs window), :meth:`running_ids` and :meth:`summaries` (the
+``job_status`` voice tool), and cancelling one of their ids is delegated to the
+source. They keep their own announcements, so nothing is spoken twice.
+``cancel_all`` touches only this manager's own jobs; the stop word stops the
+other engines itself.
 """
 from __future__ import annotations
 
@@ -17,7 +26,7 @@ import itertools
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional, Protocol
 
 from jarvis.core import failsoft
 
@@ -44,13 +53,83 @@ class Job:
         return text + "."
 
 
+#: Statuses a row can have: this manager's own jobs use the first four; sources
+#: may also report "waiting" (e.g. for approval) and "paused".
+JOB_STATUSES = ("running", "done", "failed", "cancelled", "waiting", "paused")
+ACTIVE_STATUSES = frozenset({"running", "waiting", "paused"})
+
+
+class JobSource(Protocol):
+    """Another engine's work shown alongside the jobs. Methods must be cheap (no I/O)."""
+
+    def rows(self) -> list[dict]: ...          # {"id","name","status","started","finished"}
+    def owns(self, job_id: str) -> bool: ...
+    def cancel(self, job_id: str) -> bool: ...  # any thread
+
+
 class JobManager:
     MAX_KEPT = 50
+    MAX_ROWS = 20
 
     def __init__(self, on_done: Callable[[Job], Any] | None = None):
         self._jobs: dict[str, Job] = {}
         self._on_done = on_done
         self._listeners: list[Callable[[], None]] = []
+        self._sources: list[JobSource] = []
+
+    def add_source(self, source: JobSource) -> Callable[[], None]:
+        """Show ``source``'s rows with the jobs. Returns an unsubscribe."""
+        if source not in self._sources:
+            self._sources.append(source)
+        self._notify()
+
+        def remove() -> None:
+            if source in self._sources:
+                self._sources.remove(source)
+                self._notify()
+        return remove
+
+    def notify(self) -> None:
+        """For sources: something changed, refresh every display."""
+        self._notify()
+
+    def _source_rows(self) -> list[dict]:
+        rows: list[dict] = []
+        for source in list(self._sources):
+            try:
+                for row in source.rows():
+                    if row.get("status") in JOB_STATUSES:
+                        rows.append(row)
+            except Exception:
+                failsoft.suppress("core.jobs:source_rows")
+        return rows
+
+    def _source_for(self, job_id: str) -> Optional[JobSource]:
+        job_id = str(job_id).strip()
+        if job_id in self._jobs:
+            return None
+        for source in list(self._sources):
+            try:
+                if source.owns(job_id):
+                    return source
+            except Exception:
+                failsoft.suppress("core.jobs:source_owns")
+        return None
+
+    def running_ids(self) -> list[str]:
+        """Ids that can still be cancelled: own running jobs plus active source rows."""
+        return ([j.id for j in self.running()]
+                + [str(r["id"]) for r in self._source_rows() if r["status"] in ACTIVE_STATUSES])
+
+    def summaries(self, limit: int = 10) -> list[str]:
+        """One sentence per newest job or source row (for the job_status voice tool)."""
+        now = time.time()
+        items = [(j.started, j.summary()) for j in self.list()]
+        for row in self._source_rows():
+            elapsed = (row.get("finished") or now) - float(row.get("started") or now)
+            items.append((float(row.get("started") or 0.0),
+                          f"{row['name']} ({row['id']}) is {row['status']} after {elapsed:.0f}s."))
+        return [text for _, text in sorted(items, key=lambda item: item[0], reverse=True)[:limit]]
 
     def add_listener(self, fn: Callable[[], None]) -> Callable[[], None]:
         """Call ``fn()`` (from whichever thread changed things) whenever a job starts or ends. Returns an unsubscribe."""
@@ -69,12 +148,22 @@ class JobManager:
                 failsoft.suppress("core.jobs:listener")
 
     def snapshot(self) -> list[dict]:
-        """Plain, result-free view of the newest jobs for a display: id, name, status, start/finish (epoch seconds)."""
-        return [{"id": j.id, "name": j.name, "status": j.status, "started": j.started, "finished": j.finished or None}
-                for j in self.list()[:20]]
+        """Plain, result-free view of the newest jobs for a display: id, name, status, start/finish (epoch seconds).
+
+        Includes source rows (e.g. autonomous tasks), newest first, at most MAX_ROWS."""
+        rows = [{"id": j.id, "name": j.name, "status": j.status, "started": j.started, "finished": j.finished or None}
+                for j in self.list()[:self.MAX_ROWS]]
+        for row in self._source_rows():
+            rows.append({"id": str(row["id"]), "name": str(row["name"]), "status": row["status"],
+                         "started": float(row["started"]), "finished": row.get("finished") or None})
+        rows.sort(key=lambda r: r["started"], reverse=True)
+        return rows[:self.MAX_ROWS]
 
     def request_cancel(self, job_id: str) -> bool:
         """Like :meth:`cancel` but safe to call from any thread (the task lives on the live loop)."""
+        source = self._source_for(job_id)
+        if source is not None:
+            return bool(source.cancel(str(job_id).strip()))
         job = self.get(job_id)
         if job is None or job.status != "running":
             return False
@@ -138,6 +227,9 @@ class JobManager:
         return [j for j in self._jobs.values() if j.status == "running"]
 
     def cancel(self, job_id: str) -> bool:
+        source = self._source_for(job_id)
+        if source is not None:
+            return bool(source.cancel(str(job_id).strip()))
         job = self.get(job_id)
         if job is None or job.status != "running":
             return False

@@ -123,6 +123,9 @@ class TaskRunner:
 
         self._cancel = threading.Event()
         self._cancel_for: str | None = None
+        # True for cancel() (stop everything, clear the queue); False for
+        # cancel_task(), which must leave the other queued tasks alone.
+        self._cancel_clears_queue = True
         self._pause = threading.Event()
         self._resume = threading.Event()
         self._resume.set()
@@ -297,6 +300,7 @@ class TaskRunner:
             # Cancel may arrive before the worker picks the task up.
             target = task.id if task is not None else (self._queue[0] if self._queue else None)
         self._cancel_for = target
+        self._cancel_clears_queue = True
         self._cancel.set()
         self._resume.set()
         with self._lock:
@@ -307,10 +311,41 @@ class TaskRunner:
             task.note(f"cancel requested: {reason}")
             self.store.append_event(task.id, {"kind": "cancel_requested", "reason": reason})
             self._announce("Stopping.")
+        self._cancel_queued(queued_ids, reason, skip=task.id if task is not None else None)
+        return task is not None or bool(queued_ids)
+
+    def cancel_task(self, task_id: str, reason: str = "Stopped by the owner.") -> bool:
+        """Cancel one task — the running one or one waiting in the queue — and leave
+        the rest of the queue alone (``cancel`` stops the active task and clears the
+        queue). Returns False when the id is neither running nor queued."""
+        task_id = str(task_id or "").strip()
+        task = self._active
+        if task is not None and task.id == task_id and not task.state.terminal:
+            self._cancel_for = task.id
+            self._cancel_clears_queue = False
+            self._cancel.set()
+            self._resume.set()
+            task.cancel_reason = str(reason)
+            task.note(f"cancel requested: {reason}")
+            self.store.append_event(task.id, {"kind": "cancel_requested", "reason": reason})
+            self._announce("Stopping.")
+            return True
+        with self._lock:
+            if task_id not in self._queue:
+                return False
+            self._queue.remove(task_id)
+        self._cancel_queued([task_id], reason)
+        return True
+
+    def live_task(self, task_id: str) -> Task | None:
+        """The in-memory task object the worker updates (no store read)."""
+        return self._tasks.get(str(task_id or ""))
+
+    def _cancel_queued(self, queued_ids: list[str], reason: str, *, skip: str | None = None) -> None:
         # Settle each durable record independently. A failed cloud write must
         # not discard its queue ID or prevent later tasks from being cancelled.
         for queued_id in queued_ids:
-            if task is not None and queued_id == task.id:
+            if skip is not None and queued_id == skip:
                 continue
             queued_task = self._tasks.get(queued_id) or self.store.load(queued_id)
             if queued_task is None or queued_task.state.terminal:
@@ -339,7 +374,6 @@ class TaskRunner:
             except Exception:
                 failsoft.suppress("agent.runner:cancel_queue_event")
             self._emit("finished", queued_task, message="Queued task cancelled.")
-        return task is not None or bool(queued_ids)
 
     def wait(self, timeout: float | None = None) -> Task | None:
         """Block until the worker stops (tests and shutdown use this)."""
@@ -420,7 +454,7 @@ class TaskRunner:
                     self._finalize(task)
                 except Exception:
                     failsoft.suppress("agent.runner:_worker_loop")
-            if self._cancel.is_set():
+            if self._cancel.is_set() and self._cancel_clears_queue:
                 with self._lock:
                     self._queue.clear()
 

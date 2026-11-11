@@ -27,6 +27,13 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   picks per mode without executing anything.
 
 ### Fixed
+- **"Jarvis, stop" now stops autonomous tasks**, and autonomous tasks appear in the shared job list
+  (audit P0-4, B6). The spoken stop word cancelled tool calls, background jobs and computer
+  control but never reached the agent's TaskRunner. Autonomous tasks are now a `JobManager` source
+  (`agent/jobs_source.py`): they show in the web UI Jobs window (new `waiting`/`paused` states,
+  Cancel per task), in `job_status`, and in the job-cancel gate; cancelling one row stops only that
+  task (`TaskRunner.cancel_task`), while "Jarvis, stop" stops the task and its queue. Rows are
+  in-memory (no cloud I/O per refresh) and the agent keeps its own announcements.
 - **Autonomous tasks work again from voice and without Supabase.** The `autonomous_task` handler read
   keyword arguments while the action registry passes `parameters=`, so every call — including
   `run` — was treated as `status` and no task could be started by voice. Separately, the agent's

@@ -160,6 +160,16 @@ class ToolDispatchMixin:
             estop.trigger("stop requested", source="stop_everything")
         except Exception:
             failsoft.suppress("live_tools:_stop_everything:estop")
+        # The autonomous agent runs outside the JobManager: stop its running task
+        # and its queue too ("Jarvis, stop" means everything). Never create the
+        # service just to stop it.
+        try:
+            from jarvis.agent.integration import existing_service
+            service = existing_service()
+            if service is not None and service.stop("Stopped by 'Jarvis, stop'."):
+                jobs_cancelled += 1
+        except Exception:
+            failsoft.suppress("live_tools:_stop_everything:agent")
         return len(active), jobs_cancelled
 
     def _execute_rule_action(self, rule: dict, source: str, payload: dict) -> None:

@@ -18,7 +18,8 @@ MAX_REQUEST_CHARS = 16384          # upper bound; each request kind has a tighte
 
 ASSISTANT_STATES = frozenset({"idle", "sleeping", "listening", "thinking", "searching", "executing", "speaking", "error"})
 PERSONAS = frozenset({"jarvis", "bihansa"})
-JOB_STATES = frozenset({"running", "done", "failed", "cancelled"})
+# "waiting" (e.g. for approval) and "paused" come from autonomous tasks (agent/jobs_source.py).
+JOB_STATES = frozenset({"running", "done", "failed", "cancelled", "waiting", "paused"})
 PERF_TIERS = frozenset({"full", "balanced", "lite"})
 
 

@@ -66,7 +66,7 @@ def attach(window):
         from jarvis.core.jobs import get_job_manager
         from .jobs_feed import JobsFeed
         mgr = get_job_manager()
-        host.bridge.jobs = JobGate(lambda: [j.id for j in mgr.running()], mgr.request_cancel)
+        host.bridge.jobs = JobGate(mgr.running_ids, mgr.request_cancel)   # jobs + autonomous tasks
         host._jobs_feed = JobsFeed(mgr)
     except (ImportError, RuntimeError):
         host.bridge.jobs = None

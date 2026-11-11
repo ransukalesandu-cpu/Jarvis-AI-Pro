@@ -309,6 +309,8 @@ The Phase 0 audit and the Computer Control docs already evaluated UFO², Playwri
 
 ### P0-4 One visible task list (fixes B6) — M
 
+**Status: implemented on `claude/zealous-volta-haz97s` (2026-11-11).** Found while implementing: the spoken stop word (`_stop_everything`) never stopped autonomous tasks; it now does. Autonomous tasks are a JobManager source (no engine merge); the legacy HUD needed no change (it does not list JobManager jobs; its autonomous panel already shows agent tasks). Not done: a shared task-ID/lifecycle contract across engines (P1-2), and computer-control HostAgent tasks already appear as `cc_task` jobs.
+
 * **Change:** a small adapter publishes TaskRunner task state into `JobManager` (or the same `jobs.updated` feed) with `source="agent"` and a shared status vocabulary (queued, running, waiting_approval, paused, succeeded, failed, cancelled). Cancel from the UI maps to `AgentService.cancel`. `webui/jobs_feed.py`, `webui/contract.py`, `frontend/src/bridge/contract.ts`, `frontend/src/ui/Jobs.tsx`, and the legacy HUD job list.
 * **Not in this PR:** merging the engines or a new orchestration package.
 * **Tests:** contract validation; task start → row appears; cancel propagates; estop cancels all three sources.

@@ -11,8 +11,11 @@ export const PERF_TIERS = ['full', 'balanced', 'lite'] as const;
 export type PerfTier = (typeof PERF_TIERS)[number];
 
 export interface Battery { percent: number; charging: boolean }
-export const JOB_STATES = ['running', 'done', 'failed', 'cancelled'] as const;
+// 'waiting' (e.g. for approval) and 'paused' come from autonomous tasks.
+export const JOB_STATES = ['running', 'done', 'failed', 'cancelled', 'waiting', 'paused'] as const;
 export type JobState = (typeof JOB_STATES)[number];
+/** Still stoppable: a running job, or an autonomous task that is waiting or paused. */
+export const isActiveJob = (s: JobState): boolean => s === 'running' || s === 'waiting' || s === 'paused';
 export interface JobRow { id: string; name: string; status: JobState; startedAt: number; finishedAt: number | null }
 export interface NewsItem { title: string; source: string; link: boolean }
 export interface Net { upKBps: number; downKBps: number }

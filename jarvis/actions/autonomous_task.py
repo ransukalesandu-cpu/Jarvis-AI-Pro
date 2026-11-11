@@ -14,7 +14,8 @@ Security is enforced in three places and none of them is optional:
 3. Each planned step is classified again by ``agent.policy``; anything
    consequential additionally needs the existing ``core.confirm`` approval.
 
-A single "stop" (voice, HUD button, or the Dynamic Island) sets the runner's
+A single "stop" ("Jarvis, stop" via core/runtime/live_tools._stop_everything,
+the HUD button, the Dynamic Island, or Cancel in the job list) sets the runner's
 cancellation event, which is checked before every action and inside running
 commands.
 """

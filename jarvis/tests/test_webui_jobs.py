@@ -82,7 +82,9 @@ def test_job_gate_only_cancels_jobs_python_lists_as_running():
 def test_contract_for_jobs():
     ok = {"id": "job1", "name": "render", "status": "running", "startedAt": 1700000000000, "finishedAt": None}
     assert contract.encode_event("jobs.updated", jobs=[ok])
-    for bad in ({**ok, "status": "paused"}, {**ok, "result": "x"}, {**ok, "name": ""}, {**ok, "id": "x" * 25}, {**ok, "startedAt": -1}):
+    # Autonomous tasks add "waiting" and "paused" (agent/jobs_source.py); unknown states stay out.
+    assert contract.encode_event("jobs.updated", jobs=[{**ok, "status": "paused"}, {**ok, "status": "waiting"}])
+    for bad in ({**ok, "status": "stuck"}, {**ok, "result": "x"}, {**ok, "name": ""}, {**ok, "id": "x" * 25}, {**ok, "startedAt": -1}):
         assert contract.encode_event("jobs.updated", jobs=[bad]) is None
     assert contract.encode_event("jobs.updated", jobs=[ok] * 21) is None
     assert contract.parse_request(json.dumps({"kind": "job.cancel", "id": "job1"})) is not None

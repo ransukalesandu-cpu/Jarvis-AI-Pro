@@ -31,9 +31,14 @@ def job_status(parameters: dict, **_ctx) -> str:
         return f"Cancelled {job_id}." if manager.cancel(job_id) else f"No running job {job_id}."
     if job_id:
         job = manager.get(job_id)
-        return job.summary() if job else f"No job {job_id}."
-    jobs = manager.list()[:10]
-    return "\n".join(j.summary() for j in jobs) if jobs else "No background jobs."
+        if job is not None:
+            return job.summary()
+        line = next((text for text in manager.summaries(limit=manager.MAX_ROWS)
+                     if f"({job_id})" in text), "")
+        return line or f"No job {job_id}."
+    # Background jobs and autonomous tasks, newest first (core/jobs.py sources).
+    lines = manager.summaries(limit=10)
+    return "\n".join(lines) if lines else "No background jobs."
 
 
 TOOLS = [
@@ -48,7 +53,8 @@ TOOLS = [
     },
     {
         "name": "job_status",
-        "description": "Status of background jobs (all, or one job_id); action=cancel stops one or 'all'.",
+        "description": ("Status of background jobs and autonomous tasks (all, or one job_id); "
+                        "action=cancel stops one, or 'all' background jobs."),
         "parameters": {"type": "OBJECT", "properties": {
             "job_id": {"type": "STRING"},
             "action": {"type": "STRING", "description": "status | cancel"},

@@ -161,3 +161,40 @@ def test_save_tts_settings_rejects_unknown_engine():
 
     with pytest.raises(ValueError):
         config_manager.save_tts_settings({"tts_engine": "unknown"})
+
+
+
+def test_external_tts_decoder_returns_24khz_mono_int16(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    from jarvis.main import _decode_external_tts_to_live_pcm
+
+    fake_miniaudio = SimpleNamespace(
+        SampleFormat=SimpleNamespace(FLOAT32="float32"),
+        decode=lambda audio, **kwargs: SimpleNamespace(
+            samples=[0.0, 0.5, -0.5, 0.25],
+            sample_rate=24000,
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "miniaudio", fake_miniaudio)
+    pcm = _decode_external_tts_to_live_pcm(b"fake-audio")
+    assert len(pcm) == 8
+    assert int.from_bytes(pcm[2:4], "little", signed=True) > 0
+    assert int.from_bytes(pcm[4:6], "little", signed=True) < 0
+
+
+def test_external_tts_decoder_resamples_to_live_rate(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    from jarvis.main import _decode_external_tts_to_live_pcm
+
+    fake_miniaudio = SimpleNamespace(
+        SampleFormat=SimpleNamespace(FLOAT32="float32"),
+        decode=lambda audio, **kwargs: SimpleNamespace(
+            samples=[0.0, 0.25, 0.5, 0.25, 0.0, -0.25, -0.5, -0.25],
+            sample_rate=48000,
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "miniaudio", fake_miniaudio)
+    pcm = _decode_external_tts_to_live_pcm(b"fake-audio")
+    assert len(pcm) == 8

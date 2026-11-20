@@ -1822,7 +1822,7 @@ class JarvisLive(
             #  support it, and it never reliably detected tone in practice.
             #  To restore it on a 2.5 native-audio model, add back:
             #  cfg["enable_affective_dialog"] = True )
-            if get_proactive_audio_enabled():
+            if get_proactive_audio_enabled() and not getattr(self, "_external_tts_enabled", False):
                 cfg["proactivity"] = types.ProactivityConfig(proactive_audio=True)
 
         if self._tuned_live:
@@ -2835,6 +2835,8 @@ class JarvisLive(
                                                 self.audio_in_queue.put_nowait(
                                                     pcm[offset:offset + _PLAYBACK_SLICE_BYTES]
                                                 )
+                                            for event in self._vocal_plan.after:
+                                                self._enqueue_vocal_event(event)
                                             self.ui.write_log(
                                                 f"SYS: Speech synthesized via {engine.last_provider} "
                                                 f"({engine.last_mode} voice)."

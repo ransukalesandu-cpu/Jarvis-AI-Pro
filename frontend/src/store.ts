@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { usePending } from './ux/pending';
+import { PAGE_WINDOWS } from './workspace/layout';
+import { useWindows } from './workspace/windows';
 import type { AssistantState, Battery, CommandReason, CommandState, HostEvent, JobRow, LogTag, NewsItem, Net, Persona, PerfTier } from './bridge/contract';
 
 export type Page = 'home' | 'chat' | 'activity' | 'models' | 'research' | 'reminders' | 'apps' | 'files' | 'memory' | 'automation' | 'monitor' | 'security' | 'tasks';
@@ -76,13 +78,17 @@ export const useUi = create<UiState>((set) => ({
       }
       case 'news.items': return { news: { heading: e.heading, items: e.items } };
       case 'workspace.list': return { workspaceNames: e.names };
-      case 'workspace.loaded': return e.layout ? { page: e.layout.page } : s;
+      case 'workspace.loaded': return e.layout ? { page: PAGE_WINDOWS[e.layout.page] ? 'home' as const : e.layout.page } : s;
       case 'host.hello': return { link: 'connected' as const };
       default: return s;
     }
   }),
   clearLog: () => set({ log: [] }),
-  go: (page) => set({ page, navOpen: false }),
+  go: (page) => {
+    const kind = PAGE_WINDOWS[page];
+    if (kind) { useWindows.getState().open(kind); set({ page: 'home', navOpen: false }); }   // a floating window, not the side panel
+    else set({ page, navOpen: false });
+  },
   toggleNav: (open) => set((s) => ({ navOpen: open ?? !s.navOpen, settingsOpen: false })),
   toggleSettings: (open) => set((s) => ({ settingsOpen: open ?? !s.settingsOpen, navOpen: false })),
   setReducedMotion: (reducedMotion) => set({ reducedMotion }),

@@ -125,3 +125,9 @@
 .tf-stage-hd b { flex: 1; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tf-stage-hd .toggle { width: auto; padding: 0 8px; display: flex; gap: 5px; align-items: center; font-size: 11px; }
 @media (max-width: 760px) { .tf-page-body { grid-template-columns: 1fr; grid-template-rows: 160px 1fr; } }
+
+/* Task Progress as a floating window */
+.win-body:has(> .tf-page) { display: flex; flex-direction: column; overflow: hidden; }
+.win-body > .tf-page h1 { font-size: 15px; margin: 0 0 2px; }
+.win-body > .tf-page p { font-size: 12px; }
+.win-body .tf-page-body { min-height: 0; }

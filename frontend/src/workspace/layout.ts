@@ -1,6 +1,6 @@
 import type { Page } from '../store';
 
-export const WINDOW_KINDS = ['monitor', 'models', 'activity', 'log', 'timer', 'bento', 'news', 'jobs'] as const;
+export const WINDOW_KINDS = ['monitor', 'models', 'activity', 'log', 'timer', 'bento', 'news', 'jobs', 'tasks'] as const;
 export type WinKind = (typeof WINDOW_KINDS)[number];
 export const WINDOW_STATES = ['normal', 'minimized', 'maximized'] as const;
 export type WinState = (typeof WINDOW_STATES)[number];
@@ -14,7 +14,13 @@ export const MIN_H = 180;
 export const MAX_WINDOWS = 12;
 export const TOP = 64;      // below the top bar
 export const MARGIN = 16;
-export const TITLES: Record<WinKind, string> = { monitor: 'System Monitor', models: 'AI Models', activity: 'Activity Center', log: 'Conversation Log', timer: 'Timer', bento: 'Dashboard', news: 'News', jobs: 'Background Jobs' };
+export const TITLES: Record<WinKind, string> = { monitor: 'System Monitor', models: 'AI Models', activity: 'Activity Center', log: 'Conversation Log', timer: 'Timer', bento: 'Dashboard', news: 'News', jobs: 'Background Jobs', tasks: 'Task Progress' };
+
+/** Pages that open as floating windows (drag them anywhere around the hologram) instead of the side panel. */
+export const PAGE_WINDOWS: Partial<Record<Page, WinKind>> = { chat: 'log', activity: 'activity', models: 'models', monitor: 'monitor', tasks: 'tasks' };
+
+/** Kinds that need more room than the default gutter size. */
+export const PREFERRED_SIZE: Partial<Record<WinKind, { w: number; h: number }>> = { tasks: { w: 900, h: 560 }, log: { w: 380, h: 460 } };
 
 const isNum = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 
@@ -58,8 +64,13 @@ export function clampRect(r: Pick<WindowRec, 'x' | 'y' | 'w' | 'h'>, vp: Viewpor
 export function hologramZone(vp: Viewport) { return { x: vp.w * 0.32, y: TOP, w: vp.w * 0.36, h: vp.h - TOP } ; }
 
 /** Intelligent placement: left gutter, then right gutter, stacked; only then cascade. Never over the hologram when avoidable. */
-export function place(existing: WindowRec[], vp: Viewport): { x: number; y: number; w: number; h: number } {
-  const w = Math.min(340, Math.max(MIN_W, vp.w * 0.26)), h = Math.min(320, Math.max(MIN_H, (vp.h - TOP - MARGIN) / 2 - MARGIN / 2));
+export function place(existing: WindowRec[], vp: Viewport, kind?: WinKind): { x: number; y: number; w: number; h: number } {
+  const big = kind ? PREFERRED_SIZE[kind] : undefined;
+  if (big && big.w > 400) {                     // too wide for a gutter: right-aligned below the top bar, cascaded
+    const n = existing.filter((e) => e.state === 'normal').length;
+    return clampRect({ x: vp.w - big.w - MARGIN - 28 * (n % 4), y: TOP + 28 * (n % 4), w: big.w, h: big.h }, vp);
+  }
+  const w = Math.max(big?.w ?? 0, Math.min(340, Math.max(MIN_W, vp.w * 0.26))), h = Math.max(big?.h ?? 0, Math.min(320, Math.max(MIN_H, (vp.h - TOP - MARGIN) / 2 - MARGIN / 2)));
   const visible = existing.filter((e) => e.state === 'normal');
   const slots: { x: number; y: number; w: number; h: number }[] = [];
   for (const x of [MARGIN, vp.w - w - MARGIN]) for (let y = TOP; y + h <= vp.h - MARGIN + 1; y += h + MARGIN) slots.push({ x, y, w, h });

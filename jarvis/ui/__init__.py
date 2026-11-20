@@ -176,6 +176,7 @@ from jarvis.core.ui_tokens import BASE_COLORS as _TOK  # noqa: E402  (the one th
 from jarvis.core import ui_state as _ui_state  # noqa: E402  (state bus + shared clock)
 from jarvis.core.ui_state import bus as _ui_bus  # noqa: E402
 from jarvis.ui.hologram.stage import HologramStage  # noqa: E402
+from jarvis.ui.hologram.neural_stage import NeuralStage  # noqa: E402
 
 
 class C:
@@ -529,7 +530,13 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
                 # The owner's chosen identity: their own face picture as a
                 # cyan hologram (core/avatar_image.py), or the smooth volume
                 # head when no picture is installed.
-                self._avatar = HoloAvatar(style="image")
+                try:
+                    from jarvis.memory.config_manager import get_hologram_look
+                    _look = get_hologram_look()
+                except Exception:
+                    _look = "neural"
+                self.hologram_look = _look
+                self._avatar = HoloAvatar(style="neural" if _look == "neural" else "image")
             except TypeError:          # the synthetic fallback has no styles
                 self._avatar = HoloAvatar()
             except Exception:
@@ -1319,8 +1326,14 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
             _band_h = max(60.0, _sy_status - 12.0 - _band_t)
             # The stage shares the band: the face keeps the top, the orb sits
             # under it and the heart low on the left (ui/hologram/stage.py).
-            _face_h, _orb, _orb_r, _heart, _heart_r = HologramStage.geometry(
-                W, H, _band_t, _band_h, cx)
+            _neural = getattr(self, "hologram_look", "classic") == "neural"
+            if _neural:
+                # The neural look: no heart; strands from the neck into the orb below.
+                _face_h, _orb, _orb_r = NeuralStage.geometry(W, H, _band_t, _band_h, cx)
+                _heart, _heart_r = None, 0.0
+            else:
+                _face_h, _orb, _orb_r, _heart, _heart_r = HologramStage.geometry(
+                    W, H, _band_t, _band_h, cx)
             _r_head = min(fw * 0.355, _face_h / (self._avatar.SPAN + 0.08))
             _head_cy = _band_t + (_face_h - self._avatar.SPAN * _r_head) / 2.0 + _r_head
 
@@ -1338,15 +1351,24 @@ class HudCanvas(NeuralVizMixin, QOpenGLWidget):
                     _acc = qcol(C.PRI)
             _neck = QPointF(cx, _head_cy - _r_head + self._avatar.SPAN * _r_head * 0.97)
             if self._stage is None:
-                self._stage = HologramStage()
+                self._stage = NeuralStage() if _neural else HologramStage()
                 _tier = getattr(self, "_perf_tier", None)
                 if _tier is not None:
                     self._stage.wires, self._stage.pulses = _tier.wires, _tier.pulses
-            self._stage.paint(p, neck=_neck, orb=_orb, orb_r=_orb_r, heart=_heart,
-                              heart_r=_heart_r, t=_ui_state.clock().now,
-                              level=float(_ui_bus().get(_ui_state.AUDIO_LEVEL, 0.0) or 0.0),
-                              state="MUTED" if self.muted else self.state)
-            self._avatar.paint(p, cx, _head_cy, _r_head, _main, _acc, qcol(C.BG))
+            _t_now = _ui_state.clock().now
+            _lvl = float(_ui_bus().get(_ui_state.AUDIO_LEVEL, 0.0) or 0.0)
+            _st = "MUTED" if self.muted else self.state
+            if _neural:
+                self._stage.paint_back(p, cx, _head_cy, _r_head * 1.9, _t_now)
+                # The head is drawn first so its neck disc (where the strands start)
+                # is known; strands and orb are additive, so the order reads the same.
+                self._avatar.paint(p, cx, _head_cy, _r_head, _main, _acc, qcol(C.BG))
+                _base = getattr(self._avatar, "neck_base", None) or (_neck.x(), _neck.y(), _r_head * 1.2)
+                self._stage.paint(p, base=_base, orb=_orb, orb_r=_orb_r, t=_t_now, level=_lvl, state=_st)
+            else:
+                self._stage.paint(p, neck=_neck, orb=_orb, orb_r=_orb_r, heart=_heart,
+                                  heart_r=_heart_r, t=_t_now, level=_lvl, state=_st)
+                self._avatar.paint(p, cx, _head_cy, _r_head, _main, _acc, qcol(C.BG))
 
         elif self.hud_style in ("neural", "neural_orb"):
             if self._hand_3d_active:

@@ -48,7 +48,7 @@ _CYBER_PRIMARY = QColor(30, 150, 255)
 _CYBER_ACCENT = QColor(150, 240, 255)
 _HAIR = QColor(70, 120, 210)          # deeper and denser than the skin glass
 _VOL_HAIR = QColor(20, 150, 200)      # the volume look's hair: deeper cyan
-_BUST_LOOKS = ("cyber", "volume", "image")   # own colours; sculpted head or picture
+_BUST_LOOKS = ("cyber", "volume", "image", "neural")   # own colours; sculpted head or picture
 _VOL_HEADROOM = 0.30                         # room for the volume look's hair
 _MIN_ALPHA = 0.05
 
@@ -142,12 +142,13 @@ class HoloAvatar:
         if style is not None:
             self.style = style
         self._img = None
-        if self.style == "image":
+        if self.style in ("image", "neural"):
             # The owner's own face picture; without one, the volume look.
+            # "neural" is the same picture as a blue photo head with veins.
             try:
                 from jarvis.core.avatar_image import ImageHologram, find_face
                 path = find_face()
-                self._img = ImageHologram(path) if path else None
+                self._img = ImageHologram(path, style="neural" if self.style == "neural" else "classic") if path else None
             except Exception:
                 self._img = None
             if self._img is None:
@@ -263,7 +264,15 @@ class HoloAvatar:
     def look(self) -> str:
         return self.style or ("shaded" if self.shaded else "glass")
 
+    @property
+    def neck_base(self) -> tuple[float, float, float] | None:
+        """The picture's neck disc (x, y, width) from the last frame, if any."""
+        return self._img.base if self._img is not None else None
+
     def _base_colors(self) -> tuple[QColor, QColor]:
+        if self.look == "neural":
+            from jarvis.core.avatar_neural import NEURAL_ACCENT, NEURAL_PRIMARY
+            return NEURAL_PRIMARY, NEURAL_ACCENT
         if self.look in ("volume", "image"):
             from jarvis.core.avatar_volume import VOLUME_ACCENT, VOLUME_PRIMARY
             return VOLUME_PRIMARY, VOLUME_ACCENT
@@ -735,7 +744,11 @@ class HoloAvatar:
             primary, accent = self._base_colors()
         elif bust:
             primary = self._base_colors()[0]
-        primary, accent = self._adapt_colors(0.016, primary, accent)
+        if self.look == "neural":
+            # The neural look keeps its blue at every state; the orb and pulses carry the state.
+            primary, accent = self._base_colors()
+        else:
+            primary, accent = self._adapt_colors(0.016, primary, accent)
         amp = self._glow
         if self._img is not None:
             self._img.bloom = self.bloom

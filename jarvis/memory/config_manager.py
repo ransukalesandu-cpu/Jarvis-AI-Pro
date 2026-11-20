@@ -221,6 +221,19 @@ def save_push_to_talk_enabled(enabled: bool) -> None:
 
 
 HUD_STYLES = ("neural", "neural_orb", "face", "core")
+HOLOGRAM_LOOKS = ("neural", "classic")
+
+
+def get_hologram_look() -> str:
+    """The face mode's look: "neural" (blue photo head, veins, strands into an orb; the
+    default) or "classic" (cyan hologram with the heart, orb and five wires)."""
+    v = str(load_api_keys().get("hologram_look", "neural")).strip().lower()
+    return v if v in HOLOGRAM_LOOKS else "neural"
+
+
+def save_hologram_look(look: str) -> None:
+    s = str(look or "").strip().lower()
+    _save_flag("hologram_look", s if s in HOLOGRAM_LOOKS else "neural")
 
 
 def get_hud_style() -> str:

@@ -36,6 +36,8 @@ from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import (QBrush, QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen,
                          QPolygonF, QRadialGradient, QTransform)
 
+from jarvis.core import avatar_neural as neural
+
 FACE_DIR = Path(__file__).resolve().parent.parent / "config"
 FACE_NAMES = ("hologram_face.png", "hologram_face.webp", "hologram_face.jpg",
               "hologram_face.jpeg")
@@ -159,15 +161,23 @@ def cut_background(rgba: np.ndarray) -> np.ndarray:
 
 class ImageHologram:
     bloom = True          # glow pass and effects; the lite performance tier turns them off
+    STYLES = ("classic", "neural")
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, style: str = "classic"):
+        """`style`: "classic" is cyan line-art; "neural" is a photo-real blue head
+        with glowing veins (core/avatar_neural.py)."""
+        self.style = style if style in self.STYLES else "classic"
+        self.base: tuple[float, float, float] | None = None   # neck disc (x, y, width) last frame
         img = QImage(str(path))
         if img.isNull():
             raise ValueError(f"cannot read {path}")
         if img.height() > _MAX_H:
             img = img.scaledToHeight(_MAX_H, Qt.TransformationMode.SmoothTransformation)
         rgba = _to_array(img)
-        mask = cut_background(rgba)
+        if self.style == "neural" and neural.border_is_dark(rgba):
+            mask = neural.cut_dark_background(rgba)      # a portrait on a dark backdrop
+        else:
+            mask = cut_background(rgba)
         ys, xs = np.nonzero(mask > 0.5)
         if len(xs) < 100:
             raise ValueError("no foreground found in the face picture")
@@ -200,6 +210,12 @@ class ImageHologram:
         self.layout = self._load_layout(path)
         self._rows = _rows()
         self._relief = self._build_relief()
+        self._raw_lum = lum * mask
+        self._veins: list = []
+        self._vein_map = np.zeros_like(mask)
+        if self.style == "neural":
+            self._veins = neural.grow_veins(mask, self.layout)
+            self._vein_map = neural.rasterize_veins(self._veins, mask.shape)
         self._view = (0.0, 0.0, 0.0)
         self._out_size = (int(W * (1 + 2 * _MARGIN)), int(H * (1 + 2 * _MARGIN)))
 
@@ -283,6 +299,12 @@ class ImageHologram:
         """The hologram itself (premultiplied, meant to be drawn additively)."""
         # Quantise so slow mood fades re-tint a handful of times, not every frame.
         key = (primary.red() // 12, primary.green() // 12, primary.blue() // 12)
+        if self.style == "neural":
+            if key != self._tint_key or self._tinted is None:
+                self._tinted = neural.neural_tint(self._raw_lum, self._mask, self._ink, self._rim,
+                                                  self._vein_map, primary)
+                self._tint_key = key
+            return self._tinted
         if key != self._tint_key or self._tinted is None:
             col = np.array([primary.red(), primary.green(), primary.blue()], dtype=np.float32)
             lum = self._lum[..., None]
@@ -466,6 +488,12 @@ class ImageHologram:
                                 np.array([u]), np.array([v]))
         return float(x[0]), float(y[0])
 
+    def to_buffer_many(self, u: np.ndarray, v: np.ndarray, f: dict) -> tuple[np.ndarray, np.ndarray]:
+        """`to_buffer` for many picture points at once."""
+        du, dv = self._field(u, v, f)
+        x, y, _ = self._project(u + du, v + dv, u, v)
+        return x, y
+
     def _paint_mouth(self, p: QPainter, iw: int, ih: int, f: dict) -> None:
         """The opening between the lips, shaped by the displaced lip corners."""
         mx, my, mw = self.layout["mouth"]
@@ -531,6 +559,10 @@ class ImageHologram:
         # Projector: a base ring under the neck and a faint beam up through it.
         base_y = top + h * (1.0 - _PAD * 0.6)
         bw, bh = w * 0.62, w * 0.09
+        self.base = (cx, base_y, bw)
+        if self.style == "neural":
+            self._paint_neural(p, img, f, cx, top, h, w, left, base_y, bw, primary, t, amp)
+            return
         beam = QLinearGradient(0, base_y, 0, top + h * 0.05)
         beam.setColorAt(0.0, QColor(*P, int(70 + 50 * amp)))
         beam.setColorAt(1.0, QColor(*P, 0))
@@ -619,4 +651,58 @@ class ImageHologram:
             r_ = 1.0 + 1.4 * b
             p.setOpacity(max(0.0, 1.0 - rise) * 0.8)
             p.drawEllipse(QPointF(x, y), r_, r_)
+        p.restore()
+
+    # ── the neural look ─────────────────────────────────────────────────────
+    def _paint_neural(self, p: QPainter, img: QImage, f: dict, cx: float, top: float, h: float,
+                      w: float, left: float, base_y: float, bw: float, primary: QColor,
+                      t: float, amp: float) -> None:
+        """Blue photo head with veins, a soft aura, pulses and the neck disc (no beam)."""
+        P = (primary.red(), primary.green(), primary.blue())
+        ar = h * 0.70
+        grad = QRadialGradient(cx, top + h * 0.42, ar)
+        grad.setColorAt(0.0, QColor(*P, int(38 + 50 * amp)))
+        grad.setColorAt(0.6, QColor(*P, int(12 + 20 * amp)))
+        grad.setColorAt(1.0, QColor(*P, 0))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawEllipse(QRectF(cx - ar, top + h * 0.42 - ar, ar * 2, ar * 2))
+
+        p.save()
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
+        flicker = 0.94 + 0.03 * math.sin(t * 11.0) * math.sin(t * 6.1) + 0.03 * amp
+        p.setOpacity(max(0.0, min(1.0, flicker)))
+        rect = QRectF(left - w * _MARGIN, top - h * _MARGIN, w * (1 + 2 * _MARGIN), h * (1 + 2 * _MARGIN))
+        bx, by = rect.width() / img.width(), rect.height() / img.height()
+        p.drawImage(rect, img)
+        neural.paint_neck_disc(p, cx, base_y, bw * 1.05, primary, amp, t)
+        if self.bloom:
+            bloom = img.scaled(max(2, img.width() // 5), max(2, img.height() // 5),
+                               Qt.AspectRatioMode.IgnoreAspectRatio,
+                               Qt.TransformationMode.SmoothTransformation)
+            p.setOpacity(0.42 + 0.12 * amp)
+            p.drawImage(rect, bloom)
+            p.setOpacity(1.0)
+            neural.paint_vein_pulses(p, self, self._veins, f, rect, bx, by, t, amp)
+            # Rare glitch slice, as in the classic look.
+            slot = int(t / 5.3)
+            if (t / 5.3) - slot < 0.025:
+                rnd = (slot * 2654435761) % 1000 / 1000.0
+                band, bh_ = 0.2 + 0.6 * rnd, 0.025
+                src = QRectF(0, band * img.height(), img.width(), bh_ * img.height())
+                p.setOpacity(0.7)
+                p.drawImage(QRectF(rect.left() + (rnd - 0.5) * w * 0.05, rect.top() + band * rect.height(),
+                                   rect.width(), bh_ * rect.height()), img, src)
+            # Sparks drifting up around the neck.
+            p.setOpacity(1.0)
+            p.setPen(Qt.PenStyle.NoPen)
+            for i in range(22):
+                a = (i * 0.61803) % 1.0
+                b = (i * 0.38197 + 0.13) % 1.0
+                rise = (t * (0.05 + 0.05 * b) + a) % 1.0
+                x = cx + (a - 0.5) * bw * (1.0 + 0.6 * rise) + math.sin(t * 0.8 + i) * w * 0.01
+                y = base_y - rise * h * 0.45
+                p.setBrush(QColor(170, 225, 255, int(160 * (1.0 - rise))))
+                p.drawEllipse(QPointF(x, y), 0.9 + 1.2 * b, 0.9 + 1.2 * b)
         p.restore()

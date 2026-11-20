@@ -65,3 +65,6 @@ Jarvis_Received_Files/
 htmlcov/
 coverage.xml
 
+
+# The owner's own hologram face picture stays on their machine (core/avatar_image.py)
+jarvis/config/hologram_face.*

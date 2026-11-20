@@ -7,6 +7,13 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Neural hologram look** (classic HUD, face mode; new default `hologram_look: "neural"`). The owner's
+  picture (`jarvis/config/hologram_face.png`, now git-ignored) becomes a photo-real blue head with a
+  network of glowing veins (light pulses run up them), standing on a glowing neck disc; a bundle of
+  energy strands falls from the neck into a new orb (bright core, shells, tilted orbit rings, sparks).
+  No heart. Lip-sync, emotions and 3D head turns are the existing picture-hologram engine. Portraits
+  on dark backdrops are now cut out too. `hologram_look: "classic"` in `api_keys.json` brings back the
+  cyan look with the heart, orb and five wires.
 - **Computer Control — Project 8: benchmarks** — `python -m jarvis.computer_control.bench suite`:
   13 synthetic, non-destructive scenarios with state checkers and the master prompt's metrics.
 - **Computer Control — Project 7: registry** — `cc_file` (Recycle-Bin deletes, no silent overwrite)

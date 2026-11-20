@@ -2445,7 +2445,8 @@ class JarvisLive(
                         # Gemini reports barge-in separately from turn_complete.
                         # Stop any audio already queued for the speakers at once;
                         # otherwise a cut-off sentence can keep playing locally.
-                        if getattr(sc, "interrupted", False):
+                        _server_interrupted = bool(getattr(sc, "interrupted", False))
+                        if _server_interrupted:
                             audio_debug.log(
                                 "server_interrupted",
                                 queued=self.audio_in_queue.qsize() if self.audio_in_queue else 0,
@@ -2491,7 +2492,7 @@ class JarvisLive(
                             if getattr(self, "_external_tts_enabled", False) and _external_text_parts
                             else getattr(getattr(sc, "output_transcription", None), "text", "")
                         )
-                        if _output_text:
+                        if _output_text and not _server_interrupted:
                             txt = _clean_transcript(_output_text)
                             # Ignore output transcriptions from an interrupted assistant turn.
                             if txt and not self._interrupted and not _is_repeat_chunk(txt, out_buf):

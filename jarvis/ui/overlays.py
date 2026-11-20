@@ -2624,7 +2624,8 @@ class VoiceTTSSettingsOverlay(_HudOverlay):
         root.addWidget(label("◈  LIVE VOICE ENGINE", C.PRI, True))
         root.addWidget(label(
             "Gemini Live is the default. ElevenLabs mode uses Gemini for responses "
-            "and tools, then speaks completed replies through JARVIS's existing audio path.",
+            "and tools, then speaks completed JARVIS replies through the existing audio path. "
+            "Bihansa keeps her separately configured Gemini voice.",
             C.TEXT_MED,
         ))
 

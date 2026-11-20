@@ -88,3 +88,76 @@ def test_factory_reads_api_key_from_environment(monkeypatch):
     })
     assert isinstance(player._engine, tts.DualVoiceTTSEngine)
     assert player._engine.api_key == "test-key"
+
+
+
+def test_dual_engine_synthesize_returns_elevenlabs_bytes(monkeypatch):
+    class FakeEdge:
+        def __init__(self, voice):
+            pass
+        def synthesize(self, text):
+            return b"edge-audio"
+
+    class FakeEleven:
+        def __init__(self, **kwargs):
+            self.voice_id = kwargs["voice_id"]
+        def synthesize(self, text):
+            return b"elevenlabs-audio"
+
+    monkeypatch.setattr(tts, "EdgeTTSEngine", FakeEdge)
+    monkeypatch.setattr(tts, "ElevenLabsTTSEngine", FakeEleven)
+    engine = tts.DualVoiceTTSEngine("secret", "cinematic-id", "natural-id")
+    assert engine.synthesize("Hello there") == b"elevenlabs-audio"
+    assert engine.last_provider == "elevenlabs"
+    assert engine.last_mode == "natural"
+
+
+def test_dual_engine_synthesize_uses_edge_bytes_after_provider_failure(monkeypatch):
+    class FakeEdge:
+        def __init__(self, voice):
+            pass
+        def synthesize(self, text):
+            return b"edge-fallback"
+
+    class FakeEleven:
+        def __init__(self, **kwargs):
+            pass
+        def synthesize(self, text):
+            raise RuntimeError("quota exceeded")
+
+    monkeypatch.setattr(tts, "EdgeTTSEngine", FakeEdge)
+    monkeypatch.setattr(tts, "ElevenLabsTTSEngine", FakeEleven)
+    engine = tts.DualVoiceTTSEngine("secret", "cinematic-id", "natural-id")
+    assert engine.synthesize("System online") == b"edge-fallback"
+    assert engine.last_provider == "edge-tts-fallback"
+
+
+def test_save_tts_settings_validates_and_preserves_other_config(monkeypatch, tmp_path):
+    from jarvis.memory import config_manager
+
+    config_file = tmp_path / "api_keys.json"
+    monkeypatch.setattr(config_manager, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config_manager, "CONFIG_FILE", config_file)
+    config_manager._write_config({"gemini_api_key": "keep-this"})
+    config_manager.save_tts_settings({
+        "tts_engine": "elevenlabs_dual",
+        "tts_voice_mode": "cinematic",
+        "elevenlabs_api_key": "local-secret",
+        "elevenlabs_cinematic_voice_id": "cinematic-id",
+        "elevenlabs_natural_voice_id": "natural-id",
+        "tts_speed": 1.4,
+    })
+    saved = config_manager.load_api_keys()
+    assert saved["gemini_api_key"] == "keep-this"
+    assert saved["elevenlabs_api_key"] == "local-secret"
+    assert saved["tts_engine"] == "elevenlabs_dual"
+    assert saved["tts_speed"] == 1.2
+    assert config_manager.get_tts_settings()["tts_voice_mode"] == "cinematic"
+
+
+def test_save_tts_settings_rejects_unknown_engine():
+    from jarvis.memory import config_manager
+    import pytest
+
+    with pytest.raises(ValueError):
+        config_manager.save_tts_settings({"tts_engine": "unknown"})

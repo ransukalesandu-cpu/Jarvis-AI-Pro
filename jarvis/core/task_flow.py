@@ -100,11 +100,8 @@ class FlowTracker:
             try:
                 fn(kind, payload)
             except Exception:
-                try:
-                    from jarvis.core import failsoft
-                    failsoft.suppress("task_flow:listener")
-                except Exception:
-                    pass
+                from jarvis.core import failsoft
+                failsoft.suppress("task_flow:listener")
 
     # ── live tool calls ─────────────────────────────────────────────────
     def tool_started(self, name: str) -> str | None:

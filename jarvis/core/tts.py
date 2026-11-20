@@ -542,11 +542,36 @@ class DualVoiceTTSEngine:
             return self.fallback.synthesize(text)
 
     def speak(self, text: str) -> None:
-        audio = self.synthesize(text)
-        if audio:
-            # Keep playback outside the provider fallback block: a device error
-            # must never cause the same utterance to be spoken a second time.
-            _play_audio_bytes(audio)
+        if not text or not text.strip():
+            return
+        selected = self.select_mode(text, self.mode)
+        self.last_mode = selected
+        voice_id = (
+            self.cinematic_voice_id if selected == "cinematic"
+            else self.natural_voice_id
+        )
+        if not self.api_key or not voice_id:
+            self.last_provider = "edge-tts"
+            self.fallback.speak(text)
+            return
+
+        try:
+            audio = ElevenLabsTTSEngine(
+                api_key=self.api_key,
+                voice_id=voice_id,
+                stability=self.stability,
+                similarity=self.similarity,
+                speed=self.speed,
+            ).synthesize(text)
+        except Exception as exc:
+            self.last_provider = "edge-tts-fallback"
+            print(f"[TTS] ElevenLabs unavailable ({type(exc).__name__}); using Edge TTS fallback.")
+            self.fallback.speak(text)
+            return
+
+        # Playback errors are deliberately not retried through another provider.
+        self.last_provider = "elevenlabs"
+        _play_audio_bytes(audio)
 
 
 

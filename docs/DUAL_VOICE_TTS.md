@@ -1,6 +1,6 @@
 # ElevenLabs Dual Voice
 
-The native PyQt desktop Live session supports an opt-in `elevenlabs_dual` provider mode. Gemini Live continues to handle the conversation, tools and incoming microphone audio, but returns text rather than generated speech. JARVIS synthesizes each completed response with ElevenLabs and sends decoded 24 kHz mono PCM through its existing speaker queue, preserving the normal output device, interruption and echo-control path. The default `gemini_live` mode is unchanged.
+The native PyQt desktop Live session supports an opt-in `elevenlabs_dual` provider mode. Gemini Live continues to handle the conversation, tools and incoming microphone audio, but returns text rather than generated speech. JARVIS synthesizes each completed response with ElevenLabs and sends decoded 24 kHz mono PCM through its existing speaker queue, preserving the normal output device, interruption and echo-control path. The default `gemini_live` mode is unchanged. Bihansa continues using her separately configured Gemini female voice; the dual male profiles apply only to JARVIS mode.
 
 ## Configuration
 

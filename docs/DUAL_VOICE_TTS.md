@@ -25,7 +25,7 @@ Never commit API keys or put them in frontend/QWebChannel state.
 - `cinematic`: always use the cinematic voice.
 - `natural`: always use the natural voice.
 - `auto`: deterministic phrase matching selects cinematic for explicit system
-  alerts/status phrases; other utterances use the natural voice. The selected
+  alerts/status phrases (including common Sinhala alert phrases); other utterances use the natural voice. The selected
   voice remains fixed for the entire utterance.
 
 ## Fallback and cost control

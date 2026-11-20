@@ -116,12 +116,16 @@ class EdgeTTSEngine:
     def __init__(self, voice: str = "en-US-GuyNeural"):
         self.voice = voice
 
-    def speak(self, text: str) -> None:
+    def synthesize(self, text: str) -> bytes:
+        """Return encoded speech bytes without opening a speaker device."""
         loop = asyncio.new_event_loop()
         try:
-            audio_bytes = loop.run_until_complete(self._synth(text))
+            return loop.run_until_complete(self._synth(text))
         finally:
             loop.close()
+
+    def speak(self, text: str) -> None:
+        audio_bytes = self.synthesize(text)
         if audio_bytes:
             _play_audio_bytes(audio_bytes)
 
@@ -506,9 +510,10 @@ class DualVoiceTTSEngine:
             else "natural"
         )
 
-    def speak(self, text: str) -> None:
+    def synthesize(self, text: str) -> bytes:
+        """Return encoded speech bytes; callers choose and own the playback route."""
         if not text or not text.strip():
-            return
+            return b""
         selected = self.select_mode(text, self.mode)
         self.last_mode = selected
         voice_id = (
@@ -517,8 +522,7 @@ class DualVoiceTTSEngine:
         )
         if not self.api_key or not voice_id:
             self.last_provider = "edge-tts"
-            self.fallback.speak(text)
-            return
+            return self.fallback.synthesize(text)
 
         try:
             engine = ElevenLabsTTSEngine(
@@ -529,18 +533,20 @@ class DualVoiceTTSEngine:
                 speed=self.speed,
             )
             audio = engine.synthesize(text)
+            self.last_provider = "elevenlabs"
+            return audio
         except Exception as exc:
-            # Covers missing/invalid credentials, network errors, HTTP 429
-            # quota exhaustion, and provider-side errors. No audio was played.
+            # No audio has been played yet, so provider failures can safely fall back.
             self.last_provider = "edge-tts-fallback"
             print(f"[TTS] ElevenLabs unavailable ({type(exc).__name__}); using Edge TTS fallback.")
-            self.fallback.speak(text)
-            return
+            return self.fallback.synthesize(text)
 
-        # Keep decoding/playback outside the provider-error fallback block:
-        # a playback error must not cause the same utterance to be spoken twice.
-        self.last_provider = "elevenlabs"
-        _play_audio_bytes(audio)
+    def speak(self, text: str) -> None:
+        audio = self.synthesize(text)
+        if audio:
+            # Keep playback outside the provider fallback block: a device error
+            # must never cause the same utterance to be spoken a second time.
+            _play_audio_bytes(audio)
 
 
 

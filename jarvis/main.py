@@ -1056,8 +1056,11 @@ class JarvisLive(
         self.request_reconnect(keep_context=False, reason=f"new voice: {selected_voice}")
 
     def _on_tts_settings_change(self):
-        """Apply the saved TTS provider while preserving the resumed conversation."""
-        self.request_reconnect(keep_context=True, reason="Live TTS settings")
+        """Rebuild Live without a stale handle when response modality changes."""
+        self.request_reconnect(
+            keep_context=False,
+            reason="Live TTS settings (new response modality)",
+        )
 
     def _on_audio_device_change(self):
         """Microphone or speaker changed. Both streams are opened inside the

@@ -256,6 +256,10 @@ def save_tts_settings(settings: dict) -> None:
             value = str(settings[key] or "").strip()
             if len(value) > limit:
                 raise ValueError(f"{key} is too long")
+            if key.endswith("_voice_id") and value and not all(
+                char.isalnum() or char in "_-" for char in value
+            ):
+                raise ValueError(f"{key} contains unsupported characters")
             data[key] = value
     if "elevenlabs_api_key" in settings:
         key = str(settings["elevenlabs_api_key"] or "").strip()

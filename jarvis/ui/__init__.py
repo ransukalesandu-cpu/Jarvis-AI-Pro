@@ -1692,6 +1692,7 @@ from .overlays import (  # noqa: E402, F401 - re-exported as part of the ui API
     PluginSettingsOverlay,
     RemoteKeyOverlay,
     AIProviderOverlay,
+    VoiceTTSSettingsOverlay,
     NewsBriefingOverlay,
     _FILE_ICONS,
     _EXT_TO_CAT,
@@ -1758,6 +1759,7 @@ class MainWindow(QMainWindow):
         self.on_remote_clicked = None   # callable: () -> (url, key) | None
         self.on_interrupt      = None   # callable: () -> None — stop JARVIS mid-speech
         self.on_voice_change   = None   # callable: () -> None — rebuild session with new voice
+        self.on_tts_settings_change = None  # callable: () -> None — reconnect Live with saved TTS mode
         self.on_audio_device_change = None  # callable: () -> None — reopen audio streams
         self.on_voice_personality_change = None  # callable: () -> None — apply saved response style
         self.on_voice_preview = None   # callable: (vocal settings) -> bool
@@ -1777,6 +1779,7 @@ class MainWindow(QMainWindow):
         self._customize_overlay: CustomizeOverlay | None = None
         self._personality_overlay: VoicePersonalityOverlay | None = None
         self._provider_overlay: AIProviderOverlay | None = None
+        self._tts_overlay: VoiceTTSSettingsOverlay | None = None
 
         central = QWidget()
         central.setStyleSheet(f"background: {C.BG};")
@@ -3727,6 +3730,14 @@ class MainWindow(QMainWindow):
         provider_btn.setStyleSheet(_BTN_STYLE_DIM)
         provider_btn.clicked.connect(self._open_provider_settings)
         lay.addWidget(provider_btn)
+
+        tts_btn = QPushButton("◈  LIVE VOICE / ELEVENLABS")
+        tts_btn.setFixedHeight(26)
+        tts_btn.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
+        tts_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        tts_btn.setStyleSheet(_BTN_STYLE_DIM)
+        tts_btn.clicked.connect(self._open_tts_settings)
+        lay.addWidget(tts_btn)
         lay.addWidget(personality_btn)
 
         self._brief_btn = QPushButton()
@@ -5228,6 +5239,35 @@ class MainWindow(QMainWindow):
             self._log.append_log(f"SYS: One-shot AI provider set to {label}. Live voice remains on Gemini.")
         except Exception as exc:
             self._log.append_log(f"ERR: AI provider settings could not be saved ({type(exc).__name__}).")
+    def _open_tts_settings(self):
+        from jarvis.memory.config_manager import get_tts_settings
+        if self._tts_overlay:
+            self._tts_overlay.hide()
+        settings = get_tts_settings()
+        safe_settings = {
+            key: value for key, value in settings.items()
+            if key != "elevenlabs_api_key"
+        }
+        safe_settings["has_api_key"] = bool(settings.get("elevenlabs_api_key"))
+        ov = VoiceTTSSettingsOverlay(safe_settings, parent=self.centralWidget())
+        ov.saved.connect(self._save_tts_settings)
+        self._centre_overlay(ov)
+        self._tts_overlay = ov
+
+    def _save_tts_settings(self, values: dict):
+        from jarvis.memory.config_manager import save_tts_settings
+        try:
+            save_tts_settings(values)
+            self._log.append_log(
+                "SYS: Live voice settings saved locally. Reconnecting the voice session."
+            )
+            if callable(self.on_tts_settings_change):
+                self.on_tts_settings_change()
+        except Exception as exc:
+            self._log.append_log(
+                f"ERR: Live voice settings could not be saved ({type(exc).__name__})."
+            )
+
     def _open_audio_devices(self):
         ov = AudioDeviceOverlay(parent=self.centralWidget())
         ov.picked.connect(self._on_audio_devices_applied)
@@ -6338,6 +6378,14 @@ class JarvisUI:
     @on_voice_change.setter
     def on_voice_change(self, cb):
         self._win.on_voice_change = cb
+
+    @property
+    def on_tts_settings_change(self):
+        return self._win.on_tts_settings_change
+
+    @on_tts_settings_change.setter
+    def on_tts_settings_change(self, cb):
+        self._win.on_tts_settings_change = cb
 
     @property
     def on_audio_device_change(self):

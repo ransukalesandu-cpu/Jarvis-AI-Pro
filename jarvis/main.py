@@ -1792,10 +1792,13 @@ class JarvisLive(
         # Native ElevenLabs mode asks Gemini for text only, then synthesizes that
         # completed response through the same local PCM playback queue used by
         # Gemini audio. Gemini Live remains the default and keeps its native path.
-        from jarvis.memory.config_manager import get_tts_settings
+        from jarvis.memory.config_manager import get_assistant_mode, get_tts_settings
         self._tts_settings = get_tts_settings()
+        # Bihansa keeps her separately configured Gemini female voice; the
+        # dual male JARVIS profiles apply only while the JARVIS persona is active.
         self._external_tts_enabled = (
             self._tts_settings.get("tts_engine") == "elevenlabs_dual"
+            and get_assistant_mode() != "bihansa"
         )
         cfg = dict(
             response_modalities=["TEXT"] if getattr(self, "_external_tts_enabled", False) else ["AUDIO"],

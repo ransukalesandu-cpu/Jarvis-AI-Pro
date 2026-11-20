@@ -432,6 +432,30 @@ def _clean_transcript(text: str) -> str:
     text = re.sub(r"[\x00-\x08\x0b-\x1f]", "", text)
     return text.strip()
 
+def _decode_external_tts_to_live_pcm(audio_bytes: bytes) -> bytes:
+    """Decode encoded TTS audio to the mono 24 kHz int16 format used by Live playback."""
+    if not audio_bytes:
+        return b""
+    import miniaudio
+    decoded = miniaudio.decode(
+        audio_bytes,
+        output_format=miniaudio.SampleFormat.FLOAT32,
+        nchannels=1,
+    )
+    samples = np.asarray(decoded.samples, dtype=np.float32).reshape(-1)
+    source_rate = int(decoded.sample_rate)
+    if source_rate <= 0 or samples.size == 0:
+        return b""
+    if source_rate != RECEIVE_SAMPLE_RATE:
+        target_size = max(1, int(round(samples.size * RECEIVE_SAMPLE_RATE / source_rate)))
+        samples = np.interp(
+            np.linspace(0, samples.size - 1, target_size),
+            np.arange(samples.size),
+            samples,
+        ).astype(np.float32, copy=False)
+    samples = np.nan_to_num(samples, nan=0.0, posinf=0.0, neginf=0.0)
+    return (np.clip(samples, -1.0, 1.0) * 32767.0).astype("<i2").tobytes()
+
 TOOL_DECLARATIONS = [
     # ── Inline tools ─────────────────────────────────────────────────────────
     # These stay here (rather than in an actions/*.py TOOL dict) because their
@@ -1757,31 +1781,35 @@ class JarvisLive(
                 "current; deeper reasoning does not make stale facts current."
             )
 
+        # Native ElevenLabs mode asks Gemini for text only, then synthesizes that
+        # completed response through the same local PCM playback queue used by
+        # Gemini audio. Gemini Live remains the default and keeps its native path.
+        from jarvis.memory.config_manager import get_tts_settings
+        self._tts_settings = get_tts_settings()
+        self._external_tts_enabled = (
+            self._tts_settings.get("tts_engine") == "elevenlabs_dual"
+        )
         cfg = dict(
-            response_modalities=["AUDIO"],
-            output_audio_transcription={},
+            response_modalities=["TEXT"] if self._external_tts_enabled else ["AUDIO"],
             input_audio_transcription={},
             system_instruction="\n".join(parts),
             tools=[{"function_declarations": _all_decls}],
-            # Hand back the handle captured from the last session_resumption
-            # update. `handle=None` is exactly the old behaviour (ask for
-            # handles, start fresh), so the first connect of a run is unchanged.
             session_resumption=types.SessionResumptionConfig(
                 handle=self._resume_handle
             ),
-            # Sliding-window compression: session never dies from a full context
-            # window — JARVIS can stay in one conversation for hours
             context_window_compression=types.ContextWindowCompressionConfig(
                 sliding_window=types.SlidingWindow(),
             ),
-            speech_config=types.SpeechConfig(
+        )
+        if not self._external_tts_enabled:
+            cfg["output_audio_transcription"] = {}
+            cfg["speech_config"] = types.SpeechConfig(
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(
                         voice_name=get_voice()
                     )
                 )
-            ),
-        )
+            )
         if self._enhanced_live:
             # Proactive audio: JARVIS stays silent when speech isn't addressed
             # to it (background chatter, talking to someone else in the room).
@@ -2321,6 +2349,15 @@ class JarvisLive(
                     _early_transcript = getattr(
                         getattr(sc, "output_transcription", None), "text", ""
                     ) if sc else ""
+                    _external_text_parts = []
+                    if sc and self._external_tts_enabled:
+                        _model_turn = getattr(sc, "model_turn", None)
+                        for _part in (getattr(_model_turn, "parts", None) or []):
+                            _part_text = getattr(_part, "text", "")
+                            if _part_text:
+                                _external_text_parts.append(str(_part_text))
+                        if _external_text_parts:
+                            _early_transcript = " ".join(_external_text_parts)
                     if _early_transcript:
                         self._plan_vocal_response(" ".join(
                             [*out_buf, _clean_transcript(_early_transcript)]
@@ -2438,8 +2475,13 @@ class JarvisLive(
                             out_buf = []
                             print("[JARVIS] ✋ Live session reported user interruption.")
 
-                        if sc.output_transcription and sc.output_transcription.text:
-                            txt = _clean_transcript(sc.output_transcription.text)
+                        _output_text = (
+                            " ".join(_external_text_parts)
+                            if self._external_tts_enabled and _external_text_parts
+                            else getattr(getattr(sc, "output_transcription", None), "text", "")
+                        )
+                        if _output_text:
+                            txt = _clean_transcript(_output_text)
                             # Ignore output transcriptions from an interrupted assistant turn.
                             if txt and not self._interrupted and not _is_repeat_chunk(txt, out_buf):
                                 if receive_diagnostics.claim_checkpoint("output_text"):
@@ -2616,13 +2658,14 @@ class JarvisLive(
                                         f"({len(final_pcm)} bytes) at turn completion."
                                     )
 
-                            diagnostic_message = _turn_output_diagnostic_from_state(
-                                receive_diagnostics,
-                                interrupted=self._interrupted,
-                                min_frame_bytes=_MIN_LIVE_AUDIO_FRAME_BYTES,
-                            )
-                            if diagnostic_message:
-                                print(diagnostic_message)
+                            if not self._external_tts_enabled:
+                                diagnostic_message = _turn_output_diagnostic_from_state(
+                                    receive_diagnostics,
+                                    interrupted=self._interrupted,
+                                    min_frame_bytes=_MIN_LIVE_AUDIO_FRAME_BYTES,
+                                )
+                                if diagnostic_message:
+                                    print(diagnostic_message)
                             if audio_fragment_buffer:
                                 trailing_bytes = len(audio_fragment_buffer)
                                 reason = (
@@ -2640,12 +2683,14 @@ class JarvisLive(
                                     and self._vocal_plan.after):
                                 for event in self._vocal_plan.after:
                                     self._enqueue_vocal_event(event)
-                            self._assistant_turn_pending = False
+                            self._assistant_turn_pending = bool(
+                                self._external_tts_enabled and out_buf and not self._interrupted
+                            )
                             # The reply to a stop word is over; speak normally again.
                             self._stop_word_turn = False
                             with self._voice_id_audio_lock:
                                 self._voice_id_audio_turn_active = False
-                            if self._turn_done_event:
+                            if self._turn_done_event and not self._external_tts_enabled:
                                 self._turn_done_event.set()
 
                             # If this turn_complete ends an interrupted response, discard
@@ -2739,6 +2784,66 @@ class JarvisLive(
                                         "text": full_out,
                                         "ts": datetime.now().isoformat(),
                                     }))
+                            if self._external_tts_enabled:
+                                # Synthesize after Gemini completes the text turn, but keep
+                                # playback on the shared Live PCM queue so interruption,
+                                # echo cancellation, speaker routing and Privacy Lock apply.
+                                if full_out and not self._interrupted:
+                                    try:
+                                        from jarvis.core.tts import DualVoiceTTSEngine
+                                        from jarvis.memory.config_manager import get_tts_settings
+                                        settings = get_tts_settings()
+                                        engine = DualVoiceTTSEngine(
+                                            api_key=settings.get("elevenlabs_api_key", ""),
+                                            cinematic_voice_id=settings.get("elevenlabs_cinematic_voice_id", ""),
+                                            natural_voice_id=settings.get("elevenlabs_natural_voice_id", ""),
+                                            mode=settings.get("tts_voice_mode", "auto"),
+                                            fallback_voice=settings.get("tts_fallback_voice", "en-US-GuyNeural"),
+                                            stability=settings.get("tts_stability", 0.5),
+                                            similarity=settings.get("tts_similarity", 0.75),
+                                            speed=settings.get("tts_speed", 1.0),
+                                        )
+                                        if self._turn_done_event:
+                                            self._turn_done_event.clear()
+                                        audio_bytes = await asyncio.to_thread(
+                                            engine.synthesize, full_out
+                                        )
+                                        pcm = await asyncio.to_thread(
+                                            _decode_external_tts_to_live_pcm, audio_bytes
+                                        )
+                                        manager = security.get_auth_manager()
+                                        if (
+                                            pcm and not self._interrupted
+                                            and not manager.is_silent()
+                                            and not manager.needs_pin()
+                                            and self.audio_in_queue is not None
+                                        ):
+                                            if not self._vocal_audio_started:
+                                                for event in self._vocal_plan.before:
+                                                    self._enqueue_vocal_event(event)
+                                            self._vocal_audio_started = True
+                                            self._assistant_turn_pending = True
+                                            for offset in range(0, len(pcm), _PLAYBACK_SLICE_BYTES):
+                                                self.audio_in_queue.put_nowait(
+                                                    pcm[offset:offset + _PLAYBACK_SLICE_BYTES]
+                                                )
+                                            self.ui.write_log(
+                                                f"SYS: Speech synthesized via {engine.last_provider} "
+                                                f"({engine.last_mode} voice)."
+                                            )
+                                        elif not pcm:
+                                            self.ui.write_log(
+                                                "ERR: External TTS returned no playable audio."
+                                            )
+                                    except Exception as exc:
+                                        self.ui.write_log(
+                                            "ERR: External TTS failed: "
+                                            f"{type(exc).__name__}. Check TTS settings and network."
+                                        )
+                                self._assistant_turn_pending = False
+                                if self._turn_done_event:
+                                    self._turn_done_event.set()
+
                             out_buf = []
                             self._vocal_plan = VocalPlan()
                             self._vocal_plan_ready = False

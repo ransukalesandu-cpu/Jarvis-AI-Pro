@@ -2689,8 +2689,22 @@ class VoiceTTSSettingsOverlay(_HudOverlay):
         engine = str(self._engine.currentData() or "gemini_live")
         cinematic = self._cinematic.text().strip()
         natural = self._natural.text().strip()
+        api_key = self._api_key.text().strip()
+        if any(
+            len(value) > 128 or (value and not all(
+                char.isalnum() or char in "_-" for char in value
+            ))
+            for value in (cinematic, natural)
+        ):
+            self._status.setText("Voice IDs may contain only letters, numbers, underscores and hyphens.")
+            self._status.setStyleSheet(f"color: {C.RED}; background: transparent;")
+            return
+        if len(api_key) > 256:
+            self._status.setText("The API key is too long.")
+            self._status.setStyleSheet(f"color: {C.RED}; background: transparent;")
+            return
         if engine == "elevenlabs_dual":
-            if not (self._api_key.text().strip() or self._settings.get("has_api_key")):
+            if not (api_key or self._settings.get("has_api_key")):
                 self._status.setText("Add an API key or set ELEVENLABS_API_KEY first.")
                 self._status.setStyleSheet(f"color: {C.RED}; background: transparent;")
                 return
@@ -2704,8 +2718,8 @@ class VoiceTTSSettingsOverlay(_HudOverlay):
             "elevenlabs_cinematic_voice_id": cinematic,
             "elevenlabs_natural_voice_id": natural,
         }
-        if self._api_key.text().strip():
-            values["elevenlabs_api_key"] = self._api_key.text().strip()
+        if api_key:
+            values["elevenlabs_api_key"] = api_key
         self.saved.emit(values)
         self.hide()
 

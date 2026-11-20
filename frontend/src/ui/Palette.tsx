@@ -7,6 +7,7 @@ import { PERF_OPTS, PERSONA_OPTS } from './Settings';
 import { PAGES } from './Chrome';
 import { TITLES, type WinKind, validateLayout } from '../workspace/layout';
 import { useWindows } from '../workspace/windows';
+import { useFlows } from '../taskflow/flows';
 
 const clean = (s: string) => s.trim().toLowerCase();
 /** Fixed questions, identical to ASK_TEXT in jarvis/core/ui_menus.py. Sent through the same gated command path as typing. */
@@ -43,6 +44,7 @@ export function Palette() {
           {connected && PERSONA_OPTS.map((o) => <Command.Item key={o.action} value={`mode persona ${o.label}`} onSelect={run(() => doControl(o.action))}>{o.label} mode</Command.Item>)}
           {connected && PERF_OPTS.map((o) => <Command.Item key={o.action} value={`performance tier fps ${o.label}`} onSelect={run(() => doControl(o.action))}>Performance: {o.label}</Command.Item>)}
           {canAsk && ASKS.map((a) => <Command.Item key={a.id} value={`${a.keywords} ${a.label}`} onSelect={run(() => sendRequest({ kind: 'command.submit', text: a.text }))}>{a.label}</Command.Item>)}
+          <Command.Item value="show task progress window flow steps" onSelect={run(() => useFlows.getState().showWindow(true))}>Show task progress window</Command.Item>
           <Command.Item value="ask jarvis type a command" onSelect={run(() => setTimeout(() => dispatchEvent(new Event('jarvis:focus-command')), 0))}>Ask JARVIS…</Command.Item>
         </Command.Group>
         <Command.Group heading="Windows">

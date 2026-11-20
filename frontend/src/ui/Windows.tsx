@@ -8,8 +8,9 @@ import { MARGIN, MIN_H, MIN_W, TOP, TITLES, type WinKind } from '../workspace/la
 import { titleOf, useWindows } from '../workspace/windows';
 import { useUi } from '../store';
 import { ActivityContent, LogContent, ModelsContent, MonitorContent } from './Pages';
+import { TaskProgressPage } from '../taskflow/TaskProgressPage';
 
-const CONTENT: Record<WinKind, () => React.ReactElement> = { monitor: MonitorContent, models: ModelsContent, activity: ActivityContent, log: LogContent, timer: TimerContent, bento: BentoContent, news: NewsContent, jobs: JobsContent };
+const CONTENT: Record<WinKind, () => React.ReactElement> = { monitor: MonitorContent, models: ModelsContent, activity: ActivityContent, log: LogContent, timer: TimerContent, bento: BentoContent, news: NewsContent, jobs: JobsContent, tasks: TaskProgressPage };
 
 const STEP = 16;
 /** Keyboard equivalent of drag/resize: Alt+arrows move, Alt+Shift+arrows resize (when the window itself has focus). */

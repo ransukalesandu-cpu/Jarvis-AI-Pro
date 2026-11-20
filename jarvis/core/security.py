@@ -228,6 +228,8 @@ _TIERS: dict[str, str] = {
     # Opening Holo requests webcam access through the native desktop UI.
     "holo_gestures":    TIER_DANGEROUS,
     "battery_status":   TIER_SAFE,
+    # Reads back the latest task title (the owner's own words), so not SAFE.
+    "show_task_progress": TIER_SENSITIVE,
     "system_status":    TIER_SAFE,
     "system_monitor":   TIER_SAFE,
     "recall_memory":    TIER_SAFE,

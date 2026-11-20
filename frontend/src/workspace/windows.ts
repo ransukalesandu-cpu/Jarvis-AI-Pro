@@ -35,7 +35,7 @@ export const useWindows = create<WinStore>((set, get) => ({
     if (existing) { get().restore(existing.id); get().focus(existing.id); return existing.id; }
     if (s.windows.length >= MAX_WINDOWS) return null;
     const id = `${kind}-${Date.now().toString(36)}-${counter++}`;
-    set({ windows: [...s.windows, { id, kind, ...place(s.windows, s.viewport), z: topZ(s.windows) + 1, state: 'normal' }] });
+    set({ windows: [...s.windows, { id, kind, ...place(s.windows, s.viewport, kind), z: topZ(s.windows) + 1, state: 'normal' }] });
     return id;
   },
   close: (id) => set((s) => ({ windows: s.windows.filter((w) => w.id !== id) })),

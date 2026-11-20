@@ -17,6 +17,19 @@ export interface JobRow { id: string; name: string; status: JobState; startedAt:
 export interface NewsItem { title: string; source: string; link: boolean }
 export interface Net { upKBps: number; downKBps: number }
 
+export const FLOW_STATES = ['running', 'done', 'failed', 'cancelled'] as const;
+export type FlowState = (typeof FLOW_STATES)[number];
+export const FLOW_SOURCES = ['command', 'agent'] as const;
+export type FlowSource = (typeof FLOW_SOURCES)[number];
+export const STEP_STATES = ['pending', 'running', 'done', 'error', 'skipped'] as const;
+export type StepStatus = (typeof STEP_STATES)[number];
+export const FLOW_VIEWS = ['window', 'page', 'hide'] as const;
+export type FlowView = (typeof FLOW_VIEWS)[number];
+export const FLOW_MAX_STEPS = 24;
+export interface FlowStep { id: string; tool: string; label: string; status: StepStatus; detail: string; startedAt: number | null; finishedAt: number | null }
+/** One thing the owner asked for (jarvis/core/task_flow.py): a brain node and one node per step. */
+export interface Flow { id: string; title: string; source: FlowSource; state: FlowState; startedAt: number; finishedAt: number | null; steps: FlowStep[] }
+
 export type HostEvent =
   | { type: 'assistant.state_changed'; state: AssistantState }
   | { type: 'assistant.audio_level'; level: number; source: 'input' | 'output' }
@@ -33,6 +46,8 @@ export type HostEvent =
   | { type: 'command.result'; reason: CommandReason }
   | { type: 'control.result'; reason: CommandReason }
   | { type: 'log.line'; tag: LogTag; text: string }
+  | { type: 'task.flow'; flow: Flow }
+  | { type: 'ui.task_flow'; view: FlowView }
   | { type: 'host.hello'; version: number };
 
 /** UI -> Python requests. Authorization always happens in Python; this list is only the shape. */
@@ -61,6 +76,26 @@ export const MAX_EVENT_CHARS = 16384;
 const num = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 const str = (v: unknown, max = 80): v is string => typeof v === 'string' && v.length > 0 && v.length <= max;
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+const time = (v: unknown, nullable = true): v is number | null => (nullable && v === null) || num(v, 0, 4e12);
+const exactKeys = (o: Record<string, unknown>, keys: string[]) => Object.keys(o).length === keys.length && keys.every((k) => k in o);
+const FLOW_KEYS = ['id', 'title', 'source', 'state', 'startedAt', 'finishedAt', 'steps'];
+const STEP_KEYS = ['id', 'tool', 'label', 'status', 'detail', 'startedAt', 'finishedAt'];
+
+/** Mirror of contract.flow_ok in Python: closed state sets, bounded text, nothing else accepted. */
+export function parseFlow(f: unknown): Flow | null {
+  if (!isObj(f) || !exactKeys(f, FLOW_KEYS)) return null;
+  if (!str(f.id, 40) || !str(f.title, 120) || !(FLOW_SOURCES as readonly unknown[]).includes(f.source) || !(FLOW_STATES as readonly unknown[]).includes(f.state)) return null;
+  if (!time(f.startedAt, false) || !time(f.finishedAt) || !Array.isArray(f.steps) || f.steps.length > FLOW_MAX_STEPS) return null;
+  const steps: FlowStep[] = [];
+  for (const s of f.steps as unknown[]) {
+    if (!isObj(s) || !exactKeys(s, STEP_KEYS) || !str(s.id, 8) || !str(s.tool, 48) || !str(s.label, 80)) return null;
+    if (!(STEP_STATES as readonly unknown[]).includes(s.status) || typeof s.detail !== 'string' || s.detail.length > 100) return null;
+    if (!time(s.startedAt) || !time(s.finishedAt)) return null;
+    steps.push({ id: s.id, tool: s.tool, label: s.label, status: s.status as StepStatus, detail: s.detail, startedAt: s.startedAt as number | null, finishedAt: s.finishedAt as number | null });
+  }
+  return { id: f.id, title: f.title, source: f.source as FlowSource, state: f.state as FlowState, startedAt: f.startedAt as number, finishedAt: f.finishedAt as number | null, steps };
+}
 
 export function parseHostEvent(raw: unknown): HostEvent | null {
   if (typeof raw !== 'string' || raw.length === 0 || raw.length > MAX_EVENT_CHARS) return null;
@@ -133,6 +168,12 @@ export function parseHostEvent(raw: unknown): HostEvent | null {
       return (LOG_TAGS as readonly unknown[]).includes(m.tag) && str(m.text, LOG_MAX_LINE) ? { type: m.type, tag: m.tag as LogTag, text: m.text } : null;
     case 'control.result':
       return (COMMAND_REASONS as readonly unknown[]).includes(m.reason) ? { type: m.type, reason: m.reason as CommandReason } : null;
+    case 'task.flow': {
+      const flow = parseFlow(m.flow);
+      return flow ? { type: m.type, flow } : null;
+    }
+    case 'ui.task_flow':
+      return (FLOW_VIEWS as readonly unknown[]).includes(m.view) ? { type: m.type, view: m.view as FlowView } : null;
     case 'host.hello':
       return num(m.version, 0, 1000) ? { type: m.type, version: m.version } : null;
     default:

@@ -1,12 +1,15 @@
-import { Bot, Brain, Clock, FolderOpen, Globe, Home, Menu, MonitorCog, Settings, Shield, Sparkles, Workflow, AppWindow, X } from 'lucide-react';
+import { Bot, Brain, Clock, FolderOpen, Globe, Home, Menu, MonitorCog, Network, Settings, Shield, Sparkles, Workflow, AppWindow, X } from 'lucide-react';
 import { useUi, type Page } from '../store';
 import { motion, AnimatePresence } from 'motion/react';
 import { Island } from './Island';
+import { PAGE_WINDOWS } from '../workspace/layout';
+import { useWindows } from '../workspace/windows';
 
 export const PAGES: { id: Page; label: string; icon: React.ReactNode; ready: boolean; phase?: string }[] = [
   { id: 'home', label: 'Home', icon: <Home size={16} />, ready: true },
   { id: 'chat', label: 'Conversation Log', icon: <Bot size={16} />, ready: true },
   { id: 'activity', label: 'Activity Center', icon: <Sparkles size={16} />, ready: true },
+  { id: 'tasks', label: 'Task Progress', icon: <Network size={16} />, ready: true },
   { id: 'models', label: 'AI Models', icon: <Brain size={16} />, ready: true },
   { id: 'research', label: 'Web Research', icon: <Globe size={16} />, ready: false, phase: 'Phase 2' },
   { id: 'reminders', label: 'Reminders', icon: <Clock size={16} />, ready: false, phase: 'Phase 2' },
@@ -34,6 +37,8 @@ export function TopBar() {
 export function NavPanel() {
   const { navOpen, page, go } = useUi();
   const reduced = useUi((s) => s.reducedMotion);
+  const openKinds = useWindows((s) => s.windows.map((w) => w.kind).join(' '));
+  const isOpen = (id: Page) => { const k = PAGE_WINDOWS[id]; return k ? openKinds.split(' ').includes(k) : page === id; };
   return (
     <AnimatePresence>
       {navOpen && (
@@ -41,7 +46,7 @@ export function NavPanel() {
           initial={{ opacity: 0, x: reduced ? 0 : -24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: reduced ? 0 : -24 }} transition={{ duration: reduced ? 0 : 0.22 }}>
           <h2>NAVIGATE</h2>
           {PAGES.map((p) => (
-            <button key={p.id} className="nav-item" aria-current={page === p.id ? 'page' : undefined} disabled={!p.ready} onClick={() => go(p.id)}
+            <button key={p.id} className="nav-item" aria-current={isOpen(p.id) ? 'page' : undefined} disabled={!p.ready} onClick={() => go(p.id)}
               style={!p.ready ? { opacity: 0.45, cursor: 'not-allowed' } : undefined} title={p.ready ? undefined : `${p.phase}: needs a backend connection that does not exist yet`}>
               {p.icon}<span>{p.label}</span>{!p.ready && <span style={{ marginLeft: 'auto', fontSize: 10, letterSpacing: '0.1em' }}>{p.phase}</span>}
             </button>

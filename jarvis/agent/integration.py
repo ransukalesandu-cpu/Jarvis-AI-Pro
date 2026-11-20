@@ -559,6 +559,8 @@ class AgentService:
                 with self._lock:
                     self._last_task_snapshot = task
                     self._last_task_id = task.id
+            self._mirror_flow(task if task is not None and task.id == event.task_id
+                              else getattr(self.runner, "_tasks", {}).get(event.task_id))
             self._announcer.announce(event)
             if event.kind == "finished":
                 from jarvis.core import hooks
@@ -566,6 +568,21 @@ class AgentService:
                                              "message": str(event.message)[:300]})
         except Exception:
             failsoft.suppress("agent.integration:_on_event")
+
+    @staticmethod
+    def _mirror_flow(task: Task | None) -> None:
+        """Keep the Task Flow window/page (core/task_flow.py) in step with this task."""
+        if task is None:
+            return
+        try:
+            from jarvis.core import task_flow
+            task_flow.tracker().agent_task(task)
+        except Exception:
+            failsoft.suppress("agent.integration:task_flow")
+
+    def mirror_active_flow(self) -> None:
+        """Called on a light UI poll: step events are throttled, the live task object is not."""
+        self._mirror_flow(self.runner.active_task)
 
     def _cached_latest_task(self) -> Task | None:
         with self._lock:
@@ -627,6 +644,12 @@ def get_service() -> AgentService:
     with _SERVICE_LOCK:
         if _SERVICE is None:
             _SERVICE = AgentService()
+        return _SERVICE
+
+
+def peek_service() -> AgentService | None:
+    """The service if something already created it; never creates one (for UI polling)."""
+    with _SERVICE_LOCK:
         return _SERVICE
 
 

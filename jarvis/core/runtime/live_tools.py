@@ -15,7 +15,7 @@ from types import SimpleNamespace
 from jarvis.actions.background_monitor import add_monitor, list_monitors, remove_monitor
 from jarvis.actions.screen_processor import _capture_camera, _capture_screen
 from jarvis.actions.system_monitor import get_system_status
-from jarvis.core import action_log, failsoft, hooks, security, undo as undo_stack
+from jarvis.core import action_log, failsoft, hooks, security, task_flow, undo as undo_stack
 from jarvis.core.jobs import get_job_manager
 from jarvis.core.tool_runtime import (
     ToolMeta, infer_risk, result_status, take_device, timeout_message,
@@ -23,6 +23,21 @@ from jarvis.core.tool_runtime import (
 from google.genai import types
 from jarvis.memory.config_manager import get_memory_provider_access_enabled
 from jarvis.memory.memory_manager import redact_sensitive_content
+
+
+def _flow_start(name: str):
+    try:
+        return task_flow.tracker().tool_started(name)
+    except Exception:
+        failsoft.suppress("live_tools:task_flow")
+        return None
+
+
+def _flow_finish(token, status: str, result) -> None:
+    try:
+        task_flow.tracker().tool_finished(token, status, result)
+    except Exception:
+        failsoft.suppress("live_tools:task_flow")
 
 
 class ToolDispatchMixin:
@@ -70,17 +85,24 @@ class ToolDispatchMixin:
         call = SimpleNamespace(id=getattr(fc, "id", None), name=name, args=args,
                                cancel_event=None, device=device)
         timer = action_log.Timer()
+        flow_token = _flow_start(name)       # Task Flow window/page (core/task_flow.py); never raises
         if device_error:
             action_log.record(name, args, device_error, status="error", risk=risk,
                               device=device, duration_ms=timer.ms)
+            _flow_finish(flow_token, "error", device_error)
             return types.FunctionResponse(id=call.id, name=name,
                                           response={"result": device_error})
         if meta.long_running:
-            job = self._start_tool_job(call, meta)
+            try:
+                job = self._start_tool_job(call, meta)
+            except BaseException as exc:
+                _flow_finish(flow_token, "error", type(exc).__name__)
+                raise
             message = (f"Started background job {job.id} for {name.replace('_', ' ')}. "
                        "I'll tell you when it is done.")
             action_log.record(name, args, message, status="job_started", risk=risk,
                               device=device, job_id=job.id, duration_ms=timer.ms)
+            _flow_finish(flow_token, "job_started", message)
             return types.FunctionResponse(id=call.id, name=name, response={"result": message})
         try:
             try:
@@ -97,9 +119,14 @@ class ToolDispatchMixin:
         except asyncio.CancelledError:
             action_log.record(name, args, "Cancelled.", status="cancelled", risk=risk,
                               device=device, duration_ms=timer.ms)
+            _flow_finish(flow_token, "cancelled", "Cancelled.")
+            raise
+        except BaseException as exc:
+            _flow_finish(flow_token, "error", type(exc).__name__)
             raise
         action_log.record(name, args, result, status=status, risk=risk, device=device,
                           duration_ms=timer.ms)
+        _flow_finish(flow_token, status, result)
         calls = self.__dict__.setdefault("_session_tool_calls", [])
         if status == "error":
             hooks.emit("tool_error", {"tool": name, "risk": risk, "result": str(result)[:300]})

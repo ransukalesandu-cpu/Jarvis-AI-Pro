@@ -2350,7 +2350,7 @@ class JarvisLive(
                         getattr(sc, "output_transcription", None), "text", ""
                     ) if sc else ""
                     _external_text_parts = []
-                    if sc and self._external_tts_enabled:
+                    if sc and getattr(self, "_external_tts_enabled", False):
                         _model_turn = getattr(sc, "model_turn", None)
                         for _part in (getattr(_model_turn, "parts", None) or []):
                             _part_text = getattr(_part, "text", "")
@@ -2477,7 +2477,7 @@ class JarvisLive(
 
                         _output_text = (
                             " ".join(_external_text_parts)
-                            if self._external_tts_enabled and _external_text_parts
+                            if getattr(self, "_external_tts_enabled", False) and _external_text_parts
                             else getattr(getattr(sc, "output_transcription", None), "text", "")
                         )
                         if _output_text:
@@ -2684,7 +2684,7 @@ class JarvisLive(
                                 for event in self._vocal_plan.after:
                                     self._enqueue_vocal_event(event)
                             self._assistant_turn_pending = bool(
-                                self._external_tts_enabled and out_buf and not self._interrupted
+                                getattr(self, "_external_tts_enabled", False) and out_buf and not self._interrupted
                             )
                             # The reply to a stop word is over; speak normally again.
                             self._stop_word_turn = False

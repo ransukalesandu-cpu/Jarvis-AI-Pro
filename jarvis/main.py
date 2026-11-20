@@ -1790,7 +1790,7 @@ class JarvisLive(
             self._tts_settings.get("tts_engine") == "elevenlabs_dual"
         )
         cfg = dict(
-            response_modalities=["TEXT"] if self._external_tts_enabled else ["AUDIO"],
+            response_modalities=["TEXT"] if getattr(self, "_external_tts_enabled", False) else ["AUDIO"],
             input_audio_transcription={},
             system_instruction="\n".join(parts),
             tools=[{"function_declarations": _all_decls}],
@@ -1801,7 +1801,7 @@ class JarvisLive(
                 sliding_window=types.SlidingWindow(),
             ),
         )
-        if not self._external_tts_enabled:
+        if not getattr(self, "_external_tts_enabled", False):
             cfg["output_audio_transcription"] = {}
             cfg["speech_config"] = types.SpeechConfig(
                 voice_config=types.VoiceConfig(
@@ -2658,7 +2658,7 @@ class JarvisLive(
                                         f"({len(final_pcm)} bytes) at turn completion."
                                     )
 
-                            if not self._external_tts_enabled:
+                            if not getattr(self, "_external_tts_enabled", False):
                                 diagnostic_message = _turn_output_diagnostic_from_state(
                                     receive_diagnostics,
                                     interrupted=self._interrupted,
@@ -2690,7 +2690,7 @@ class JarvisLive(
                             self._stop_word_turn = False
                             with self._voice_id_audio_lock:
                                 self._voice_id_audio_turn_active = False
-                            if self._turn_done_event and not self._external_tts_enabled:
+                            if self._turn_done_event and not getattr(self, "_external_tts_enabled", False):
                                 self._turn_done_event.set()
 
                             # If this turn_complete ends an interrupted response, discard
@@ -2784,7 +2784,7 @@ class JarvisLive(
                                         "text": full_out,
                                         "ts": datetime.now().isoformat(),
                                     }))
-                            if self._external_tts_enabled:
+                            if getattr(self, "_external_tts_enabled", False):
                                 # Synthesize after Gemini completes the text turn, but keep
                                 # playback on the shared Live PCM queue so interruption,
                                 # echo cancellation, speaker routing and Privacy Lock apply.

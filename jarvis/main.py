@@ -819,7 +819,8 @@ class JarvisLive(
         self.ui.on_text_command   = self._on_text_command
         self.ui.on_remote_clicked = self._make_remote_key
         self.ui.on_interrupt      = self.interrupt
-        self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session
+        self.ui.on_voice_change   = self._on_voice_change     # Gemini Live voice picker → rebuild session
+        self.ui.on_tts_settings_change = self._on_tts_settings_change
         self.ui.on_audio_device_change = self._on_audio_device_change
         self.ui.on_voice_personality_change = self._on_voice_personality_change
         self.ui.on_voice_preview = self.preview_vocal_behavior
@@ -1053,6 +1054,10 @@ class JarvisLive(
         selected_voice = get_voice()
         self.ui.write_log(f"SYS: Applying voice '{selected_voice}' — starting a fresh Live session.")
         self.request_reconnect(keep_context=False, reason=f"new voice: {selected_voice}")
+
+    def _on_tts_settings_change(self):
+        """Apply the saved TTS provider while preserving the resumed conversation."""
+        self.request_reconnect(keep_context=True, reason="Live TTS settings")
 
     def _on_audio_device_change(self):
         """Microphone or speaker changed. Both streams are opened inside the

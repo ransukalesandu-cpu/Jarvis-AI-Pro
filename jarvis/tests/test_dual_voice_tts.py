@@ -198,3 +198,16 @@ def test_external_tts_decoder_resamples_to_live_rate(monkeypatch):
     monkeypatch.setitem(sys.modules, "miniaudio", fake_miniaudio)
     pcm = _decode_external_tts_to_live_pcm(b"fake-audio")
     assert len(pcm) == 8
+
+
+def test_save_tts_settings_rejects_unsafe_voice_id(monkeypatch, tmp_path):
+    from jarvis.memory import config_manager
+    import pytest
+
+    monkeypatch.setattr(config_manager, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config_manager, "CONFIG_FILE", tmp_path / "api_keys.json")
+    with pytest.raises(ValueError):
+        config_manager.save_tts_settings({
+            "tts_engine": "elevenlabs_dual",
+            "elevenlabs_cinematic_voice_id": "voice/with/path",
+        })

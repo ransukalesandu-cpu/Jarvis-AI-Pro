@@ -361,27 +361,49 @@ class KokoroTTSEngine:
 class ElevenLabsTTSEngine:
     """ElevenLabs cloud TTS – API key required."""
 
-    def __init__(self, api_key: str, voice_id: str = "pNInz6obpgDQGcFmaJgB"):
-        self.api_key  = api_key
+    def __init__(
+        self,
+        api_key: str,
+        voice_id: str = "pNInz6obpgDQGcFmaJgB",
+        stability: float = 0.5,
+        similarity: float = 0.75,
+        speed: float = 1.0,
+    ):
+        self.api_key = api_key
         self.voice_id = voice_id
+        self.stability = min(1.0, max(0.0, float(stability)))
+        self.similarity = min(1.0, max(0.0, float(similarity)))
+        self.speed = min(1.2, max(0.7, float(speed)))
 
-    def speak(self, text: str) -> None:
+    def synthesize(self, text: str) -> bytes:
+        """Return complete audio bytes without starting playback."""
         import requests
         headers = {
-            "xi-api-key":   self.api_key,
+            "xi-api-key": self.api_key,
             "Content-Type": "application/json",
         }
         payload = {
-            "text":     text,
+            "text": text,
             "model_id": "eleven_multilingual_v2",
-            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+            "voice_settings": {
+                "stability": self.stability,
+                "similarity_boost": self.similarity,
+                "speed": self.speed,
+            },
         }
         resp = requests.post(
             f"https://api.elevenlabs.io/v1/text-to-speech/{self.voice_id}",
-            json=payload, headers=headers, timeout=30,
+            json=payload,
+            headers=headers,
+            timeout=(10, 45),
         )
         resp.raise_for_status()
-        _play_audio_bytes(resp.content)
+        if not resp.content:
+            raise RuntimeError("ElevenLabs returned an empty audio response")
+        return resp.content
+
+    def speak(self, text: str) -> None:
+        _play_audio_bytes(self.synthesize(text))
 
 
 # ---------------------------------------------------------------------------
@@ -431,21 +453,130 @@ class TTSPlayer:
             self._playing = False
 
 
+
+class DualVoiceTTSEngine:
+    """Two-profile ElevenLabs TTS with deterministic auto selection and Edge fallback.
+
+    The engine fetches the complete ElevenLabs response before playback. This
+    means provider failures (including HTTP 429 quota responses) can safely
+    fall back without replaying audio that was already emitted.
+    """
+
+    _CINEMATIC_TERMS = (
+        "system alert", "security alert", "warning", "critical",
+        "system online", "system offline", "initializing", "shutdown",
+        "powering on", "powering off", "battery low", "access granted",
+        "access denied", "connected", "disconnected",
+    )
+
+    def __init__(
+        self,
+        api_key: str,
+        cinematic_voice_id: str,
+        natural_voice_id: str,
+        mode: str = "auto",
+        fallback_voice: str = "en-US-GuyNeural",
+        stability: float = 0.5,
+        similarity: float = 0.75,
+        speed: float = 1.0,
+    ):
+        self.api_key = (api_key or "").strip()
+        self.cinematic_voice_id = (cinematic_voice_id or "").strip()
+        self.natural_voice_id = (natural_voice_id or "").strip()
+        self.mode = (mode or "auto").lower()
+        if self.mode not in {"auto", "cinematic", "natural"}:
+            raise ValueError("tts_voice_mode must be auto, cinematic, or natural")
+        self.stability = min(1.0, max(0.0, float(stability)))
+        self.similarity = min(1.0, max(0.0, float(similarity)))
+        self.speed = min(1.2, max(0.7, float(speed)))
+        self.fallback = EdgeTTSEngine(voice=fallback_voice)
+        self.last_provider = "uninitialized"
+        self.last_mode = "natural"
+
+    @classmethod
+    def select_mode(cls, text: str, mode: str = "auto") -> str:
+        """Choose one voice for the whole utterance; never switch mid-sentence."""
+        requested = (mode or "auto").lower()
+        if requested in {"cinematic", "natural"}:
+            return requested
+        lowered = " ".join((text or "").lower().split())
+        return (
+            "cinematic"
+            if any(term in lowered for term in cls._CINEMATIC_TERMS)
+            else "natural"
+        )
+
+    def speak(self, text: str) -> None:
+        if not text or not text.strip():
+            return
+        selected = self.select_mode(text, self.mode)
+        self.last_mode = selected
+        voice_id = (
+            self.cinematic_voice_id if selected == "cinematic"
+            else self.natural_voice_id
+        )
+        if not self.api_key or not voice_id:
+            self.last_provider = "edge-tts"
+            self.fallback.speak(text)
+            return
+
+        try:
+            engine = ElevenLabsTTSEngine(
+                api_key=self.api_key,
+                voice_id=voice_id,
+                stability=self.stability,
+                similarity=self.similarity,
+                speed=self.speed,
+            )
+            audio = engine.synthesize(text)
+        except Exception as exc:
+            # Covers missing/invalid credentials, network errors, HTTP 429
+            # quota exhaustion, and provider-side errors. No audio was played.
+            self.last_provider = "edge-tts-fallback"
+            print(f"[TTS] ElevenLabs unavailable ({type(exc).__name__}); using Edge TTS fallback.")
+            self.fallback.speak(text)
+            return
+
+        # Keep decoding/playback outside the provider-error fallback block:
+        # a playback error must not cause the same utterance to be spoken twice.
+        self.last_provider = "elevenlabs"
+        _play_audio_bytes(audio)
+
+
+
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
 def create_tts_player(config: dict) -> TTSPlayer:
-    engine_name = config.get("tts_engine", "edgetts").lower()
-    if engine_name == "kokoro":
-        voice  = config.get("tts_voice", "af_heart")
-        speed  = float(config.get("tts_speed", 1.0))
+    engine_name = str(config.get("tts_engine", "edgetts")).lower()
+    if engine_name in {"dual", "elevenlabs_dual"}:
+        api_key = (
+            config.get("elevenlabs_api_key")
+            or os.environ.get("ELEVENLABS_API_KEY", "")
+        )
+        engine = DualVoiceTTSEngine(
+            api_key=api_key,
+            cinematic_voice_id=config.get("elevenlabs_cinematic_voice_id", ""),
+            natural_voice_id=config.get("elevenlabs_natural_voice_id", ""),
+            mode=config.get("tts_voice_mode", "auto"),
+            fallback_voice=config.get("tts_fallback_voice", "en-US-GuyNeural"),
+            stability=config.get("tts_stability", 0.5),
+            similarity=config.get("tts_similarity", 0.75),
+            speed=config.get("tts_speed", 1.0),
+        )
+    elif engine_name == "kokoro":
+        voice = config.get("tts_voice", "af_heart")
+        speed = float(config.get("tts_speed", 1.0))
         engine = KokoroTTSEngine(voice=voice, speed=speed)
     elif engine_name == "elevenlabs":
-        api_key  = config.get("elevenlabs_api_key", "")
+        api_key = (
+            config.get("elevenlabs_api_key")
+            or os.environ.get("ELEVENLABS_API_KEY", "")
+        )
         voice_id = config.get("tts_voice", "pNInz6obpgDQGcFmaJgB")
-        engine   = ElevenLabsTTSEngine(api_key=api_key, voice_id=voice_id)
-    else:   # edgetts (default)
-        voice  = config.get("tts_voice", "en-US-GuyNeural")
+        engine = ElevenLabsTTSEngine(api_key=api_key, voice_id=voice_id)
+    else:  # edgetts (default)
+        voice = config.get("tts_voice", "en-US-GuyNeural")
         engine = EdgeTTSEngine(voice=voice)
     return TTSPlayer(engine)

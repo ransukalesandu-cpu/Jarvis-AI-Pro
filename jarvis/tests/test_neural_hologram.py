@@ -21,8 +21,8 @@ def _dark_portrait(path: Path, speck: bool = True) -> None:
     img = QImage(QSize(220, 300), QImage.Format.Format_RGB32)
     img.fill(QColor(6, 12, 30))
     p = QPainter(img)
-    p.setPen(QColor(20, 40, 90))
-    p.setBrush(QColor(120, 170, 230))
+    p.setPen(QColor(60, 40, 30))
+    p.setBrush(QColor(205, 165, 135))            # an ordinary (skin-toned) photo, not a hologram
     p.drawEllipse(50, 20, 120, 170)              # head
     p.drawRect(85, 170, 50, 129)                 # neck down to the bottom edge
     if speck:

@@ -61,8 +61,7 @@ save_tts_settings({
 
 Set `ELEVENLABS_API_KEY` in the local process environment (recommended), or
 supply `elevenlabs_api_key` to `save_tts_settings()`. The key is never passed
-to the browser UI or QWebChannel. Restart/reconnect the Live session after
-changing the provider. An empty/missing key or voice ID selects Edge TTS.
+to the browser UI or QWebChannel. Saving the provider reconnects into a fresh Live conversation because Gemini's response modality changes. An empty/missing key or voice ID selects Edge TTS.
 
 In this native mode, synthesis occurs after Gemini completes a text response,
 so the first spoken audio can start later than Gemini's streamed native audio.

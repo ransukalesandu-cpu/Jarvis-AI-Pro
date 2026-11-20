@@ -193,6 +193,96 @@ def save_voice(voice_name: str) -> None:
     data["voice_name"] = v if v in AVAILABLE_VOICES else DEFAULT_VOICE
     _write_config(data)
 
+# ── Optional native desktop TTS provider ─────────────────────────────────────
+TTS_ENGINES = ("gemini_live", "elevenlabs_dual")
+TTS_VOICE_MODES = ("auto", "cinematic", "natural")
+
+
+def get_tts_settings() -> dict:
+    """Return native TTS settings. The API key stays in local owner config/env."""
+    data = load_api_keys()
+    return {
+        "tts_engine": (
+            data.get("tts_engine")
+            if data.get("tts_engine") in TTS_ENGINES else "gemini_live"
+        ),
+        "elevenlabs_api_key": os.environ.get("ELEVENLABS_API_KEY", "").strip()
+        or str(data.get("elevenlabs_api_key") or "").strip(),
+        "elevenlabs_cinematic_voice_id": str(
+            data.get("elevenlabs_cinematic_voice_id") or ""
+        ).strip(),
+        "elevenlabs_natural_voice_id": str(
+            data.get("elevenlabs_natural_voice_id") or ""
+        ).strip(),
+        "tts_voice_mode": (
+            data.get("tts_voice_mode")
+            if data.get("tts_voice_mode") in TTS_VOICE_MODES else "auto"
+        ),
+        "tts_fallback_voice": str(
+            data.get("tts_fallback_voice") or "en-US-GuyNeural"
+        ).strip()[:80],
+        "tts_stability": _bounded_tts_number(data.get("tts_stability"), 0.5, 0.0, 1.0),
+        "tts_similarity": _bounded_tts_number(data.get("tts_similarity"), 0.75, 0.0, 1.0),
+        "tts_speed": _bounded_tts_number(data.get("tts_speed"), 1.0, 0.7, 1.2),
+    }
+
+
+def _bounded_tts_number(value, default: float, low: float, high: float) -> float:
+    try:
+        return min(high, max(low, float(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def save_tts_settings(settings: dict) -> None:
+    """Persist validated native TTS settings without exposing secrets to the UI."""
+    if not isinstance(settings, dict):
+        raise TypeError("TTS settings must be a dictionary")
+    data = load_api_keys()
+    engine = str(settings.get("tts_engine", data.get("tts_engine", "gemini_live"))).strip()
+    mode = str(settings.get("tts_voice_mode", data.get("tts_voice_mode", "auto"))).strip()
+    if engine not in TTS_ENGINES:
+        raise ValueError("Unsupported TTS engine")
+    if mode not in TTS_VOICE_MODES:
+        raise ValueError("tts_voice_mode must be auto, cinematic, or natural")
+
+    allowed = {
+        "elevenlabs_cinematic_voice_id": 128,
+        "elevenlabs_natural_voice_id": 128,
+        "tts_fallback_voice": 80,
+    }
+    for key, limit in allowed.items():
+        if key in settings:
+            value = str(settings[key] or "").strip()
+            if len(value) > limit:
+                raise ValueError(f"{key} is too long")
+            if key.endswith("_voice_id") and value and not all(
+                char.isalnum() or char in "_-" for char in value
+            ):
+                raise ValueError(f"{key} contains unsupported characters")
+            data[key] = value
+    if "elevenlabs_api_key" in settings:
+        key = str(settings["elevenlabs_api_key"] or "").strip()
+        if len(key) > 256:
+            raise ValueError("ElevenLabs API key is too long")
+        if key:
+            data["elevenlabs_api_key"] = key
+        elif settings.get("clear_elevenlabs_api_key") is True:
+            data.pop("elevenlabs_api_key", None)
+
+    data["tts_engine"] = engine
+    data["tts_voice_mode"] = mode
+    data["tts_stability"] = _bounded_tts_number(
+        settings.get("tts_stability", data.get("tts_stability")), 0.5, 0.0, 1.0
+    )
+    data["tts_similarity"] = _bounded_tts_number(
+        settings.get("tts_similarity", data.get("tts_similarity")), 0.75, 0.0, 1.0
+    )
+    data["tts_speed"] = _bounded_tts_number(
+        settings.get("tts_speed", data.get("tts_speed")), 1.0, 0.7, 1.2
+    )
+    _write_config(data)
+
 
 def get_wake_word_enabled() -> bool:
     """Whether local wake-word gating is on (assistant sleeps until 'Hey Jarvis')."""

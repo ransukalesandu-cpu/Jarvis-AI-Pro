@@ -2588,6 +2588,142 @@ class AIProviderOverlay(_HudOverlay):
         self.hide()
 
 
+class VoiceTTSSettingsOverlay(_HudOverlay):
+    """Native Live voice provider and protected ElevenLabs dual-voice settings."""
+
+    saved = pyqtSignal(object)
+    _OW, _OH = 520, 540
+
+    def __init__(self, settings: dict, parent=None):
+        super().__init__(parent)
+        self._settings = settings or {}
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(f"""
+            VoiceTTSSettingsOverlay {{
+                background: rgba(5, 12, 17, 250);
+                border: 1px solid {C.BORDER_B};
+                border-radius: 8px;
+            }}
+            QLineEdit, QComboBox {{
+                background: #000d12; color: {C.TEXT};
+                border: 1px solid {C.BORDER}; border-radius: 3px; padding: 6px;
+            }}
+        """)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(20, 16, 20, 16)
+        root.setSpacing(8)
+
+        def label(text, color=C.TEXT_DIM, bold=False):
+            item = QLabel(text)
+            item.setFont(QFont("Courier New", 8,
+                               QFont.Weight.Bold if bold else QFont.Weight.Normal))
+            item.setStyleSheet(f"color: {color}; background: transparent;")
+            item.setWordWrap(True)
+            return item
+
+        root.addWidget(label("◈  LIVE VOICE ENGINE", C.PRI, True))
+        root.addWidget(label(
+            "Gemini Live is the default. ElevenLabs mode uses Gemini for responses "
+            "and tools, then speaks completed JARVIS replies through the existing audio path. "
+            "Bihansa keeps her separately configured Gemini voice.",
+            C.TEXT_MED,
+        ))
+
+        self._engine = QComboBox()
+        self._engine.addItem("Gemini Live · Native voice", "gemini_live")
+        self._engine.addItem("ElevenLabs · Dual voice", "elevenlabs_dual")
+        index = self._engine.findData(self._settings.get("tts_engine", "gemini_live"))
+        self._engine.setCurrentIndex(max(0, index))
+        root.addWidget(label("VOICE ENGINE", bold=True))
+        root.addWidget(self._engine)
+
+        self._api_key = QLineEdit()
+        self._api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self._api_key.setPlaceholderText(
+            "Saved locally · leave blank to keep"
+            if self._settings.get("has_api_key") else "Paste ElevenLabs API key"
+        )
+        root.addWidget(label("ELEVENLABS API KEY  ·  STORED LOCALLY", bold=True))
+        root.addWidget(self._api_key)
+
+        self._cinematic = QLineEdit(str(self._settings.get("elevenlabs_cinematic_voice_id", "")))
+        self._cinematic.setPlaceholderText("Cinematic voice ID")
+        root.addWidget(label("CINEMATIC VOICE ID  ·  ALERTS", bold=True))
+        root.addWidget(self._cinematic)
+
+        self._natural = QLineEdit(str(self._settings.get("elevenlabs_natural_voice_id", "")))
+        self._natural.setPlaceholderText("Natural voice ID")
+        root.addWidget(label("NATURAL VOICE ID  ·  CONVERSATION", bold=True))
+        root.addWidget(self._natural)
+
+        self._mode = QComboBox()
+        for text, value in (
+            ("Auto · choose by response type", "auto"),
+            ("Cinematic · always", "cinematic"),
+            ("Natural · always", "natural"),
+        ):
+            self._mode.addItem(text, value)
+        mode_index = self._mode.findData(self._settings.get("tts_voice_mode", "auto"))
+        self._mode.setCurrentIndex(max(0, mode_index))
+        root.addWidget(label("VOICE SELECTION MODE", bold=True))
+        root.addWidget(self._mode)
+
+        self._status = label(
+            "The API key is never sent to the browser UI. Restarting the Live session "
+            "applies the saved engine.",
+            C.GREEN,
+        )
+        root.addWidget(self._status)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        cancel = QPushButton("CANCEL")
+        save = QPushButton("▸  SAVE VOICE")
+        cancel.clicked.connect(self.hide)
+        save.clicked.connect(self._save)
+        buttons.addWidget(cancel)
+        buttons.addWidget(save)
+        root.addLayout(buttons)
+
+    def _save(self):
+        engine = str(self._engine.currentData() or "gemini_live")
+        cinematic = self._cinematic.text().strip()
+        natural = self._natural.text().strip()
+        api_key = self._api_key.text().strip()
+        if any(
+            len(value) > 128 or (value and not all(
+                char.isalnum() or char in "_-" for char in value
+            ))
+            for value in (cinematic, natural)
+        ):
+            self._status.setText("Voice IDs may contain only letters, numbers, underscores and hyphens.")
+            self._status.setStyleSheet(f"color: {C.RED}; background: transparent;")
+            return
+        if len(api_key) > 256:
+            self._status.setText("The API key is too long.")
+            self._status.setStyleSheet(f"color: {C.RED}; background: transparent;")
+            return
+        if engine == "elevenlabs_dual":
+            if not (api_key or self._settings.get("has_api_key")):
+                self._status.setText("Add an API key or set ELEVENLABS_API_KEY first.")
+                self._status.setStyleSheet(f"color: {C.RED}; background: transparent;")
+                return
+            if not cinematic or not natural:
+                self._status.setText("Add both Cinematic and Natural voice IDs.")
+                self._status.setStyleSheet(f"color: {C.RED}; background: transparent;")
+                return
+        values = {
+            "tts_engine": engine,
+            "tts_voice_mode": str(self._mode.currentData() or "auto"),
+            "elevenlabs_cinematic_voice_id": cinematic,
+            "elevenlabs_natural_voice_id": natural,
+        }
+        if api_key:
+            values["elevenlabs_api_key"] = api_key
+        self.saved.emit(values)
+        self.hide()
+
+
 class NewsBriefingOverlay(QFrame):
     """Compact, animated headline card shown only while the news is being read."""
 

@@ -2792,6 +2792,9 @@ class JarvisLive(
                                     try:
                                         from jarvis.core.tts import DualVoiceTTSEngine
                                         from jarvis.memory.config_manager import get_tts_settings
+                                        manager = security.get_auth_manager()
+                                        if manager.is_silent() or manager.needs_pin():
+                                            raise RuntimeError("Privacy Lock or PIN gate is active")
                                         settings = get_tts_settings()
                                         engine = DualVoiceTTSEngine(
                                             api_key=settings.get("elevenlabs_api_key", ""),

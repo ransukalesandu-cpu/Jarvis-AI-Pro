@@ -179,3 +179,53 @@ class ConfigTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class KeepColoursTests(unittest.TestCase):
+    """A picture that is already a hologram is shown exactly as drawn."""
+
+    def _holo_picture(self, path: Path) -> None:
+        img = QImage(QSize(220, 300), QImage.Format.Format_RGB32)
+        img.fill(QColor(2, 6, 14))
+        p = QPainter(img)
+        p.setPen(QColor(120, 230, 255))
+        p.setBrush(QColor(30, 150, 200))
+        p.drawEllipse(50, 20, 120, 170)
+        p.drawRect(85, 170, 50, 129)
+        p.end()
+        img.save(str(path))
+
+    def test_hologram_picture_keeps_its_colours_and_animates(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "hologram_face.png"
+            self._holo_picture(path)
+            holo = ImageHologram(path, style="neural")
+            self.assertTrue(holo.keep_colors)
+            self.assertEqual(holo._veins, [])                       # its own veins, none generated
+            img = holo._image_for(neural.NEURAL_PRIMARY)
+            c = img.pixelColor(img.width() // 2, img.height() // 3)
+            self.assertGreater(c.green(), c.red())                  # cyan as drawn, not re-lit
+            out = QImage(QSize(400, 420), QImage.Format.Format_ARGB32_Premultiplied)
+            out.fill(QColor(0, 0, 0))
+            p = QPainter(out)
+            try:
+                holo.paint(p, 200, 20, 330, neural.NEURAL_PRIMARY, neural.NEURAL_ACCENT, t=1.0,
+                           mouth=0.8, amp=0.6, blink=0.0, face={"happy": 1.0, "gaze_x": 0.5})
+            finally:
+                p.end()
+            self.assertGreater(out.pixelColor(200, 140).green(), 60)
+
+    def test_json_can_force_tint_and_veins(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "hologram_face.png"
+            self._holo_picture(path)
+            path.with_suffix(".json").write_text('{"colors": "tint", "veins": true}', encoding="utf-8")
+            holo = ImageHologram(path, style="neural")
+            self.assertFalse(holo.keep_colors)
+            self.assertGreater(len(holo._veins), 0)
+
+    def test_ordinary_photo_is_not_mistaken_for_a_hologram(self):
+        rgb = np.full((50, 50, 3), (200.0, 160.0, 130.0), dtype=np.float32)
+        self.assertFalse(neural.already_hologram(rgb, np.ones((50, 50), dtype=np.float32)))
+        rgb[:] = (30.0, 150.0, 220.0)
+        self.assertTrue(neural.already_hologram(rgb, np.ones((50, 50), dtype=np.float32)))

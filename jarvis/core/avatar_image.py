@@ -213,9 +213,21 @@ class ImageHologram:
         self._raw_lum = lum * mask
         self._veins: list = []
         self._vein_map = np.zeros_like(mask)
+        # "keep": the picture is already a hologram (its own colours, veins and mesh are
+        # the look), so it is shown exactly as drawn; "tint": an ordinary photo is re-lit
+        # in blue and given generated veins. hologram_face.json may set either with
+        # "colors"; by default a blue-dominant picture on a dark backdrop is kept.
+        self._src_rgb = rgba[..., :3].astype(np.float32) * mask[..., None]
+        self._sparkles = np.zeros((0, 2), dtype=np.float32)
+        opts = self._options(path)
+        self.keep_colors = False
         if self.style == "neural":
-            self._veins = neural.grow_veins(mask, self.layout)
-            self._vein_map = neural.rasterize_veins(self._veins, mask.shape)
+            mode = str(opts.get("colors", "auto")).lower()
+            self.keep_colors = mode == "keep" or (mode == "auto" and neural.already_hologram(self._src_rgb, mask))
+            self._sparkles = neural.sparkle_points(self._src_rgb, mask)
+            if opts.get("veins", not self.keep_colors):
+                self._veins = neural.grow_veins(mask, self.layout)
+                self._vein_map = neural.rasterize_veins(self._veins, mask.shape)
         self._view = (0.0, 0.0, 0.0)
         self._out_size = (int(W * (1 + 2 * _MARGIN)), int(H * (1 + 2 * _MARGIN)))
 
@@ -275,6 +287,15 @@ class ImageHologram:
         ow, oh = self._out_size
         return ow / 2 + x3 * k, oh / 2 + y3 * k, z2
 
+    @staticmethod
+    def _options(path: Path) -> dict:
+        side = path.with_suffix(".json")
+        try:
+            data = json.loads(side.read_text(encoding="utf-8")) if side.is_file() else {}
+        except (OSError, ValueError):
+            data = {}
+        return data if isinstance(data, dict) else {}
+
     def _load_layout(self, path: Path) -> dict:
         layout = dict(_DEFAULT_LAYOUT)
         side = path.with_suffix(".json")
@@ -299,6 +320,10 @@ class ImageHologram:
         """The hologram itself (premultiplied, meant to be drawn additively)."""
         # Quantise so slow mood fades re-tint a handful of times, not every frame.
         key = (primary.red() // 12, primary.green() // 12, primary.blue() // 12)
+        if self.style == "neural" and self.keep_colors:
+            if self._tinted is None:
+                self._tinted = neural.as_drawn(self._src_rgb, self._mask, self._vein_map)
+            return self._tinted
         if self.style == "neural":
             if key != self._tint_key or self._tinted is None:
                 self._tinted = neural.neural_tint(self._raw_lum, self._mask, self._ink, self._rim,
@@ -415,8 +440,11 @@ class ImageHologram:
         Each cell is then re-drawn with a quad-to-quad transform, far cells
         first so the nose covers the cheek behind it.
         """
-        self._view = (max(-0.6, min(0.6, f.get("yaw", 0.0))),
-                      max(-0.4, min(0.4, f.get("pitch", 0.0))),
+        # A detailed picture (the neural look) tears at the silhouette sooner than
+        # line-art does, so it turns about half as far.
+        turn = 0.5 if self.style == "neural" else 1.0
+        self._view = (max(-0.6, min(0.6, f.get("yaw", 0.0) * turn)),
+                      max(-0.4, min(0.4, f.get("pitch", 0.0) * turn)),
                       max(-0.3, min(0.3, f.get("roll", 0.0))))
         iw, ih = img.width(), img.height()
         nx, ny = _COLS, len(self._rows) - 1
@@ -561,7 +589,7 @@ class ImageHologram:
         bw, bh = w * 0.62, w * 0.09
         self.base = (cx, base_y, bw)
         if self.style == "neural":
-            self._paint_neural(p, img, f, cx, top, h, w, left, base_y, bw, primary, t, amp)
+            self._paint_neural(p, img, f, cx, top, h, w, left, base_y, bw, primary, t, amp, accent)
             return
         beam = QLinearGradient(0, base_y, 0, top + h * 0.05)
         beam.setColorAt(0.0, QColor(*P, int(70 + 50 * amp)))
@@ -656,7 +684,8 @@ class ImageHologram:
     # ── the neural look ─────────────────────────────────────────────────────
     def _paint_neural(self, p: QPainter, img: QImage, f: dict, cx: float, top: float, h: float,
                       w: float, left: float, base_y: float, bw: float, primary: QColor,
-                      t: float, amp: float) -> None:
+                      t: float, amp: float, accent: QColor | None = None) -> None:
+        accent = accent or neural.NEURAL_ACCENT
         """Blue photo head with veins, a soft aura, pulses and the neck disc (no beam)."""
         P = (primary.red(), primary.green(), primary.blue())
         ar = h * 0.70
@@ -677,6 +706,7 @@ class ImageHologram:
         bx, by = rect.width() / img.width(), rect.height() / img.height()
         p.drawImage(rect, img)
         neural.paint_neck_disc(p, cx, base_y, bw * 1.05, primary, amp, t)
+        neural.paint_eyes(p, self, f, rect, bx, by, w, accent)
         if self.bloom:
             bloom = img.scaled(max(2, img.width() // 5), max(2, img.height() // 5),
                                Qt.AspectRatioMode.IgnoreAspectRatio,
@@ -685,6 +715,8 @@ class ImageHologram:
             p.drawImage(rect, bloom)
             p.setOpacity(1.0)
             neural.paint_vein_pulses(p, self, self._veins, f, rect, bx, by, t, amp)
+            neural.paint_twinkles(p, self, self._sparkles, f, rect, bx, by, t, amp)
+            neural.paint_scan_band(p, left, top, w, h, primary, t)
             # Rare glitch slice, as in the classic look.
             slot = int(t / 5.3)
             if (t / 5.3) - slot < 0.025:

@@ -20,7 +20,7 @@ import math
 
 import numpy as np
 from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import QBrush, QColor, QImage, QPainter, QPainterPath, QPen, QRadialGradient
+from PyQt6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient
 
 NEURAL_PRIMARY = QColor(40, 125, 255)       # electric blue
 NEURAL_ACCENT = QColor(170, 225, 255)
@@ -85,6 +85,97 @@ def largest_region(fg: np.ndarray) -> np.ndarray:
         if (grown == region).all():
             return region
         region = grown
+
+
+def already_hologram(rgb: np.ndarray, mask: np.ndarray) -> bool:
+    """True when the picture is itself a blue/cyan hologram (not an ordinary photo)."""
+    fg = mask > 0.5
+    if fg.sum() < 50:
+        return False
+    px = rgb[fg]
+    lit = px[px.max(axis=1) > 40]
+    if len(lit) < 50:
+        return False
+    blue_lead = float(np.mean((lit[:, 2] - lit[:, 0]) / 255.0))
+    return blue_lead > 0.18
+
+
+def as_drawn(rgb: np.ndarray, mask: np.ndarray, veins: np.ndarray) -> QImage:
+    """The picture exactly as drawn, made additive: dark parts become see-through,
+    bright parts emit (premultiplied ARGB). Optional generated veins on top."""
+    rgb = np.clip(rgb + _VEIN * (veins * mask)[..., None], 0, 255)
+    a = np.clip(rgb.max(axis=2) / 255.0 * 1.15, 0, 1) * mask
+    a[::3, :] *= 0.80                                               # projector scanlines
+    rgb[::3, :] *= 0.80
+    rgb = np.minimum(rgb, a[..., None] * 255.0)
+    out = np.empty(a.shape + (4,), dtype=np.uint8)
+    out[..., :3] = np.clip(rgb, 0, 255)
+    out[..., 3] = np.clip(a * 255, 0, 255)
+    h, w = a.shape
+    data = np.ascontiguousarray(out)
+    img = QImage(data.data, w, h, w * 4, QImage.Format.Format_RGBA8888_Premultiplied).copy()
+    return img.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
+
+
+def sparkle_points(rgb: np.ndarray, mask: np.ndarray, count: int = 110, seed: int = 11) -> np.ndarray:
+    """(u, v) of bright spots in the picture (mesh nodes, highlights) that twinkle."""
+    lum = rgb.max(axis=2) * (mask > 0.8)
+    H, W = lum.shape
+    thr = np.percentile(lum[mask > 0.8], 96) if (mask > 0.8).any() else 255
+    ys, xs = np.nonzero(lum >= thr)
+    if len(xs) == 0:
+        return np.zeros((0, 2), dtype=np.float32)
+    rng = np.random.default_rng(seed)
+    pick = rng.choice(len(xs), size=min(count, len(xs)), replace=False)
+    return np.stack([xs[pick] / (W - 1), ys[pick] / (H - 1)], axis=1).astype(np.float32)
+
+
+def paint_twinkles(p: QPainter, holo, pts: np.ndarray, f: dict, rect: QRectF, bx: float, by: float,
+                   t: float, amp: float) -> None:
+    """Mesh nodes flaring up one after another; they move with the head and the face."""
+    if len(pts) == 0:
+        return
+    xs, ys = holo.to_buffer_many(pts[:, 0], pts[:, 1], f)
+    for i, (x, y) in enumerate(zip(xs.tolist(), ys.tolist())):
+        w = math.sin(t * (1.3 + (i % 7) * 0.31) + i * 2.17)
+        if w < 0.55:
+            continue
+        k = (w - 0.55) / 0.45 * (0.7 + 0.3 * amp)
+        r = max(2, int(2 + 4 * k))
+        p.setOpacity(min(1.0, k))
+        p.drawImage(QPointF(rect.left() + x * bx - r, rect.top() + y * by - r), _dot(r))
+    p.setOpacity(1.0)
+
+
+def paint_eyes(p: QPainter, holo, f: dict, rect: QRectF, bx: float, by: float, w: float,
+               accent: QColor) -> None:
+    """A soft glow in each iris that follows the gaze, dims in a blink and flares in surprise."""
+    k = max(0.0, 1.0 - f["blink"] * 1.15) * (0.28 + 0.2 * f.get("happy", 0) + 0.4 * f.get("surprised", 0))
+    if k <= 0.02:
+        return
+    rad = w * 0.022 * (1.0 + 0.3 * f.get("surprised", 0) - 0.15 * f.get("serious", 0))
+    for ex, ey in holo.layout["eyes"]:
+        ux, uy = holo.to_buffer(ex + 0.007 * f["gaze_x"], ey + 0.004 * f["gaze_y"], f)
+        c = QPointF(rect.left() + ux * bx, rect.top() + uy * by)
+        g = QRadialGradient(c, rad * 2.4)
+        g.setColorAt(0.0, QColor(235, 252, 255, int(min(255, 170 * k))))
+        g.setColorAt(0.3, QColor(accent.red(), accent.green(), accent.blue(), int(min(255, 90 * k))))
+        g.setColorAt(1.0, QColor(accent.red(), accent.green(), accent.blue(), 0))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(g))
+        p.drawEllipse(c, rad * 2.4, rad * 2.4)
+
+
+def paint_scan_band(p: QPainter, left: float, top: float, w: float, h: float, primary: QColor, t: float) -> None:
+    """A band of light sweeping down the hologram."""
+    sy = top + ((t * 0.14) % 1.0) * h
+    g = QLinearGradient(0, sy - h * 0.025, 0, sy + h * 0.025)
+    g.setColorAt(0.0, QColor(primary.red(), primary.green(), primary.blue(), 0))
+    g.setColorAt(0.5, QColor(170, 230, 255, 55))
+    g.setColorAt(1.0, QColor(primary.red(), primary.green(), primary.blue(), 0))
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QBrush(g))
+    p.drawRect(QRectF(left + w * 0.12, sy - h * 0.025, w * 0.76, h * 0.05))
 
 
 # ── veins ───────────────────────────────────────────────────────────────────

@@ -467,10 +467,14 @@ class DualVoiceTTSEngine:
     """
 
     _CINEMATIC_TERMS = (
-        "system alert", "security alert", "warning", "critical",
-        "system online", "system offline", "initializing", "shutdown",
-        "powering on", "powering off", "battery low", "access granted",
-        "access denied", "connected", "disconnected",
+        "system alert", "security alert", "security breach", "unauthorized access",
+        "warning", "critical", "alert:", "system online", "system offline",
+        "system ready", "system initialized", "initializing", "shutdown",
+        "powering on", "powering off", "battery low", "battery is low",
+        "access granted", "access denied", "connected", "disconnected",
+        "පද්ධති අනතුරු ඇඟවීම", "ආරක්ෂක අනතුරු ඇඟවීම",
+        "බැටරිය අඩුයි", "ප්‍රවේශය අවසර", "ප්‍රවේශය ප්‍රතික්ෂේප",
+        "පද්ධතිය සූදානම්", "පද්ධතිය ආරම්භ",
     )
 
     def __init__(

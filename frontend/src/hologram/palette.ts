@@ -1,17 +1,21 @@
 import { Color } from 'three';
 import type { AssistantState } from '../bridge/contract';
 
-// Standard JARVIS look: saturated blue shaded head, orange eyes, cyan orb, warm heart.
+// JARVIS look: glass hologram head with a neural brain, orange eyes, cyan glass orb.
 export const COLORS = {
-  skin: new Color('#4da3ff'),
-  skinEmissive: new Color('#0b3a8a'),
-  edge: new Color('#8fd0ff'),
+  skin: new Color('#0d4a72'),       // glass body (barely there)
+  rim: new Color('#5fe6ff'),        // glass silhouette glow
+  edge: new Color('#6fdcff'),       // edge net
+  node: new Color('#d8f7ff'),       // twinkling mesh nodes
+  brain: new Color('#7fe9ff'),      // neural lines in the cranium
   eye: new Color('#ff9a1a'),
+  eyeCore: new Color('#ffd27a'),
   orb: new Color('#27d9ff'),
-  orbCore: new Color('#c9f6ff'),
+  orbCore: new Color('#d9fbff'),
   heart: new Color('#ff3b4e'),
   heartSoft: new Color('#ff8a5c'),
-  wire: new Color('#3fb6ff'),
+  wire: new Color('#3fd0ff'),
+  ring: new Color('#2fb8ff'),
   error: new Color('#ff5a4a'),
 };
 

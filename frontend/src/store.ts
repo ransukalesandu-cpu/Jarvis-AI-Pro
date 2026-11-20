@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { usePending } from './ux/pending';
 import type { AssistantState, Battery, CommandReason, CommandState, HostEvent, JobRow, LogTag, NewsItem, Net, Persona, PerfTier } from './bridge/contract';
 
-export type Page = 'home' | 'chat' | 'activity' | 'models' | 'research' | 'reminders' | 'apps' | 'files' | 'memory' | 'automation' | 'monitor' | 'security';
+export type Page = 'home' | 'chat' | 'activity' | 'models' | 'research' | 'reminders' | 'apps' | 'files' | 'memory' | 'automation' | 'monitor' | 'security' | 'tasks';
 
 export const SERIES_MAX = 120;   // ~2 minutes at the host's 1 Hz telemetry
 export interface Series { cpu: number[]; ram: number[]; down: number[]; up: number[] }

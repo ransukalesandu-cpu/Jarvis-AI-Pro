@@ -4,7 +4,7 @@ export const WINDOW_KINDS = ['monitor', 'models', 'activity', 'log', 'timer', 'b
 export type WinKind = (typeof WINDOW_KINDS)[number];
 export const WINDOW_STATES = ['normal', 'minimized', 'maximized'] as const;
 export type WinState = (typeof WINDOW_STATES)[number];
-export const PAGE_IDS: Page[] = ['home', 'chat', 'activity', 'models', 'research', 'reminders', 'apps', 'files', 'memory', 'automation', 'monitor', 'security'];
+export const PAGE_IDS: Page[] = ['home', 'chat', 'activity', 'models', 'research', 'reminders', 'apps', 'files', 'memory', 'automation', 'monitor', 'security', 'tasks'];
 
 export interface WindowRec { id: string; kind: WinKind; x: number; y: number; w: number; h: number; z: number; state: WinState }
 export interface Layout { windows: WindowRec[]; page: Page }

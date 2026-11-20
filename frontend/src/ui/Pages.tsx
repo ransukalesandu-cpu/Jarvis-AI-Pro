@@ -5,6 +5,7 @@ import type { LogTag } from '../bridge/contract';
 import { useUi, type Page } from '../store';
 import { useWindows } from '../workspace/windows';
 import type { WinKind } from '../workspace/layout';
+import { TaskProgressPage } from '../taskflow/TaskProgressPage';
 
 const fmt = (n: number | undefined | null, unit = '%') => (n === undefined || n === null ? '--' : `${Math.round(n)}${unit}`);
 
@@ -91,11 +92,11 @@ export function PageView() {
   const page = useUi((s) => s.page) as Page;
   if (page === 'home') return null;
   return (
-    <main className="page glass" aria-live="polite">
+    <main className={`page glass${page === 'tasks' ? ' wide' : ''}`} aria-live={page === 'tasks' ? 'off' : 'polite'}>
       {(page === 'monitor' || page === 'models' || page === 'activity' || page === 'chat') && (
         <button className="toggle detach" onClick={() => { useWindows.getState().open((page === 'chat' ? 'log' : page) as WinKind); useUi.getState().go('home'); }} aria-label="Open as floating window"><Maximize2 size={12} /> Window</button>
       )}
-      {page === 'monitor' ? <MonitorContent /> : page === 'models' ? <ModelsContent /> : page === 'activity' ? <ActivityContent /> : page === 'chat' ? <LogContent /> : <h1>Not available yet</h1>}
+      {page === 'monitor' ? <MonitorContent /> : page === 'models' ? <ModelsContent /> : page === 'activity' ? <ActivityContent /> : page === 'chat' ? <LogContent /> : page === 'tasks' ? <TaskProgressPage /> : <h1>Not available yet</h1>}
     </main>
   );
 }

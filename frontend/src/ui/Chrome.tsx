@@ -1,4 +1,4 @@
-import { Bot, Brain, Clock, FolderOpen, Globe, Home, Menu, MonitorCog, Settings, Shield, Sparkles, Workflow, AppWindow, X } from 'lucide-react';
+import { Bot, Brain, Clock, FolderOpen, Globe, Home, Menu, MonitorCog, Network, Settings, Shield, Sparkles, Workflow, AppWindow, X } from 'lucide-react';
 import { useUi, type Page } from '../store';
 import { motion, AnimatePresence } from 'motion/react';
 import { Island } from './Island';
@@ -7,6 +7,7 @@ export const PAGES: { id: Page; label: string; icon: React.ReactNode; ready: boo
   { id: 'home', label: 'Home', icon: <Home size={16} />, ready: true },
   { id: 'chat', label: 'Conversation Log', icon: <Bot size={16} />, ready: true },
   { id: 'activity', label: 'Activity Center', icon: <Sparkles size={16} />, ready: true },
+  { id: 'tasks', label: 'Task Progress', icon: <Network size={16} />, ready: true },
   { id: 'models', label: 'AI Models', icon: <Brain size={16} />, ready: true },
   { id: 'research', label: 'Web Research', icon: <Globe size={16} />, ready: false, phase: 'Phase 2' },
   { id: 'reminders', label: 'Reminders', icon: <Clock size={16} />, ready: false, phase: 'Phase 2' },

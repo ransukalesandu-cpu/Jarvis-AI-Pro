@@ -1,5 +1,6 @@
 import { useUi } from '../store';
 import { useWindows } from '../workspace/windows';
+import { useFlows } from '../taskflow/flows';
 
 /** Dynamic Island: assistant state, open windows, and a way into the palette. Real values only. */
 export function Island() {
@@ -10,6 +11,7 @@ export function Island() {
   const wins = useWindows((s) => s.windows);
   const running = useUi((s) => s.jobs?.filter((j) => j.status === 'running').length ?? 0);
   const minimised = wins.filter((w) => w.state === 'minimized').length;
+  const tasks = useFlows((s) => s.flows.filter((f) => f.state === 'running').length);
   return (
     <button className="island glass" onClick={() => setPalette(true)}>
       <span className="dot" data-state={assistant} aria-hidden />
@@ -17,6 +19,7 @@ export function Island() {
       {muted && <span className="island-meta" role="status">MIC MUTED</span>}
       {wins.length > 0 && <span className="island-meta">{wins.length} win{minimised ? ` · ${minimised} min` : ''}</span>}
       {running > 0 && <span className="island-meta">{running} job{running > 1 ? 's' : ''}</span>}
+      {tasks > 0 && <span className="island-meta">{tasks} task{tasks > 1 ? 's' : ''} running</span>}
       {link === 'detached' && <span className="island-meta">offline</span>}
       <kbd>Ctrl K</kbd>
       <span className="sr-only">Open command palette</span>

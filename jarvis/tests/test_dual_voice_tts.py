@@ -211,3 +211,7 @@ def test_save_tts_settings_rejects_unsafe_voice_id(monkeypatch, tmp_path):
             "tts_engine": "elevenlabs_dual",
             "elevenlabs_cinematic_voice_id": "voice/with/path",
         })
+
+
+def test_auto_mode_selects_cinematic_for_sinhala_alert():
+    assert tts.DualVoiceTTSEngine.select_mode("පද්ධති අනතුරු ඇඟවීම") == "cinematic"

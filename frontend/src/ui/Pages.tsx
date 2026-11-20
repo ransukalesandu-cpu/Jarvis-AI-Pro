@@ -17,7 +17,7 @@ export function MonitorContent() {
       <h1>System Monitor</h1>
       <p>Live values from the Python backend (psutil), last two minutes.</p>
       <Spark label="CPU" data={sr.cpu} unit="%" max={100} />
-      <Spark label="RAM" data={sr.ram} unit="%" max={100} />
+      <Spark label="RAM" data={sr.ram} unit="%" max={100} tone="amber" />
       <Spark label="Network ↓" data={sr.down} unit=" KB/s" />
       <Spark label="Network ↑" data={sr.up} unit=" KB/s" />
       <div className="row"><span>CPU</span><span>{fmt(m?.cpu)}</span></div>

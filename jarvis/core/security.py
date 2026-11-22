@@ -565,6 +565,7 @@ _FEATURE_TIERS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "compare_models": (frozenset({"compare", "show", "wins"}), frozenset()),
     "backup": (frozenset({"status", "list", "preview"}), frozenset({"restore", "set_folder"})),
     "ai_providers": (frozenset({"status", "test", "routes", "usage"}), frozenset()),
+    "assistant_profiles": (frozenset({"list", "current"}), frozenset({"create", "delete"})),
 }
 
 
@@ -992,6 +993,16 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
     tier = tier_for(name, params)
     auth = _auth_manager
     auth.get_state()
+
+    # An active assistant profile may narrow the tool set (never widens it).
+    try:
+        from jarvis.assistants import tool_block_reason
+        profile_block = tool_block_reason(name)
+    except Exception:
+        profile_block = ""
+    if profile_block:
+        audit("call", name, tier, "denied", "assistant profile allow-list")
+        return profile_block
 
     # Security V2: once a Guest session was started explicitly, the identity manager
     # decides first and denies by default. Without one, nothing changes.

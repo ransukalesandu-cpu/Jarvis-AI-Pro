@@ -61,6 +61,17 @@ def ask(prompt: str, system: str = "You are JARVIS, a capable personal AI assist
     """{'text', 'provider', 'model', 'latency_ms'} from the first provider that answers. Raises when none can."""
     if _override is not None:
         return _override(prompt, system, None)
+    try:                                             # an active assistant profile may prefer a provider
+        from jarvis.assistants import preferred_provider
+        preferred = preferred_provider()
+    except Exception:
+        preferred = ""
+    if preferred:
+        try:
+            return ask_provider(preferred, prompt, system)
+        except Exception:
+            from jarvis.core import failsoft         # fall back to the normal ladder
+            failsoft.suppress("text_brain:profile_provider")
     return dict(get_router().query(prompt, system_prompt=system, task=task))
 
 

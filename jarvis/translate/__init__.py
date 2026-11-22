@@ -110,7 +110,14 @@ def _out_path(src: Path, target: str, ext: str) -> Path:
 
 
 def translate_file(path: str | Path, target: str, *, source: str = "", ask: Optional[Asker] = None) -> Path:
-    """Translate a document; the result is saved next to it. Returns the new file path."""
+    """Translate a document; the result is saved next to it (and listed in the file library)."""
+    out = _translate_file(path, target, source=source, ask=ask)
+    from jarvis import library
+    library.register(out, "translation", source="translate", note=f"{Path(path).name} -> {target}")
+    return out
+
+
+def _translate_file(path: str | Path, target: str, *, source: str = "", ask: Optional[Asker] = None) -> Path:
     src = Path(path).expanduser()
     if not src.is_file():
         raise FileNotFoundError(f"file not found: {src}")

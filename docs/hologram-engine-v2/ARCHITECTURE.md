@@ -3,7 +3,7 @@
 Status: **Phase 0 (inspection and plan). No renderer code changes in this PR.**
 Visual reference: [`reference.jpg`](reference.jpg). It shows a dark metallic android head with orange emissive circuit engravings, blue chip modules in the forehead, blue nose structure, burning orange eyes, ears, a circuit-engraved neck and shoulders, and a cyan circuit background with orange sparks.
 
-Base: this plan builds on the web hologram in PR #289, which is stacked on #286. Neither is merged yet; see the decisions at the end.
+Base: `main`, with #286 (Task Flow + floating windows) and #289 (circuit-board web hologram) merged.
 
 ---
 
@@ -71,9 +71,9 @@ frontend/src/hologram/
   materials/         typed factories with configurable params
     titanium.ts  blackChrome.ts  carbon.ts  emissiveCircuit.ts  holoSurface.ts  holoOverlay.ts
   face/              mechanical face parts (geometry builders + components)
-    panels.ts (forehead plates, cheekbones, chin)  jaw.ts  sockets.ts  nose.ts  neck.ts  shoulders.ts
+    panels.ts (forehead plates, cheekbones, chin)  jaw.ts  sockets.ts  nose.ts  neck.ts
     engravings.ts (existing faceCircuit.ts moves here)  Eyes.tsx  FaceData.tsx  Ears.tsx
-  energy/            Orb.tsx  Heart.tsx  Connections.tsx (animated arcs)  Particles.tsx (GPU)  Backdrop.tsx
+  energy/            Orb.tsx  Connections.tsx (animated arcs)  Particles.tsx (GPU)  Backdrop.tsx
   anim/              stateMachine.ts (7 states, timed transitions)  audio.ts (amplitude smoothing)
   HologramScene.tsx  composition only
 ```
@@ -123,15 +123,15 @@ Unchanged renderer. It shares **configuration**: a JSON palette and state map in
 | 1 | Foundation | `engine/` (quality, scheduler, capability, resources, perf overlay), shader chunk library, contract additions (`warning`, input level, capability, perf), dead-code removal, fixes for problems 1–4 | vitest; headless WebGL shader-compile test for every chunk; Python contract and live-bridge tests |
 | 2 | Mechanical face | panels and grooves, separate hinged jaw, sockets, nose, chin, neck rings, engravings in grooves, PBR materials | geometry unit tests (watertight panels, symmetric, jaw hinge); render smoke test |
 | 3 | Mechanical eyes | aperture iris geometry + emission shader, independent L/R control, state reactions | uniform/state mapping tests |
-| 4 | Neural energy | orb v2, quantum heart (left), animated arcs face↔heart↔orb, GPU particles, cyan circuit background | draw-call budget test per profile |
+| 4 | Neural energy | orb v2, animated arcs face↔orb, GPU particles, cyan circuit background (no heart, D2) | draw-call budget test per profile |
 | 5 | Animation and post | state machine (7 states), audio modulation, selective bloom (Ultra), glitch | state-transition tests; audio smoothing tests |
 | 6 | Integration and fallback | WebGL probe → classic fallback, shutdown cleanup, shared theme JSON, optional GLB loader path | Python host tests (fallback switch); dispose test (no leaked GPU objects) |
 | 7 | Measure and tune | real numbers from the owner's Windows machine via the perf overlay + report | owner runs; results recorded in this doc |
 
 Each phase is self-contained, keeps the current hologram working until its replacement is validated, and does not touch the legacy main UI.
 
-## 4. Decisions needed from the owner
-- **D1. Face source:** A (procedural, recommended, starts now) or B (Blender GLB; who makes or provides the model?).
-- **D2. Quantum heart:** the spec puts it on the left, but the reference image has none, and an earlier request removed it. Add it back (behind a toggle)?
-- **D3. Shoulders:** they collide with the orb and strands under the neck. Keep the orb and leave shoulders off, or add shoulders and move the orb?
-- **D4. Base branch:** merge #286 and #289 first (recommended), or keep stacking V2 on top of them?
+## 4. Owner decisions (2026-11-22)
+- **D1. Face source: both.** Phase 2 builds the procedural mechanical face (A) first. Phase 6 adds the GLB path (B): `GLTFLoader` + `MeshoptDecoder` + `KTX2Loader` behind the same component interfaces, plus a `gltf-transform` dev-only pipeline, so an authored Blender model can replace the procedural parts when one exists.
+- **D2. Quantum heart: no.** The scene follows the reference image. `Heart.tsx` is dropped from Phase 4. Energy connections run face → orb only.
+- **D3. Shoulders: no.** The orb and strands stay under the neck. `shoulders.ts` is dropped from Phase 2.
+- **D4. Base: merged.** #286 and #289 are merged into `main` (CI green). V2 phases branch from `main`.

@@ -1,6 +1,7 @@
 import { Maximize2, Minimize2, Minus, X } from 'lucide-react';
 import { Rnd } from 'react-rnd';
 import { JobsContent } from './Jobs';
+import { FeaturesContent } from './Features';
 import { NewsContent } from './News';
 import { BentoContent } from './Bento';
 import { TimerContent } from './TimerWindow';
@@ -10,7 +11,7 @@ import { useUi } from '../store';
 import { ActivityContent, LogContent, ModelsContent, MonitorContent } from './Pages';
 import { TaskProgressPage } from '../taskflow/TaskProgressPage';
 
-const CONTENT: Record<WinKind, () => React.ReactElement> = { monitor: MonitorContent, models: ModelsContent, activity: ActivityContent, log: LogContent, timer: TimerContent, bento: BentoContent, news: NewsContent, jobs: JobsContent, tasks: TaskProgressPage };
+const CONTENT: Record<WinKind, () => React.ReactElement> = { monitor: MonitorContent, models: ModelsContent, activity: ActivityContent, log: LogContent, timer: TimerContent, bento: BentoContent, news: NewsContent, jobs: JobsContent, tasks: TaskProgressPage, features: FeaturesContent };
 
 const STEP = 16;
 /** Keyboard equivalent of drag/resize: Alt+arrows move, Alt+Shift+arrows resize (when the window itself has focus). */

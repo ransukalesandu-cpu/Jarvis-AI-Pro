@@ -12,6 +12,7 @@ from typing import Any
 from jarvis.core.task_flow import FLOW_SOURCES, FLOW_STATES, MAX_STEPS, STEP_STATES, VIEWS as FLOW_VIEWS
 
 from .command_gate import ACTIONS, AVAILABILITY, MAX_TEXT, REASONS
+from .features_feed import FEATURES, MAX_DETAIL, MAX_ITEMS as FEATURE_MAX_ITEMS, MAX_SUMMARY, MAX_TITLE
 from .redact import KINDS as LOG_KINDS, MAX_LINE
 from .workspace_store import clean_name, validate_layout
 
@@ -100,6 +101,11 @@ _EVENTS = {
     "task.flow": ({"flow"}, lambda m: flow_ok(m["flow"])),
     "ui.task_flow": ({"view"}, lambda m: m["view"] in FLOW_VIEWS),
     "host.hello": ({"version"}, lambda m: _num(m["version"], 0, 1000)),
+    "feature.snapshot": ({"feature", "summary", "items"},
+                         lambda m: m["feature"] in FEATURES and _str(m["summary"], MAX_SUMMARY)
+                         and isinstance(m["items"], list) and len(m["items"]) <= FEATURE_MAX_ITEMS
+                         and all(isinstance(i, dict) and set(i) == {"title", "detail"} and _str(i["title"], MAX_TITLE)
+                                 and isinstance(i["detail"], str) and len(i["detail"]) <= MAX_DETAIL for i in m["items"])),
 }
 
 
@@ -135,6 +141,7 @@ _REQUESTS = {
     "job.cancel": ({"id"}, lambda m: isinstance(m["id"], str) and 0 < len(m["id"]) <= 24),
     "ping": ({"n"}, lambda m: isinstance(m["n"], int) and not isinstance(m["n"], bool) and 0 <= m["n"] < 2 ** 31),
     "hologram.capability": ({"webgl2"}, lambda m: isinstance(m["webgl2"], bool)),
+    "feature.refresh": ({"feature"}, lambda m: m["feature"] in FEATURES),
 }
 
 

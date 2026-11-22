@@ -13,8 +13,10 @@ class WebUIBridge(QObject):
     ping_received = pyqtSignal(int)    # heartbeat from the page
     capability = pyqtSignal(bool)      # the page can (True) or cannot (False) render the 3D hologram
 
-    def __init__(self, parent=None, store: WorkspaceStore | None = None, gate=None, controls=None, links=None, jobs=None):
+    def __init__(self, parent=None, store: WorkspaceStore | None = None, gate=None, controls=None, links=None, jobs=None,
+                 features=None):
         super().__init__(parent)
+        self.features = features       # callable(feature) -> (summary, items); default: features_feed.snapshot
         self.store = store or WorkspaceStore()
         self.controls = controls       # ControlGate or None
         self.jobs = jobs               # JobGate or None
@@ -50,6 +52,8 @@ class WebUIBridge(QObject):
             self.publish("control.result", reason=self.jobs.cancel(msg["id"]) if self.jobs else "unavailable")
         elif msg["kind"] == "news.open":
             self.publish("control.result", reason=self.links.open(msg["index"]) if self.links else "unavailable")
+        elif msg["kind"] == "feature.refresh":
+            self._publish_feature(msg["feature"])
         elif msg["kind"] == "command.submit":
             self.publish("command.result", reason=self.gate.submit(msg["text"]) if self.gate else "unavailable")
             self.refresh_availability()
@@ -60,6 +64,18 @@ class WebUIBridge(QObject):
         if force or state != self._avail:
             self._avail = state
             self.publish("command.availability", state=state)
+
+    def _publish_feature(self, feature: str) -> None:
+        """Snapshot of one feature for the Features Hub, only while typing a command would be allowed."""
+        from . import features_feed
+        state = self.gate.availability() if self.gate else "unavailable"
+        if state != "ok":
+            self.publish("feature.snapshot", feature=feature, summary=features_feed.UNAVAILABLE.get(state, "Not available"),
+                         items=[])
+            return
+        summary, items = (self.features or features_feed.snapshot)(feature)
+        if not self.publish("feature.snapshot", feature=feature, summary=summary, items=items):
+            self.publish("feature.snapshot", feature=feature, summary="Snapshot rejected (too large)", items=[])
 
     def _publish_list(self) -> None:
         self.publish("workspace.list", names=self.store.names())

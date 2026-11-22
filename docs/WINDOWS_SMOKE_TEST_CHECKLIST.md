@@ -80,6 +80,22 @@ Use harmless, reversible actions first. Never use important files or accounts fo
 - [ ] PASS / [ ] FAIL / [ ] BLOCKED — Close JARVIS using its normal exit path; audio devices and camera are released.
 - [ ] PASS / [ ] FAIL / [ ] BLOCKED — Relaunch JARVIS and confirm it starts without stale session state.
 
+## 9. Cherry Studio parity features (P1–P13)
+
+- [ ] PASS / [ ] FAIL / [ ] BLOCKED — "Add <a PDF> to my work knowledge", then ask a question about it; the answer cites [1].
+- [ ] PASS / [ ] FAIL / [ ] BLOCKED — Telegram: set `telegram_bot_token`, say "pair Telegram", send `/pair <code>`, send a command from the phone, get the reply; answer a confirmation with YES; `/stop` works.
+- [ ] PASS / [ ] FAIL / [ ] BLOCKED — Select text in Notepad/Chrome, press Ctrl+Shift+J; JARVIS describes it; "fix the grammar and replace it" pastes back and the old clipboard is restored. Selecting a password box copies nothing.
+- [ ] PASS / [ ] FAIL / [ ] BLOCKED — "Translate <a .docx> to Sinhala" creates `<name> (Sinhala).docx` next to it with formatting kept.
+- [ ] PASS / [ ] FAIL / [ ] BLOCKED — Notes: create, append, search; the files appear in the notes folder.
+- [ ] PASS / [ ] FAIL / [ ] BLOCKED — "Ask Claude, Gemini and GPT …" returns a comparison; "Claude won" is recorded.
+- [ ] PASS / [ ] FAIL / [ ] BLOCKED — "Back up JARVIS now" with and without a backup password; "restore the latest backup" asks for confirmation first.
+- [ ] PASS / [ ] FAIL / [ ] BLOCKED — "Show my AI provider status", "set a 1 dollar daily budget"; usage shows today's calls.
+- [ ] PASS / [ ] FAIL / [ ] BLOCKED — "Switch to the coding assistant profile" and back; a profile with a tool allow-list blocks other tools.
+- [ ] PASS / [ ] FAIL / [ ] BLOCKED — "Open the Figma mini app" opens its own Edge/Chrome app window; "show my recent files" lists translations/backups.
+- [ ] PASS / [ ] FAIL / [ ] BLOCKED — "Search everything for <topic>" returns conversation, note and knowledge hits.
+- [ ] PASS / [ ] FAIL / [ ] BLOCKED — Optional: `pip install -r requirements-stt.txt`, then "dictate" types into the focused app.
+- [ ] PASS / [ ] FAIL / [ ] BLOCKED — Web UI (`JARVIS_UI=web`): Ctrl+K → Features Hub; every tab loads; buttons submit commands; in Guest Mode the tabs are hidden.
+
 ## Failure report
 
 - Check number / step:

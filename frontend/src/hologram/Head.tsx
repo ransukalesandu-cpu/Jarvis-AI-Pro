@@ -8,6 +8,7 @@ import { Eye, eyeMaterial } from './Eye';
 import { ForeheadChips } from './FaceData';
 import { buildFaceCircuit, neckRuns } from './faceCircuit';
 import { Ears } from './Ears';
+import { newEyeLife, stepEyes } from './face/eyeLife';
 import { SHAPED } from './shape';
 import mesh from './headMesh.json';
 import { COLORS, glitchChance } from './palette';
@@ -112,7 +113,8 @@ export function Head() {
   useEffect(() => {
     for (const m of [...fat.flatMap((f) => f.materials()), ...neckLines.map((l) => l.material)]) m.resolution.set(size.width, size.height);
   }, [fat, neckLines, size]);
-  const state = useRef({ mouth: 0, blink: 0, nextBlink: 2.5, gx: 0, gy: 0, tx: 0, ty: 0, nextLook: 1.5, dilate: 0.3 });
+  const state = useRef({ mouth: 0 });
+  const eyes = useMemo(newEyeLife, []);
 
   useFrame((s, dt) => {
     const ui = useUi.getState();
@@ -139,29 +141,8 @@ export function Head() {
       main.fill(arr); contour.fill(arr);                // the traces on the jaw open with it
     }
     const t = s.clock.elapsedTime;
-    if (st.blink <= 0 && t > st.nextBlink) { st.blink = 1; st.nextBlink = t + 2.5 + Math.random() * 3.5; }
-    if (st.blink > 0) st.blink = Math.max(0, st.blink - dt / 0.16);
-    const lid = 1 - Math.sin((1 - st.blink) * Math.PI) * (st.blink > 0 ? 0.92 : 0);
     const reduced = ui.reducedMotion ? 0.3 : 1;
-    for (const e of [eyeL.current, eyeR.current]) if (e) e.scale.set(1, Math.max(0.06, lid), 1);
-    // Gaze: small saccades to a new point every 1.5-4 s (centred while listening or speaking).
-    const attentive = ui.assistant === 'listening' || speaking;
-    if (t > st.nextLook) {
-      st.tx = attentive ? (Math.random() - 0.5) * 0.15 : (Math.random() - 0.5) * 0.9;
-      st.ty = attentive ? 0 : (Math.random() - 0.5) * 0.5;
-      st.nextLook = t + 1.5 + Math.random() * 2.5;
-    }
-    const k = Math.min(1, dt * 14 * reduced + (reduced < 1 ? dt * 2 : 0));
-    st.gx += (st.tx - st.gx) * k; st.gy += (st.ty - st.gy) * k;
-    // Pupil: wide while listening, narrow while speaking, breathing a little while thinking.
-    const dil = ui.assistant === 'listening' ? 0.9 : speaking ? 0.15 : working ? 0.45 + 0.2 * Math.sin(t * 3) : 0.35;
-    st.dilate += (dil - st.dilate) * Math.min(1, dt * 3);
-    for (const m of eyeMats) {
-      m.uniforms.time.value = t * reduced;
-      m.uniforms.gaze.value.set(st.gx, st.gy);
-      m.uniforms.dilate.value = st.dilate;
-      m.uniforms.glow.value = speaking ? Math.min(1, ui.outputLevel * 1.5) : working ? 0.6 : 0.3;
-    }
+    stepEyes(eyes, [eyeL.current, eyeR.current], eyeMats, { state: ui.assistant, outputLevel: ui.outputLevel, reducedMotion: ui.reducedMotion, t, dt });
     if (group.current) {
       group.current.rotation.y = Math.sin(t * 0.3) * 0.12 * reduced;
       group.current.rotation.x = Math.sin(t * 0.21) * 0.03 * reduced;

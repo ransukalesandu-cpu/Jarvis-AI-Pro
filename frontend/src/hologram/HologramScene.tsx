@@ -4,6 +4,7 @@ import { useUi } from '../store';
 import { PerfGovernor } from './engine/PerfGovernor';
 import { qualityFor } from './engine/quality';
 import { Head } from './Head';
+import { MechanicalHead } from './face/MechanicalHead';
 import { Backdrop, LAYOUT, Orb, Strands } from './Stage';
 
 const FOV = 28;
@@ -45,6 +46,7 @@ function usePageHidden(): boolean {
 export function HologramScene() {
   const q = qualityFor(useUi((s) => s.perfTier));
   const hidden = usePageHidden();
+  const faceStyle = useUi((s) => s.faceStyle);
   return (
     <Canvas
       camera={{ fov: FOV, near: 0.1, far: 50, position: [0, 0, 10] }}
@@ -57,7 +59,7 @@ export function HologramScene() {
       <PerfGovernor quality={q} />
       {q.fpsCap && !hidden && <FrameCap fps={q.fpsCap} />}
       <Backdrop halo={q.backdropHalo} dust={q.dust} />
-      <group position={[LAYOUT.head.x, LAYOUT.head.y, 0]} scale={0.95}><Head /></group>
+      <group position={[LAYOUT.head.x, LAYOUT.head.y, 0]} scale={0.95}>{faceStyle === 'mechanical' ? <MechanicalHead /> : <Head />}</group>
       <Strands />
       <Orb />
     </Canvas>

@@ -7,6 +7,16 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Hologram Engine V2, phase 2: mechanical face** (web UI, opt-in: Settings → Hologram → Face style →
+  Mechanical; the circuit face stays the default until approved). The head is split into about 25
+  symmetric panels (forehead, brows, temples, sockets, cheekbones, cheeks, nose, muzzle, chin, jaw,
+  skull plates) by a geodesic Voronoi on face landmarks. Each panel is a closed, bevelled plate
+  raised off a carbon-fibre skull, with real grooves between plates and orange emissive engravings in
+  the grooves that carry running current. Plates are black chrome and titanium (MeshPhysicalMaterial,
+  lit by a built-in RoomEnvironment map plus key and rim lights) under an orange holo fresnel. The jaw
+  is a separate rigid part on the existing hinge (output level only, no phoneme lip-sync). The neck is
+  built from segmented rings with glowing seams. Eyes, forehead chips and ears are shared with the
+  circuit face (eye behaviour moved to `face/eyeLife.ts`).
 - **Hologram Engine V2, phase 1 (foundation)** (web UI):
   - A GLSL shader library (`frontend/src/hologram/shaders/chunks.ts`): fresnel, key light, circuit
     flow, scanlines, surface pulse, controlled glitch, vertex displacement and eye emission as small

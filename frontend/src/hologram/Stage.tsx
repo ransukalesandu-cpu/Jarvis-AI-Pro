@@ -3,7 +3,7 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { useEffect, useMemo, useRef } from 'react';
-import { AdditiveBlending, BufferGeometry, CatmullRomCurve3, Color, Float32BufferAttribute, type Group, type LineSegments, type Mesh, type Points, Vector3 } from 'three';
+import { AdditiveBlending, BufferGeometry, CatmullRomCurve3, Color, Float32BufferAttribute, type Group, type Mesh, type Points, Vector3 } from 'three';
 import { COLORS, orbColor } from './palette';
 import { glassMaterial, rng, twinkleMaterial } from './glass';
 import { useUi } from '../store';
@@ -127,45 +127,8 @@ export function Orb() {
   );
 }
 
-/** A slowly turning constellation around the head: nodes joined to their near neighbours. */
-export function Plexus() {
-  const group = useRef<Group>(null);
-  const lines = useRef<LineSegments>(null);
-  const { pointGeo, lineGeo, mat } = useMemo(() => {
-    const r = rng(77);
-    const pts: Vector3[] = [];
-    while (pts.length < 150) {
-      const th = r() * Math.PI * 2, ph = Math.acos(2 * r() - 1), rad = 1.05 + r() * 0.45;
-      const p = new Vector3(Math.sin(ph) * Math.cos(th) * rad * 1.15, Math.cos(ph) * rad * 0.95 + 0.1, Math.sin(ph) * Math.sin(th) * rad * 0.6 - 0.2);
-      if (Math.abs(p.x) < 0.75 && p.y < 0.9 && p.z > -0.1) continue;     // keep the face clear
-      pts.push(p);
-    }
-    const seg: number[] = [];
-    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++)
-      if (pts[i].distanceTo(pts[j]) < 0.3) seg.push(pts[i].x, pts[i].y, pts[i].z, pts[j].x, pts[j].y, pts[j].z);
-    const pointGeo = new BufferGeometry().setFromPoints(pts);
-    pointGeo.setAttribute('phase', new Float32BufferAttribute(pts.map(() => r()), 1));
-    const lineGeo = new BufferGeometry();
-    lineGeo.setAttribute('position', new Float32BufferAttribute(seg, 3));
-    return { pointGeo, lineGeo, mat: twinkleMaterial(COLORS.node, 0.035, 0.3) };
-  }, []);
-  useEffect(() => () => { pointGeo.dispose(); lineGeo.dispose(); mat.dispose(); }, [pointGeo, lineGeo, mat]);
-  useFrame((s, dt) => {
-    const ui = useUi.getState(), red = ui.reducedMotion ? 0.3 : 1;
-    if (group.current) group.current.rotation.y += dt * 0.05 * red;
-    mat.uniforms.time.value = s.clock.elapsedTime * red;
-    if (lines.current) (lines.current.material as { opacity: number }).opacity = busyState(ui.assistant) ? 0.24 : 0.14;
-  });
-  return (
-    <group ref={group} position={[0, LAYOUT.head.y, -0.3]}>
-      <lineSegments ref={lines} geometry={lineGeo}><lineBasicMaterial {...add(COLORS.edge, 0.14)} /></lineSegments>
-      <points geometry={pointGeo} material={mat} />
-    </group>
-  );
-}
-
 /** Behind the head, as in the reference: blue circuit traces running out from faint HUD rings, orange sparks among them, drifting dust. */
-export function Backdrop() {
+export function Backdrop({ halo = true, dust: showDust = true }: { halo?: boolean; dust?: boolean }) {
   const rings = useRef<Group>(null);
   const size = useThree((s) => s.size);
   const { dustGeo, dustMat, sparkGeo, sparkMat, arcs, traces } = useMemo(() => {
@@ -224,9 +187,9 @@ export function Backdrop() {
           </mesh>
         ))}
       </group>
-      {traces.map((l, i) => <primitive key={i} object={l} />)}
+      {traces.map((l, i) => (i === 0 && !halo ? null : <primitive key={i} object={l} />))}
       <points geometry={sparkGeo} material={sparkMat} />
-      <points geometry={dustGeo} material={dustMat} />
+      {showDust && <points geometry={dustGeo} material={dustMat} />}
     </group>
   );
 }

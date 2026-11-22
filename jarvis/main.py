@@ -2099,7 +2099,10 @@ class JarvisLive(
                 # the user's actual voice while listening. Purely cosmetic — any
                 # failure here must never disturb the mic.
                 try:
-                    self.ui.set_audio_level(_pcm_level(indata))
+                    try:
+                        self.ui.set_audio_level(_pcm_level(indata), source="input")
+                    except TypeError:            # a UI without sources (hud_main)
+                        self.ui.set_audio_level(_pcm_level(indata))
                 except Exception:
                     failsoft.suppress('main:JarvisLive._listen_audio._mic_callback_impl')
             else:

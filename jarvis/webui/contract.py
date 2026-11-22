@@ -134,6 +134,7 @@ _REQUESTS = {
     "news.open": ({"index"}, lambda m: isinstance(m["index"], int) and not isinstance(m["index"], bool) and 0 <= m["index"] < 20),
     "job.cancel": ({"id"}, lambda m: isinstance(m["id"], str) and 0 < len(m["id"]) <= 24),
     "ping": ({"n"}, lambda m: isinstance(m["n"], int) and not isinstance(m["n"], bool) and 0 <= m["n"] < 2 ** 31),
+    "hologram.capability": ({"webgl2"}, lambda m: isinstance(m["webgl2"], bool)),
 }
 
 

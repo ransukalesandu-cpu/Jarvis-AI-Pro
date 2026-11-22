@@ -5,6 +5,7 @@ import { PAGE_WINDOWS } from '../workspace/layout';
 import { usePending } from '../ux/pending';
 import { onHostEvent, onRequest, resetActions, setResync } from '../ux/actions';
 import { useFlows } from '../taskflow/flows';
+import { hasWebGL2 } from '../hologram/engine/capability';
 
 interface QtChannelObject { event: { connect: (fn: (s: string) => void) => void; disconnect?: (fn: (s: string) => void) => void }; request: (s: string) => void }
 declare global { interface Window { qt?: { webChannelTransport?: unknown }; QWebChannel?: new (t: unknown, cb: (c: { objects: Record<string, QtChannelObject> }) => void) => unknown } }
@@ -53,6 +54,7 @@ export async function startBridge(): Promise<void> {
       if (ev.type === 'host.hello') { sendRequest({ kind: 'workspace.list' }); sendRequest({ kind: 'workspace.load', name: '_last' }); } };
     channelObj.event.connect(onEvent);
     sendRequest({ kind: 'ready' });
+    sendRequest({ kind: 'hologram.capability', webgl2: hasWebGL2() });   // false => Python shows the classic HUD
   } catch {
     store.setLink('detached');
     usePending.getState().end('startup', false);

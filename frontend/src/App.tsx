@@ -1,5 +1,6 @@
 import { Suspense, useEffect } from 'react';
 import { HologramScene } from './hologram/HologramScene';
+import { hasWebGL2 } from './hologram/engine/capability';
 import { startBridge, stopBridge } from './bridge/bridge';
 import { useUi } from './store';
 import { ActivityWidget, BatteryWidget, BrainWidget, ClockWidget, NetworkWidget, SystemWidget } from './ui/Widgets';
@@ -52,7 +53,7 @@ export default function App() {
   }, [toggleNav, toggleSettings, setPalette]);
   return (
     <div className="app" data-page={pageOpen ? 'open' : 'home'} data-settings={settingsOpen ? 'open' : 'closed'} data-loading={loading ? 'true' : 'false'}>
-      <div className="stage" role="region" aria-label="JARVIS hologram"><Suspense fallback={null}><HologramScene /></Suspense></div>
+      <div className="stage" role="region" aria-label="JARVIS hologram">{hasWebGL2() && <Suspense fallback={null}><HologramScene /></Suspense>}</div>
       <div className="vignette" />
       <TopBar />
       <div className="widgets left"><ClockWidget /><BatteryWidget /><SystemWidget /></div>

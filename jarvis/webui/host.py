@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import QVBoxLayout, QWidget
 from jarvis.core import failsoft
 
 from . import DIST
+from . import fallback
 from .bridge import WebUIBridge
 from .command_gate import safe_link
 from .navigation import is_allowed_url
@@ -61,6 +62,8 @@ class WebUIHost(QWidget):
         self._channel.registerObject("jarvis", self.bridge)
         self._page.setWebChannel(self._channel)
         self.bridge.ready.connect(self._on_page_ready)
+        self.bridge.capability.connect(self._on_capability)
+        self.fell_back = False
 
         self._view = QWebEngineView(self)
         self._view.setPage(self._page)
@@ -83,6 +86,10 @@ class WebUIHost(QWidget):
         self.ready.emit()
         if self.isVisible():
             self._timer.start()
+
+    def _on_capability(self, webgl2: bool) -> None:
+        """No WebGL2 => the page cannot draw the hologram: step aside so the classic HUD underneath shows."""
+        fallback.on_capability(self, webgl2)
 
     def _on_process_gone(self, *_a) -> None:
         self._timer.stop()

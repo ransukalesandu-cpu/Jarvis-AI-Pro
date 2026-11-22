@@ -1703,7 +1703,7 @@ class MainWindow(QMainWindow):
     _log_sig        = pyqtSignal(str)
     _state_sig      = pyqtSignal(str)
     _logo_level_sig = pyqtSignal(object)  # audio amplitude, queued from audio workers
-    _audio_level_sig = pyqtSignal(float)  # HUD waveform level, applied on the Qt thread
+    _audio_level_sig = pyqtSignal(float, str)  # HUD waveform level + source (input/output), applied on the Qt thread
     _visemes_sig = pyqtSignal(object, float, float)  # frames, hop, playback start time
     _avatar_cue_sig = pyqtSignal(str)
     _hud_pulse_sig  = pyqtSignal(str)
@@ -6001,8 +6001,10 @@ class MainWindow(QMainWindow):
             self._web_ui = None
             print(f"[JARVIS] Web UI unavailable, using the classic HUD: {type(exc).__name__}: {exc}")
 
-    def _apply_audio_level(self, level: float) -> None:
+    def _apply_audio_level(self, level: float, source: str = "output") -> None:
         """Apply audio levels to HUD canvases on the Qt GUI thread only."""
+        if source == "input":       # the mic alone, so the web UI can tell hearing from speaking
+            _ui_bus().set(_ui_state.INPUT_LEVEL, round(float(level or 0.0), 3))
         _ui_bus().set(_ui_state.AUDIO_LEVEL, round(float(level or 0.0), 3))
         try:
             self.hud.set_audio_level(level)
@@ -6428,11 +6430,13 @@ class JarvisUI:
     def set_voice_id_enabled(self, enabled: bool):
         self._win.set_voice_id_enabled(enabled)
 
-    def set_audio_level(self, level: float) -> None:
-        """Thread-safe: queue audio-level updates for GUI-thread application."""
+    def set_audio_level(self, level: float, source: str = "output") -> None:
+        """Thread-safe: queue audio-level updates for GUI-thread application.
+
+        `source` is "input" for the microphone, "output" for JARVIS's own voice."""
         try:
             value = float(level)
-            self._win._audio_level_sig.emit(value)
+            self._win._audio_level_sig.emit(value, "input" if source == "input" else "output")
             self._win._logo_level_sig.emit(value)
             from jarvis.audio.visualizer_bridge import get_visualizer_bridge
             get_visualizer_bridge().push_audio_energy(value)

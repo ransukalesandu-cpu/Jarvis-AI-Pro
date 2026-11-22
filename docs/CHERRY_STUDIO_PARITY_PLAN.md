@@ -133,9 +133,16 @@ Every feature follows the same wiring contract:
   owner runs the Windows smoke test (`docs/WINDOWS_SMOKE_TEST_CHECKLIST.md` gets new rows) after the set
   is done.
 
-## Open questions for the owner
+## Owner decisions (2026-11-22)
 
-1. Telegram as the first channel, or WhatsApp?
-2. Embeddings for the KB: local model only (fully offline, more RAM) or Gemini embeddings allowed?
-3. Merge rule: wait for your "merge" on each PR, or merge when CI is green (as in the Computer Control
-   mission)?
+1. First channel: **Telegram**.
+2. KB embeddings: **Gemini embeddings** allowed (still opt-in via `JARVIS_KB_EMBEDDINGS=1`; FTS5-only
+   search works offline without it).
+3. Merge rule: **merge when CI is green**, no need to wait for the owner's word.
+
+## Web UI delivery note
+
+The web UI bridge contract is a closed, strictly validated set. Instead of adding a new message family
+for every phase, the backend phases (P1–P12) ship core + voice tool + tests first, and one extra phase
+**P13 (Features windows)** adds a single generic `feature.*` bridge family plus the floating windows for
+all new features at once. This keeps each backend PR small and the contract change reviewable in one place.

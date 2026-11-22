@@ -7,6 +7,16 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Hologram Engine V2, phase 3: mechanical eyes** (mechanical face style):
+  - A nine-blade aperture iris like a camera's, built as one mesh per eye. Its central opening follows
+    the aperture exactly (radius = sin φ).
+  - The iris sits over the shader emission, inside a dark socket ring with an orange rim. Blinks close
+    the shutter.
+  - Each eye is driven on its own: listening opens wide; thinking counter-rotates the two scan rings and
+    breathes the eyes out of phase; searching sweeps them alternately; executing narrows; speaking
+    opens and glows with the voice level; warning flickers amber; error narrows red; sleeping nearly
+    shuts.
+  - Changes are eased, so they do not depend on the frame rate.
 - **Hologram Engine V2, phase 2: mechanical face** (web UI, opt-in: Settings → Hologram → Face style →
   Mechanical; the circuit face stays the default until approved). The head is split into about 25
   symmetric panels (forehead, brows, temples, sockets, cheekbones, cheeks, nose, muzzle, chin, jaw,

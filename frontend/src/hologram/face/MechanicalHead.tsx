@@ -1,18 +1,21 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
-import { AdditiveBlending, BufferAttribute, BufferGeometry, CylinderGeometry, type Group, type Material, type Mesh, type ShaderMaterial } from 'three';
+import { AdditiveBlending, BufferAttribute, BufferGeometry, CylinderGeometry, type Group, type Material, type ShaderMaterial } from 'three';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { useUi } from '../../store';
 import { Ears } from '../Ears';
-import { Eye, eyeMaterial } from '../Eye';
+import { eyeMaterial } from '../Eye';
 import { ForeheadChips } from '../FaceData';
 import { glassMaterial } from '../glass';
 import mesh from '../headMesh.json';
 import { blackChrome, carbon, roomEnvironment, titanium, weaveNormalMap } from '../materials/pbr';
 import { COLORS, glitchChance } from '../palette';
-import { newEyeLife, stepEyes } from './eyeLife';
+import { lidOpen, newEyeLife, stepEyes } from './eyeLife';
+import { ease, eyeTarget, withLid } from './eyeStates';
+import { MechanicalEye, makeIris } from './MechanicalEye';
+import { poseIris } from './irisMaterial';
 import { neckRings } from './neck';
 import { buildMechanicalFace, type Panel } from './panels';
 
@@ -84,8 +87,9 @@ function underSkull(SHAPED: Float32Array, tris: number[], normals: Float32Array,
 export function MechanicalHead() {
   const group = useRef<Group>(null);
   const jawRef = useRef<Group>(null);
-  const eyeL = useRef<Mesh>(null);
-  const eyeR = useRef<Mesh>(null);
+  const irises = useMemo(() => [makeIris(), makeIris()], []);
+  useEffect(() => () => irises.forEach((i) => { i.geometry.dispose(); i.material.dispose(); }), [irises]);
+  const irisState = useRef([{ aperture: 0.55, glow: 0.3, phase: 0 }, { aperture: 0.55, glow: 0.3, phase: 0 }]);
   const { gl, scene, size } = useThree();
 
   const built = useMemo(() => {
@@ -153,7 +157,25 @@ export function MechanicalHead() {
     const target = speaking ? Math.min(1, ui.outputLevel * 1.6) : 0;
     st.mouth += (target - st.mouth) * Math.min(1, dt * 18);
     if (jawRef.current) jawRef.current.rotation.x = st.mouth * mesh.jawMax * 2.4;
-    stepEyes(st.eyes, [eyeL.current, eyeR.current], eyeMats as ShaderMaterial[], { state: ui.assistant, outputLevel: ui.outputLevel, reducedMotion: ui.reducedMotion, t, dt });
+    // Shared gaze and blink timing; the mechanical iris then takes over aperture, glow, scan and tint,
+    // per eye (they act independently while thinking and searching).
+    stepEyes(st.eyes, [], eyeMats as ShaderMaterial[], { state: ui.assistant, outputLevel: ui.outputLevel, reducedMotion: ui.reducedMotion, t, dt });
+    const lid = lidOpen(st.eyes);
+    (['L', 'R'] as const).forEach((side, i) => {
+      const goal = eyeTarget(ui.assistant, side, t * reduced, ui.outputLevel);
+      const is = irisState.current[i];
+      is.aperture = ease(is.aperture, goal.aperture, 8, dt);
+      is.glow = ease(is.glow, goal.glow, 6, dt);
+      is.phase += dt * goal.scan * 8 * reduced;          // the scan ring's dash speed is time * 0.12 in the shader
+      poseIris(irises[i].geometry, withLid(is.aperture, lid));
+      irises[i].material.uniforms.glow.value = is.glow;
+      irises[i].material.uniforms.tint.value = goal.tint;
+      const m = eyeMats[i] as ShaderMaterial;
+      m.uniforms.time.value = is.phase;
+      m.uniforms.dilate.value = 0.6 + 0.4 * is.aperture;   // keep the core bright behind the blades
+      m.uniforms.glow.value = is.glow;
+      m.uniforms.tint.value.setRGB(...goal.tint);
+    });
     if (group.current) {
       group.current.rotation.y = Math.sin(t * 0.3) * 0.12 * reduced;
       group.current.rotation.x = Math.sin(t * 0.21) * 0.03 * reduced;
@@ -201,9 +223,9 @@ export function MechanicalHead() {
       ))}
       <ForeheadChips />
       <Ears />
-      {([[exl, eyl, ezl, eyeL, 0], [exr, eyr, ezr, eyeR, 1]] as const).map(([x, y, z, ref, i]) => (
-        <group key={i} position={[x, y, z + 0.03]}>
-          <Eye ref={ref} material={eyeMats[i]} size={0.34} />
+      {([[exl, eyl, ezl, 0, 0], [exr, eyr, ezr, 1, 1]] as const).map(([x, y, z, ref, i]) => (
+        <group key={i} position={[x, y, z + 0.035]}>
+          <MechanicalEye emission={eyeMats[i]} iris={irises[ref]} />
         </group>
       ))}
     </group>

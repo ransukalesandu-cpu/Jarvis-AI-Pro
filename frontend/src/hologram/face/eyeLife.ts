@@ -10,15 +10,20 @@ export const newEyeLife = (): EyeLife => ({ blink: 0, nextBlink: 2.5, gx: 0, gy:
 
 export interface EyeInputs { state: AssistantState; outputLevel: number; reducedMotion: boolean; t: number; dt: number; random?: () => number }
 
+/** How open the lids are right now (1 open, ~0.08 shut), from the blink phase. */
+export function lidOpen(st: EyeLife): number {
+  return Math.max(0.06, 1 - Math.sin((1 - st.blink) * Math.PI) * (st.blink > 0 ? 0.92 : 0));
+}
+
 export function stepEyes(st: EyeLife, eyes: (Mesh | null)[], mats: ShaderMaterial[], u: EyeInputs): void {
   const { t, dt } = u, rnd = u.random ?? Math.random;
   const speaking = u.state === 'speaking';
   const working = speaking || u.state === 'thinking' || u.state === 'executing' || u.state === 'searching';
   if (st.blink <= 0 && t > st.nextBlink) { st.blink = 1; st.nextBlink = t + 2.5 + rnd() * 3.5; }
   if (st.blink > 0) st.blink = Math.max(0, st.blink - dt / 0.16);
-  const lid = 1 - Math.sin((1 - st.blink) * Math.PI) * (st.blink > 0 ? 0.92 : 0);
+  const lid = lidOpen(st);
   const reduced = u.reducedMotion ? 0.3 : 1;
-  for (const e of eyes) if (e) e.scale.set(1, Math.max(0.06, lid), 1);
+  for (const e of eyes) if (e) e.scale.set(1, lid, 1);
   // Gaze: small saccades to a new point every 1.5-4 s (centred while listening or speaking).
   const attentive = u.state === 'listening' || speaking;
   if (t > st.nextLook) {

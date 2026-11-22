@@ -21,7 +21,7 @@ def env(tmp_path, monkeypatch):
     (data / "cc-screenshots").mkdir()
     (data / "cc-screenshots" / "big.png").write_bytes(b"x")
     config.mkdir()
-    (config / "api_keys.json").write_text('{"gemini_api_key": "SECRET"}', encoding="utf-8")
+    (config / "api_keys.json").write_text('{"gemini_api_key": "SECRET"}', encoding="utf-8")  # pragma: allowlist secret
     (config / "settings.json").write_text('{"theme": "dark"}', encoding="utf-8")
     (config / "__init__.py").write_text("code", encoding="utf-8")
     memory.mkdir()
@@ -54,7 +54,7 @@ def test_encrypted_backup_includes_secrets_and_roundtrips(env):
     info = bk.preview(r.path, password="hunter2")
     assert info["files"] == 5 and info["by_root"]["config"] == 2
     with pytest.raises(ValueError, match="wrong backup password"):
-        bk.preview(r.path, password="nope")
+        bk.preview(r.path, password="nope")  # pragma: allowlist secret
     with pytest.raises(ValueError, match="encrypted"):
         bk.preview(r.path, password="")
 

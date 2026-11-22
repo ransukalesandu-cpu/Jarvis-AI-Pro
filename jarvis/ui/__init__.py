@@ -6069,6 +6069,9 @@ class MainWindow(QMainWindow):
                 overlay.set_audio_level(None)
 
     def _check_config(self) -> bool:
+        from jarvis.core import gemini as _gemini
+        if _gemini.env_api_key():
+            return True  # key supplied via GEMINI_API_KEY / GOOGLE_API_KEY
         if not API_FILE.exists(): return False
         try:
             d = json.loads(API_FILE.read_text(encoding="utf-8"))

@@ -11,10 +11,30 @@ frontend/node_modules/
 *.egg-info/
 .eggs/
 
-# Secrets and configuration
-config/api_keys.json
-config/secrets.json
+# Secrets and configuration (any depth: jarvis/config/, config/, frozen builds)
+**/config/api_keys.json
+**/config/api_keys.json.tmp
+**/config/api_keys.json.bak*
+**/config/secrets.json
+**/config/google_credentials.json
+**/config/google_token.json
+**/config/*token*.json
+**/client_secret*.json
+**/service_account*.json
+**/credentials.json
+**/token.json
 .env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
 .venv/
 .venv.broken-*/
 venv/

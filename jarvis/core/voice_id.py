@@ -121,8 +121,8 @@ def _set_enabled(enabled: bool) -> None:
     # by the project's Git rules as well.
     temp_path = CONFIG_FILE.with_name("api_keys.json.tmp")
     try:
-        temp_path.write_text(json.dumps(config, indent=4), encoding="utf-8")
-        os.replace(temp_path, CONFIG_FILE)
+        from jarvis.core.secure_file import write_private_text
+        write_private_text(CONFIG_FILE, json.dumps(config, indent=4))
     finally:
         try:
             temp_path.unlink(missing_ok=True)

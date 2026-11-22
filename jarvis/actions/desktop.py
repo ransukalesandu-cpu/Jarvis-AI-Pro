@@ -1,7 +1,6 @@
 #desktop.py
 import os
 import sys
-import json
 import shutil
 import subprocess
 import tempfile
@@ -26,9 +25,12 @@ def _get_base_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 def _get_api_key() -> str:
-    path = _get_base_dir() / "config" / "api_keys.json"
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    # One source of truth: env (GEMINI_API_KEY / GOOGLE_API_KEY), then config/api_keys.json.
+    from jarvis.core import gemini as _gemini
+    key = _gemini.api_key(refresh=True)
+    if not key:
+        raise KeyError("gemini_api_key")
+    return key
     
 def _get_desktop() -> Path:
     if _OS == "Linux":

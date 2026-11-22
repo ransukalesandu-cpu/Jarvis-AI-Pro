@@ -43,7 +43,7 @@ class RenderPerf:
             return None
         try:
             kids = psutil.Process(self._root).children(recursive=True)
-        except Exception:
+        except psutil.Error:
             return None
         live: dict[int, Any] = {}
         cpu = 0.0
@@ -60,7 +60,7 @@ class RenderPerf:
                     cpu += known.cpu_percent(None)
                 ram += known.memory_info().rss
                 live[p.pid] = known
-            except Exception:  # noqa: S112 - a helper process can exit between listing and reading
+            except psutil.Error:      # a helper process can exit (or deny access) between listing and reading
                 continue
         self._procs = live
         cores = psutil.cpu_count() or 1

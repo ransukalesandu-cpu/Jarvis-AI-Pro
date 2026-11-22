@@ -8,6 +8,11 @@ import { brainCloud, synapses } from './brainShape';
 import { haloMaterial, nodeMaterial, synapseMaterial } from './brainMaterials';
 import { brainMood } from './lobes';
 import { LINK_STEPS, linkPoint, orbLinks } from './orbLinks';
+import { assign, type ShapeName, shapePoints, textPoints } from './shapes';
+import { textMask } from './textMask';
+
+/** Seconds a shape is held before the brain flows back. */
+export const SHAPE_HOLD_S = 12;
 
 const SCALE = 1.3;
 const BRAIN_Y = LAYOUT.head.y - 0.08;
@@ -32,13 +37,14 @@ export function buildBrainGeometry(nodes: number) {
   nodeGeo.setAttribute('wander', new Float32BufferAttribute(cloud.wander, 1));
   const n = syn.count * 2;
   const pos = new Float32Array(n * 3), along = new Float32Array(n), phase = new Float32Array(n), rate = new Float32Array(n), lobe = new Float32Array(n), span = new Float32Array(n);
-  const nphase = new Float32Array(n), wander = new Float32Array(n);
+  const nphase = new Float32Array(n), wander = new Float32Array(n), synNode = new Uint32Array(n);
   for (let e = 0; e < syn.count; e++) {
     for (const [k, v] of [[0, syn.a[e]], [1, syn.b[e]]] as const) {
       const o = e * 2 + k;
       pos.set(cloud.pos.subarray(v * 3, v * 3 + 3), o * 3);
       along[o] = k; phase[o] = syn.phase[e]; rate[o] = syn.rate[e]; lobe[o] = cloud.lobe[syn.a[e]];
       nphase[o] = cloud.phase[v]; wander[o] = cloud.wander[v];            // each end drifts with its neuron
+      synNode[o] = v;
     }
   }
   const synGeo = new BufferGeometry();
@@ -51,7 +57,7 @@ export function buildBrainGeometry(nodes: number) {
   synGeo.setAttribute('span', new Float32BufferAttribute(span, 1));       // target-space length, set when morphing
   synGeo.setAttribute('nphase', new Float32BufferAttribute(nphase, 1));
   synGeo.setAttribute('wander', new Float32BufferAttribute(wander, 1));
-  return { cloud, syn, nodeGeo, synGeo };
+  return { cloud, syn, nodeGeo, synGeo, synNode };
 }
 
 /**
@@ -85,14 +91,47 @@ export function NeuralBrain({ nodes, links: linkCount = 36 }: { nodes: number; l
       linkMat: linkMaterial(), halo: haloMaterial(COLORS.rim),
     };
   }, [nodes, linkCount]);
-  const { nodeGeo, synGeo, linkGeo, links, cloud, nodeMat, synMat, linkMat, halo } = built;
+  const { nodeGeo, synGeo, linkGeo, links, cloud, synNode, nodeMat, synMat, linkMat, halo } = built;
   useEffect(() => () => { [nodeGeo, synGeo, linkGeo, nodeMat, synMat, linkMat, halo].forEach((r) => r.dispose()); }, [nodeGeo, synGeo, linkGeo, nodeMat, synMat, linkMat, halo]);
   const tmp = useMemo(() => new Vector3(), []);
+  // Shape morphing: a request is applied once the brain is (back) at rest, then held, then released.
+  const shapeReq = useUi((s) => s.brainShape);
+  const morph = useRef<{ value: number; goal: number; until: number; pending: null | { shape: ShapeName; text: string }; target: Float32Array }>({ value: 0, goal: 0, until: 0, pending: null, target: Float32Array.from(cloud.pos) });
+  // A new quality profile rebuilds the brain: start that one at rest.
+  useEffect(() => { morph.current = { value: 0, goal: 0, until: 0, pending: null, target: Float32Array.from(cloud.pos) }; }, [cloud]);
+  useEffect(() => {
+    if (!shapeReq) return;
+    const m = morph.current;
+    if (shapeReq.shape === 'brain') { m.pending = null; m.goal = 0; return; }
+    m.pending = { shape: shapeReq.shape, text: shapeReq.text };
+    m.goal = 0;                                                       // flow back first if another shape is showing
+  }, [shapeReq]);
+  const applyShape = (shape: ShapeName, text: string) => {
+    const n = cloud.count;
+    const pts = shape === 'text' ? textPoints(textMask(text, 512, 160), 512, 160, n) : shapePoints(shape as Exclude<ShapeName, 'brain' | 'text'>, n);
+    const tgt = assign(cloud.pos, pts);
+    morph.current.target = tgt;
+    (nodeGeo.getAttribute('target').array as Float32Array).set(tgt);
+    nodeGeo.getAttribute('target').needsUpdate = true;
+    const st = synGeo.getAttribute('target'), sp = synGeo.getAttribute('span');
+    const sa = st.array as Float32Array, spa = sp.array as Float32Array;
+    for (let o = 0; o < synNode.length; o++) sa.set(tgt.subarray(synNode[o] * 3, synNode[o] * 3 + 3), o * 3);
+    for (let o = 0; o < synNode.length; o += 2) {
+      const d = Math.hypot(sa[o * 3] - sa[o * 3 + 3], sa[o * 3 + 1] - sa[o * 3 + 4], sa[o * 3 + 2] - sa[o * 3 + 5]);
+      spa[o] = spa[o + 1] = d;                                        // long in the shape = hidden while morphed
+    }
+    st.needsUpdate = true; sp.needsUpdate = true;
+  };
   useEffect(() => { nodeMat.uniforms.scale.value = height * 2; }, [nodeMat, height]);
   const mood = useRef(brainMood('idle'));
   useFrame((s, dt) => {
     const ui = useUi.getState(), red = ui.reducedMotion ? 0.3 : 1;
     const level = ui.assistant === 'speaking' ? ui.outputLevel : ui.assistant === 'listening' ? ui.inputLevel : 0;
+    const mo = morph.current, now = s.clock.elapsedTime;
+    if (mo.pending && mo.value < 0.02) { applyShape(mo.pending.shape, mo.pending.text); mo.pending = null; mo.goal = 1; mo.until = now + SHAPE_HOLD_S; }
+    if (mo.goal === 1 && now > mo.until) mo.goal = 0;
+    mo.value = ease(mo.value, mo.goal, ui.reducedMotion ? 6 : 2.2, dt);
+    nodeMat.uniforms.morph.value = synMat.uniforms.morph.value = mo.value;
     const goal = brainMood(ui.assistant, level), m = mood.current;
     m.lobes = m.lobes.map((v, i) => ease(v, goal.lobes[i], 4, dt)) as typeof m.lobes;
     m.firing = ease(m.firing, goal.firing, 3, dt);
@@ -116,7 +155,8 @@ export function NeuralBrain({ nodes, links: linkCount = 36 }: { nodes: number; l
       const pos = linkGeo.getAttribute('position'), tgt = linkGeo.getAttribute('target');
       const arr = pos.array as Float32Array;
       links.forEach((l, i) => {
-        tmp.fromArray(cloud.pos, l.anchor * 3).applyMatrix4(inner.matrix);
+        const o = l.anchor * 3, k = mo.value;
+        tmp.set(cloud.pos[o] + (mo.target[o] - cloud.pos[o]) * k, cloud.pos[o + 1] + (mo.target[o + 1] - cloud.pos[o + 1]) * k, cloud.pos[o + 2] + (mo.target[o + 2] - cloud.pos[o + 2]) * k).applyMatrix4(inner.matrix);
         const a: [number, number, number] = [tmp.x, tmp.y, tmp.z];
         let prev = a;
         for (let k = 0; k < LINK_STEPS; k++) {
@@ -132,8 +172,10 @@ export function NeuralBrain({ nodes, links: linkCount = 36 }: { nodes: number; l
     halo.uniforms.tint.value.setRGB(...m.tint);
     if (group.current) {
       // A three-quarter view that sways slowly: the lobes, the cerebellum and the stem all stay readable.
-      group.current.rotation.y = -0.75 + Math.sin(s.clock.elapsedTime * 0.15) * 0.55 * red;
-      group.current.rotation.x = -0.08 + Math.sin(s.clock.elapsedTime * 0.25) * 0.04 * red;
+      // A shape faces the viewer; the brain keeps its three-quarter sway.
+      const sway = -0.75 + Math.sin(s.clock.elapsedTime * 0.15) * 0.55 * red;
+      group.current.rotation.y = sway * (1 - mo.value) + Math.sin(s.clock.elapsedTime * 0.4) * 0.12 * red * mo.value;
+      group.current.rotation.x = (-0.08 + Math.sin(s.clock.elapsedTime * 0.25) * 0.04 * red) * (1 - mo.value);
     }
   });
   return (

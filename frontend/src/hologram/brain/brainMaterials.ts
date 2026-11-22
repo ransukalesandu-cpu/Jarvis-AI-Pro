@@ -83,7 +83,7 @@ export function synapseMaterial(color: Color, core: Color): ShaderMaterial {
         if (vAlong > grown) discard;
         float fade = smoothstep(growth, growth * 0.75, vLife);
         float pulse = circuitFlow(vAlong + vPhase, time, flow * 0.5, 1.0);
-        float a = fade * (0.05 + boost + 0.25 * vAct + pulse * (0.45 + vAct)) * (1.0 - morph * smoothstep(0.15, 0.4, vSpan));
+        float a = fade * (0.05 + boost + 0.25 * vAct + pulse * (0.45 + vAct)) * (1.0 - morph * smoothstep(0.05, 0.12, vSpan));   // in a shape only very short links stay
         vec3 c = mix(color, core, pulse) * tint;
         gl_FragColor = vec4(c * a, a);
       }`),

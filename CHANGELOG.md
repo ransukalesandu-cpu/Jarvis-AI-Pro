@@ -7,6 +7,21 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Hologram Engine V2, phase 1 (foundation)** (web UI):
+  - A GLSL shader library (`frontend/src/hologram/shaders/chunks.ts`): fresnel, key light, circuit
+    flow, scanlines, surface pulse, controlled glitch, vertex displacement and eye emission as small
+    composable functions. The glass and eye materials are now built from it, and the glass gains faint
+    projector scanlines and a travelling pulse. `frontend/scripts/check_shaders.py` compiles every
+    material in a real WebGL2 context (headless Chromium) and fails on any compile or link error.
+  - Adaptive resolution: the hologram measures its real frame times and steps the canvas DPR down
+    when frames run over budget and back up when there is room, inside the quality tier's range.
+  - Performance overlay (Settings → Hologram → Performance overlay): measured FPS, frame time, draw
+    calls, triangles, DPR and JS heap from the page, plus the real CPU and RAM of the QtWebEngine
+    processes from the host (new `hologram.perf` request / `hologram.perf_report` event; the page only
+    reports while the overlay is open). Anything not measured shows "--".
+  - A `warning` assistant state: amber orb, blinking amber status dot and rare glitch bands on the
+    glass (error glitches more; never with reduced motion). Nothing in the backend emits it yet;
+    `set_state("warning")` / the ui_state bus now carry it end to end.
 - **Circuit-board hologram face** (web UI): after the owner's reference, the head is a dark glass skin
   with thick glowing orange traces designed on the MediaPipe landmarks (forehead channel, brows,
   cheeks, jaw; mirrored, so the face is symmetric), orange contours on the lips, eyes, brows and face

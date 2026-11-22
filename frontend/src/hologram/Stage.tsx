@@ -83,7 +83,7 @@ export function Orb() {
   const halo = useRef<Mesh>(null);
   const rings = useRef<Group>(null);
   const plates = useRef<Group>(null);
-  const glass = useMemo(() => glassMaterial(COLORS.orb, COLORS.orbBody, 0.08, 1.8), []);
+  const glass = useMemo(() => glassMaterial(COLORS.orb, COLORS.orbBody, { bodyAlpha: 0.08, power: 1.8, displace: 0.004 }), []);
   useEffect(() => () => glass.dispose(), [glass]);
   const col = useMemo(() => new Color(COLORS.orb), []);
   useFrame((s, dt) => {
@@ -93,6 +93,7 @@ export function Orb() {
     const busy = busyState(ui.assistant);
     glass.uniforms.rim.value.copy(col);
     glass.uniforms.boost.value = level * 0.5;
+    glass.uniforms.time.value = t * red;
     const breathe = 1 + 0.04 * Math.sin(t * 1.4) * red + level * 0.25;
     core.current?.scale.setScalar(breathe);
     halo.current?.scale.setScalar(1 + level * 0.5 + 0.05 * Math.sin(t * 1.1) * red);

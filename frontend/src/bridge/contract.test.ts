@@ -27,3 +27,16 @@ describe('ui.perf', () => {
     for (const tier of ['auto', 'turbo', '', 3, null]) expect(parseHostEvent(j({ type: 'ui.perf', tier }))).toBeNull();
   });
 });
+
+describe('hologram engine v2 phase 1 messages', () => {
+  it('accepts the warning state', () => {
+    expect(parseHostEvent(JSON.stringify({ type: 'assistant.state_changed', state: 'warning' }))).toEqual({ type: 'assistant.state_changed', state: 'warning' });
+  });
+  it('accepts a bounded perf report and rejects bad values', () => {
+    const ok = { type: 'hologram.perf_report', cpu: 12.5, ramMb: 410, processes: 3 };
+    expect(parseHostEvent(JSON.stringify(ok))).toEqual(ok);
+    expect(parseHostEvent(JSON.stringify({ ...ok, cpu: 140 }))).toBeNull();
+    expect(parseHostEvent(JSON.stringify({ ...ok, processes: 1.5 }))).toBeNull();
+    expect(parseHostEvent(JSON.stringify({ ...ok, ramMb: -1 }))).toBeNull();
+  });
+});

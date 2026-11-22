@@ -1,6 +1,7 @@
 import { Canvas, useThree } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { useUi } from '../store';
+import { PerfGovernor } from './engine/PerfGovernor';
 import { qualityFor } from './engine/quality';
 import { Head } from './Head';
 import { Backdrop, LAYOUT, Orb, Strands } from './Stage';
@@ -53,6 +54,7 @@ export function HologramScene() {
       onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
     >
       <FitCamera />
+      <PerfGovernor quality={q} />
       {q.fpsCap && !hidden && <FrameCap fps={q.fpsCap} />}
       <Backdrop halo={q.backdropHalo} dust={q.dust} />
       <group position={[LAYOUT.head.x, LAYOUT.head.y, 0]} scale={0.95}><Head /></group>

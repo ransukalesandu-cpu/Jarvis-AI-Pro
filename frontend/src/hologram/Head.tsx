@@ -10,7 +10,7 @@ import { buildFaceCircuit, neckRuns } from './faceCircuit';
 import { Ears } from './Ears';
 import { SHAPED } from './shape';
 import mesh from './headMesh.json';
-import { COLORS } from './palette';
+import { COLORS, glitchChance } from './palette';
 import { glassMaterial } from './glass';
 import { useUi } from '../store';
 
@@ -95,7 +95,8 @@ export function Head() {
       contour: new FatTraces(fc.contour, COLORS.contour, 1.8, 0.9),
       neckLines: [neckLine(8, 0.2), neckLine(2.2, 0.9)],
       nose: new FatTraces(fc.nose, COLORS.blue, 3.0, 0.9),
-      glass: glassMaterial(COLORS.rim, COLORS.skin, 0.06, 2.2, 0.55),
+      // No displacement on the head: the depth pass and the traces share its exact surface.
+      glass: glassMaterial(COLORS.rim, COLORS.skin, { bodyAlpha: 0.06, power: 2.2, shade: 0.55, scan: 0.14, pulse: 0.18 }),
       // Depth-only pass of the head: what the glass hides (the neck inside the jaw, the back of the
       // skull, back traces) is not drawn through it. Pushed back a hair so the surface lines still pass.
       occluder: new MeshBasicMaterial({ colorWrite: false, depthWrite: true, transparent: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
@@ -167,6 +168,8 @@ export function Head() {
       group.current.position.y = Math.sin(t * 0.8) * 0.012 * reduced;
     }
     glass.uniforms.boost.value = (speaking ? ui.outputLevel * 0.6 : 0) + 0.05 * Math.sin(t * 1.3) * reduced;
+    glass.uniforms.time.value = t * reduced;
+    glass.uniforms.glitch.value = ui.reducedMotion ? 0 : glitchChance(ui.assistant);   // never with reduced motion
     if (edgeRef.current) (edgeRef.current.material as { opacity: number }).opacity = 0.04 + (speaking ? 0.04 : 0);
     // Traces breathe; brighter while JARVIS works, and with the voice.
     const glow = (working ? 1 : 0.8) + 0.08 * Math.sin(t * 2.1) * reduced + (speaking ? ui.outputLevel * 0.3 : 0);

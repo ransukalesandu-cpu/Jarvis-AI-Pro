@@ -6,6 +6,7 @@ import { usePending } from '../ux/pending';
 import { onHostEvent, onRequest, resetActions, setResync } from '../ux/actions';
 import { useFlows } from '../taskflow/flows';
 import { hasWebGL2 } from '../hologram/engine/capability';
+import { usePerf } from '../hologram/engine/perf';
 
 interface QtChannelObject { event: { connect: (fn: (s: string) => void) => void; disconnect?: (fn: (s: string) => void) => void }; request: (s: string) => void }
 declare global { interface Window { qt?: { webChannelTransport?: unknown }; QWebChannel?: new (t: unknown, cb: (c: { objects: Record<string, QtChannelObject> }) => void) => unknown } }
@@ -45,6 +46,7 @@ export async function startBridge(): Promise<void> {
     onEvent = (raw: string) => { const ev = parseHostEvent(raw); if (!ev) return;
       useUi.getState().apply(ev);
       if (ev.type === 'task.flow' || ev.type === 'ui.task_flow') useFlows.getState().apply(ev);
+      if (ev.type === 'hologram.perf_report') usePerf.getState().setHost({ cpu: ev.cpu, ramMb: ev.ramMb, processes: ev.processes });
       onHostEvent(ev);
       if (ev.type === 'workspace.loaded' && ev.layout) {
         useWindows.getState().apply(ev.layout);

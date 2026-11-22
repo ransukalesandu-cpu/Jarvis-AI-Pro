@@ -33,6 +33,7 @@ export interface UiState {
   navOpen: boolean;
   settingsOpen: boolean;
   reducedMotion: boolean;
+  perfOverlay: boolean;
   clock24: boolean;
   workspaceNames: string[];
   paletteOpen: boolean;
@@ -48,6 +49,7 @@ export interface UiState {
   toggleNav: (open?: boolean) => void;
   toggleSettings: (open?: boolean) => void;
   setReducedMotion: (v: boolean) => void;
+  setPerfOverlay: (v: boolean) => void;
   setClock24: (v: boolean) => void;
   setPalette: (open?: boolean) => void;
 }
@@ -56,7 +58,7 @@ const prefersReduced = typeof matchMedia === 'function' && matchMedia('(prefers-
 
 export const useUi = create<UiState>((set) => ({
   link: 'connecting', assistant: 'idle', persona: 'jarvis', perfTier: null, news: null, jobs: null, outputLevel: 0, inputLevel: 0,
-  series: EMPTY, metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, clock24: true, history: [], workspaceNames: [], paletteOpen: false, muted: false, command: { state: 'unavailable', last: null }, control: null, log: [],
+  series: EMPTY, metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, perfOverlay: false, clock24: true, history: [], workspaceNames: [], paletteOpen: false, muted: false, command: { state: 'unavailable', last: null }, control: null, log: [],
   setLink: (link) => set({ link }),
   apply: (e) => set((s) => {
     switch (e.type) {
@@ -92,6 +94,7 @@ export const useUi = create<UiState>((set) => ({
   toggleNav: (open) => set((s) => ({ navOpen: open ?? !s.navOpen, settingsOpen: false })),
   toggleSettings: (open) => set((s) => ({ settingsOpen: open ?? !s.settingsOpen, navOpen: false })),
   setReducedMotion: (reducedMotion) => set({ reducedMotion }),
+  setPerfOverlay: (perfOverlay) => set({ perfOverlay }),
   setClock24: (clock24) => set({ clock24 }),
   setPalette: (open) => set((s) => ({ paletteOpen: open ?? !s.paletteOpen })),
 }));

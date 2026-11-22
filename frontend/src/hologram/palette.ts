@@ -21,14 +21,21 @@ export const COLORS = {
   heartSoft: new Color('#ff8a5c'),
   wire: new Color('#ff8a2a'),
   ring: new Color('#ff7a1a'),
+  warning: new Color('#ffc21a'),   // something needs attention, still working
   error: new Color('#ff3030'),
   backdrop: new Color('#1e8fff'),   // blue circuits behind the head
   spark: new Color('#ff7a1a'),      // orange sparks among them
 };
 
+/** How often the glass glitches (chance per 1/8 s): only when something is wrong, never at rest. */
+export function glitchChance(state: AssistantState): number {
+  return state === 'error' ? 0.3 : state === 'warning' ? 0.12 : 0;
+}
+
 export function orbColor(state: AssistantState): Color {
   switch (state) {
     case 'error': return COLORS.error;
+    case 'warning': return COLORS.warning;
     case 'thinking': return new Color('#ffb15c');
     case 'searching': return new Color('#ffd36b');
     case 'executing': return new Color('#ff9d3d');

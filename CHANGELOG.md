@@ -7,6 +7,25 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Neural brain at the centre of the stage** (web UI, now the default; Settings → Hologram → Centre →
+  Hologram head brings the face back):
+  - A procedural 3D brain: two hemispheres with folded cortex, temporal lobes, a cerebellum and a brain
+    stem that runs down into the energy strands. It is made of 4200 / 3000 / 1500 nodes per profile.
+  - The network is live. Nodes fire on their own clocks, and synapses grow out of a node, carry
+    signals and dissolve while new ones form.
+  - Regions light up with the state:
+    - listening: temporal
+    - thinking: frontal
+    - searching: occipital
+    - executing: parietal and cerebellum
+    - speaking: follows the voice
+    - warning: amber
+    - error: red
+    - sleeping: dark
+  - The orb, strands, arcs and particles stay.
+  - Three draws, all motion on the GPU. Measured 28 draws / 28k triangles, against 54 for the circuit
+    head and 80 for the mechanical head.
+  - The geometry carries a morph target for upcoming "form a shape" commands.
 - **Hologram Engine V2, phase 4: neural energy** (both face styles):
   - Lightning arcs run from the face to the orb. Their shape and flicker are computed on the GPU, and
     more arcs are live while JARVIS works or speaks.

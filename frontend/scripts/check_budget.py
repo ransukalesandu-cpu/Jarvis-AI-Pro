@@ -49,9 +49,11 @@ async def measure() -> list[tuple[str, str, int, int]]:
         page = await browser.new_page(viewport={"width": 1280, "height": 720})
         await page.goto(f"http://localhost:{PORT}/")
         await page.wait_for_function("globalThis.__jarvisUi !== undefined", timeout=30000)
-        for style in ("circuit", "mechanical"):
+        for style in ("brain", "circuit", "mechanical"):
             for tier in ("full", "balanced", "lite"):
-                await page.evaluate(f"globalThis.__jarvisUi.setState({{faceStyle:'{style}', perfTier:'{tier}', perfOverlay:true, assistant:'thinking'}})")
+                centre = "brain" if style == "brain" else "hologram"
+                face = "circuit" if style == "brain" else style
+                await page.evaluate(f"globalThis.__jarvisUi.setState({{centerStyle:'{centre}', faceStyle:'{face}', perfTier:'{tier}', perfOverlay:true, assistant:'thinking'}})")
                 rows.append((style, tier, *await stable(page)))
         await browser.close()
     return rows

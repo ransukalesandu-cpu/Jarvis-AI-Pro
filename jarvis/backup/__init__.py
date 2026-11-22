@@ -184,6 +184,8 @@ def create_backup(*, password: Optional[str] = None, folder: Optional[Path] = No
         path = out_dir / f"jarvis-backup-{stamp}.zip"
         path.write_bytes(data)
     result = BackupResult(path, len(items), total, bool(pw), skipped)
+    from jarvis import library
+    library.register(path, "backup", source="backup")
     prune(out_dir, int(keep if keep is not None else load_config().get("keep", 10)))
     if upload:
         cfg = load_config().get("webdav") or {}

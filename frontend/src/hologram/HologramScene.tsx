@@ -65,9 +65,10 @@ export function HologramScene() {
       {centerStyle === 'brain'
         ? <NeuralBrain nodes={q.brainNodes} />
         : <group position={[LAYOUT.head.x, LAYOUT.head.y, 0]} scale={0.95}>{faceStyle === 'mechanical' ? <MechanicalHead /> : <Head />}</group>}
-      <Strands />
+      {/* With the brain, its own neurons reach the orb; the strands and arcs belong to the head. */}
+      {centerStyle !== 'brain' && <Strands />}
       <Particles count={q.particles} />
-      <Arcs count={q.arcs} />
+      {centerStyle !== 'brain' && <Arcs count={q.arcs} />}
       <Orb />
     </Canvas>
   );

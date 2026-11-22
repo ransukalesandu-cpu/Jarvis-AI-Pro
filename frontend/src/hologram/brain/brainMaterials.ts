@@ -17,6 +17,12 @@ float lobeAct(float lobe) {
   return v;
 }`;
 
+/** Neurons inside the brain drift slowly on their own paths (cortex neurons stay put). */
+const DRIFT = /* glsl */ `
+vec3 drift(vec3 p, float ph, float w, float t) {
+  return p + w * 0.07 * vec3(sin(t * 0.37 + ph * 31.0), sin(t * 0.29 + ph * 17.0) * 0.8, sin(t * 0.33 + ph * 7.0));
+}`;
+
 const common = () => ({
   time: { value: 0 }, morph: { value: 0 }, lobeLevel: { value: [0.25, 0.25, 0.25, 0.25, 0.25, 0.3] },
   tint: { value: new Color(1, 1, 1) },
@@ -25,12 +31,12 @@ const common = () => ({
 export function nodeMaterial(color: Color, core: Color): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: { ...common(), color: { value: color.clone() }, core: { value: core.clone() }, firing: { value: 0.25 }, scale: { value: 1000 }, size: { value: 0.016 } },
-    vertexShader: LOBE_LOOKUP + /* glsl */ `
-      attribute vec3 target; attribute float lobe; attribute float phase;
+    vertexShader: LOBE_LOOKUP + DRIFT + /* glsl */ `
+      attribute vec3 target; attribute float lobe; attribute float phase; attribute float wander;
       uniform float time; uniform float morph; uniform float firing; uniform float scale; uniform float size;
       varying float vGlow; varying float vFire;
       void main() {
-        vec3 p = mix(position, target, morph);
+        vec3 p = mix(drift(position, phase, wander, time), target, morph);
         float act = lobeAct(lobe) * (0.65 + 0.35 * sin(time * 2.0 + position.x * 5.0 + position.y * 3.0));
         float clock = fract(time * (0.35 + phase * 0.5) + phase * 17.0);
         float fire = (1.0 - smoothstep(0.0, 0.06, clock)) * step(phase, 0.15 + firing * 0.85);  // a share of nodes fire
@@ -55,19 +61,20 @@ export function nodeMaterial(color: Color, core: Color): ShaderMaterial {
 
 export function synapseMaterial(color: Color, core: Color): ShaderMaterial {
   return new ShaderMaterial({
-    uniforms: { ...common(), color: { value: color.clone() }, core: { value: core.clone() }, growth: { value: 0.45 }, flow: { value: 0.4 } },
-    vertexShader: LOBE_LOOKUP + /* glsl */ `
+    uniforms: { ...common(), color: { value: color.clone() }, core: { value: core.clone() }, growth: { value: 0.45 }, flow: { value: 0.4 }, boost: { value: 0 } },
+    vertexShader: LOBE_LOOKUP + DRIFT + /* glsl */ `
       attribute vec3 target; attribute float along; attribute float phase; attribute float rate; attribute float lobe; attribute float span;
+      attribute float nphase; attribute float wander;
       uniform float time; uniform float morph;
       varying float vAlong; varying float vPhase; varying float vAct; varying float vLife; varying float vSpan;
       void main() {
         vAlong = along; vPhase = phase; vAct = lobeAct(lobe);
         vLife = fract(time * rate + phase);
         vSpan = span;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(mix(position, target, morph), 1.0);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(mix(drift(position, nphase, wander, time), target, morph), 1.0);
       }`,
     fragmentShader: compose([CIRCUIT_FLOW], /* glsl */ `
-      uniform vec3 color; uniform vec3 core; uniform vec3 tint; uniform float time; uniform float growth; uniform float flow; uniform float morph;
+      uniform vec3 color; uniform vec3 core; uniform vec3 tint; uniform float time; uniform float growth; uniform float flow; uniform float morph; uniform float boost;
       varying float vAlong; varying float vPhase; varying float vAct; varying float vLife; varying float vSpan;
       void main() {
         // A synapse is alive for a share (growth) of its cycle: it grows out from its node, holds, dissolves.
@@ -76,7 +83,7 @@ export function synapseMaterial(color: Color, core: Color): ShaderMaterial {
         if (vAlong > grown) discard;
         float fade = smoothstep(growth, growth * 0.75, vLife);
         float pulse = circuitFlow(vAlong + vPhase, time, flow * 0.5, 1.0);
-        float a = fade * (0.05 + 0.25 * vAct + pulse * (0.45 + vAct)) * (1.0 - morph * smoothstep(0.15, 0.4, vSpan));
+        float a = fade * (0.05 + boost + 0.25 * vAct + pulse * (0.45 + vAct)) * (1.0 - morph * smoothstep(0.15, 0.4, vSpan));
         vec3 c = mix(color, core, pulse) * tint;
         gl_FragColor = vec4(c * a, a);
       }`),

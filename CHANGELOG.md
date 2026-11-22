@@ -22,7 +22,12 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
     - warning: amber
     - error: red
     - sleeping: dark
-  - The orb, strands, arcs and particles stay.
+  - About 30% of the neurons live inside the brain. They drift slowly and rewire faster than the
+    cortex, so the inside of the brain keeps changing.
+  - 36 long neurons leave the brain stem and the brain's underside and curve into the top of the
+    orb, carrying signals down into it. In this mode they replace the head's energy strands and
+    lightning arcs.
+  - The orb and particles stay.
   - Three draws, all motion on the GPU. Measured 28 draws / 28k triangles, against 54 for the circuit
     head and 80 for the mechanical head.
   - The geometry carries a morph target for upcoming "form a shape" commands.

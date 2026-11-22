@@ -47,7 +47,7 @@ for (const [name, mat, kind] of materials) {
   const n = geo.getAttribute('position').count;
   if (kind === 'flow') { geo.setAttribute('along', new Float32BufferAttribute(new Float32Array(n), 1)); geo.setAttribute('seed', new Float32BufferAttribute(new Float32Array(n), 1)); }
   if (kind === 'brainNodes' || kind === 'brainSyn') {
-    for (const [name, size] of [['target', 3], ['lobe', 1], ['phase', 1], ['along', 1], ['rate', 1], ['span', 1]] as const) geo.setAttribute(name, new Float32BufferAttribute(new Float32Array(n * size), size));
+    for (const [name, size] of [['target', 3], ['lobe', 1], ['phase', 1], ['along', 1], ['rate', 1], ['span', 1], ['nphase', 1], ['wander', 1]] as const) geo.setAttribute(name, new Float32BufferAttribute(new Float32Array(n * size), size));
   }
   if (kind === 'arc') { geo.setAttribute('along', new Float32BufferAttribute(new Float32Array(n), 1)); geo.setAttribute('arc', new Float32BufferAttribute(new Float32Array(n), 1)); geo.setAttribute('side', new Float32BufferAttribute(new Float32Array(n * 3), 3)); }
   if (kind === 'points') geo.setAttribute('phase', geo.getAttribute('position').clone());

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ASSISTANT_STATES } from '../../bridge/contract';
-import { brainCloud, L, LOBES, MAX_SYNAPSE, STEM_BOTTOM, synapses } from './brainShape';
+import { brainCloud, L, LOBES, MAX_INNER_SYNAPSE, MAX_SYNAPSE, STEM_BOTTOM, synapses } from './brainShape';
 import { brainMood } from './lobes';
 
 const cloud = brainCloud(3000);
@@ -36,7 +36,8 @@ describe('procedural brain', () => {
       const key = a < b ? `${a},${b}` : `${b},${a}`;
       expect(seen.has(key)).toBe(false); seen.add(key);
       const d = Math.hypot(c.pos[a * 3] - c.pos[b * 3], c.pos[a * 3 + 1] - c.pos[b * 3 + 1], c.pos[a * 3 + 2] - c.pos[b * 3 + 2]);
-      expect(d).toBeLessThanOrEqual(MAX_SYNAPSE + 1e-6);
+      const inner = c.wander[a] > 0 || c.wander[b] > 0;
+      expect(d).toBeLessThanOrEqual((inner ? MAX_INNER_SYNAPSE : MAX_SYNAPSE) + 1e-6);
     }
   });
 });
@@ -60,5 +61,37 @@ describe('brain moods', () => {
     expect(Math.max(...brainMood('sleeping').lobes)).toBeLessThan(0.15);
     expect(brainMood('warning').tint[2]).toBeLessThan(0.5);
     expect(brainMood('error').tint[1]).toBeLessThan(0.4);
+  });
+});
+
+describe('living interior and links to the orb', () => {
+  it('a share of neurons lives inside the brain and drifts; their synapses turn over faster', async () => {
+    const { INTERIOR } = await import('./brainShape');
+    const inside = Array.from(cloud.wander).filter((w) => w > 0).length / cloud.count;
+    expect(inside).toBeGreaterThan(INTERIOR * 0.7);
+    expect(inside).toBeLessThan(INTERIOR * 1.3);
+    const s = synapses(cloud);
+    let innerRate = 0, innerN = 0, outerRate = 0, outerN = 0;
+    for (let e = 0; e < s.count; e++) {
+      const inner = cloud.wander[s.a[e]] > 0 || cloud.wander[s.b[e]] > 0;
+      if (inner) { innerRate += s.rate[e]; innerN++; } else { outerRate += s.rate[e]; outerN++; }
+    }
+    expect(innerN).toBeGreaterThan(200);
+    expect(innerRate / innerN).toBeGreaterThan((outerRate / outerN) * 2);
+  });
+  it('links leave the stem and the underside of the brain and land on the top of the orb', async () => {
+    const { linkPoint, orbLinks } = await import('./orbLinks');
+    const orb = { x: 0, y: -2, z: 0.1, r: 0.28 };
+    const links = orbLinks(cloud, 36, orb);
+    expect(links.length).toBe(36);
+    expect(links.filter((l) => cloud.lobe[l.anchor] === L.stem).length).toBeGreaterThanOrEqual(20);
+    for (const l of links) {
+      expect(cloud.wander[l.anchor]).toBe(0);
+      expect(Math.hypot(l.end[0] - orb.x, l.end[1] - orb.y, l.end[2] - orb.z)).toBeCloseTo(orb.r, 5);
+      expect(l.end[1]).toBeGreaterThan(orb.y);                     // the upper half of the orb
+      const a: [number, number, number] = [cloud.pos[l.anchor * 3], cloud.pos[l.anchor * 3 + 1], cloud.pos[l.anchor * 3 + 2]];
+      expect(linkPoint(a, l, 0)).toEqual(a);
+      linkPoint(a, l, 1).forEach((v, k) => expect(v).toBeCloseTo(l.end[k], 6));
+    }
   });
 });

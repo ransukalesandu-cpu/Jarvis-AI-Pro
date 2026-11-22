@@ -28,7 +28,9 @@ export function lobeOf(x: number, y: number): Lobe {
   return 'parietal';
 }
 
-export interface BrainCloud { pos: Float32Array; lobe: Uint8Array; phase: Float32Array; count: number }
+/** wander: 1 for neurons inside the brain (they drift and rewire), 0 on the cortex. */
+export interface BrainCloud { pos: Float32Array; lobe: Uint8Array; phase: Float32Array; wander: Float32Array; count: number }
+export const INTERIOR = 0.3;   // share of neurons inside the brain rather than on the cortex
 
 function unit(r: () => number): [number, number, number] {
   const u = r() * 2 - 1, a = r() * Math.PI * 2, s = Math.sqrt(1 - u * u);
@@ -37,10 +39,10 @@ function unit(r: () => number): [number, number, number] {
 
 export function brainCloud(count: number, seed = 7): BrainCloud {
   const r = rng(seed);
-  const pos = new Float32Array(count * 3), lobe = new Uint8Array(count), phase = new Float32Array(count);
+  const pos = new Float32Array(count * 3), lobe = new Uint8Array(count), phase = new Float32Array(count), wander = new Float32Array(count);
   for (let i = 0; i < count; i++) {
     const pick = r();
-    const shell = r() < 0.85 ? 1 : 0.45 + r() * 0.45;          // most points on the cortex, some inside
+    const shell = r() < 1 - INTERIOR ? 1 : 0.25 + r() * 0.6;     // most points on the cortex, the rest inside
     let x: number, y: number, z: number, lb: Lobe;
     if (pick < 0.8) {                                           // cerebrum, alternating hemispheres
       const side = i % 2 ? 1 : -1;
@@ -69,8 +71,9 @@ export function brainCloud(count: number, seed = 7): BrainCloud {
     pos.set([x, y, z], i * 3);
     lobe[i] = L[lb];
     phase[i] = r();
+    wander[i] = shell < 1 ? 1 : 0;
   }
-  return { pos, lobe, phase, count };
+  return { pos, lobe, phase, wander, count };
 }
 
 export interface Synapses { a: Uint32Array; b: Uint32Array; phase: Float32Array; rate: Float32Array; count: number }
@@ -80,6 +83,7 @@ export interface Synapses { a: Uint32Array; b: Uint32Array; phase: Float32Array;
  * across the hemispheres (corpus callosum). Which of them are alive changes all the time (shader).
  */
 export const MAX_SYNAPSE = 0.13;   // local synapses longer than this would read as scratches
+export const MAX_INNER_SYNAPSE = 0.2;   // inside the brain neurons are sparser, so reach a little further
 
 export function synapses(cloud: BrainCloud, k = 3, cross = 0, seed = 3): Synapses {
   const { pos, count } = cloud;
@@ -87,19 +91,22 @@ export function synapses(cloud: BrainCloud, k = 3, cross = 0, seed = 3): Synapse
   const seen = new Set<number>();
   const a: number[] = [], b: number[] = [];
   const add = (i: number, j: number) => { const key = i < j ? i * count + j : j * count + i; if (i !== j && !seen.has(key)) { seen.add(key); a.push(i); b.push(j); } };
-  const best = new Float64Array(k), idx = new Int32Array(k);
+  const kMax = k + 2;
+  const best = new Float64Array(kMax), idx = new Int32Array(kMax);
   for (let i = 0; i < count; i++) {
+    // Inside neurons get extra candidate partners: which of them is connected keeps changing (rewiring).
+    const inner = cloud.wander[i] > 0, kk = inner ? kMax : k, lim = inner ? MAX_INNER_SYNAPSE : MAX_SYNAPSE;
     best.fill(Infinity); idx.fill(-1);
     const xi = pos[i * 3], yi = pos[i * 3 + 1], zi = pos[i * 3 + 2];
     for (let j = 0; j < count; j++) {
       if (j === i) continue;
       const d = (pos[j * 3] - xi) ** 2 + (pos[j * 3 + 1] - yi) ** 2 + (pos[j * 3 + 2] - zi) ** 2;
-      if (d >= best[k - 1]) continue;
-      let m = k - 1;
+      if (d >= best[kk - 1]) continue;
+      let m = kk - 1;
       while (m > 0 && best[m - 1] > d) { best[m] = best[m - 1]; idx[m] = idx[m - 1]; m--; }
       best[m] = d; idx[m] = j;
     }
-    for (let m = 0; m < k; m++) if (idx[m] >= 0 && best[m] <= MAX_SYNAPSE * MAX_SYNAPSE) add(i, idx[m]);
+    for (let m = 0; m < kk; m++) if (idx[m] >= 0 && best[m] <= lim * lim) add(i, idx[m]);
   }
   // Long fibres between the hemispheres.
   const cerebrum = Array.from({ length: count }, (_, i) => i).filter((i) => cloud.lobe[i] <= L.occipital);
@@ -108,6 +115,9 @@ export function synapses(cloud: BrainCloud, k = 3, cross = 0, seed = 3): Synapse
   for (let f = 0; f < fibres && left.length && right.length; f++) add(left[Math.floor(r() * left.length)], right[Math.floor(r() * right.length)]);
   const n = a.length;
   const phase = new Float32Array(n), rate = new Float32Array(n);
-  for (let e = 0; e < n; e++) { phase[e] = r(); rate[e] = 0.05 + r() * 0.15; }
+  for (let e = 0; e < n; e++) {
+    const inner = cloud.wander[a[e]] > 0 || cloud.wander[b[e]] > 0;
+    phase[e] = r(); rate[e] = inner ? 0.18 + r() * 0.3 : 0.05 + r() * 0.15;   // inner synapses turn over faster
+  }
   return { a: Uint32Array.from(a), b: Uint32Array.from(b), phase, rate, count: n };
 }

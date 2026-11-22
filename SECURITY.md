@@ -25,6 +25,24 @@ Use GitHub's **Private vulnerability reporting** feature if it is enabled for th
 - Keep local configuration files out of version control.
 - If a credential is exposed, revoke or rotate it immediately.
 - Never share credentials in logs, screenshots, bug reports, or public discussions.
+- Keys can live in a local `.env` (see `.env.example`); environment values take
+  precedence over `config/api_keys.json`, and JARVIS writes credential files
+  owner-only (0600).
+- New commits are scanned with `detect-secrets` (pre-commit hook and the
+  "Security scan" CI job) against the reviewed `.secrets.baseline`.
+
+### Known exposure: historical Gemini key
+
+Commit `e7e8b3c` (2026-10-24) added `JarvisAI/.env` containing a real
+`GEMINI_API_KEY`. The file was emptied in `d8f85e4`, but the value is still in
+public Git history. **The key must be revoked in Google AI Studio and replaced.**
+Rewriting history does not undo the exposure, so rotation is the fix.
+
+## Privacy and Network Use
+
+JARVIS sends no telemetry. Every remaining outbound call is listed in
+[`NETWORK.md`](NETWORK.md). Set `OFFLINE=1` to refuse all non-local network
+traffic at the socket layer.
 
 ## Local Computer Access and Automation
 

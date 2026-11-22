@@ -5,7 +5,7 @@ import { PerfGovernor } from './engine/PerfGovernor';
 import { qualityFor } from './engine/quality';
 import { Head } from './Head';
 import { MechanicalHead } from './face/MechanicalHead';
-import { Backdrop, LAYOUT, Orb, Strands } from './Stage';
+import { Arcs, Backdrop, LAYOUT, Orb, Particles, Strands } from './Stage';
 
 const FOV = 28;
 const BOUNDS = { halfWidth: 2.2, top: 1.7, bottom: -2.3 };   // room under the orb for the command bar
@@ -47,12 +47,13 @@ export function HologramScene() {
   const q = qualityFor(useUi((s) => s.perfTier));
   const hidden = usePageHidden();
   const faceStyle = useUi((s) => s.faceStyle);
+  const frameloop = hidden ? 'never' : q.fpsCap ? 'demand' : 'always';
   return (
     <Canvas
       camera={{ fov: FOV, near: 0.1, far: 50, position: [0, 0, 10] }}
       gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
       dpr={q.dpr}
-      frameloop={hidden ? 'never' : q.fpsCap ? 'demand' : 'always'}
+      frameloop={frameloop}
       onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
     >
       <FitCamera />
@@ -61,6 +62,8 @@ export function HologramScene() {
       <Backdrop halo={q.backdropHalo} dust={q.dust} />
       <group position={[LAYOUT.head.x, LAYOUT.head.y, 0]} scale={0.95}>{faceStyle === 'mechanical' ? <MechanicalHead /> : <Head />}</group>
       <Strands />
+      <Particles count={q.particles} />
+      <Arcs count={q.arcs} />
       <Orb />
     </Canvas>
   );

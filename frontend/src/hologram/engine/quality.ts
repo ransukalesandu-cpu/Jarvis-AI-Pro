@@ -6,12 +6,14 @@ export interface Quality {
   fpsCap: number | null;            // null = the display's rate
   backdropHalo: boolean;            // glow pass on the background circuit traces
   dust: boolean;                    // drifting background particles
+  particles: number;                // neural energy particles (one GPU Points draw)
+  arcs: number;                     // lightning arcs face -> orb (one draw)
 }
 
 export const QUALITY: Record<PerfTier, Quality> = {
-  full: { dpr: [1, 2], fpsCap: null, backdropHalo: true, dust: true },
-  balanced: { dpr: [1, 1.5], fpsCap: null, backdropHalo: true, dust: true },
-  lite: { dpr: 1, fpsCap: 30, backdropHalo: false, dust: false },
+  full: { dpr: [1, 2], fpsCap: null, backdropHalo: true, dust: true, particles: 3000, arcs: 6 },
+  balanced: { dpr: [1, 1.5], fpsCap: null, backdropHalo: true, dust: true, particles: 1000, arcs: 4 },
+  lite: { dpr: 1, fpsCap: 30, backdropHalo: false, dust: false, particles: 200, arcs: 2 },
 };
 
 /** Before the host reports a tier, draw at Balanced. */

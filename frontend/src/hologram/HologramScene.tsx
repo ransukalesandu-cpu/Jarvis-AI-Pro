@@ -1,10 +1,10 @@
 import { Canvas, useThree } from '@react-three/fiber';
 import { useLayoutEffect } from 'react';
 import { Head } from './Head';
-import { Heart, LAYOUT, Orb, Wires } from './Stage';
+import { Backdrop, LAYOUT, Orb, Strands } from './Stage';
 
 const FOV = 28;
-const BOUNDS = { halfWidth: 2.2, top: 1.75, bottom: -2.0 };
+const BOUNDS = { halfWidth: 2.2, top: 1.7, bottom: -2.3 };   // room under the orb for the command bar
 
 /** Contain the whole composition (face, heart, orb) in any window size. */
 function FitCamera() {
@@ -33,10 +33,10 @@ export function HologramScene() {
       <ambientLight intensity={1.1} color="#6a9bff" />
       <directionalLight position={[-1.5, 2.2, 3]} intensity={3.2} color="#dff0ff" />
       <directionalLight position={[2, -0.5, 1.5]} intensity={0.6} color="#2f9bff" />
+      <Backdrop />
       <group position={[LAYOUT.head.x, LAYOUT.head.y, 0]} scale={0.95}><Head /></group>
-      <Heart />
+      <Strands />
       <Orb />
-      <Wires />
     </Canvas>
   );
 }

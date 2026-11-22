@@ -1,86 +1,222 @@
-import { useFrame } from '@react-three/fiber';
-import { useMemo, useRef } from 'react';
-import { AdditiveBlending, BufferAttribute, BufferGeometry, type Group, type Mesh, type LineSegments } from 'three';
+import { useFrame, useThree } from '@react-three/fiber';
+import { useEffect, useMemo, useRef } from 'react';
+import { AdditiveBlending, BufferAttribute, BufferGeometry, type Color, Float32BufferAttribute, type Group, type InterleavedBufferAttribute, type LineSegments, type Mesh, MeshBasicMaterial } from 'three';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+import { Eye, eyeMaterial } from './Eye';
+import { ForeheadChips } from './FaceData';
+import { buildFaceCircuit, neckRuns } from './faceCircuit';
+import { Ears } from './Ears';
+import { SHAPED } from './shape';
 import mesh from './headMesh.json';
 import { COLORS } from './palette';
+import { glassMaterial, twinkleMaterial } from './glass';
 import { useUi } from '../store';
 
-const base = Float32Array.from(mesh.verts);
+const base = Float32Array.from(SHAPED);     // re-proportioned to the reference face (shape.ts)
 const jaw = Float32Array.from(mesh.jaw);
 const [, pivotY, pivotZ] = mesh.jawPivot;
 
-/** The standard JARVIS head: MediaPipe canonical mesh, flat-shaded, with an edge overlay, orange eyes and a voice-driven jaw. */
+/** A thick, glowing line set over index pairs of the head's vertices (re-filled when the jaw moves). */
+class FatTraces {
+  readonly line: LineSegments2;
+  readonly halo: LineSegments2;
+  private readonly idx: number[];
+  private readonly geos: LineSegmentsGeometry[];
+  constructor(idx: number[], color: Color, width: number, opacity: number) {
+    this.idx = idx;
+    this.geos = [new LineSegmentsGeometry(), new LineSegmentsGeometry()];
+    for (const g of this.geos) g.setPositions(new Float32Array(idx.length * 3));
+    const mat = (w: number, o: number) => new LineMaterial({ color: color.getHex(), linewidth: w, transparent: true, opacity: o, blending: AdditiveBlending, depthWrite: false });
+    this.line = new LineSegments2(this.geos[0], mat(width, opacity));
+    this.halo = new LineSegments2(this.geos[1], mat(width * 4, opacity * 0.22));
+    this.line.renderOrder = 4;
+    this.halo.renderOrder = 3;
+    this.fill(base);
+  }
+  fill(pos: Float32Array) {
+    for (const g of this.geos) {
+      const attr = g.attributes.instanceStart as InterleavedBufferAttribute;
+      const arr = attr.data.array as Float32Array;
+      for (let i = 0; i < this.idx.length; i++) { const o = this.idx[i] * 3; arr[i * 3] = pos[o]; arr[i * 3 + 1] = pos[o + 1]; arr[i * 3 + 2] = pos[o + 2]; }
+      attr.data.needsUpdate = true;
+      g.computeBoundingSphere();
+    }
+  }
+  materials(): [LineMaterial, LineMaterial] { return [this.line.material, this.halo.material]; }
+  dispose() { this.geos.forEach((g) => g.dispose()); this.materials().forEach((m) => m.dispose()); }
+}
+
+/**
+ * The JARVIS head as a circuit-board hologram, after the owner's reference face: a dark glass skin
+ * with an orange rim, thick glowing orange traces designed on the face's landmarks (forehead channel,
+ * brows, cheeks, jaw), orange contours on the lips, eyes, brows and face outline, a blue nose ridge,
+ * fine background traces, running current, two blue forehead chips with live CPU and RAM, neck runs
+ * with ring vias, and burning orange shader eyes. The jaw follows JARVIS's voice and so do the traces on it.
+ */
 export function Head() {
   const group = useRef<Group>(null);
   const eyeL = useRef<Mesh>(null);
   const eyeR = useRef<Mesh>(null);
   const edgeRef = useRef<LineSegments>(null);
-  const { faceGeo, edgeGeo, pos } = useMemo(() => {
+  const size = useThree((s) => s.size);
+  const built = useMemo(() => {
     const pos = new BufferAttribute(new Float32Array(base), 3);
     pos.usage = 35048; // DynamicDrawUsage
     const faceGeo = new BufferGeometry();
     faceGeo.setAttribute('position', pos);
     faceGeo.setIndex(mesh.faces);
+    faceGeo.computeVertexNormals();
     const edgeGeo = new BufferGeometry();
     edgeGeo.setAttribute('position', pos);
     edgeGeo.setIndex(mesh.edges);
-    return { faceGeo, edgeGeo, pos };
+    const fc = buildFaceCircuit();
+    const neck = neckRuns();
+    const neckGeo = new LineSegmentsGeometry();
+    neckGeo.setPositions(neck.segs);
+    const neckLine = (w: number, o: number) => {
+      const l = new LineSegments2(neckGeo, new LineMaterial({ color: COLORS.circuit.getHex(), linewidth: w, transparent: true, opacity: o, blending: AdditiveBlending, depthWrite: false }));
+      l.renderOrder = 4;
+      return l;
+    };
+    const fillGeo = new BufferGeometry();
+    fillGeo.setAttribute('position', pos);
+    fillGeo.setIndex(fc.fill);
+    const viaGeo = new BufferGeometry();
+    viaGeo.setAttribute('position', pos);
+    viaGeo.setIndex(fc.vias);
+    const allPaths = fc.paths;
+    const pulseGeo = new BufferGeometry();
+    pulseGeo.setAttribute('position', new Float32BufferAttribute(new Float32Array(allPaths.length * 3), 3));
+    return {
+      pos, faceGeo, edgeGeo, fillGeo, viaGeo, pulseGeo, allPaths, rings: neck.rings,
+      main: new FatTraces(fc.main, COLORS.circuit, 2.2, 0.95),
+      contour: new FatTraces(fc.contour, COLORS.contour, 1.8, 0.9),
+      neckLines: [neckLine(8, 0.2), neckLine(2.2, 0.9)],
+      nose: new FatTraces(fc.nose, COLORS.blue, 3.0, 0.9),
+      glass: glassMaterial(COLORS.rim, COLORS.skin, 0.06, 2.2, 0.55),
+      // Depth-only pass of the head: what the glass hides (the neck inside the jaw, the back of the
+      // skull, back traces) is not drawn through it. Pushed back a hair so the surface lines still pass.
+      occluder: new MeshBasicMaterial({ colorWrite: false, depthWrite: true, transparent: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
+      eyeMats: [eyeMaterial(1.7), eyeMaterial(5.3)],
+      nodes: twinkleMaterial(COLORS.node, 0.014, 0.08),
+    };
   }, []);
-  const state = useRef({ mouth: 0, blink: 0, nextBlink: 2.5, lookX: 0, lookY: 0 });
+  const { pos, faceGeo, edgeGeo, fillGeo, viaGeo, pulseGeo, allPaths, rings, main, contour, nose, neckLines, glass, occluder, eyeMats } = built;
+  const fat = useMemo(() => [main, contour, nose], [main, contour, nose]);
+  useEffect(() => () => {
+    glass.dispose(); occluder.dispose(); eyeMats.forEach((m) => m.dispose()); fat.forEach((f) => f.dispose());
+    neckLines[0].geometry.dispose(); neckLines.forEach((l) => l.material.dispose());
+  }, [glass, occluder, eyeMats, fat, neckLines]);
+  useEffect(() => {
+    for (const m of [...fat.flatMap((f) => f.materials()), ...neckLines.map((l) => l.material)]) m.resolution.set(size.width, size.height);
+  }, [fat, neckLines, size]);
+  const state = useRef({ mouth: 0, blink: 0, nextBlink: 2.5, gx: 0, gy: 0, tx: 0, ty: 0, nextLook: 1.5, dilate: 0.3 });
 
   useFrame((s, dt) => {
     const ui = useUi.getState();
     const st = state.current;
     const speaking = ui.assistant === 'speaking';
+    const working = speaking || ui.assistant === 'thinking' || ui.assistant === 'executing' || ui.assistant === 'searching';
     // Lip-sync from the OUTPUT level only, and only while speaking (never from the microphone).
     const target = speaking ? Math.min(1, ui.outputLevel * 1.6) : 0;
+    const before = st.mouth;
     st.mouth += (target - st.mouth) * Math.min(1, dt * 18);
-    const a = st.mouth * mesh.jawMax * 2.4;
-    const c = Math.cos(a), sn = Math.sin(a);
     const arr = pos.array as Float32Array;
-    for (let i = 0; i < jaw.length; i++) {
-      const o = i * 3, w = jaw[i];
-      const y = base[o + 1], z = base[o + 2];
-      if (w <= 0) { arr[o + 1] = y; arr[o + 2] = z; continue; }
-      const dy = y - pivotY, dz = z - pivotZ;
-      arr[o + 1] = y + (pivotY + dy * c - dz * sn - y) * w;
-      arr[o + 2] = z + (pivotZ + dy * sn + dz * c - z) * w;
+    if (st.mouth > 0.001 || before > 0.001) {          // a closed, silent jaw needs no vertex work
+      const a = st.mouth * mesh.jawMax * 2.4;
+      const c = Math.cos(a), sn = Math.sin(a);
+      for (let i = 0; i < jaw.length; i++) {
+        const o = i * 3, w = jaw[i];
+        const y = base[o + 1], z = base[o + 2];
+        if (w <= 0) { arr[o + 1] = y; arr[o + 2] = z; continue; }
+        const dy = y - pivotY, dz = z - pivotZ;
+        arr[o + 1] = y + (pivotY + dy * c - dz * sn - y) * w;
+        arr[o + 2] = z + (pivotZ + dy * sn + dz * c - z) * w;
+      }
+      pos.needsUpdate = true;
+      main.fill(arr); contour.fill(arr);                // the traces on the jaw open with it
     }
-    pos.needsUpdate = true;
-    // blink
     const t = s.clock.elapsedTime;
     if (st.blink <= 0 && t > st.nextBlink) { st.blink = 1; st.nextBlink = t + 2.5 + Math.random() * 3.5; }
     if (st.blink > 0) st.blink = Math.max(0, st.blink - dt / 0.16);
     const lid = 1 - Math.sin((1 - st.blink) * Math.PI) * (st.blink > 0 ? 0.92 : 0);
     const reduced = ui.reducedMotion ? 0.3 : 1;
-    for (const e of [eyeL.current, eyeR.current]) if (e) e.scale.set(1, Math.max(0.08, lid), 1);
+    for (const e of [eyeL.current, eyeR.current]) if (e) e.scale.set(1, Math.max(0.06, lid), 1);
+    // Gaze: small saccades to a new point every 1.5-4 s (centred while listening or speaking).
+    const attentive = ui.assistant === 'listening' || speaking;
+    if (t > st.nextLook) {
+      st.tx = attentive ? (Math.random() - 0.5) * 0.15 : (Math.random() - 0.5) * 0.9;
+      st.ty = attentive ? 0 : (Math.random() - 0.5) * 0.5;
+      st.nextLook = t + 1.5 + Math.random() * 2.5;
+    }
+    const k = Math.min(1, dt * 14 * reduced + (reduced < 1 ? dt * 2 : 0));
+    st.gx += (st.tx - st.gx) * k; st.gy += (st.ty - st.gy) * k;
+    // Pupil: wide while listening, narrow while speaking, breathing a little while thinking.
+    const dil = ui.assistant === 'listening' ? 0.9 : speaking ? 0.15 : working ? 0.45 + 0.2 * Math.sin(t * 3) : 0.35;
+    st.dilate += (dil - st.dilate) * Math.min(1, dt * 3);
+    for (const m of eyeMats) {
+      m.uniforms.time.value = t * reduced;
+      m.uniforms.gaze.value.set(st.gx, st.gy);
+      m.uniforms.dilate.value = st.dilate;
+      m.uniforms.glow.value = speaking ? Math.min(1, ui.outputLevel * 1.5) : working ? 0.6 : 0.3;
+    }
     if (group.current) {
       group.current.rotation.y = Math.sin(t * 0.3) * 0.12 * reduced;
       group.current.rotation.x = Math.sin(t * 0.21) * 0.03 * reduced;
       group.current.position.y = Math.sin(t * 0.8) * 0.012 * reduced;
     }
-    if (edgeRef.current) (edgeRef.current.material as { opacity: number }).opacity = 0.35 + 0.25 * Math.sin(t * 1.3) * reduced + (speaking ? 0.2 : 0);
+    glass.uniforms.boost.value = (speaking ? ui.outputLevel * 0.6 : 0) + 0.05 * Math.sin(t * 1.3) * reduced;
+    built.nodes.uniforms.time.value = t * reduced;
+    if (edgeRef.current) (edgeRef.current.material as { opacity: number }).opacity = 0.04 + (speaking ? 0.04 : 0);
+    // Traces breathe; brighter while JARVIS works, and with the voice.
+    const glow = (working ? 1 : 0.8) + 0.08 * Math.sin(t * 2.1) * reduced + (speaking ? ui.outputLevel * 0.3 : 0);
+    { const [l, h] = main.materials(); l.opacity = Math.min(1, 0.85 * glow); h.opacity = 0.2 * glow; }
+    neckLines[1].material.opacity = Math.min(1, 0.85 * glow); neckLines[0].material.opacity = 0.2 * glow;
+    // Current running along every trace.
+    const pp = pulseGeo.getAttribute('position').array as Float32Array;
+    const speed = (working ? 0.8 : 0.25) * reduced;
+    allPaths.forEach((path, i) => {
+      const kk = ((t * speed + i * 0.173) % 1) * (path.length - 1);
+      const j = Math.min(Math.floor(kk), path.length - 2), fr = kk - j, a = path[j] * 3, b2 = path[j + 1] * 3;
+      pp[i * 3] = arr[a] + (arr[b2] - arr[a]) * fr;
+      pp[i * 3 + 1] = arr[a + 1] + (arr[b2 + 1] - arr[a + 1]) * fr;
+      pp[i * 3 + 2] = arr[a + 2] + (arr[b2 + 2] - arr[a + 2]) * fr;
+    });
+    pulseGeo.getAttribute('position').needsUpdate = true;
   });
 
   const [exl, eyl, ezl] = mesh.eyeL, [exr, eyr, ezr] = mesh.eyeR;
   return (
     <group ref={group}>
-      <mesh geometry={faceGeo}>
-        <meshStandardMaterial color={COLORS.skin} emissive={COLORS.skinEmissive} emissiveIntensity={0.45} flatShading roughness={0.6} metalness={0.05} transparent opacity={0.96} />
-      </mesh>
-      <lineSegments ref={edgeRef} geometry={edgeGeo}>
-        <lineBasicMaterial color={COLORS.edge} transparent opacity={0.45} blending={AdditiveBlending} depthWrite={false} />
+      <mesh geometry={faceGeo} material={occluder} renderOrder={1} />
+      <mesh geometry={faceGeo} material={glass} renderOrder={2} />
+      <lineSegments ref={edgeRef} geometry={edgeGeo} renderOrder={3}>
+        <lineBasicMaterial color={COLORS.edge} transparent opacity={0.04} blending={AdditiveBlending} depthWrite={false} />
       </lineSegments>
-      {([[exl, eyl, ezl, eyeL], [exr, eyr, ezr, eyeR]] as const).map(([x, y, z, ref], i) => (
-        <group key={i} position={[x, y, z + 0.07]}>
-          <mesh ref={ref}>
-            <circleGeometry args={[0.058, 24]} />
-            <meshBasicMaterial color={COLORS.eye} />
-          </mesh>
-          <mesh position={[0, 0, -0.002]}>
-            <circleGeometry args={[0.16, 24]} />
-            <meshBasicMaterial color={COLORS.eye} transparent opacity={0.22} blending={AdditiveBlending} depthWrite={false} />
-          </mesh>
+      <lineSegments geometry={fillGeo} renderOrder={3}>
+        <lineBasicMaterial color={COLORS.circuit} transparent opacity={0.45} blending={AdditiveBlending} depthWrite={false} />
+      </lineSegments>
+      {fat.map((f, i) => <group key={i}><primitive object={f.halo} /><primitive object={f.line} /></group>)}
+      {neckLines.map((l, i) => <primitive key={`n${i}`} object={l} />)}
+      <points geometry={viaGeo} renderOrder={5}>
+        <pointsMaterial color={COLORS.via} size={0.024} sizeAttenuation transparent opacity={0.9} blending={AdditiveBlending} depthWrite={false} />
+      </points>
+      <points geometry={pulseGeo} renderOrder={5}>
+        <pointsMaterial color={COLORS.node} size={0.04} sizeAttenuation transparent opacity={0.95} blending={AdditiveBlending} depthWrite={false} />
+      </points>
+      {rings.map(([x, y, z], i) => (
+        <mesh key={i} position={[x, y, z + 0.01]} renderOrder={5}>
+          <ringGeometry args={[0.022, 0.032, 24]} />
+          <meshBasicMaterial color={COLORS.via} transparent opacity={0.9} blending={AdditiveBlending} depthWrite={false} />
+        </mesh>
+      ))}
+      <ForeheadChips />
+      <Ears />
+      {([[exl, eyl, ezl, eyeL, 0], [exr, eyr, ezr, eyeR, 1]] as const).map(([x, y, z, ref, i]) => (
+        <group key={i} position={[x, y, z + 0.015]}>
+          <Eye ref={ref} material={eyeMats[i]} size={0.34} />
         </group>
       ))}
     </group>

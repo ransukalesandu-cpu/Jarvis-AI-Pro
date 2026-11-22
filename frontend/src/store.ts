@@ -103,3 +103,6 @@ export function finishedNow(prev: JobRow[] | null, next: JobRow[]): string[] {
   const words = { done: 'finished', failed: 'failed', cancelled: 'was cancelled' } as const;
   return next.filter((j) => was.get(j.id) === 'running' && j.status !== 'running').map((j) => `Job “${j.name}” ${words[j.status as keyof typeof words]}`);
 }
+
+// Dev preview only (npm run dev has no backend): lets a test script set telemetry. Stripped from builds.
+if (import.meta.env.DEV) (globalThis as Record<string, unknown>).__jarvisUi = useUi;

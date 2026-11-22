@@ -10,6 +10,14 @@ from jarvis.knowledge import KnowledgeStore, format_hits
 from jarvis.knowledge import extract
 from jarvis.knowledge import store as kb_store
 
+@pytest.fixture(autouse=True)
+def _reset_untrusted_flag():
+    """wrap_untrusted() marks the turn as untrusted globally; do not leak that into other test files."""
+    yield
+    from jarvis.core import security
+    security.mark_user_turn_started()
+
+
 
 @pytest.fixture()
 def store(tmp_path):

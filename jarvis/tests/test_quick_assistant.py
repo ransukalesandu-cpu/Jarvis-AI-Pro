@@ -5,6 +5,14 @@ import pytest
 
 from jarvis import quick
 
+@pytest.fixture(autouse=True)
+def _reset_untrusted_flag():
+    """wrap_untrusted() marks the turn as untrusted globally; do not leak that into other test files."""
+    yield
+    from jarvis.core import security
+    security.mark_user_turn_started()
+
+
 
 class FakeClip:
     def __init__(self, content="owner clipboard", selection="selected words"):

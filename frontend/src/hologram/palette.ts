@@ -8,8 +8,10 @@ export const COLORS = {
   rim: new Color('#ff7418'),        // glass silhouette glow
   edge: new Color('#ff8a2a'),       // faint edge net, plexus, dust
   node: new Color('#ffd7a3'),       // twinkling nodes, pulses
-  circuit: new Color('#ff6a10'),    // circuit traces on the face
-  via: new Color('#ffc078'),        // trace ends
+  circuit: new Color('#ff5a00'),    // circuit traces on the face
+  via: new Color('#ffa24a'),        // trace ends
+  contour: new Color('#ff7a1a'),    // lips, eyes, brows, face outline
+  blue: new Color('#3cc4ff'),       // nose ridge and forehead chips
   eye: new Color('#ff6a00'),
   eyeCore: new Color('#ffd08a'),
   orb: new Color('#ff8a24'),
@@ -20,6 +22,8 @@ export const COLORS = {
   wire: new Color('#ff8a2a'),
   ring: new Color('#ff7a1a'),
   error: new Color('#ff3030'),
+  backdrop: new Color('#1e8fff'),   // blue circuits behind the head
+  spark: new Color('#ff7a1a'),      // orange sparks among them
 };
 
 export function orbColor(state: AssistantState): Color {

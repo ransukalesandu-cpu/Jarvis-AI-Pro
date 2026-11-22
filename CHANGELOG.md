@@ -7,6 +7,13 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Circuit-board hologram face** (web UI): after the owner's reference, the head is a dark glass skin
+  with thick glowing orange traces designed on the MediaPipe landmarks (forehead channel, brows,
+  cheeks, jaw; mirrored, so the face is symmetric), orange contours on the lips, eyes, brows and face
+  outline, a blue nose ridge, neck runs with ring vias, and running current. **Two blue forehead chips
+  show live CPU and RAM** (and the assistant state; "--" until a sample arrives). Shader eyes (amber
+  iris, pupil that dilates while listening, glint, scan ring, gaze), a depth pass so the neck no
+  longer shows through the head, blue circuit traces with orange sparks behind.
 - **Holo UI upgrade** (web UI, after the owner's reference design). The hologram is now a glass head
   (fresnel rim, soft key light so the features read), a twinkling node net, a neural brain inside the
   cranium with light running through it, glowing orange eyes with circuit traces, a plexus network

@@ -16,6 +16,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  secrets:
+    # Blocking: fails when a tracked file contains a credential that is not in
+    # .secrets.baseline (reviewed test fixtures). Covers web/ too.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Install detect-secrets
+        run: python -m pip install "detect-secrets==1.5.0"
+      - name: Scan tracked files against the baseline
+        run: |
+          git ls-files -z \
+            | grep -zvE '(^|/)(node_modules|webui/dist)/|package-lock\.json$|yarn\.lock$|crypto-js\.min\.js$|\.(png|jpe?g|gif|ico|mp4|mp3|wav|obj|glb|woff2?|ttf)$' \
+            | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+
   semgrep:
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -45,7 +45,7 @@ def test_mini_apps_add_open_remove(tmp_path):
     with pytest.raises(ValueError):
         lib.add_app("bad", "http://insecure.example")
     with pytest.raises(ValueError):
-        lib.add_app("bad", "https://user:pw@example.com")
+        lib.add_app("bad", "https://user:pw@example.com")  # pragma: allowlist secret
     assert lib.add_app("Notion App", "https://www.notion.so/") == "notion"
     launched = []
     assert lib.open_app("notion", launcher=launched.append, browser="/usr/bin/msedge") == "notion"

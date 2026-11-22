@@ -558,6 +558,7 @@ _DANGEROUS_ACTIONS: dict[str, set[str]] = {
 _FEATURE_TIERS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "knowledge": (frozenset({"list", "sources", "ask", "search", "stats"}),
                   frozenset({"delete_base"})),
+    "telegram": (frozenset({"status"}), frozenset({"pair", "send_file"})),
 }
 
 

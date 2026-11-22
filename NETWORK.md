@@ -43,6 +43,7 @@ a line here.
 | `pypi.org`, `download.pytorch.org` | setup scripts (`Jarvis_Setup.bat`, `tools/windows_setup.py`) | Installing dependencies during setup only. |
 | `generativelanguage.googleapis.com` (embeddings) | knowledge base semantic search (`knowledge/store.py`) | Only with `JARVIS_KB_EMBEDDINGS=1`; keyword search works offline. |
 | any `http(s)` URL the owner names | knowledge base `add` of a web page (`knowledge/extract.py`) | Fetches the page once when the owner asks to index it. |
+| `api.telegram.org` | Telegram channel (`channels/telegram.py`) | Only when `telegram_bot_token` is set; long polling, no inbound port. |
 
 The dashboard (`dashboard/server.py`) serves CryptoJS from the committed
 `dashboard/static/crypto-js.min.js`; it no longer downloads it from a CDN.

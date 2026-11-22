@@ -1,6 +1,7 @@
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
-import { AdditiveBlending, BufferAttribute, BufferGeometry, CatmullRomCurve3, Float32BufferAttribute, type Group, type LineSegments, type Mesh, Vector3 } from 'three';
+import { AdditiveBlending, BufferAttribute, BufferGeometry, CatmullRomCurve3, Float32BufferAttribute, type Group, type LineSegments, type Mesh, MeshBasicMaterial, Vector3 } from 'three';
+import { Eye, eyeMaterial } from './Eye';
 import mesh from './headMesh.json';
 import { COLORS } from './palette';
 import { glassMaterial, rng, twinkleMaterial } from './glass';
@@ -40,7 +41,7 @@ function eyeTraces(): Vector3[][] {
   for (const e of [mesh.eyeL, mesh.eyeR]) {
     const side = Math.sign(e[0]);
     for (let k = 0; k < 3; k++) {
-      let p = new Vector3(e[0] + side * (k - 1) * 0.035, e[1] - 0.06, e[2] + 0.02 - k * 0.02);
+      let p = new Vector3(e[0] + side * (k - 1) * 0.035, e[1] - 0.1, e[2] + 0.01 - k * 0.02);
       const pts = [p.clone()];
       for (let s = 0; s < 4; s++) {
         p = p.clone().add(new Vector3(0, -(0.06 + r() * 0.08), -0.015));
@@ -72,7 +73,7 @@ export function Head() {
   const eyeR = useRef<Mesh>(null);
   const edgeRef = useRef<LineSegments>(null);
   const brainRef = useRef<LineSegments>(null);
-  const { faceGeo, edgeGeo, nodeGeo, pos, glass, nodes, brain, brainPulseGeo, brainCurveList, traces } = useMemo(() => {
+  const { faceGeo, edgeGeo, nodeGeo, pos, glass, occluder, eyeMats, nodes, brain, brainPulseGeo, brainCurveList, traces } = useMemo(() => {
     const pos = new BufferAttribute(new Float32Array(base), 3);
     pos.usage = 35048; // DynamicDrawUsage
     const faceGeo = new BufferGeometry();
@@ -93,13 +94,18 @@ export function Head() {
     return {
       faceGeo, edgeGeo, nodeGeo, pos, brainCurveList, brainPulseGeo,
       glass: glassMaterial(COLORS.rim, COLORS.skin, 0.05, 2.2, 1.15),
+      // Depth-only pass of the head: whatever the glass hides (the neck inside the jaw, the back of
+      // the skull, back edges) is not drawn through it. Pushed back a hair so the front edges still pass.
+      // transparent: true keeps it in the transparent queue, ordered by renderOrder after the brain.
+      occluder: new MeshBasicMaterial({ colorWrite: false, depthWrite: true, transparent: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
+      eyeMats: [eyeMaterial(1.7), eyeMaterial(5.3)],
       nodes: twinkleMaterial(COLORS.node, 0.022, 0.25),
       brain: lineGeo(brainCurveList),
       traces: lineGeo(eyeTraces()),
     };
   }, []);
-  useEffect(() => () => { glass.dispose(); nodes.dispose(); }, [glass, nodes]);
-  const state = useRef({ mouth: 0, blink: 0, nextBlink: 2.5 });
+  useEffect(() => () => { glass.dispose(); nodes.dispose(); occluder.dispose(); eyeMats.forEach((m) => m.dispose()); }, [glass, nodes, occluder, eyeMats]);
+  const state = useRef({ mouth: 0, blink: 0, nextBlink: 2.5, gx: 0, gy: 0, tx: 0, ty: 0, nextLook: 1.5, dilate: 0.3 });
 
   useFrame((s, dt) => {
     const ui = useUi.getState();
@@ -129,7 +135,25 @@ export function Head() {
     if (st.blink > 0) st.blink = Math.max(0, st.blink - dt / 0.16);
     const lid = 1 - Math.sin((1 - st.blink) * Math.PI) * (st.blink > 0 ? 0.92 : 0);
     const reduced = ui.reducedMotion ? 0.3 : 1;
-    for (const e of [eyeL.current, eyeR.current]) if (e) e.scale.set(1, Math.max(0.08, lid), 1);
+    for (const e of [eyeL.current, eyeR.current]) if (e) e.scale.set(1, Math.max(0.06, lid), 1);
+    // Gaze: small saccades to a new point every 1.5-4 s (centred while listening or speaking).
+    const attentive = ui.assistant === 'listening' || speaking;
+    if (t > st.nextLook) {
+      st.tx = attentive ? (Math.random() - 0.5) * 0.15 : (Math.random() - 0.5) * 0.9;
+      st.ty = attentive ? 0 : (Math.random() - 0.5) * 0.5;
+      st.nextLook = t + 1.5 + Math.random() * 2.5;
+    }
+    const k = Math.min(1, dt * 14 * reduced + (reduced < 1 ? dt * 2 : 0));
+    st.gx += (st.tx - st.gx) * k; st.gy += (st.ty - st.gy) * k;
+    // Pupil: wide while listening, narrow while speaking, breathing a little while thinking.
+    const dil = ui.assistant === 'listening' ? 0.9 : speaking ? 0.15 : working ? 0.45 + 0.2 * Math.sin(t * 3) : 0.35;
+    st.dilate += (dil - st.dilate) * Math.min(1, dt * 3);
+    for (const m of eyeMats) {
+      m.uniforms.time.value = t * reduced;
+      m.uniforms.gaze.value.set(st.gx, st.gy);
+      m.uniforms.dilate.value = st.dilate;
+      m.uniforms.glow.value = speaking ? Math.min(1, ui.outputLevel * 1.5) : working ? 0.5 : 0.15;
+    }
     if (group.current) {
       group.current.rotation.y = Math.sin(t * 0.3) * 0.12 * reduced;
       group.current.rotation.x = Math.sin(t * 0.21) * 0.03 * reduced;
@@ -154,34 +178,25 @@ export function Head() {
   const [exl, eyl, ezl] = mesh.eyeL, [exr, eyr, ezr] = mesh.eyeR;
   return (
     <group ref={group}>
-      <mesh geometry={faceGeo} material={glass} renderOrder={1} />
-      <lineSegments ref={edgeRef} geometry={edgeGeo} renderOrder={2}>
+      <mesh geometry={faceGeo} material={occluder} renderOrder={1} />
+      <mesh geometry={faceGeo} material={glass} renderOrder={2} />
+      <lineSegments ref={edgeRef} geometry={edgeGeo} renderOrder={3}>
         <lineBasicMaterial color={COLORS.edge} transparent opacity={0.25} blending={AdditiveBlending} depthWrite={false} />
       </lineSegments>
-      <points geometry={nodeGeo} material={nodes} renderOrder={3} />
-      <lineSegments ref={brainRef} geometry={brain} renderOrder={2}>
+      <points geometry={nodeGeo} material={nodes} renderOrder={4} />
+      {/* The brain is drawn before the depth pass, so it still shows through the glass. */}
+      <lineSegments ref={brainRef} geometry={brain} renderOrder={0}>
         <lineBasicMaterial color={COLORS.brain} transparent opacity={0.35} blending={AdditiveBlending} depthWrite={false} />
       </lineSegments>
-      <points geometry={brainPulseGeo} renderOrder={3}>
+      <points geometry={brainPulseGeo} renderOrder={0}>
         <pointsMaterial color={COLORS.node} size={0.035} sizeAttenuation transparent opacity={0.9} blending={AdditiveBlending} depthWrite={false} />
       </points>
-      <lineSegments geometry={traces} renderOrder={2}>
-        <lineBasicMaterial color={COLORS.eye} transparent opacity={0.55} blending={AdditiveBlending} depthWrite={false} />
+      <lineSegments geometry={traces} renderOrder={5}>
+        <lineBasicMaterial color={COLORS.eye} transparent opacity={0.55} blending={AdditiveBlending} depthWrite={false} depthTest={false} />
       </lineSegments>
-      {([[exl, eyl, ezl, eyeL], [exr, eyr, ezr, eyeR]] as const).map(([x, y, z, ref], i) => (
-        <group key={i} position={[x, y, z + 0.02]}>
-          <mesh ref={ref}>
-            <circleGeometry args={[0.032, 24]} />
-            <meshBasicMaterial color={COLORS.eyeCore} />
-          </mesh>
-          <mesh position={[0, 0, -0.002]}>
-            <circleGeometry args={[0.058, 24]} />
-            <meshBasicMaterial color={COLORS.eye} transparent opacity={0.75} blending={AdditiveBlending} depthWrite={false} />
-          </mesh>
-          <mesh position={[0, 0, -0.004]}>
-            <circleGeometry args={[0.13, 32]} />
-            <meshBasicMaterial color={COLORS.eye} transparent opacity={0.22} blending={AdditiveBlending} depthWrite={false} />
-          </mesh>
+      {([[exl, eyl, ezl, eyeL, 0], [exr, eyr, ezr, eyeR, 1]] as const).map(([x, y, z, ref, i]) => (
+        <group key={i} position={[x, y, z + 0.015]}>
+          <Eye ref={ref} material={eyeMats[i]} size={0.27} />
         </group>
       ))}
     </group>

@@ -563,6 +563,7 @@ _FEATURE_TIERS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "quick_action": (frozenset(), frozenset()),
     "notes": (frozenset({"read", "search", "list", "folder"}), frozenset({"set_folder"})),
     "compare_models": (frozenset({"compare", "show", "wins"}), frozenset()),
+    "backup": (frozenset({"status", "list", "preview"}), frozenset({"restore", "set_folder"})),
 }
 
 

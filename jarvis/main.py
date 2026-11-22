@@ -820,6 +820,11 @@ class JarvisLive(
             start_hotkey(self._on_text_command)
         except Exception:
             failsoft.suppress("main:quick_assistant")
+        try:                                        # scheduled backups (off until the owner schedules one)
+            from jarvis import backup as _backup
+            _backup.start_scheduler(self._notify_owner)
+        except Exception:
+            failsoft.suppress("main:backup_scheduler")
         self.ui.on_remote_clicked = self._make_remote_key
         self.ui.on_interrupt      = self.interrupt
         self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session
@@ -1302,6 +1307,20 @@ class JarvisLive(
             self.ui.set_state("SPEAKING")
         elif not self.ui.muted:
             self.ui.set_state("LISTENING")
+
+    def _notify_owner(self, message: str) -> None:
+        """Background features (backups, budget alerts) report here: HUD log + paired Telegram chat."""
+        try:
+            self.ui.write_log(f"SYS: {message}")
+        except Exception:
+            failsoft.suppress("main:_notify_owner")
+        try:
+            from jarvis.channels import get_channel
+            ch = get_channel()
+            if ch is not None:
+                ch.notify(message)
+        except Exception:
+            failsoft.suppress("main:_notify_owner")
 
     def set_push_to_talk(self, enabled: bool) -> str:
         """Turn hold-to-talk on or off. Returns the scope actually achieved."""

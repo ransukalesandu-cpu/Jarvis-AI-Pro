@@ -825,6 +825,11 @@ class JarvisLive(
             _backup.start_scheduler(self._notify_owner)
         except Exception:
             failsoft.suppress("main:backup_scheduler")
+        try:                                        # daily AI budget alerts (off until a budget is set)
+            from jarvis.core import usage_meter
+            usage_meter.set_notifier(self._notify_owner)
+        except Exception:
+            failsoft.suppress("main:usage_meter")
         self.ui.on_remote_clicked = self._make_remote_key
         self.ui.on_interrupt      = self.interrupt
         self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session

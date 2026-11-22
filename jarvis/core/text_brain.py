@@ -82,4 +82,7 @@ def ask_provider(provider: str, prompt: str, system: str = "You are a helpful as
     result = r._validate_result(r.providers[provider](prompt, system), provider)
     result = dict(result)
     result.update({"provider": provider, "latency_ms": round((time.monotonic() - started) * 1000, 1)})
+    from jarvis.core import usage_meter
+    usage_meter.record(provider, str(result.get("model") or ""), in_chars=len(prompt) + len(system),
+                       out_chars=len(str(result.get("text") or "")), latency_ms=result["latency_ms"])
     return result

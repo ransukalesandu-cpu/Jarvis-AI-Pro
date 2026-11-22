@@ -1,30 +1,33 @@
 import { Color } from 'three';
 import type { AssistantState } from '../bridge/contract';
 
-// JARVIS look: glass hologram head with a neural brain, orange eyes, cyan glass orb.
+// JARVIS look: a dark circuit-board head in orange: glowing traces and vias over the face, orange
+// rim light, burning orange eyes, orange strands into an orange glass orb. (UI chrome stays cyan.)
 export const COLORS = {
-  skin: new Color('#0d4a72'),       // glass body (barely there)
-  rim: new Color('#5fe6ff'),        // glass silhouette glow
-  edge: new Color('#6fdcff'),       // edge net
-  node: new Color('#d8f7ff'),       // twinkling mesh nodes
-  brain: new Color('#7fe9ff'),      // neural lines in the cranium
-  eye: new Color('#ff9a1a'),
-  eyeCore: new Color('#ffd27a'),
-  orb: new Color('#27d9ff'),
-  orbCore: new Color('#d9fbff'),
+  skin: new Color('#3a1404'),       // glass body (dark, barely there)
+  rim: new Color('#ff7418'),        // glass silhouette glow
+  edge: new Color('#ff8a2a'),       // faint edge net, plexus, dust
+  node: new Color('#ffd7a3'),       // twinkling nodes, pulses
+  circuit: new Color('#ff6a10'),    // circuit traces on the face
+  via: new Color('#ffc078'),        // trace ends
+  eye: new Color('#ff6a00'),
+  eyeCore: new Color('#ffd08a'),
+  orb: new Color('#ff8a24'),
+  orbCore: new Color('#fff0d6'),
+  orbBody: new Color('#2a1004'),
   heart: new Color('#ff3b4e'),
   heartSoft: new Color('#ff8a5c'),
-  wire: new Color('#3fd0ff'),
-  ring: new Color('#2fb8ff'),
-  error: new Color('#ff5a4a'),
+  wire: new Color('#ff8a2a'),
+  ring: new Color('#ff7a1a'),
+  error: new Color('#ff3030'),
 };
 
 export function orbColor(state: AssistantState): Color {
   switch (state) {
     case 'error': return COLORS.error;
-    case 'thinking': return new Color('#7aa8ff');
-    case 'searching': return new Color('#58f0c8');
-    case 'executing': return new Color('#ffc14d');
+    case 'thinking': return new Color('#ffb15c');
+    case 'searching': return new Color('#ffd36b');
+    case 'executing': return new Color('#ff9d3d');
     default: return COLORS.orb;
   }
 }

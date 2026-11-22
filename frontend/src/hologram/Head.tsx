@@ -1,6 +1,6 @@
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
-import { AdditiveBlending, BufferAttribute, BufferGeometry, CatmullRomCurve3, Float32BufferAttribute, type Group, type LineSegments, type Mesh, MeshBasicMaterial, Vector3 } from 'three';
+import { AdditiveBlending, BufferAttribute, BufferGeometry, Float32BufferAttribute, type Group, type LineSegments, type Mesh, MeshBasicMaterial, Vector3 } from 'three';
 import { Eye, eyeMaterial } from './Eye';
 import mesh from './headMesh.json';
 import { COLORS } from './palette';
@@ -11,27 +11,49 @@ const base = Float32Array.from(mesh.verts);
 const jaw = Float32Array.from(mesh.jaw);
 const [, pivotY, pivotZ] = mesh.jawPivot;
 
-/** Curly neural "brain" lines inside the cranium: random walks in an ellipsoid, one set per hemisphere. */
-function brainCurves(count = 140): Vector3[][] {
-  const r = rng(42);
-  const c = new Vector3(0, 0.5, -0.2), R = new Vector3(0.5, 0.36, 0.48);
-  const inside = (p: Vector3) => ((p.x - c.x) / R.x) ** 2 + ((p.y - c.y) / R.y) ** 2 + ((p.z - c.z) / R.z) ** 2 < 1;
-  const out: Vector3[][] = [];
-  for (let i = 0; i < count; i++) {
-    const side = i % 2 ? 1 : -1;
-    const p = new Vector3(c.x + side * (0.06 + r() * 0.38), c.y + (r() - 0.5) * 0.55, c.z + (r() - 0.5) * 0.8);
-    if (!inside(p)) continue;
-    const pts = [p.clone()];
-    const d = new Vector3(r() - 0.5, r() - 0.5, r() - 0.5).normalize();
-    for (let k = 0; k < 12; k++) {
-      d.add(new Vector3(r() - 0.5, r() - 0.5, r() - 0.5).multiplyScalar(1.3)).normalize();
-      const n = pts[pts.length - 1].clone().addScaledVector(d, 0.06);
-      if (!inside(n) || Math.sign(n.x) !== side || Math.abs(n.x) < 0.03) break;
-      pts.push(n);
+/**
+ * PCB-style traces over the face, skull and neck: short walks along the mesh's own edges that run
+ * mostly up/down or across and turn at right angles, with a via at each end. Returned as vertex
+ * index pairs, so the traces share the head's vertex buffer and move with the talking jaw.
+ */
+function circuits(count = 75) {
+  const n = base.length / 3;
+  const adj: number[][] = Array.from({ length: n }, () => []);
+  const link = (a: number, b: number) => { if (!adj[a].includes(b)) { adj[a].push(b); adj[b].push(a); } };
+  const f = mesh.faces;
+  for (let i = 0; i < f.length; i += 3) { link(f[i], f[i + 1]); link(f[i + 1], f[i + 2]); link(f[i + 2], f[i]); }
+  const r = rng(91);
+  const x = (v: number) => base[v * 3], y = (v: number) => base[v * 3 + 1], z = (v: number) => base[v * 3 + 2];
+  const clear = (v: number) => {
+    for (const e of [mesh.eyeL, mesh.eyeR]) if (z(v) > 0 && (x(v) - e[0]) ** 2 + (y(v) - e[1]) ** 2 < 0.12 ** 2) return false;
+    return true;
+  };
+  const segs: number[] = [], vias: number[] = [], paths: number[][] = [];
+  for (let tries = 0; paths.length < count && tries < count * 12; tries++) {
+    let v = Math.floor(r() * n);
+    if (z(v) < -0.05 || !clear(v)) continue;                       // start on the front half
+    let d: [number, number] = r() < 0.65 ? [0, r() < 0.5 ? 1 : -1] : [r() < 0.5 ? 1 : -1, 0];
+    const path = [v], used = new Set([v]);
+    const len = 5 + Math.floor(r() * 12);
+    for (let s = 0; s < len; s++) {
+      if (r() < 0.2) d = d[0] === 0 ? [r() < 0.5 ? 1 : -1, 0] : [0, r() < 0.5 ? 1 : -1];   // right-angle turn
+      let best = -1, score = 0.55;
+      for (const w of adj[v]) {
+        if (used.has(w) || !clear(w)) continue;
+        const dx = x(w) - x(v), dy = y(w) - y(v), l = Math.hypot(dx, dy) || 1;
+        const sc = (dx * d[0] + dy * d[1]) / l;
+        if (sc > score) { score = sc; best = w; }
+      }
+      if (best < 0) break;
+      path.push(best); used.add(best); v = best;
     }
-    if (pts.length >= 4) out.push(new CatmullRomCurve3(pts).getPoints(pts.length * 4));
+    if (path.length >= 4) {
+      paths.push(path);
+      for (let i = 0; i < path.length - 1; i++) segs.push(path[i], path[i + 1]);
+      vias.push(path[0], path[path.length - 1]);
+    }
   }
-  return out;
+  return { segs, vias, paths };
 }
 
 /** Orange circuit traces running down from each eye, in right-angled steps. */
@@ -64,7 +86,7 @@ function lineGeo(curves: Vector3[][]): BufferGeometry {
 
 /**
  * The JARVIS head as a glass hologram: MediaPipe canonical mesh with a fresnel glass skin, a cyan
- * edge net, twinkling nodes, a neural brain inside the cranium, glowing orange eyes with circuit
+ * faint edge net, circuit-board traces with vias and running current, glowing orange eyes with circuit
  * traces, and a voice-driven jaw.
  */
 export function Head() {
@@ -72,8 +94,8 @@ export function Head() {
   const eyeL = useRef<Mesh>(null);
   const eyeR = useRef<Mesh>(null);
   const edgeRef = useRef<LineSegments>(null);
-  const brainRef = useRef<LineSegments>(null);
-  const { faceGeo, edgeGeo, nodeGeo, pos, glass, occluder, eyeMats, nodes, brain, brainPulseGeo, brainCurveList, traces } = useMemo(() => {
+  const circuitRef = useRef<LineSegments>(null);
+  const { faceGeo, edgeGeo, nodeGeo, pos, glass, occluder, eyeMats, nodes, circuitGeo, viaGeo, pulseGeo, paths, traces } = useMemo(() => {
     const pos = new BufferAttribute(new Float32Array(base), 3);
     pos.usage = 35048; // DynamicDrawUsage
     const faceGeo = new BufferGeometry();
@@ -87,20 +109,23 @@ export function Head() {
     nodeGeo.setAttribute('position', pos);
     const r = rng(3);
     nodeGeo.setAttribute('phase', new Float32BufferAttribute(Array.from({ length: base.length / 3 }, () => r()), 1));
-    const brainCurveList = brainCurves();
-    const brainPulseGeo = new BufferGeometry();
-    brainPulseGeo.setAttribute('position', new Float32BufferAttribute(new Float32Array(brainCurveList.length * 3), 3));
-    brainPulseGeo.setAttribute('phase', new Float32BufferAttribute(brainCurveList.map(() => r()), 1));
+    const c = circuits();
+    const circuitGeo = new BufferGeometry();
+    circuitGeo.setAttribute('position', pos);
+    circuitGeo.setIndex(c.segs);
+    const viaGeo = new BufferGeometry();
+    viaGeo.setAttribute('position', pos);
+    viaGeo.setIndex(c.vias);
+    const pulseGeo = new BufferGeometry();
+    pulseGeo.setAttribute('position', new Float32BufferAttribute(new Float32Array(c.paths.length * 3), 3));
     return {
-      faceGeo, edgeGeo, nodeGeo, pos, brainCurveList, brainPulseGeo,
-      glass: glassMaterial(COLORS.rim, COLORS.skin, 0.05, 2.2, 1.15),
+      faceGeo, edgeGeo, nodeGeo, pos, circuitGeo, viaGeo, pulseGeo, paths: c.paths,
+      glass: glassMaterial(COLORS.rim, COLORS.skin, 0.06, 2.2, 0.85),
       // Depth-only pass of the head: whatever the glass hides (the neck inside the jaw, the back of
-      // the skull, back edges) is not drawn through it. Pushed back a hair so the front edges still pass.
-      // transparent: true keeps it in the transparent queue, ordered by renderOrder after the brain.
+      // the skull, back traces) is not drawn through it. Pushed back a hair so the surface lines still pass.
       occluder: new MeshBasicMaterial({ colorWrite: false, depthWrite: true, transparent: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
       eyeMats: [eyeMaterial(1.7), eyeMaterial(5.3)],
-      nodes: twinkleMaterial(COLORS.node, 0.022, 0.25),
-      brain: lineGeo(brainCurveList),
+      nodes: twinkleMaterial(COLORS.node, 0.016, 0.1),
       traces: lineGeo(eyeTraces()),
     };
   }, []);
@@ -163,16 +188,19 @@ export function Head() {
     nodes.uniforms.time.value = t * reduced;
     nodes.uniforms.gain.value = working ? 1.3 : 1;
     if (edgeRef.current) (edgeRef.current.material as { opacity: number }).opacity = 0.14 + 0.06 * Math.sin(t * 1.3) * reduced + (speaking ? 0.12 : 0);
-    if (brainRef.current) (brainRef.current.material as { opacity: number }).opacity = (working ? 0.8 : 0.55) + 0.12 * Math.sin(t * 2.1) * reduced;
-    // light running along the brain lines
-    const bp = brainPulseGeo.getAttribute('position').array as Float32Array;
-    const speed = working ? 0.9 : 0.3;
-    brainCurveList.forEach((c, i) => {
-      const k = ((t * speed * reduced + i * 0.173) % 1) * (c.length - 1);
-      const p = c[Math.floor(k)];
-      bp[i * 3] = p.x; bp[i * 3 + 1] = p.y; bp[i * 3 + 2] = p.z;
+    if (circuitRef.current) (circuitRef.current.material as { opacity: number }).opacity = (working ? 0.75 : 0.5) + 0.08 * Math.sin(t * 2.1) * reduced;
+    // current running along the traces
+    const pp = pulseGeo.getAttribute('position').array as Float32Array;
+    const speed = (working ? 0.8 : 0.25) * reduced;
+    paths.forEach((path, i) => {
+      const k = ((t * speed + i * 0.173) % 1) * (path.length - 1);
+      const j = Math.min(Math.floor(k), path.length - 2), fr = k - j, a = path[j] * 3, b2 = path[j + 1] * 3;
+      const arr = pos.array as Float32Array;
+      pp[i * 3] = arr[a] + (arr[b2] - arr[a]) * fr;
+      pp[i * 3 + 1] = arr[a + 1] + (arr[b2 + 1] - arr[a + 1]) * fr;
+      pp[i * 3 + 2] = arr[a + 2] + (arr[b2 + 2] - arr[a + 2]) * fr;
     });
-    brainPulseGeo.getAttribute('position').needsUpdate = true;
+    pulseGeo.getAttribute('position').needsUpdate = true;
   });
 
   const [exl, eyl, ezl] = mesh.eyeL, [exr, eyr, ezr] = mesh.eyeR;
@@ -184,12 +212,14 @@ export function Head() {
         <lineBasicMaterial color={COLORS.edge} transparent opacity={0.25} blending={AdditiveBlending} depthWrite={false} />
       </lineSegments>
       <points geometry={nodeGeo} material={nodes} renderOrder={4} />
-      {/* The brain is drawn before the depth pass, so it still shows through the glass. */}
-      <lineSegments ref={brainRef} geometry={brain} renderOrder={0}>
-        <lineBasicMaterial color={COLORS.brain} transparent opacity={0.35} blending={AdditiveBlending} depthWrite={false} />
+      <lineSegments ref={circuitRef} geometry={circuitGeo} renderOrder={3}>
+        <lineBasicMaterial color={COLORS.circuit} transparent opacity={0.75} blending={AdditiveBlending} depthWrite={false} />
       </lineSegments>
-      <points geometry={brainPulseGeo} renderOrder={0}>
-        <pointsMaterial color={COLORS.node} size={0.035} sizeAttenuation transparent opacity={0.9} blending={AdditiveBlending} depthWrite={false} />
+      <points geometry={viaGeo} renderOrder={4}>
+        <pointsMaterial color={COLORS.via} size={0.026} sizeAttenuation transparent opacity={0.75} blending={AdditiveBlending} depthWrite={false} />
+      </points>
+      <points geometry={pulseGeo} renderOrder={4}>
+        <pointsMaterial color={COLORS.node} size={0.045} sizeAttenuation transparent opacity={0.95} blending={AdditiveBlending} depthWrite={false} />
       </points>
       <lineSegments geometry={traces} renderOrder={5}>
         <lineBasicMaterial color={COLORS.eye} transparent opacity={0.55} blending={AdditiveBlending} depthWrite={false} depthTest={false} />

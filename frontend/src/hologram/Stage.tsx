@@ -79,7 +79,7 @@ export function Orb() {
   const halo = useRef<Mesh>(null);
   const rings = useRef<Group>(null);
   const plates = useRef<Group>(null);
-  const glass = useMemo(() => glassMaterial(COLORS.orb, new Color('#062638'), 0.08, 1.8), []);
+  const glass = useMemo(() => glassMaterial(COLORS.orb, COLORS.orbBody, 0.08, 1.8), []);
   useEffect(() => () => glass.dispose(), [glass]);
   const col = useMemo(() => new Color(COLORS.orb), []);
   useFrame((s, dt) => {
@@ -104,7 +104,7 @@ export function Orb() {
   const { x, y, r } = LAYOUT.orb;
   return (
     <group position={[x, y, 0.1]}>
-      <mesh ref={halo}><circleGeometry args={[r * 2.2, 48]} /><meshBasicMaterial {...add(COLORS.orb, 0.05)} /></mesh>
+      <mesh ref={halo}><circleGeometry args={[r * 2.2, 48]} /><meshBasicMaterial {...add(COLORS.orb, 0.025)} /></mesh>
       <mesh ref={shell} material={glass}><sphereGeometry args={[r, 48, 32]} /></mesh>
       <mesh ref={net}><sphereGeometry args={[r * 0.99, 18, 12]} /><meshBasicMaterial {...add(COLORS.orb, 0.12)} wireframe /></mesh>
       <mesh ref={core}><sphereGeometry args={[r * 0.22, 24, 16]} /><meshBasicMaterial {...add(COLORS.orbCore, 0.95)} /></mesh>

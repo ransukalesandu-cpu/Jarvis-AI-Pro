@@ -97,7 +97,7 @@ def test_guard_not_installed_without_flag(monkeypatch):
 
 def test_gemini_key_prefers_environment(monkeypatch, tmp_path):
     cfg = tmp_path / "api_keys.json"
-    cfg.write_text('{"gemini_api_key": "from-file"}', encoding="utf-8")
+    cfg.write_text('{"gemini_api_key": "from-file"}', encoding="utf-8")  # pragma: allowlist secret
     monkeypatch.setattr(gemini, "_KEY_FILE", cfg)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.setenv("GEMINI_API_KEY", "from-env")

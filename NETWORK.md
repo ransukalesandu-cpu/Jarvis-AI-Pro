@@ -41,6 +41,8 @@ a line here.
 | Tuya cloud / MQTT broker | smart home, printers (`plugins/home_automation.py`, `plugins/printer_control.py`) | Only for devices you add. |
 | Any site you ask it to open | browser automation (Playwright, `computer_control/`) | User-requested browsing. |
 | `pypi.org`, `download.pytorch.org` | setup scripts (`Jarvis_Setup.bat`, `tools/windows_setup.py`) | Installing dependencies during setup only. |
+| `generativelanguage.googleapis.com` (embeddings) | knowledge base semantic search (`knowledge/store.py`) | Only with `JARVIS_KB_EMBEDDINGS=1`; keyword search works offline. |
+| any `http(s)` URL the owner names | knowledge base `add` of a web page (`knowledge/extract.py`) | Fetches the page once when the owner asks to index it. |
 
 The dashboard (`dashboard/server.py`) serves CryptoJS from the committed
 `dashboard/static/crypto-js.min.js`; it no longer downloads it from a CDN.

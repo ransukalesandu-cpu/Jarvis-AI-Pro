@@ -47,7 +47,7 @@ class TierCompletenessTests(unittest.TestCase):
         names = static_action_names()
         self.assertGreater(len(names), 40)
         source = inspect.getsource(security.tier_for)
-        handled = set(security._TIERS) | {n for n in names if f'"{n}"' in source}
+        handled = set(security._TIERS) | set(security._FEATURE_TIERS) | {n for n in names if f'"{n}"' in source}
         unreviewed = sorted(set(names) - handled - REVIEWED_DEFAULT_SENSITIVE)
         self.assertEqual(unreviewed, [], "new tools need an explicit tier in core/security.py")
 

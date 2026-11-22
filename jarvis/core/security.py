@@ -554,6 +554,13 @@ _DANGEROUS_ACTIONS: dict[str, set[str]] = {
 }
 
 
+# (safe actions, dangerous actions) per tool; anything else is SENSITIVE.
+_FEATURE_TIERS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    "knowledge": (frozenset({"list", "sources", "ask", "search", "stats"}),
+                  frozenset({"delete_base"})),
+}
+
+
 _AUTONOMOUS_SAFE_ACTIONS = {
     "status", "report", "pending", "pause", "resume", "stop",
     "save_workflow", "list_workflows", "suggest_workflows",
@@ -612,6 +619,13 @@ def tier_for(name: str, params: dict | None = None) -> str:
         if action in {"list", "use"}:
             return TIER_SAFE
         return TIER_DANGEROUS if action in {"create", "delete"} else TIER_SENSITIVE
+    if name in _FEATURE_TIERS:
+        # Cherry Studio parity tools: reads are free, edits are routine (SENSITIVE),
+        # irreversible or owner-level operations need approval.
+        safe, dangerous = _FEATURE_TIERS[name]
+        if action in dangerous:
+            return TIER_DANGEROUS
+        return TIER_SAFE if action in safe else TIER_SENSITIVE
     if name == "self_update":
         return TIER_SAFE if operation == "check" else TIER_DANGEROUS
     if name == "open_app":

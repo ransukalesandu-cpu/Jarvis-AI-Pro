@@ -1780,8 +1780,9 @@ class JarvisLive(
             from jarvis.core import mcp_client
             from jarvis.core.skills import get_skill_registry
             from jarvis.core import standing_orders
+            from jarvis import assistants
             for extra in (standing_orders.prompt_block(), get_skill_registry().index_text(),
-                          mcp_client.get_manager().index_text()):
+                          mcp_client.get_manager().index_text(), assistants.prompt_block()):
                 if extra:
                     parts.append(extra)
         except Exception as exc:

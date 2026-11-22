@@ -4,7 +4,7 @@ Goal: add to JARVIS every Cherry Studio (github.com/CherryHQ/cherry-studio, v2.2
 does not have yet, and wire each one into the JARVIS brain, voice, tool registry and web UI, so it is a
 JARVIS feature, not a separate app.
 
-Status: **plan only, waiting for owner approval.** Nothing below is implemented in this PR.
+Status: **approved 2026-11-22 and implemented** as PRs #301–#313 (P1–P13). Windows-only behaviour (hotkeys, selection, app windows) still needs the owner's Windows smoke test.
 
 ## License rule (clean-room)
 

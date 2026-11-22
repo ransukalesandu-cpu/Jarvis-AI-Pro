@@ -99,7 +99,7 @@ def load_api_keys() -> dict:
 def get_gemini_key() -> str | None:
     """Return the Gemini API key, reading from environment variable first,
     then falling back to config file (which is not committed)."""
-    env_key = os.environ.get("GEMINI_API_KEY", "")
+    env_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
     if env_key and env_key != "YOUR_GEMINI_API_KEY_HERE":
         return env_key.strip()
     return load_api_keys().get("gemini_api_key")

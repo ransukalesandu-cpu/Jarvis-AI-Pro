@@ -49,6 +49,12 @@ def _base_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def write_private_text(path: Path, text: str) -> None:
+    """OAuth tokens are credentials: write them owner-only (0600)."""
+    from jarvis.core.secure_file import write_private_text as _write
+    _write(path, text)
+
+
 def _creds_file() -> Path:
     # Secrets may live outside the checkout: JARVIS_GOOGLE_CREDENTIALS_FILE.
     override = os.environ.get("JARVIS_GOOGLE_CREDENTIALS_FILE", "").strip()
@@ -94,7 +100,7 @@ def get_credentials():
     if creds and creds.expired and creds.refresh_token:
         try:
             creds.refresh(Request())
-            token_file.write_text(creds.to_json(), encoding="utf-8")
+            write_private_text(token_file, creds.to_json())
             return creds
         except Exception:
             creds = None
@@ -109,7 +115,7 @@ def get_credentials():
 
     flow = InstalledAppFlow.from_client_secrets_file(str(creds_file), SCOPES)
     creds = flow.run_local_server(port=0)
-    token_file.write_text(creds.to_json(), encoding="utf-8")
+    write_private_text(token_file, creds.to_json())
     return creds
 
 

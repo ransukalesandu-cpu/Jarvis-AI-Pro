@@ -22,6 +22,7 @@ config/earth_map_cache/
 **/*credential*.json
 .env
 .env.*
+!.env.example
 **/*.pem
 **/*.key
 **/*.p12

@@ -4,6 +4,12 @@ from __future__ import annotations
 _LABELS = {"gemini": "Gemini", "openai": "OpenAI GPT", "anthropic": "Anthropic Claude"}
 
 
+def _gemini_env_key() -> str:
+    """GEMINI_API_KEY / GOOGLE_API_KEY from the environment ("" if unset)."""
+    from jarvis.core import gemini as _gemini
+    return _gemini.env_api_key()
+
+
 def snapshot() -> dict | None:
     try:
         from jarvis.core import provider_settings as ps
@@ -15,7 +21,7 @@ def snapshot() -> dict | None:
         elif p == "anthropic":
             model, has = s["anthropic_model_reasoning"], s["has_anthropic_key"]
         else:
-            model, has = "default", bool(ps._read().get("gemini_api_key"))
+            model, has = "default", bool(ps._read().get("gemini_api_key") or _gemini_env_key())
         return {"provider": _LABELS.get(p, "Gemini"), "model": str(model)[:120] or "default", "connected": bool(has), "fallback": False}
     except (OSError, KeyError, ValueError, TypeError):
         return None   # unknown -> the UI shows "not reported", not a guess

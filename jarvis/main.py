@@ -358,6 +358,10 @@ def _render_prompt(template: str, values: dict) -> str:
 
 def _get_api_key() -> str:
     """Load a non-empty Gemini API key without exposing credentials in errors."""
+    from jarvis.core import gemini as _gemini
+    env_key = _gemini.env_api_key()
+    if env_key:
+        return env_key
     try:
         with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
             config = json.load(f)

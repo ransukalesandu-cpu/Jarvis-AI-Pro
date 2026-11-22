@@ -1,5 +1,4 @@
 #youtube_video.py
-import json
 import re
 import sys
 import subprocess
@@ -46,8 +45,12 @@ _YT_VIDEO_FILTER = "EgIQAQ%3D%3D"
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    # One source of truth: env (GEMINI_API_KEY / GOOGLE_API_KEY), then config/api_keys.json.
+    from jarvis.core import gemini as _gemini
+    key = _gemini.api_key(refresh=True)
+    if not key:
+        raise KeyError("gemini_api_key")
+    return key
 
 
 def _open_url(url: str) -> None:

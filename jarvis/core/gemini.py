@@ -179,9 +179,24 @@ _key_lock = threading.Lock()
 _cached_key: str | None = None
 
 
+# Environment variables take precedence over config/api_keys.json so the key
+# can live in a local .env / the OS environment instead of a file on disk.
+GEMINI_KEY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
+
+
+def env_api_key() -> str:
+    """Return the Gemini key from the environment, or "" when none is set."""
+    for name in GEMINI_KEY_ENV_VARS:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return ""
+
+
 def api_key(refresh: bool = False) -> str:
     """
-    Return the Gemini API key from config/api_keys.json.
+    Return the Gemini API key: GEMINI_API_KEY / GOOGLE_API_KEY from the
+    environment first, otherwise ``gemini_api_key`` in config/api_keys.json.
 
     The key is cached so normal calls do not repeatedly read the file.
 
@@ -191,6 +206,11 @@ def api_key(refresh: bool = False) -> str:
 
     with _key_lock:
         if _cached_key is not None and not refresh:
+            return _cached_key
+
+        env_key = env_api_key()
+        if env_key:
+            _cached_key = env_key
             return _cached_key
 
         try:

@@ -6,6 +6,22 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+- **Telemetry removed from the NextChat web app (`web/`)**: the upstream default Google Analytics
+  ID (`G-89WN60ZK2E`), Vercel Analytics, Vercel Speed Insights, the Google Fonts fetch and the
+  automatic GitHub update check. GA/GTM load only if `GA_ID`/`GTM_ID` are set.
+- **Telemetry opt-outs** (`DO_NOT_TRACK`, `HF_HUB_DISABLE_TELEMETRY`, ...) applied as the `jarvis`
+  package loads (`jarvis/core/privacy.py`).
+- **`OFFLINE=1` kill switch**: refuses non-local DNS lookups and connections; LAN stays reachable
+  unless `JARVIS_OFFLINE_LAN=0`. Kokoro no longer tries to download its model while offline.
+- **Dashboard** serves the committed CryptoJS and no longer downloads it from a CDN at import.
+- **Secrets**: `GEMINI_API_KEY`/`GOOGLE_API_KEY` override `config/api_keys.json` everywhere the
+  Gemini key is read; local `.env` loader (`jarvis/core/local_env.py`) and root `.env.example`;
+  `api_keys.json` and the Google OAuth token are written owner-only (0600) and tightened at start.
+- **`.gitignore`** covers `.env.*`, keys/certs and credential JSON files at any depth.
+- **Secret scanning**: `detect-secrets` pre-commit hook + blocking CI job with `.secrets.baseline`.
+- `NETWORK.md` lists every remaining outbound call. Supabase project ref removed from docs.
+
 ### Added
 - **Circuit-board hologram face** (web UI): after the owner's reference, the head is a dark glass skin
   with thick glowing orange traces designed on the MediaPipe landmarks (forehead channel, brows,

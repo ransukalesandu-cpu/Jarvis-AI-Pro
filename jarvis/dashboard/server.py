@@ -24,7 +24,7 @@ from jarvis.core import failsoft
 
 _DEPS_OK = False
 try:
-    from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+    from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
     from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, PlainTextResponse
     import uvicorn
     _DEPS_OK = True
@@ -78,6 +78,10 @@ def _make_uploads_dir() -> Path:
 UPLOADS_DIR = _make_uploads_dir()
 
 def _get_gemini_key() -> str | None:
+    from jarvis.core import gemini as _gemini
+    env_key = _gemini.env_api_key()
+    if env_key:
+        return env_key
     try:
         import json as _json
         with open(BASE_DIR / "config" / "api_keys.json", "r", encoding="utf-8") as f:
@@ -109,9 +113,10 @@ def _decrypt_cbc(aes_key: bytes, enc_b64: str) -> str:
     return (unpadder.update(padded) + unpadder.finalize()).decode('utf-8')
 
 
-# ── CryptoJS (auto-download once, served locally) ─────────────────────────────
-_CRYPTOJS_CDN  = ("https://cdnjs.cloudflare.com/ajax/libs/"
-                  "crypto-js/4.2.0/crypto-js.min.js")
+# ── CryptoJS (vendored, served locally) ──────────────────────────────────────
+# crypto-js.min.js is committed under static/. It used to be fetched from a CDN
+# at import time with no integrity check and the route fell back to a CDN
+# redirect; both were outbound calls and a supply-chain risk, so they are gone.
 _CRYPTOJS_FILE = STATIC_DIR / "crypto-js.min.js"
 
 
@@ -126,20 +131,6 @@ def _ensure_network_access(port: int) -> None:
     return
 
 
-def _ensure_crypto_js() -> None:
-    if _CRYPTOJS_FILE.exists():
-        return
-    try:
-        import urllib.request
-        print("[Dashboard] Downloading CryptoJS (one-time setup)…")
-        urllib.request.urlretrieve(_CRYPTOJS_CDN, str(_CRYPTOJS_FILE))
-        print("[Dashboard] CryptoJS cached — will serve locally from now on.")
-    except Exception as e:
-        print(f"[Dashboard] CryptoJS download failed: {e}")
-        print(f"[Dashboard] Encryption will fall back to CDN load on client.")
-
-
-_ensure_crypto_js()
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -532,14 +523,13 @@ class DashboardServer:
                         return JSONResponse({"error": "Forbidden cross-origin request"}, status_code=403)
             return await call_next(request)
 
-        # serve CryptoJS from local cache, fallback to CDN redirect
+        # serve the vendored CryptoJS; never redirect to a third-party CDN
         @app.get("/static/crypto.js")
         async def serve_crypto():
             if _CRYPTOJS_FILE.exists():
                 return FileResponse(str(_CRYPTOJS_FILE),
                                     media_type="application/javascript")
-            from fastapi.responses import RedirectResponse
-            return RedirectResponse(_CRYPTOJS_CDN)
+            raise HTTPException(status_code=404, detail="crypto-js.min.js missing from dashboard/static")
 
         @app.get("/health")
         async def health_check():

@@ -43,10 +43,9 @@ def _read() -> dict:
 
 
 def _write(data: dict) -> None:
-    _CONFIG.parent.mkdir(parents=True, exist_ok=True)
-    temporary = _CONFIG.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(data, indent=4), encoding="utf-8")
-    os.replace(temporary, _CONFIG)
+    # Owner-only (0600) atomic write: this file holds provider API keys.
+    from jarvis.core.secure_file import write_private_text
+    write_private_text(_CONFIG, json.dumps(data, indent=4))
 
 
 def get_active_provider() -> str:

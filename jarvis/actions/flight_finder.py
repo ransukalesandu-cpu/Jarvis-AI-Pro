@@ -20,8 +20,12 @@ API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    # One source of truth: env (GEMINI_API_KEY / GOOGLE_API_KEY), then config/api_keys.json.
+    from jarvis.core import gemini as _gemini
+    key = _gemini.api_key(refresh=True)
+    if not key:
+        raise KeyError("gemini_api_key")
+    return key
 
 _MONTH_MAP: dict[str, int] = {
 

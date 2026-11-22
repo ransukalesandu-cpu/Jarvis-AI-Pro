@@ -1,0 +1,4 @@
+# Optional offline speech-to-text (dictation, audio file transcripts). Not needed for normal JARVIS use.
+#     python -m pip install -r requirements-stt.txt
+# The Whisper model downloads once from huggingface.co into the JARVIS data folder, then runs offline.
+faster-whisper>=1.0,<2

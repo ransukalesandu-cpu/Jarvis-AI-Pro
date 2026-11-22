@@ -569,6 +569,7 @@ _FEATURE_TIERS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "file_library": (frozenset({"list", "search", "forget_missing"}), frozenset({"send_to_phone"})),
     "mini_app": (frozenset({"list"}), frozenset({"add", "remove"})),
     "global_search": (frozenset({"search"}), frozenset({"clear_history"})),
+    "dictation": (frozenset({"status", "stop"}), frozenset()),
 }
 
 

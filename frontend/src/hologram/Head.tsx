@@ -11,7 +11,7 @@ import { Ears } from './Ears';
 import { SHAPED } from './shape';
 import mesh from './headMesh.json';
 import { COLORS } from './palette';
-import { glassMaterial, twinkleMaterial } from './glass';
+import { glassMaterial } from './glass';
 import { useUi } from '../store';
 
 const base = Float32Array.from(SHAPED);     // re-proportioned to the reference face (shape.ts)
@@ -100,7 +100,6 @@ export function Head() {
       // skull, back traces) is not drawn through it. Pushed back a hair so the surface lines still pass.
       occluder: new MeshBasicMaterial({ colorWrite: false, depthWrite: true, transparent: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
       eyeMats: [eyeMaterial(1.7), eyeMaterial(5.3)],
-      nodes: twinkleMaterial(COLORS.node, 0.014, 0.08),
     };
   }, []);
   const { pos, faceGeo, edgeGeo, fillGeo, viaGeo, pulseGeo, allPaths, rings, main, contour, nose, neckLines, glass, occluder, eyeMats } = built;
@@ -168,7 +167,6 @@ export function Head() {
       group.current.position.y = Math.sin(t * 0.8) * 0.012 * reduced;
     }
     glass.uniforms.boost.value = (speaking ? ui.outputLevel * 0.6 : 0) + 0.05 * Math.sin(t * 1.3) * reduced;
-    built.nodes.uniforms.time.value = t * reduced;
     if (edgeRef.current) (edgeRef.current.material as { opacity: number }).opacity = 0.04 + (speaking ? 0.04 : 0);
     // Traces breathe; brighter while JARVIS works, and with the voice.
     const glow = (working ? 1 : 0.8) + 0.08 * Math.sin(t * 2.1) * reduced + (speaking ? ui.outputLevel * 0.3 : 0);

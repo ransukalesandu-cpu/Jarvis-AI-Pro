@@ -58,7 +58,8 @@ export type UiRequest =
   | { kind: 'command.submit'; text: string }
   | { kind: 'news.open'; index: number }
   | { kind: 'job.cancel'; id: string }
-  | { kind: 'control.do'; action: ControlAction };
+  | { kind: 'control.do'; action: ControlAction }
+  | { kind: 'hologram.capability'; webgl2: boolean };
 
 export const COMMAND_MAX = 500;
 export const COMMAND_REASONS = ['sent', 'empty', 'too_long', 'locked', 'auth_required', 'silent', 'guest', 'credential', 'rate_limited', 'unavailable', 'done', 'noop'] as const;

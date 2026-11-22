@@ -14,6 +14,7 @@ from . import provider_info
 from .contract import ASSISTANT_STATES
 
 AUDIO_MIN_INTERVAL = 0.05  # 20 Hz is plenty for a level meter and keeps the bridge quiet
+MIRROR_WINDOW = 0.25       # an AUDIO_LEVEL equal to the mic level set this recently is the mic's mirror
 
 
 def map_state(value) -> str | None:
@@ -27,7 +28,10 @@ class LiveLink:
         self._bus = bus or ui_state.bus()
         self._clock = clock
         self._last_audio = -1e9
+        self._last_input = -1e9
+        self._input_seen: tuple[float, float] | None = None   # (value, time) of the last mic level
         self._unsub = [
+            self._bus.subscribe(ui_state.INPUT_LEVEL, self._on_bus),
             self._bus.subscribe(ui_state.ASSISTANT, self._on_bus),
             self._bus.subscribe(ui_state.AUDIO_LEVEL, self._on_bus),
             self._bus.subscribe(ui_state.PERSONA, self._on_bus),
@@ -59,12 +63,27 @@ class LiveLink:
             st = map_state(value)
             if st:
                 self._host.set_state(st)
+        elif key == ui_state.INPUT_LEVEL:
+            try:
+                lvl = float(value or 0.0)
+            except (TypeError, ValueError):
+                return
+            now = self._clock()
+            self._input_seen = (lvl, now)
+            if force or lvl == 0.0 or now - self._last_input >= AUDIO_MIN_INTERVAL:
+                self._last_input = now
+                self._host.set_level(lvl, "input")
         elif key == ui_state.AUDIO_LEVEL:
             try:
                 lvl = float(value or 0.0)
             except (TypeError, ValueError):
                 return
             now = self._clock()
+            # The mic level is mirrored into AUDIO_LEVEL for the classic HUD right after INPUT_LEVEL;
+            # that copy is not JARVIS's voice, so it is not forwarded as "output".
+            seen = self._input_seen
+            if seen is not None and seen[0] == lvl and now - seen[1] <= MIRROR_WINDOW:
+                return
             if force or lvl == 0.0 or now - self._last_audio >= AUDIO_MIN_INTERVAL:
                 self._last_audio = now
                 self._host.set_level(lvl, "output")

@@ -19,6 +19,7 @@ from typing import Any
 # Well-known keys. Anything else is allowed; these are what the HUD uses.
 ASSISTANT = "assistant.state"      # idle / listening / thinking / speaking / sleeping / error
 AUDIO_LEVEL = "audio.level"        # 0..1, the voice being played or heard
+INPUT_LEVEL = "audio.input_level"  # 0..1, the microphone only (also mirrored into AUDIO_LEVEL)
 MUTED = "audio.muted"
 PROVIDER = "provider.active"      # bumped whenever the one-shot AI provider settings change
 PERSONA = "persona"                # jarvis / bihansa

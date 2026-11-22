@@ -11,6 +11,7 @@ class WebUIBridge(QObject):
     event = pyqtSignal(str)            # Python -> page (validated JSON)
     ready = pyqtSignal()               # the page connected and subscribed
     ping_received = pyqtSignal(int)    # heartbeat from the page
+    capability = pyqtSignal(bool)      # the page can (True) or cannot (False) render the 3D hologram
 
     def __init__(self, parent=None, store: WorkspaceStore | None = None, gate=None, controls=None, links=None, jobs=None):
         super().__init__(parent)
@@ -30,6 +31,8 @@ class WebUIBridge(QObject):
             self.ready.emit()
         elif msg["kind"] == "ping":
             self.ping_received.emit(int(msg["n"]))
+        elif msg["kind"] == "hologram.capability":
+            self.capability.emit(bool(msg["webgl2"]))
         elif msg["kind"] == "workspace.save":
             if self.store.save(msg["name"], msg["layout"]) and msg["name"].strip().lower() != LAST:
                 self._publish_list()

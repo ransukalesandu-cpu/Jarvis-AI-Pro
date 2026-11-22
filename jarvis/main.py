@@ -815,6 +815,11 @@ class JarvisLive(
             start_if_configured(self._on_text_command)
         except Exception:
             failsoft.suppress("main:telegram_channel")
+        try:                                        # Quick Assistant selection hotkey (Windows)
+            from jarvis.quick import start_hotkey
+            start_hotkey(self._on_text_command)
+        except Exception:
+            failsoft.suppress("main:quick_assistant")
         self.ui.on_remote_clicked = self._make_remote_key
         self.ui.on_interrupt      = self.interrupt
         self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session

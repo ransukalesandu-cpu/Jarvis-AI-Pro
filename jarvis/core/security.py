@@ -560,6 +560,7 @@ _FEATURE_TIERS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                   frozenset({"delete_base"})),
     "telegram": (frozenset({"status"}), frozenset({"pair", "send_file"})),
     "translate": (frozenset({"text", "history"}), frozenset()),
+    "quick_action": (frozenset(), frozenset()),
 }
 
 

@@ -9,6 +9,8 @@ import json
 import math
 from typing import Any
 
+from jarvis.core.task_flow import FLOW_SOURCES, FLOW_STATES, MAX_STEPS, STEP_STATES, VIEWS as FLOW_VIEWS
+
 from .command_gate import ACTIONS, AVAILABILITY, MAX_TEXT, REASONS
 from .redact import KINDS as LOG_KINDS, MAX_LINE
 from .workspace_store import clean_name, validate_layout
@@ -38,6 +40,30 @@ def _battery_ok(b: Any) -> bool:
 def _net_ok(n: Any) -> bool:
     return n is None or (isinstance(n, dict) and set(n) == {"upKBps", "downKBps"}
                          and _num(n["upKBps"], 0, 1e7) and _num(n["downKBps"], 0, 1e7))
+
+
+_FLOW_KEYS = {"id", "title", "source", "state", "startedAt", "finishedAt", "steps"}
+_STEP_KEYS = {"id", "tool", "label", "status", "detail", "startedAt", "finishedAt"}
+
+
+def _time_ok(v: Any, nullable: bool = True) -> bool:
+    return (nullable and v is None) or _num(v, 0, 4e12)
+
+
+def _step_ok(s: Any) -> bool:
+    return (isinstance(s, dict) and set(s) == _STEP_KEYS and _str(s["id"], 8) and _str(s["tool"], 48)
+            and _str(s["label"], 80) and s["status"] in STEP_STATES
+            and isinstance(s["detail"], str) and len(s["detail"]) <= 100
+            and _time_ok(s["startedAt"]) and _time_ok(s["finishedAt"]))
+
+
+def flow_ok(f: Any) -> bool:
+    """One Task Flow snapshot (core/task_flow.py): bounded text, closed state sets, no arguments."""
+    return (isinstance(f, dict) and set(f) == _FLOW_KEYS and _str(f["id"], 40) and _str(f["title"], 120)
+            and f["source"] in FLOW_SOURCES and f["state"] in FLOW_STATES
+            and _time_ok(f["startedAt"], nullable=False) and _time_ok(f["finishedAt"])
+            and isinstance(f["steps"], list) and len(f["steps"]) <= MAX_STEPS
+            and all(_step_ok(s) for s in f["steps"]))
 
 
 _EVENTS = {
@@ -71,6 +97,8 @@ _EVENTS = {
                              and isinstance(j["name"], str) and 0 < len(j["name"]) <= 80
                              and j["status"] in JOB_STATES and _num(j["startedAt"], 0, 4e12)
                              and (j["finishedAt"] is None or _num(j["finishedAt"], 0, 4e12)) for j in m["jobs"])),
+    "task.flow": ({"flow"}, lambda m: flow_ok(m["flow"])),
+    "ui.task_flow": ({"view"}, lambda m: m["view"] in FLOW_VIEWS),
     "host.hello": ({"version"}, lambda m: _num(m["version"], 0, 1000)),
 }
 

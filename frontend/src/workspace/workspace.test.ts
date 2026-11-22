@@ -83,3 +83,25 @@ describe('window store', () => {
     expect(w.x + w.w).toBeLessThanOrEqual(700); expect(w.y + w.h).toBeLessThanOrEqual(500);
   });
 });
+
+describe('pages open as floating windows', () => {
+  beforeEach(() => { useWindows.setState({ windows: [], viewport: { w: 1600, h: 900 } }); });
+  it('go() opens a draggable window instead of the side panel, once per kind', async () => {
+    const { useUi } = await import('../store');
+    useUi.getState().go('monitor');
+    useUi.getState().go('monitor');
+    useUi.getState().go('tasks');
+    expect(useUi.getState().page).toBe('home');
+    expect(useWindows.getState().windows.map((w) => w.kind)).toEqual(['monitor', 'tasks']);
+    const tasks = useWindows.getState().windows[1];
+    expect(tasks.w).toBeGreaterThan(600);                    // the Task Progress window gets room for its canvas
+    expect(tasks.x + tasks.w).toBeLessThanOrEqual(1600);
+  });
+  it('home and not-yet-ready pages keep the old behaviour', async () => {
+    const { useUi } = await import('../store');
+    useUi.getState().go('security');
+    expect(useUi.getState().page).toBe('security');
+    useUi.getState().go('home');
+    expect(useWindows.getState().windows).toEqual([]);
+  });
+});

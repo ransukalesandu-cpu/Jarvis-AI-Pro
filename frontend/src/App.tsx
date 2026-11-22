@@ -14,6 +14,8 @@ import { Controls } from './ui/Controls';
 import { PendingWatch, StartupSkeleton, useStartupLoading, SyncStatus, Toast } from './ui/Feedback';
 import { useWindows } from './workspace/windows';
 import { sendRequest } from './bridge/bridge';
+import { TaskFlowWindow } from './taskflow/TaskFlowWindow';
+import { useFlows } from './taskflow/flows';
 
 export default function App() {
   const link = useUi((s) => s.link);
@@ -25,6 +27,8 @@ export default function App() {
   const wins = useWindows((s) => s.windows);
   const setPalette = useUi((s) => s.setPalette);
   const loading = useStartupLoading();
+  const pageRequested = useFlows((s) => s.pageRequested);
+  useEffect(() => { if (pageRequested) useUi.getState().go('tasks'); }, [pageRequested]);   // "open the task progress page"
   useEffect(() => {
     const sync = () => useWindows.getState().setViewport({ w: innerWidth, h: innerHeight });
     sync();
@@ -58,6 +62,7 @@ export default function App() {
       <SyncStatus />
       <PageView />
       <Windows />
+      <TaskFlowWindow />
       <Tray />
       <ReplyPanel />
       <CommandBar />

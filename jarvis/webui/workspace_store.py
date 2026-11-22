@@ -14,9 +14,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-WINDOW_KINDS = frozenset({"monitor", "models", "activity", "log", "timer", "bento", "news", "jobs"})
+WINDOW_KINDS = frozenset({"monitor", "models", "activity", "log", "timer", "bento", "news", "jobs", "tasks"})
 WINDOW_STATES = frozenset({"normal", "minimized", "maximized"})
-PAGES = frozenset({"home", "chat", "activity", "models", "research", "reminders", "apps", "files", "memory", "automation", "monitor", "security"})
+PAGES = frozenset({"home", "chat", "activity", "models", "research", "reminders", "apps", "files", "memory", "automation", "monitor", "security", "tasks"})
 MAX_WINDOWS = 12
 MAX_WORKSPACES = 24
 LAST = "_last"                      # autosaved layout restored on start; hidden from the user's list

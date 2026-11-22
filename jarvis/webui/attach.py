@@ -79,5 +79,8 @@ def attach(window):
 
     host._log_feed = LogFeed(gate.availability, parent=host)
     host._log_feed.line.connect(host.push_log)
+    from .task_feed import TaskFeed
+
+    host._task_feed = TaskFeed(host, gate.availability)
     window._web_ui = host
     return host

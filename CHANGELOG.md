@@ -7,6 +7,13 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Task Flow window + Task Progress page** (web UI, `JARVIS_UI=web`). Every command or autonomous
+  task is drawn as a node canvas: a JARVIS brain node with coloured wires to one card per step
+  (live status, time, short redacted result). A new task pops the window up for 5 s, then it hides;
+  "show the task progress window" (new `show_task_progress` tool), the palette or the page brings it
+  back pinned. The **Task Progress** page lists this session's tasks. Source: `jarvis/core/task_flow.py`
+  fed by live tool calls and `AgentService`; forwarded by `jarvis/webui/task_feed.py` only while the
+  assistant is unlocked (not locked / PIN / guest).
 - **Computer Control — Project 8: benchmarks** — `python -m jarvis.computer_control.bench suite`:
   13 synthetic, non-destructive scenarios with state checkers and the master prompt's metrics.
 - **Computer Control — Project 7: registry** — `cc_file` (Recycle-Bin deletes, no silent overwrite)

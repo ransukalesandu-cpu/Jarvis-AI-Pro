@@ -15,7 +15,11 @@ describe('store', () => {
   it('navigation closes the menu', () => {
     useUi.getState().toggleNav(true);
     useUi.getState().go('monitor');
-    expect(useUi.getState().page).toBe('monitor');
+    expect(useUi.getState().page).toBe('home');            // monitor now opens as a floating window
+    expect(useUi.getState().navOpen).toBe(false);
+    useUi.getState().toggleNav(true);
+    useUi.getState().go('security');
+    expect(useUi.getState().page).toBe('security');
     expect(useUi.getState().navOpen).toBe(false);
   });
 });

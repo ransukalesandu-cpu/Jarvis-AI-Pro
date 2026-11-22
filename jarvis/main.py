@@ -810,6 +810,11 @@ class JarvisLive(
         self.ui.on_push_to_talk   = self.set_push_to_talk
         self.ui.ptt_hold          = self._on_ptt
         self.ui.on_text_command   = self._on_text_command
+        try:                                        # Telegram channel (only when a bot token is configured)
+            from jarvis.channels import start_if_configured
+            start_if_configured(self._on_text_command)
+        except Exception:
+            failsoft.suppress("main:telegram_channel")
         self.ui.on_remote_clicked = self._make_remote_key
         self.ui.on_interrupt      = self.interrupt
         self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session

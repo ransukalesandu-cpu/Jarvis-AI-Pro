@@ -53,3 +53,17 @@ describe('forehead chips', () => {
     expect(chipData({ cpu: 140, ram: -3 }, 'idle')[0].frac).toBe(1);
   });
 });
+
+describe('reference head shape', () => {
+  it('keeps the eyes, raises the dome, narrows and lengthens the neck', async () => {
+    const { reshape, CROWN, NECK_BOTTOM } = await import('./shape');
+    expect(reshape(0.28, 0.08, 0.32)).toEqual([0.28, 0.08, 0.32]);          // eye line unchanged
+    expect(reshape(0, 1, 0)[1]).toBeGreaterThan(1.1);                        // taller dome
+    expect(reshape(0.5, -1.2, 0.1)[0]).toBeCloseTo(0.4);                     // narrower neck
+    expect(reshape(0.5, -1.2, 0.1)[1]).toBeLessThan(-1.3);                   // longer neck
+    expect(CROWN).toBeGreaterThan(1.1);
+    expect(NECK_BOTTOM).toBeLessThan(-1.45);
+    const [l] = reshape(-0.4, -0.6, 0.3), [r] = reshape(0.4, -0.6, 0.3);
+    expect(l).toBeCloseTo(-r);                                               // still symmetric
+  });
+});

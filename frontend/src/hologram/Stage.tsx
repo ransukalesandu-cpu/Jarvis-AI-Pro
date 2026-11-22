@@ -8,7 +8,8 @@ import { COLORS, orbColor } from './palette';
 import { glassMaterial, rng, twinkleMaterial } from './glass';
 import { useUi } from '../store';
 
-export const LAYOUT = { head: { x: 0, y: 0.55 }, neckY: -0.66, orb: { x: 0, y: -1.42, r: 0.3 } };
+// neckY: the bottom of the reshaped neck in the scene (head y + NECK_BOTTOM x head scale 0.95).
+export const LAYOUT = { head: { x: 0, y: 0.55 }, neckY: -0.88, orb: { x: 0, y: -1.62, r: 0.28 } };
 const STRANDS = 28;
 
 const add = (color: Color, opacity: number) => ({ color, transparent: true, opacity, blending: AdditiveBlending, depthWrite: false } as const);

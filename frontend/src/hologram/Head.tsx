@@ -7,12 +7,14 @@ import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeome
 import { Eye, eyeMaterial } from './Eye';
 import { ForeheadChips } from './FaceData';
 import { buildFaceCircuit, neckRuns } from './faceCircuit';
+import { Ears } from './Ears';
+import { SHAPED } from './shape';
 import mesh from './headMesh.json';
 import { COLORS } from './palette';
 import { glassMaterial, twinkleMaterial } from './glass';
 import { useUi } from '../store';
 
-const base = Float32Array.from(mesh.verts);
+const base = Float32Array.from(SHAPED);     // re-proportioned to the reference face (shape.ts)
 const jaw = Float32Array.from(mesh.jaw);
 const [, pivotY, pivotZ] = mesh.jawPivot;
 
@@ -211,6 +213,7 @@ export function Head() {
         </mesh>
       ))}
       <ForeheadChips />
+      <Ears />
       {([[exl, eyl, ezl, eyeL, 0], [exr, eyr, ezr, eyeR, 1]] as const).map(([x, y, z, ref, i]) => (
         <group key={i} position={[x, y, z + 0.015]}>
           <Eye ref={ref} material={eyeMats[i]} size={0.34} />

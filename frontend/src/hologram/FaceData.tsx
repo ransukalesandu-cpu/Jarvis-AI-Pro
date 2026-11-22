@@ -1,6 +1,9 @@
 import { useEffect, useMemo } from 'react';
 import { AdditiveBlending, CanvasTexture, LinearFilter, SRGBColorSpace } from 'three';
 import { useUi } from '../store';
+import { reshape } from './shape';
+
+const CHIP_TOP_Y = reshape(0, 0.49, 0.45)[1], CHIP_LOW_Y = reshape(0, 0.315, 0.5)[1];
 
 /** What one forehead chip shows. `frac` is 0..1 for the meter, null when there is no reading yet. */
 export interface ChipData { label: string; value: string; frac: number | null; foot?: string }
@@ -98,11 +101,11 @@ export function ForeheadChips() {
   useEffect(() => () => { top.tex.dispose(); low.tex.dispose(); }, [top, low]);
   return (
     <group>
-      <mesh position={[0, 0.49, 0.45]} rotation={[-0.42, 0, 0]} renderOrder={7}>
+      <mesh position={[0, CHIP_TOP_Y, 0.45]} rotation={[-0.42, 0, 0]} renderOrder={7}>
         <planeGeometry args={[0.36, 0.21]} />
         <meshBasicMaterial map={top.tex} transparent blending={AdditiveBlending} depthWrite={false} depthTest={false} />
       </mesh>
-      <mesh position={[0, 0.315, 0.5]} rotation={[-0.22, 0, 0]} renderOrder={7}>
+      <mesh position={[0, CHIP_LOW_Y, 0.5]} rotation={[-0.22, 0, 0]} renderOrder={7}>
         <planeGeometry args={[0.27, 0.127]} />
         <meshBasicMaterial map={low.tex} transparent blending={AdditiveBlending} depthWrite={false} depthTest={false} />
       </mesh>

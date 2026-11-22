@@ -6,8 +6,9 @@
  */
 import mesh from './headMesh.json';
 import { rng } from './glass';
+import { NECK_BOTTOM, SHAPED } from './shape';
 
-const V = mesh.verts;
+const V = SHAPED;                     // the head re-proportioned to the reference (shape.ts)
 const N = V.length / 3;
 const x = (i: number) => V[i * 3], y = (i: number) => V[i * 3 + 1], z = (i: number) => V[i * 3 + 2];
 
@@ -142,7 +143,7 @@ export function buildFaceCircuit(): FaceCircuit {
 }
 
 /** Front surface of the neck (it is a low-poly tube): z for a given x, fitted to its vertex rings. */
-export const neckZ = (xx: number) => -0.1 + 0.45 * Math.sqrt(Math.max(0, 1 - (xx / 0.58) ** 2)) + 0.012;
+export const neckZ = (xx: number) => -0.1 + 0.45 * Math.sqrt(Math.max(0, 1 - (xx / (0.58 * 0.8)) ** 2)) + 0.012;
 
 /**
  * Neck traces like the reference: vertical runs from under the jaw down to the base, some stepping
@@ -151,10 +152,10 @@ export const neckZ = (xx: number) => -0.1 + 0.45 * Math.sqrt(Math.max(0, 1 - (xx
  */
 export function neckRuns(count = 10): { segs: number[]; rings: [number, number, number][]; paths: [number, number, number][][] } {
   const segs: number[] = [], rings: [number, number, number][] = [], paths: [number, number, number][][] = [];
-  const top = -1.05, bottom = -1.31;
+  const top = -1.06, bottom = NECK_BOTTOM + 0.02;
   for (let k = 0; k < count; k++) {
-    const x0 = -0.42 + (0.84 * k) / (count - 1);
-    const step = k % 3 === 1 ? Math.sign(x0 || 1) * 0.05 : 0;
+    const x0 = -0.34 + (0.68 * k) / (count - 1);
+    const step = k % 3 === 1 ? Math.sign(x0 || 1) * 0.04 : 0;
     const mid = top + (bottom - top) * (0.35 + 0.1 * (k % 2));
     const pts: [number, number][] = step ? [[x0, top], [x0, mid], [x0 + step, mid - 0.04], [x0 + step, bottom]] : [[x0, top], [x0, bottom]];
     const path = pts.map(([xx, yy]) => [xx, yy, neckZ(xx)] as [number, number, number]);

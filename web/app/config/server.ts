@@ -256,7 +256,7 @@ export const getServerSideConfig = () => {
     ai302ApiKey: getApiKey(process.env.AI302_API_KEY),
 
     gtmId: process.env.GTM_ID,
-    gaId: process.env.GA_ID || DEFAULT_GA_ID,
+    gaId: process.env.GA_ID || DEFAULT_GA_ID || undefined,
 
     needCode: ACCESS_CODES.size > 0,
     code: process.env.CODE,

@@ -89,10 +89,6 @@ if (mode !== "export") {
         destination: "https://api.anthropic.com/:path*",
       },
       {
-        source: "/google-fonts/:path*",
-        destination: "https://fonts.googleapis.com/:path*",
-      },
-      {
         source: "/sharegpt",
         destination: "https://sharegpt.com/api/conversations",
       },

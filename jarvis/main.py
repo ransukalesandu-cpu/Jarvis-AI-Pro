@@ -830,6 +830,11 @@ class JarvisLive(
             usage_meter.set_notifier(self._notify_owner)
         except Exception:
             failsoft.suppress("main:usage_meter")
+        try:                                        # local conversation archive for global search
+            from jarvis.search import start_archive
+            start_archive()
+        except Exception:
+            failsoft.suppress("main:conversation_archive")
         self.ui.on_remote_clicked = self._make_remote_key
         self.ui.on_interrupt      = self.interrupt
         self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session

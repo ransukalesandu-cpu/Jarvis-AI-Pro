@@ -245,6 +245,10 @@ class HybridLLMRouter:
                     "Hybrid text response completed via %s mode=%s latency_ms=%.2f",
                     provider, result["mode"], result["latency_ms"],
                 )
+                from jarvis.core import usage_meter          # counts only sizes, never text; fail-soft
+                usage_meter.record(provider, str(result.get("model") or ""),
+                                   in_chars=len(prompt) + len(system_prompt), out_chars=len(result["text"]),
+                                   latency_ms=provider_latency_ms)
                 return result
             except Exception as exc:
                 # Demote failed providers on subsequent calls until one succeeds.

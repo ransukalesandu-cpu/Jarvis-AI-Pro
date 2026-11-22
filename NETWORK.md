@@ -26,7 +26,7 @@ a line here.
 | `api.groq.com` | optional fast fallback (`core/hybrid_llm_router.py`) | Only when a Groq key is set. |
 | `127.0.0.1:11434` (Ollama) / LM Studio | local LLM (`core/llm_client.py`) | Local inference — stays on the machine. |
 | `speech.platform.bing.com` (Edge TTS) | default TTS (`core/tts.py`) | Free cloud voice; switch to Kokoro for fully local TTS. |
-| `huggingface.co` | Kokoro TTS / SpeechBrain Voice ID first-run model download (`core/tts.py`, `core/voice_id.py`) | One-time model download; blocked in OFFLINE mode, cached afterwards. |
+| `huggingface.co` | Kokoro TTS / SpeechBrain Voice ID / optional Whisper STT first-run model download (`core/tts.py`, `core/voice_id.py`, `voice/local_stt.py`) | One-time model download; blocked in OFFLINE mode, cached afterwards. |
 | `api.elevenlabs.io` | ElevenLabs TTS (`core/tts.py`) | Only when that TTS engine is selected. |
 | `*.supabase.co` | personal cloud memory, multi-device hub (`core/supabase_cloud_provider.py`, `core/personal_cloud_memory.py`) | Only when `SUPABASE_URL` is configured. |
 | DuckDuckGo / Bing / Google search | `web_search` (`actions/web_search.py`) | User-requested web search. |

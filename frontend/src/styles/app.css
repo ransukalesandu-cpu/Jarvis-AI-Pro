@@ -1119,3 +1119,42 @@ button {
   align-items: center;
   gap: 6px;
 }
+
+/* System Control Center: section tabs */
+.panel.settings {
+  width: 340px;
+}
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 var(--space-2) var(--space-3);
+}
+.settings-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.settings-tab:hover {
+  color: var(--text);
+  background: rgba(47, 155, 255, 0.1);
+}
+.settings-tab[aria-selected='true'] {
+  color: var(--primary-bright);
+  border-color: var(--primary);
+}
+.settings-tab:focus-visible {
+  outline: 2px solid var(--primary-bright);
+  outline-offset: 2px;
+}
+.panel.settings .row span:last-child {
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}

@@ -14,6 +14,7 @@ import type {
     JobRow,
     LogTag,
     NewsItem,
+    MemoryStatus,
     Net,
     Persona,
     PerfTier,
@@ -61,6 +62,7 @@ export interface UiState {
     series: Series;
     metrics: { cpu: number; ram: number; disk: number | null; battery: Battery | null; net: Net | null } | null;
     provider: Provider | null;
+    memory: MemoryStatus | null;
     page: Page;
     navOpen: boolean;
     settingsOpen: boolean;
@@ -120,6 +122,7 @@ export const useUi = create<UiState>((set) => ({
     series: EMPTY,
     metrics: null,
     provider: null,
+    memory: null,
     page: 'home',
     navOpen: false,
     settingsOpen: false,
@@ -156,6 +159,8 @@ export const useUi = create<UiState>((set) => ({
                         },
                         metrics: { cpu: e.cpu, ram: e.ram, disk: e.disk, battery: e.battery, net: e.net },
                     };
+                case 'memory.status':
+                    return { memory: { cloud: e.cloud, personal: e.personal, encrypted: e.encrypted } };
                 case 'provider.changed':
                     return { provider: { provider: e.provider, model: e.model, connected: e.connected, fallback: e.fallback } };
                 case 'command.availability':

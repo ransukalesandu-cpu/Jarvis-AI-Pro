@@ -14,6 +14,7 @@ from . import DIST
 from . import fallback
 from .bridge import WebUIBridge
 from .command_gate import safe_link
+from .memory_status import memory_status
 from .navigation import is_allowed_url
 from .render_perf import RenderPerf
 from .telemetry import Telemetry
@@ -86,6 +87,7 @@ class WebUIHost(QWidget):
         self.bridge.publish("host.hello", version=HOST_VERSION)
         self._push_metrics()
         self.bridge.refresh_availability(force=True)
+        self.bridge.publish("memory.status", **memory_status())
         self.ready.emit()
         if self.isVisible():
             self._timer.start()

@@ -71,3 +71,22 @@ Most of the target architecture in the prompt is already built and merged:
 | `npm run build` | OK; app chunk 565 → 569 kB |
 | `pytest jarvis/tests/test_webui_*.py` | 86 passed, 15 skipped (unchanged) |
 | Qt WebEngine selfcheck (container) | same as baseline: link, live data, canvas PASS |
+
+## Follow-up: System Control Center (prompt §7.4)
+
+Settings is now a tabbed System Control Center with the seven sections the prompt lists. Every control calls a real
+backend action; everything else is a status row with a real value or "not reported".
+
+| Section | Real controls | Real status |
+| --- | --- | --- |
+| General | reduced motion, 24-hour clock, Task Flow auto-show, centre (brain / head), face style | where settings are saved |
+| AI | Features Hub (keys, providers, compare) | provider, model, connected / fallback (`provider.changed`) |
+| Voice | microphone mute / unmute, persona JARVIS / Bihansa (both through `ControlGate`) | voice state (`visualState`) |
+| Security | none: the page cannot change access | access from `command.availability` (allowed / Privacy Lock / verification / guest / silent) |
+| Memory | none | new `memory.status` event: Supabase configured, personal cloud memory on/off, local encryption on/off; no URL, key or content |
+| Performance | rendering tier Auto / Full / Balanced / Lite, FPS overlay | reported tier |
+| Devices | none | backend link, network throughput, other devices: none connected |
+
+Not done, by decision: a fourth "Ultra" tier (the host has three real tiers shared with the classic HUD), memory
+settings changes from the page (opt-in personal memory is privacy-sensitive and stays in JARVIS's own flow), device
+pairing (multi-device phase).

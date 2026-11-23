@@ -7,6 +7,54 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **The brain forms shapes on request** (new `form_shape` tool, SAFE tier):
+  - Ask JARVIS to "turn into a heart", "show a DNA helix", "become a globe" or "write my name". Every
+    neuron of the brain flows into a sphere, cube, torus, helix, heart, globe, star or up to 16
+    letters of text, holds it for 12 seconds, then flows back. "Back to the brain" returns at once.
+  - The shape faces the viewer. Only short synapses stay visible inside it, and the neurons into the
+    orb follow it.
+  - A new shape requested while another is showing first flows back through the brain.
+  - Text is limited to letters, digits and simple punctuation. It is drawn as points, never run or
+    stored.
+  - The shape list and text rules are the same in Python (`core/brain_shapes.py`), the web contract
+    (`hologram.shape`) and the page, and a test keeps them in step.
+- **Neural brain at the centre of the stage** (web UI, now the default; Settings → Hologram → Centre →
+  Hologram head brings the face back):
+  - A procedural 3D brain: two hemispheres with folded cortex, temporal lobes, a cerebellum and a brain
+    stem that runs down into the energy strands. It is made of 4200 / 3000 / 1500 nodes per profile.
+  - The network is live. Nodes fire on their own clocks, and synapses grow out of a node, carry
+    signals and dissolve while new ones form.
+  - Regions light up with the state:
+    - listening: temporal
+    - thinking: frontal
+    - searching: occipital
+    - executing: parietal and cerebellum
+    - speaking: follows the voice
+    - warning: amber
+    - error: red
+    - sleeping: dark
+  - About 30% of the neurons live inside the brain. They drift slowly and rewire faster than the
+    cortex, so the inside of the brain keeps changing.
+  - 36 long neurons leave the brain stem and the brain's underside and curve into the top of the
+    orb, carrying signals down into it. In this mode they replace the head's energy strands and
+    lightning arcs.
+  - The orb and particles stay.
+  - Three draws, all motion on the GPU. Measured 28 draws / 28k triangles, against 54 for the circuit
+    head and 80 for the mechanical head.
+  - The geometry carries a morph target for upcoming "form a shape" commands.
+- **Hologram Engine V2, phase 4: neural energy** (both face styles):
+  - Lightning arcs run from the face to the orb. Their shape and flicker are computed on the GPU, and
+    more arcs are live while JARVIS works or speaks.
+  - GPU particles rise in a helix from the orb up to the neck: 3000 / 1000 / 200 per profile, one
+    draw, all motion in the vertex shader.
+  - Orb v2 has a swirling plasma core tinted by state.
+  - The 28 energy strands are now one draw with light running on the GPU (they were 28 draws plus
+    per-frame CPU work).
+  - The stage moved to `hologram/energy/`.
+  - `frontend/scripts/check_budget.py` measures draw calls and triangles per profile and face style in
+    headless Chromium and fails over budget. Measured: circuit 54 draws / 35k triangles; mechanical
+    80 draws / 49k triangles.
+  - No heart (decision D2).
 - **Hologram Engine V2, phase 3: mechanical eyes** (mechanical face style):
   - A nine-blade aperture iris like a camera's, built as one mesh per eye. Its central opening follows
     the aperture exactly (radius = sin φ).
@@ -285,6 +333,8 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   requirement files, and cancellation of superseded runs.
 
 ### Fixed
+- Adaptive resolution never lowered the DPR on a machine whose every frame takes over 250 ms (it treated
+  them all as stalls); three slow frames in a row now count.
 
 - **Live playback after an interrupt**: when an interrupt aborted a speaker
   write, the rest of the cancelled answer could play once the stream restarted.

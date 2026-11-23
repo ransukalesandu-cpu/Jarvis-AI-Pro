@@ -33,6 +33,10 @@ describe('FrameBudget (adaptive DPR)', () => {
     expect(b.frame(5000)).toBeNull();
     expect(b.current).toBe(1.5);
   });
+  it('a machine that is genuinely slow (every frame > 250 ms) still gets its DPR lowered', () => {
+    const b = new FrameBudget([1, 2], 60);
+    expect(run(b, 400, 12)).toEqual([1.75, 1.5, 1.25, 1]);
+  });
   it('a fixed DPR tier never changes; the budget follows the fps cap', () => {
     const b = new FrameBudget(dprRange(1), 30);
     expect(b.budgetMs).toBeCloseTo(33.3, 1);

@@ -24,7 +24,7 @@ a line here.
 | `api.anthropic.com` | `ask_claude`, text fallback (`core/ai_providers.py`, `core/hybrid_llm_router.py`) | Optional reasoning provider, only when an Anthropic key is set. |
 | `api.openai.com` | optional provider / fallback (`core/ai_providers.py`) | Only when an OpenAI key is set. |
 | `api.groq.com` | optional fast fallback (`core/hybrid_llm_router.py`) | Only when a Groq key is set. |
-| `127.0.0.1:11434` (Ollama) / LM Studio | local LLM (`core/llm_client.py`) | Local inference — stays on the machine. |
+| `127.0.0.1:11434` (Ollama) / LM Studio | local LLM (`core/llm_client.py`), local uncensored fallback (`core/uncensored_fallback.py`) | Local inference — stays on the machine. |
 | `speech.platform.bing.com` (Edge TTS) | default TTS (`core/tts.py`) | Free cloud voice; switch to Kokoro for fully local TTS. |
 | `huggingface.co` | Kokoro TTS / SpeechBrain Voice ID / optional Whisper STT first-run model download (`core/tts.py`, `core/voice_id.py`, `voice/local_stt.py`) | One-time model download; blocked in OFFLINE mode, cached afterwards. |
 | `api.elevenlabs.io` | ElevenLabs TTS (`core/tts.py`) | Only when that TTS engine is selected. |

@@ -72,7 +72,10 @@ def ask(prompt: str, system: str = "You are JARVIS, a capable personal AI assist
         except Exception:
             from jarvis.core import failsoft         # fall back to the normal ladder
             failsoft.suppress("text_brain:profile_provider")
-    return dict(get_router().query(prompt, system_prompt=system, task=task))
+    # Plain chat may fall back to the local uncensored model when a cloud model
+    # refuses (core/uncensored_fallback.py); translate/compare/etc. never do.
+    return dict(get_router().query(prompt, system_prompt=system, task=task,
+                                   allow_uncensored=(task == "chat")))
 
 
 def ask_text(prompt: str, system: str = "You are JARVIS, a capable personal AI assistant.", *, task: str = "chat") -> str:

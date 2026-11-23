@@ -15,14 +15,34 @@
   --text: #dbeaff;
   --text-dim: #8aa4c4;
   --text-faint: #566b88;
-  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
-  --radius-sm: 8px; --radius-md: 12px; --radius-lg: 18px; --radius-pill: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
   --blur: 18px;
   --shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
-  --dur-fast: 120ms; --dur: 220ms; --dur-slow: 420ms;
+  --dur-fast: 120ms;
+  --dur: 220ms;
+  --dur-slow: 420ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --z-scene: 0; --z-hud: 10; --z-nav: 30; --z-settings: 30; --z-toast: 50;
-  --font: 'Segoe UI', 'Inter', system-ui, -apple-system, sans-serif;
+  --z-scene: 0;
+  --z-hud: 10;
+  --z-nav: 30;
+  --z-settings: 30;
+  --z-toast: 50;
+  --font: 'Segoe UI', 'Inter', 'Nirmala UI', 'Iskoola Pota', 'Noto Sans Sinhala', system-ui, -apple-system, sans-serif;
   --mono: 'Cascadia Mono', 'JetBrains Mono', Consolas, monospace;
 }
-@media (prefers-reduced-motion: reduce) { :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; } }
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+  }
+}

@@ -24,14 +24,26 @@ vec3 drift(vec3 p, float ph, float w, float t) {
 }`;
 
 const common = () => ({
-  time: { value: 0 }, morph: { value: 0 }, lobeLevel: { value: [0.25, 0.25, 0.25, 0.25, 0.25, 0.3] },
-  tint: { value: new Color(1, 1, 1) },
+    time: { value: 0 },
+    morph: { value: 0 },
+    lobeLevel: { value: [0.25, 0.25, 0.25, 0.25, 0.25, 0.3] },
+    tint: { value: new Color(1, 1, 1) },
 });
 
 export function nodeMaterial(color: Color, core: Color): ShaderMaterial {
-  return new ShaderMaterial({
-    uniforms: { ...common(), color: { value: color.clone() }, core: { value: core.clone() }, firing: { value: 0.25 }, scale: { value: 1000 }, size: { value: 0.016 } },
-    vertexShader: LOBE_LOOKUP + DRIFT + /* glsl */ `
+    return new ShaderMaterial({
+        uniforms: {
+            ...common(),
+            color: { value: color.clone() },
+            core: { value: core.clone() },
+            firing: { value: 0.25 },
+            scale: { value: 1000 },
+            size: { value: 0.016 },
+        },
+        vertexShader:
+            LOBE_LOOKUP +
+            DRIFT +
+            /* glsl */ `
       attribute vec3 target; attribute float lobe; attribute float phase; attribute float wander;
       uniform float time; uniform float morph; uniform float firing; uniform float scale; uniform float size;
       varying float vGlow; varying float vFire;
@@ -45,7 +57,7 @@ export function nodeMaterial(color: Color, core: Color): ShaderMaterial {
         gl_PointSize = size * (1.0 + fire * 1.6 + act * 0.4) * scale / -mv.z;
         gl_Position = projectionMatrix * mv;
       }`,
-    fragmentShader: /* glsl */ `
+        fragmentShader: /* glsl */ `
       uniform vec3 color; uniform vec3 core; uniform vec3 tint;
       varying float vGlow; varying float vFire;
       void main() {
@@ -55,14 +67,26 @@ export function nodeMaterial(color: Color, core: Color): ShaderMaterial {
         vec3 c = mix(color, core, clamp(vFire + smoothstep(0.2, 0.0, d) * 0.6, 0.0, 1.0)) * tint;
         gl_FragColor = vec4(c * a, a);
       }`,
-    transparent: true, depthWrite: false, blending: AdditiveBlending,
-  });
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+    });
 }
 
 export function synapseMaterial(color: Color, core: Color): ShaderMaterial {
-  return new ShaderMaterial({
-    uniforms: { ...common(), color: { value: color.clone() }, core: { value: core.clone() }, growth: { value: 0.45 }, flow: { value: 0.4 }, boost: { value: 0 } },
-    vertexShader: LOBE_LOOKUP + DRIFT + /* glsl */ `
+    return new ShaderMaterial({
+        uniforms: {
+            ...common(),
+            color: { value: color.clone() },
+            core: { value: core.clone() },
+            growth: { value: 0.45 },
+            flow: { value: 0.4 },
+            boost: { value: 0 },
+        },
+        vertexShader:
+            LOBE_LOOKUP +
+            DRIFT +
+            /* glsl */ `
       attribute vec3 target; attribute float along; attribute float phase; attribute float rate; attribute float lobe; attribute float span;
       attribute float nphase; attribute float wander;
       uniform float time; uniform float morph;
@@ -73,7 +97,9 @@ export function synapseMaterial(color: Color, core: Color): ShaderMaterial {
         vSpan = span;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(mix(drift(position, nphase, wander, time), target, morph), 1.0);
       }`,
-    fragmentShader: compose([CIRCUIT_FLOW], /* glsl */ `
+        fragmentShader: compose(
+            [CIRCUIT_FLOW],
+            /* glsl */ `
       uniform vec3 color; uniform vec3 core; uniform vec3 tint; uniform float time; uniform float growth; uniform float flow; uniform float morph; uniform float boost;
       varying float vAlong; varying float vPhase; varying float vAct; varying float vLife; varying float vSpan;
       void main() {
@@ -86,19 +112,24 @@ export function synapseMaterial(color: Color, core: Color): ShaderMaterial {
         float a = fade * (0.05 + boost + 0.25 * vAct + pulse * (0.45 + vAct)) * (1.0 - morph * smoothstep(0.05, 0.12, vSpan));   // in a shape only very short links stay
         vec3 c = mix(color, core, pulse) * tint;
         gl_FragColor = vec4(c * a, a);
-      }`),
-    transparent: true, depthWrite: false, blending: AdditiveBlending,
-  });
+      }`,
+        ),
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+    });
 }
 
 /** Soft glow behind the brain so it reads as one luminous object. */
 export function haloMaterial(color: Color): ShaderMaterial {
-  return new ShaderMaterial({
-    uniforms: { color: { value: color.clone() }, strength: { value: 0.2 }, tint: { value: new Color(1, 1, 1) } },
-    vertexShader: /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: /* glsl */ `
+    return new ShaderMaterial({
+        uniforms: { color: { value: color.clone() }, strength: { value: 0.2 }, tint: { value: new Color(1, 1, 1) } },
+        vertexShader: /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+        fragmentShader: /* glsl */ `
       uniform vec3 color; uniform float strength; uniform vec3 tint; varying vec2 vUv;
       void main() { float d = length(vUv - 0.5) * 2.0; float a = pow(max(0.0, 1.0 - d), 2.2) * strength; gl_FragColor = vec4(color * tint * a, a); }`,
-    transparent: true, depthWrite: false, blending: AdditiveBlending,
-  });
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+    });
 }

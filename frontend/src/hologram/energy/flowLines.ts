@@ -7,13 +7,22 @@ import { CIRCUIT_FLOW, compose } from '../shaders/chunks';
 
 /** Light packets running down lines; `along` 0 = start, 1 = end; `seed` offsets each line. */
 export function flowLineMaterial(color: Color, core: Color): ShaderMaterial {
-  return new ShaderMaterial({
-    uniforms: { color: { value: color.clone() }, core: { value: core.clone() }, time: { value: 0 }, speed: { value: 0.15 }, base: { value: 0.24 }, gain: { value: 0.6 } },
-    vertexShader: /* glsl */ `
+    return new ShaderMaterial({
+        uniforms: {
+            color: { value: color.clone() },
+            core: { value: core.clone() },
+            time: { value: 0 },
+            speed: { value: 0.15 },
+            base: { value: 0.24 },
+            gain: { value: 0.6 },
+        },
+        vertexShader: /* glsl */ `
       attribute float along; attribute float seed;
       varying float vAlong; varying float vSeed;
       void main() { vAlong = along; vSeed = seed; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: compose([CIRCUIT_FLOW], /* glsl */ `
+        fragmentShader: compose(
+            [CIRCUIT_FLOW],
+            /* glsl */ `
       uniform vec3 color; uniform vec3 core; uniform float time; uniform float speed; uniform float base; uniform float gain;
       varying float vAlong; varying float vSeed;
       void main() {
@@ -21,11 +30,12 @@ export function flowLineMaterial(color: Color, core: Color): ShaderMaterial {
         vec3 c = mix(color, core, f);
         float a = clamp(base * (0.8 + 0.2 * sin(time * 0.9 + vSeed * 11.0)) + f * gain, 0.0, 1.0);
         gl_FragColor = vec4(c * a, a);
-      }`),
-    transparent: true,
-    depthWrite: false,
-    blending: AdditiveBlending,
-  });
+      }`,
+        ),
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+    });
 }
 
 /**
@@ -34,9 +44,9 @@ export function flowLineMaterial(color: Color, core: Color): ShaderMaterial {
  * ends. Each arc flickers on and off on its own.
  */
 export function arcMaterial(color: Color): ShaderMaterial {
-  return new ShaderMaterial({
-    uniforms: { color: { value: color.clone() }, time: { value: 0 }, amp: { value: 0.05 }, energy: { value: 0.3 }, count: { value: 4 } },
-    vertexShader: /* glsl */ `
+    return new ShaderMaterial({
+        uniforms: { color: { value: color.clone() }, time: { value: 0 }, amp: { value: 0.05 }, energy: { value: 0.3 }, count: { value: 4 } },
+        vertexShader: /* glsl */ `
       attribute float along; attribute float arc; attribute vec3 side;
       uniform float time; uniform float amp; uniform float count;
       varying float vAlong; varying float vArc;
@@ -51,7 +61,7 @@ export function arcMaterial(color: Color): ShaderMaterial {
         if (arc >= count) p = vec3(0.0, 0.0, -100.0);                      // arcs beyond the profile's count
         gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
       }`,
-    fragmentShader: /* glsl */ `
+        fragmentShader: /* glsl */ `
       uniform vec3 color; uniform float time; uniform float energy;
       varying float vAlong; varying float vArc;
       float h(float n) { return fract(sin(n) * 43758.5453); }
@@ -61,8 +71,8 @@ export function arcMaterial(color: Color): ShaderMaterial {
         vec3 c = mix(color, vec3(1.0, 0.95, 0.85), 0.55);
         gl_FragColor = vec4(c * a, a);
       }`,
-    transparent: true,
-    depthWrite: false,
-    blending: AdditiveBlending,
-  });
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+    });
 }

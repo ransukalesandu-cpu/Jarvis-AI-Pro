@@ -5,16 +5,18 @@
 let cached: boolean | null = null;
 
 export function hasWebGL2(make: () => HTMLCanvasElement = () => document.createElement('canvas')): boolean {
-  if (cached !== null) return cached;
-  try {
-    const gl = make().getContext('webgl2');
-    cached = !!gl;
-    gl?.getExtension('WEBGL_lose_context')?.loseContext();   // give the probe context back at once
-  } catch {
-    cached = false;
-  }
-  return cached;
+    if (cached !== null) return cached;
+    try {
+        const gl = make().getContext('webgl2');
+        cached = !!gl;
+        gl?.getExtension('WEBGL_lose_context')?.loseContext(); // give the probe context back at once
+    } catch {
+        cached = false;
+    }
+    return cached;
 }
 
 /** Tests only. */
-export function resetCapability(): void { cached = null; }
+export function resetCapability(): void {
+    cached = null;
+}

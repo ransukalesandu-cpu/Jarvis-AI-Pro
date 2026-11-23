@@ -216,11 +216,24 @@ class OfflineVoiceLoop:
 
 
 # ── local TTS for spoken fallback answers ──────────────────────────────────
+def _piper_ready(cfg: dict) -> bool:
+    import importlib.util
+    if importlib.util.find_spec("piper") is None:
+        return False
+    try:
+        from jarvis.core.tts import PiperTTSEngine
+        voice = cfg.get("tts_voice") if cfg.get("tts_engine") == "piper" else ""
+        voice = voice or os.environ.get("JARVIS_PIPER_VOICE", "") or PiperTTSEngine.DEFAULT_VOICE
+        return PiperTTSEngine(voice=voice).model_path().exists()
+    except Exception:
+        return False
+
+
 def pick_local_tts(config: Optional[dict] = None):
     """Return a TTSPlayer that works without Gemini, or None.
 
-    Order: ``JARVIS_OFFLINE_TTS`` if set, then Kokoro (fully local), then
-    edge-tts when the network is allowed. ``config`` may carry tts_voice/tts_speed.
+    Order: ``JARVIS_OFFLINE_TTS`` if set, then Piper (if a voice is downloaded),
+    Kokoro (fully local), then edge-tts when the network is allowed. ``config`` may carry tts_voice/tts_speed.
     """
     import importlib.util
 
@@ -230,15 +243,19 @@ def pick_local_tts(config: Optional[dict] = None):
     cfg = dict(config or {})
     wanted = str(os.environ.get("JARVIS_OFFLINE_TTS", "")).strip().lower()
     order = [wanted] if wanted else []
-    order += ["kokoro", "edgetts"]
+    order += ["piper", "kokoro", "edgetts"]
     for name in order:
         if name == "kokoro" and importlib.util.find_spec("kokoro") is None:
             continue
+        if name == "piper" and not _piper_ready(cfg):
+            continue
         if name == "edgetts" and (privacy.offline_enabled() or importlib.util.find_spec("edge_tts") is None):
             continue
-        if name not in {"kokoro", "edgetts"}:
+        if name not in {"piper", "kokoro", "edgetts"}:
             continue
         engine_cfg = {"tts_engine": name}
+        if name == "piper" and os.environ.get("JARVIS_PIPER_VOICE"):
+            engine_cfg["tts_voice"] = os.environ["JARVIS_PIPER_VOICE"]
         if name == cfg.get("tts_engine"):
             engine_cfg.update({k: v for k, v in cfg.items() if k.startswith("tts_")})
         try:

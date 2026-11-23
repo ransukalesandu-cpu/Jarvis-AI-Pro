@@ -5,7 +5,7 @@ When Gemini Live is not available (no internet, quota, `OFFLINE=1`) JARVIS keeps
 ```
 microphone → "Hey Jarvis" (if wake word is on) → speech cut (energy VAD)
 → faster-whisper (local) → typed-command path → Brain Engine (cloud brain, or local Ollama)
-→ local voice (Kokoro, or edge-tts when the network works)
+→ local voice (Piper, Kokoro, or edge-tts when the network works)
 ```
 
 - Starts by itself 8 s after Live goes down, and immediately in `OFFLINE=1` mode. Stops as soon as Live reconnects.
@@ -16,7 +16,9 @@ microphone → "Hey Jarvis" (if wake word is on) → speech cut (energy VAD)
 
 ```
 pip install -r requirements-stt.txt     # faster-whisper (offline speech-to-text)
-pip install "kokoro>=0.9" soundfile     # offline voice (optional; edge-tts is used when online)
+pip install piper-tts                    # fastest offline voice (optional, GPL-3.0, installed separately)
+python -m piper.download_voices en_US-lessac-medium --download-dir "%LOCALAPPDATA%\jarvis\models\piper"
+pip install "kokoro>=0.9" soundfile     # alternative offline voice (edge-tts is used when online)
 ollama pull llama3.2:3b                 # optional: a local brain for no-internet use
 ```
 
@@ -25,7 +27,8 @@ ollama pull llama3.2:3b                 # optional: a local brain for no-interne
 | Env var | Values | Default |
 |---|---|---|
 | `JARVIS_OFFLINE_VOICE` | `auto`, `off` | `auto` |
-| `JARVIS_OFFLINE_TTS` | `kokoro`, `edgetts` | first one installed |
+| `JARVIS_OFFLINE_TTS` | `piper`, `kokoro`, `edgetts` | first one installed (Piper needs a downloaded voice) |
+| `JARVIS_PIPER_VOICE` | voice name or path to a `.onnx` | `en_US-lessac-medium` |
 | `JARVIS_STT_MODEL` | `base`, `small`, `medium` | `small` |
 
 ## Limits

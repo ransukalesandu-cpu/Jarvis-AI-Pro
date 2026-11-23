@@ -1562,6 +1562,11 @@ class JarvisLive(
         calls, jobs_cancelled = self._stop_everything()
         self._interrupt_on_loop()                 # explicit stop: discard queued speech
         self._stop_word_turn = True               # drop the model's reply to "stop"
+        try:                                      # a local-model answer being read out
+            from jarvis.core import uncensored_fallback
+            uncensored_fallback.stop_speaking()
+        except Exception:
+            failsoft.suppress("main:uncensored_stop")
         detail = f"cancelled {calls} running tool call(s) and {jobs_cancelled} background job(s)"
         print(f"[JARVIS] 🛑 Stop word — {detail}.")
         self.ui.write_log(f"SYS: Stopped — {detail}. Listening.")
@@ -1665,6 +1670,42 @@ class JarvisLive(
             ),
             self._loop
         )
+
+    @staticmethod
+    def _start_uncensored_task(objective: str) -> str:
+        """A refused voice request that needs actions: run it as an autonomous
+        task. AgentService.start still checks owner verification, Privacy Lock
+        and the settings switch; its planner falls back to the local model."""
+        try:
+            from jarvis.agent.integration import get_service
+            task = get_service().start(objective, source="uncensored-fallback")
+        except (PermissionError, ValueError) as exc:
+            return str(exc)
+        except Exception as exc:
+            return f"I couldn't start that task ({type(exc).__name__})."
+        return f"Gemini declined, so I started it as task {task.id} with the local model, sir."
+
+    def _deliver_uncensored_answer(self, text: str) -> None:
+        """Runs on the fallback's worker thread: show the local model's answer and
+        read it with JARVIS's own TTS (Gemini already declined, so it is not asked
+        to read it)."""
+        from jarvis.core import uncensored_fallback
+        self.ui.write_log(f"{self._asst_name} (local): {text}")
+        self._session_log.append(f"{self._asst_name} (local): {text}")
+        if self._dashboard and self._loop:
+            try:
+                asyncio.run_coroutine_threadsafe(self._dashboard.broadcast({
+                    "type": "log", "speaker": "jarvis", "text": text,
+                    "ts": datetime.now().isoformat(),
+                }), self._loop)
+            except RuntimeError:
+                failsoft.suppress('main:uncensored_dashboard')
+        if not uncensored_fallback.speak_enabled():
+            return
+        deadline = time.monotonic() + 15.0       # let Gemini's refusal finish playing first
+        while (self._is_speaking or self._assistant_turn_pending) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        uncensored_fallback.speak_locally(text)
 
     def speak_error(self, tool_name: str, error: str):
         short = str(error)[:120]
@@ -2928,6 +2969,17 @@ class JarvisLive(
                                         "text": full_out,
                                         "ts": datetime.now().isoformat(),
                                     }))
+                                # Gemini refused a plain request: answer it with the
+                                # local uncensored model, if one is configured
+                                # (core/uncensored_fallback.py). Never raises.
+                                try:
+                                    from jarvis.core import uncensored_fallback
+                                    if uncensored_fallback.maybe_handle_live_turn(
+                                            full_in, full_out, self._deliver_uncensored_answer,
+                                            start_task=self._start_uncensored_task):
+                                        self.ui.write_log("SYS: Gemini declined; asking the local model…")
+                                except Exception:
+                                    failsoft.suppress('main:uncensored_fallback')
                             out_buf = []
                             self._vocal_plan = VocalPlan()
                             self._vocal_plan_ready = False

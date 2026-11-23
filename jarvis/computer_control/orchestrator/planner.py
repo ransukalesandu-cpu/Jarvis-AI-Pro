@@ -198,8 +198,11 @@ def default_ask() -> Optional[Callable[[str], str]]:
             ("claude", "anthropic_api_key"), ("groq", "groq_api_key")) if config.get(field)}
         router = HybridLLMRouter(resolve_preferred_provider(config), api_keys=keys, timeout=60.0,
                                  online_check=False)
+        # Cloud planner refused -> local uncensored model (owner's choice;
+        # core/uncensored_fallback.py). Plan validation and policy still apply.
+        extra = {"allow_uncensored": True} if _uncensored_tools() else {}
         result = router.query(prompt, system_prompt="You are JARVIS's computer-control planner. "
-                                                     "Answer with JSON only.")
+                                                     "Answer with JSON only.", **extra)
         return str(result.get("text") or "")
     return ask
 
@@ -213,3 +216,11 @@ def make_plan(objective: str, specs: SpecRegistry, *, model: ModelPlanner | None
     model = model or ModelPlanner()
     raw = model.steps(objective, specs, context)
     return build(objective, raw, known, source="model", notes=json.dumps({"n": len(raw)}))
+
+
+def _uncensored_tools() -> bool:
+    try:
+        from jarvis.core import uncensored_fallback
+        return uncensored_fallback.tools_enabled()
+    except Exception:
+        return False

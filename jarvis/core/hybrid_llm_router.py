@@ -204,6 +204,9 @@ class HybridLLMRouter:
             system_prompt = "You are JARVIS, a capable personal AI assistant."
 
         task = kwargs.pop("task", None)
+        # Only plain chat answers may fall back to the local uncensored model
+        # (core/uncensored_fallback.py). Planners and tool paths never pass it.
+        allow_uncensored = bool(kwargs.pop("allow_uncensored", False))
         first = self._preferred_for(task)
         started = time.monotonic()
         online = not self.online_check or self.is_online()
@@ -249,6 +252,10 @@ class HybridLLMRouter:
                 usage_meter.record(provider, str(result.get("model") or ""),
                                    in_chars=len(prompt) + len(system_prompt), out_chars=len(result["text"]),
                                    latency_ms=provider_latency_ms)
+                if allow_uncensored:
+                    local = self._uncensored_if_refused(prompt, system_prompt, result["text"], started)
+                    if local is not None:
+                        return local
                 return result
             except Exception as exc:
                 # Demote failed providers on subsequent calls until one succeeds.
@@ -263,6 +270,12 @@ class HybridLLMRouter:
                 logger.warning("Provider %s failed (%s); trying configured fallback",
                                provider, type(exc).__name__)
 
+        if allow_uncensored:
+            # Every provider failed; a blocked Gemini reply arrives here as an
+            # empty response. The local model may still answer.
+            local = self._uncensored_if_refused(prompt, system_prompt, None, started)
+            if local is not None:
+                return local
         if not failures:
             failures.append("no-provider-configured")
         raise RuntimeError(
@@ -270,6 +283,23 @@ class HybridLLMRouter:
             + ", ".join(failures)
             + "). Configure a provider API key or start local Ollama."
         )
+
+    @staticmethod
+    def _uncensored_if_refused(prompt: str, system_prompt: str, cloud_text: str | None,
+                               started: float) -> ProviderResult | None:
+        """The local uncensored answer when the cloud text was a refusal (or
+        when there was no cloud answer at all); None otherwise."""
+        from jarvis.core import uncensored_fallback
+        if not uncensored_fallback.enabled():
+            return None
+        if cloud_text is not None and not uncensored_fallback.is_refusal(cloud_text):
+            return None
+        local = uncensored_fallback.answer(prompt, system_prompt, num_ctx=8192)
+        if local is None:
+            return None
+        logger.info("Cloud reply was refused/blocked; answered by the local uncensored model")
+        return {"text": local["text"], "model": local["model"], "provider": "ollama-uncensored",
+                "mode": "local", "latency_ms": round((time.monotonic() - started) * 1000, 2)}
 
     def _call_gemini(self, prompt: str, system_prompt: str, **kwargs: Any) -> ProviderResult:
         if self._supabase_enabled:

@@ -40,6 +40,7 @@ class LiveLink:
             self._bus.subscribe(ui_state.JOBS, self._on_bus),
             self._bus.subscribe(ui_state.MUTED, self._on_bus),
             self._bus.subscribe(ui_state.PROVIDER, self._on_bus),
+            self._bus.subscribe(ui_state.BRAIN_SHAPE, self._on_bus),
         ]
         host.ready.connect(self.push_snapshot)   # a (re)loaded page needs the current state again
 
@@ -100,6 +101,9 @@ class LiveLink:
         elif key == ui_state.NEWS:
             if isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], list):
                 self._host.set_news(value[0], value[1])
+        elif key == ui_state.BRAIN_SHAPE:
+            if not force and isinstance(value, tuple) and len(value) == 3:   # a one-off request, not state to replay
+                self._host.set_shape(str(value[0]), str(value[1]))
         elif key == ui_state.PERF_TIER:
             if str(value) in ("full", "balanced", "lite"):
                 self._host.set_perf_tier(str(value))

@@ -158,6 +158,9 @@ class WebUIHost(QWidget):
                 for r in list(rows)[:20]]
         self.bridge.publish("jobs.updated", jobs=jobs)
 
+    def set_shape(self, shape: str, text: str = "") -> None:
+        self.bridge.publish("hologram.shape", shape=shape, text=text)
+
     def set_perf_tier(self, tier: str) -> None:
         self.bridge.publish("ui.perf", tier=tier)
 

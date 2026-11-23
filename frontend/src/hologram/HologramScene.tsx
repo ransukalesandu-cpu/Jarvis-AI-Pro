@@ -5,6 +5,7 @@ import { PerfGovernor } from './engine/PerfGovernor';
 import { qualityFor } from './engine/quality';
 import { Head } from './Head';
 import { MechanicalHead } from './face/MechanicalHead';
+import { NeuralBrain } from './brain/NeuralBrain';
 import { Arcs, Backdrop, LAYOUT, Orb, Particles, Strands } from './Stage';
 
 const FOV = 28;
@@ -47,6 +48,7 @@ export function HologramScene() {
   const q = qualityFor(useUi((s) => s.perfTier));
   const hidden = usePageHidden();
   const faceStyle = useUi((s) => s.faceStyle);
+  const centerStyle = useUi((s) => s.centerStyle);
   const frameloop = hidden ? 'never' : q.fpsCap ? 'demand' : 'always';
   return (
     <Canvas
@@ -60,10 +62,13 @@ export function HologramScene() {
       <PerfGovernor quality={q} />
       {q.fpsCap && !hidden && <FrameCap fps={q.fpsCap} />}
       <Backdrop halo={q.backdropHalo} dust={q.dust} />
-      <group position={[LAYOUT.head.x, LAYOUT.head.y, 0]} scale={0.95}>{faceStyle === 'mechanical' ? <MechanicalHead /> : <Head />}</group>
-      <Strands />
+      {centerStyle === 'brain'
+        ? <NeuralBrain nodes={q.brainNodes} />
+        : <group position={[LAYOUT.head.x, LAYOUT.head.y, 0]} scale={0.95}>{faceStyle === 'mechanical' ? <MechanicalHead /> : <Head />}</group>}
+      {/* With the brain, its own neurons reach the orb; the strands and arcs belong to the head. */}
+      {centerStyle !== 'brain' && <Strands />}
       <Particles count={q.particles} />
-      <Arcs count={q.arcs} />
+      {centerStyle !== 'brain' && <Arcs count={q.arcs} />}
       <Orb />
     </Canvas>
   );

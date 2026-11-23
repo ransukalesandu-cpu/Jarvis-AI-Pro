@@ -7,6 +7,17 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **The brain forms shapes on request** (new `form_shape` tool, SAFE tier):
+  - Ask JARVIS to "turn into a heart", "show a DNA helix", "become a globe" or "write my name". Every
+    neuron of the brain flows into a sphere, cube, torus, helix, heart, globe, star or up to 16
+    letters of text, holds it for 12 seconds, then flows back. "Back to the brain" returns at once.
+  - The shape faces the viewer. Only short synapses stay visible inside it, and the neurons into the
+    orb follow it.
+  - A new shape requested while another is showing first flows back through the brain.
+  - Text is limited to letters, digits and simple punctuation. It is drawn as points, never run or
+    stored.
+  - The shape list and text rules are the same in Python (`core/brain_shapes.py`), the web contract
+    (`hologram.shape`) and the page, and a test keeps them in step.
 - **Neural brain at the centre of the stage** (web UI, now the default; Settings → Hologram → Centre →
   Hologram head brings the face back):
   - A procedural 3D brain: two hemispheres with folded cortex, temporal lobes, a cerebellum and a brain

@@ -1,3 +1,4 @@
+import { SHAPES, type ShapeName, validText } from '../hologram/brain/shapes';
 // Typed message contract between the Python host (jarvis/webui/contract.py) and the page.
 // Both sides validate: anything outside this closed set, or out of range, is dropped, never coerced.
 
@@ -48,6 +49,7 @@ export type HostEvent =
   | { type: 'log.line'; tag: LogTag; text: string }
   | { type: 'task.flow'; flow: Flow }
   | { type: 'ui.task_flow'; view: FlowView }
+  | { type: 'hologram.shape'; shape: ShapeName; text: string }
   | { type: 'hologram.perf_report'; cpu: number; ramMb: number; processes: number }
   | { type: 'host.hello'; version: number };
 
@@ -175,6 +177,10 @@ export function parseHostEvent(raw: unknown): HostEvent | null {
       const flow = parseFlow(m.flow);
       return flow ? { type: m.type, flow } : null;
     }
+    case 'hologram.shape':
+      return typeof m.shape === 'string' && (SHAPES as readonly string[]).includes(m.shape) && typeof m.text === 'string'
+        && validText(m.text) && (m.text !== '') === (m.shape === 'text')
+        ? { type: m.type, shape: m.shape as ShapeName, text: m.text } : null;
     case 'ui.task_flow':
       return (FLOW_VIEWS as readonly unknown[]).includes(m.view) ? { type: m.type, view: m.view as FlowView } : null;
     case 'hologram.perf_report':

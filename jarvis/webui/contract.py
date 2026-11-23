@@ -14,6 +14,7 @@ from jarvis.core.task_flow import FLOW_SOURCES, FLOW_STATES, MAX_STEPS, STEP_STA
 
 from .command_gate import ACTIONS, AVAILABILITY, MAX_TEXT, REASONS
 from .features_feed import FEATURES, MAX_DETAIL, MAX_ITEMS as FEATURE_MAX_ITEMS, MAX_SUMMARY, MAX_TITLE
+from .memory_status import CLOUD_STATES
 from .redact import KINDS as LOG_KINDS, MAX_LINE
 from .workspace_store import clean_name, validate_layout, validate_prefs
 
@@ -75,6 +76,8 @@ _EVENTS = {
                                lambda m: _num(m["cpu"], 0, 100) and _num(m["ram"], 0, 100)
                                and (m["disk"] is None or _num(m["disk"], 0, 100))
                                and _battery_ok(m["battery"]) and _net_ok(m["net"])),
+    "memory.status": ({"cloud", "personal", "encrypted"},
+                      lambda m: m["cloud"] in CLOUD_STATES and isinstance(m["personal"], bool) and isinstance(m["encrypted"], bool)),
     "provider.changed": ({"provider", "model", "connected", "fallback"},
                          lambda m: _str(m["provider"]) and _str(m["model"], 120)
                          and isinstance(m["connected"], bool) and isinstance(m["fallback"], bool)),

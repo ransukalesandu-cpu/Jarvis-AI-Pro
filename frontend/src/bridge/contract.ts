@@ -77,6 +77,12 @@ export interface FeatureSnapshot {
 }
 
 /** Web UI preferences, saved by Python (jarvis/webui/workspace_store.validate_prefs): exactly these keys. */
+export const MEMORY_CLOUD = ['configured', 'not_configured'] as const;
+export interface MemoryStatus {
+    cloud: (typeof MEMORY_CLOUD)[number];
+    personal: boolean;
+    encrypted: boolean;
+}
 export const CENTER_STYLES = ['brain', 'hologram'] as const;
 export const FACE_STYLES = ['circuit', 'mechanical'] as const;
 export interface Prefs {
@@ -106,6 +112,7 @@ export type HostEvent =
     | { type: 'assistant.state_changed'; state: AssistantState }
     | { type: 'assistant.audio_level'; level: number; source: 'input' | 'output' }
     | { type: 'system.metrics_updated'; cpu: number; ram: number; disk: number | null; battery: Battery | null; net: Net | null }
+    | ({ type: 'memory.status' } & MemoryStatus)
     | { type: 'provider.changed'; provider: string; model: string; connected: boolean; fallback: boolean }
     | { type: 'assistant.muted'; muted: boolean }
     | { type: 'ui.persona'; persona: Persona }
@@ -257,6 +264,10 @@ export function parseHostEvent(raw: unknown): HostEvent | null {
             }
             return { type: m.type, cpu: m.cpu, ram: m.ram, disk, battery, net };
         }
+        case 'memory.status':
+            return (MEMORY_CLOUD as readonly unknown[]).includes(m.cloud) && typeof m.personal === 'boolean' && typeof m.encrypted === 'boolean'
+                ? { type: m.type, cloud: m.cloud as MemoryStatus['cloud'], personal: m.personal, encrypted: m.encrypted }
+                : null;
         case 'provider.changed':
             return str(m.provider) && str(m.model, 120) && typeof m.connected === 'boolean' && typeof m.fallback === 'boolean'
                 ? { type: m.type, provider: m.provider, model: m.model, connected: m.connected, fallback: m.fallback }

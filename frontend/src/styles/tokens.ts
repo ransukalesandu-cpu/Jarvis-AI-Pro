@@ -127,6 +127,7 @@ export const STAGE_TOKENS = {
         'edge': { hex: 0x5fe6ff, alpha: 0.38 },
         'teal-glass': { hex: 0x081e30, alpha: 0.62 },
         'amber': { hex: 0xffb347, alpha: 1 },
+        'scrim': { hex: 0x02060d, alpha: 0.6 },
     },
     light: {
         'stage-skin': { hex: 0x3a1404, alpha: 1 },
@@ -254,6 +255,7 @@ export const STAGE_TOKENS = {
         'edge': { hex: 0x5fe6ff, alpha: 0.38 },
         'teal-glass': { hex: 0xffffff, alpha: 0.82 },
         'amber': { hex: 0x9a4f00, alpha: 1 },
+        'scrim': { hex: 0x0b1726, alpha: 0.35 },
     },
     hc: {
         'stage-skin': { hex: 0x3a1404, alpha: 1 },
@@ -381,6 +383,7 @@ export const STAGE_TOKENS = {
         'edge': { hex: 0xffffff, alpha: 0.85 },
         'teal-glass': { hex: 0x000000, alpha: 0.94 },
         'amber': { hex: 0xffb347, alpha: 1 },
+        'scrim': { hex: 0x000000, alpha: 0.85 },
     },
 } as const;
 export type ThemeName = keyof typeof STAGE_TOKENS;
@@ -400,4 +403,5 @@ export const DURATIONS = {
     'dur-blink': 1000,
     'dur-loop': 1200,
     'dur-loop-slow': 1400,
+    'dur-toast': 5000,
 } as const;

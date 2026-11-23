@@ -70,6 +70,13 @@
   --fs-3xs: 9px; /* smallest label size; raise in P6 if it reads too small */
   --fs-display: 44px;
   --glow-dot: 0 0 5px; /* offset/blur part of a drop-shadow; colour comes from the caller */
+  --dur-toast: 5000ms; /* how long a non-error toast stays */
+  --control-sm: 28px;
+  --control-md: 34px;
+  --control-lg: 40px;
+  --dialog-w: 480px;
+  --sheet-w: 380px;
+  --toast-w: 360px;
   --bg: oklch(13.28% 0.0132 255.48);
   --glass: oklch(20.84% 0.0353 259.49 / 0.55);
   --glass-strong: oklch(20.84% 0.0353 259.49 / 0.78);
@@ -157,6 +164,7 @@
   --edge: oklch(86.02% 0.1210 211.92 / 0.38);
   --teal-glass: oklch(22.77% 0.0448 246.14 / 0.62);
   --amber: oklch(82.08% 0.1486 72.10);
+  --scrim: oklch(11.97% 0.0209 251.34 / 0.6);
 }
 
 :root[data-theme='light'] {
@@ -184,6 +192,7 @@
   --holo-c-29: oklch(51.11% 0.1046 234.31);
   --teal-glass: oklch(100.00% 0.0000 0.00 / 0.82);
   --amber: oklch(50.95% 0.1247 55.97);
+  --scrim: oklch(20.19% 0.0349 254.67 / 0.35);
 }
 
 :root[data-theme='hc'] {
@@ -209,6 +218,7 @@
   --holo-c-21: oklch(0.00% 0.0000 0.00 / 0.94);
   --edge: oklch(100.00% 0.0000 0.00 / 0.85);
   --teal-glass: oklch(0.00% 0.0000 0.00 / 0.94);
+  --scrim: oklch(0.00% 0.0000 0.00 / 0.85);
 }
 
 @media (prefers-contrast: more) {
@@ -235,6 +245,7 @@
     --holo-c-21: oklch(0.00% 0.0000 0.00 / 0.94);
     --edge: oklch(100.00% 0.0000 0.00 / 0.85);
     --teal-glass: oklch(0.00% 0.0000 0.00 / 0.94);
+    --scrim: oklch(0.00% 0.0000 0.00 / 0.85);
   }
 }
 

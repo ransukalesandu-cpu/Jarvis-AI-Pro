@@ -3,8 +3,8 @@
 ## Status (honest)
 | Item | Status |
 |---|---|
-| SQL migration `supabase/migrations/202611050001_security_v2_guest_audit.sql` | **File only. Not applied to any Supabase project. Never run or tested against a live database.** |
-| Server-side 7-day purge | **Defined in the SQL file** (`jarvis_purge_expired_guest_audit()` plus an hourly `pg_cron` job if the extension is on). Not deployed, so not active. |
+| SQL migration `supabase/migrations/202611050001_security_v2_guest_audit.sql` | **Applied** to the JARVIS-AI-PRO project on 2026-11-24 (migration `security_v2_guest_audit`). Verified: RLS on, `anon`/`authenticated` have no table or purge-function access, `service_role` can write, table empty. Advisors: only the expected INFO "RLS enabled, no policy" (deny-all by design). |
+| Server-side 7-day purge | `jarvis_purge_expired_guest_audit()` is deployed. **No hourly schedule yet:** `pg_cron` is not enabled on the project, so nothing calls it automatically. Enable `pg_cron` and re-run the `do $$ … $$` block, or call it from a scheduled Edge Function. Expired rows still fail the 7-day check and are purged on the next call. |
 | Edge Function / desktop sync client that uploads Guest events | **NOT IMPLEMENTED.** Guest events currently live only in the local `owner.db`. |
 | Local Security ON/OFF | Implemented and unit tested. |
 | Guest log local expiry (7 days) | Implemented and unit tested. |
@@ -14,8 +14,8 @@
 - RLS enabled; `anon` and `authenticated` have no grants; only `service_role` (used by an Edge Function, never by the desktop app) can read or write.
 - No service-role key is added to the desktop app, QWebChannel or JavaScript.
 
-## Applying it (owner action, not done here)
-Review the file, apply with `supabase db push` against a **branch/staging project first**, confirm RLS with the Supabase advisors, then production. Until you do, nothing is deployed.
+## Applying it
+Applied directly to production (JARVIS-AI-PRO) on the owner's request on 2026-11-24, after checking the table did not exist yet. For a new project: `supabase db push`, then confirm RLS with the Supabase advisors.
 
 ## Security ON/OFF
 - Scope: **OFF stops Guest monitoring only** (no new Guest log entries; the Guest notice says logging is off). Existing entries stay and still expire at 7 days.

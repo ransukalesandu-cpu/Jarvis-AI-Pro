@@ -165,6 +165,20 @@ class AndroidTools:
         return AndroidUi(dev).scroll_to(str(args.get("target") or ""), int(args.get("max_swipes") or 8),
                                         str(args.get("direction") or "down"))
 
+    def _phone_screen(self, dev, args, ctx):
+        from jarvis.laptop_agent.devices.scrcpy import ScrcpyError, get_manager
+        mgr = get_manager()
+        action = str(args.get("action") or "show").lower()
+        try:
+            if action == "hide":
+                return mgr.hide(dev.name)
+            if action == "status":
+                return f"The {dev.name} screen is {'open' if mgr.is_open(dev.name) else 'not open'} on the laptop."
+            return mgr.show(dev.name, dev.serial(), adb_path=dev.adb.path or "",
+                            control=args.get("control") is not False)
+        except ScrcpyError as exc:
+            return str(exc)
+
     def _remote_access(self, dev, args, ctx):
         return dev.enable_remote()
 
@@ -256,6 +270,11 @@ DECLARATIONS = [
                                                      "direction": {"type": "STRING", "enum": ["down", "up"]},
                                                      "max_swipes": {"type": "INTEGER"}},
                     "required": ["target"]}},
+    {"name": "phone_screen", "description": "Show an Android device's live screen in a window on the laptop "
+     "(scrcpy: mirror, and mouse/keyboard control unless control=false), or hide it.",
+     "parameters": {"type": "OBJECT", "properties": {
+         "device": _DEV, "action": {"type": "STRING", "enum": ["show", "hide", "status"]},
+         "control": {"type": "BOOLEAN"}}}},
     {"name": "remote_access", "description": "Turn on remote control of an Android phone over Tailscale "
      "(adb tcpip 5555). Run while the phone is at home/on USB; needed again after the phone restarts.",
      "parameters": {"type": "OBJECT", "properties": {"device": _DEV}}},
@@ -277,5 +296,6 @@ META = {"device_shell": {"risk": "destructive", "timeout": 120},
         "list_apps": {"risk": "read", "timeout": 30},
         "screen_elements": {"risk": "read", "timeout": 30},
         "remote_access": {"risk": "destructive", "timeout": 30},
+        "phone_screen": {"risk": "write", "timeout": 20},
         "wait_for_element": {"risk": "read", "timeout": 130},
         "scroll_to_element": {"risk": "write", "timeout": 90}}

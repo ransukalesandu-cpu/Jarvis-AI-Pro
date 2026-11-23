@@ -32,6 +32,8 @@ _ACTIONS = {
     "mute_volume", "open_dialer", "open_messages", "wake_screen",
     # UI-tree actions: act on what is on screen by its visible text.
     "read_screen", "tap_element", "fill_field", "wait_for", "scroll_to",
+    # Live screen window on the laptop (scrcpy).
+    "show_screen", "hide_screen",
 }
 _UI_ACTIONS = {"read_screen", "tap_element", "fill_field", "wait_for", "scroll_to"}
 _DEVICE_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
@@ -102,6 +104,14 @@ def phone_control(parameters: dict[str, Any] | None = None, player=None) -> str:
 
     if action in _UI_ACTIONS:
         return _ui_action(adb, serial, action, params)
+    if action in {"show_screen", "hide_screen"}:
+        from jarvis.laptop_agent.devices.scrcpy import ScrcpyError, get_manager
+        try:
+            if action == "hide_screen":
+                return get_manager().hide("phone")
+            return get_manager().show("phone", serial, adb_path=adb, control=params.get("control") is not False)
+        except ScrcpyError as exc:
+            return str(exc)
 
     if action == "status":
         ok_model, model = run_phone(["shell", "getprop", "ro.product.model"])
@@ -200,7 +210,8 @@ TOOL = {
         "Use for phone status/battery, opening supported apps, Home/Back, volume, "
         "waking the display, and opening the dialer or messaging app. read_screen lists "
         "the buttons/texts on screen; tap_element, fill_field, wait_for and scroll_to act "
-        "on an element by its visible text (target). Never claims to "
+        "on an element by its visible text (target). show_screen opens the phone's live screen "
+        "in a window on the laptop (scrcpy); hide_screen closes it. Never claims to "
         "send a call or message; opening those apps does not perform the action. "
         "Do not use for arbitrary shell commands."
     ),
@@ -223,6 +234,7 @@ TOOL = {
             "text": {"type": "STRING", "description": "For fill_field: the text to type."},
             "timeout_seconds": {"type": "NUMBER", "description": "For wait_for (default 10)."},
             "direction": {"type": "STRING", "enum": ["down", "up"], "description": "For scroll_to."},
+            "control": {"type": "BOOLEAN", "description": "For show_screen: false = view only."},
             "target_device": {
                 "type": "STRING",
                 "description": "Optional exact serial shown by 'adb devices'; only needed when multiple authorized devices are connected.",

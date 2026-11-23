@@ -9,6 +9,7 @@ import json
 import math
 from typing import Any
 
+from jarvis.core import brain_shapes
 from jarvis.core.task_flow import FLOW_SOURCES, FLOW_STATES, MAX_STEPS, STEP_STATES, VIEWS as FLOW_VIEWS
 
 from .command_gate import ACTIONS, AVAILABILITY, MAX_TEXT, REASONS
@@ -99,6 +100,9 @@ _EVENTS = {
                              and (j["finishedAt"] is None or _num(j["finishedAt"], 0, 4e12)) for j in m["jobs"])),
     "task.flow": ({"flow"}, lambda m: flow_ok(m["flow"])),
     "ui.task_flow": ({"view"}, lambda m: m["view"] in FLOW_VIEWS),
+    "hologram.shape": ({"shape", "text"},
+                       lambda m: m["shape"] in brain_shapes.SHAPES and brain_shapes.valid_text(m["text"])
+                       and (m["text"] != "") == (m["shape"] == "text")),
     "hologram.perf_report": ({"cpu", "ramMb", "processes"},
                              lambda m: _num(m["cpu"], 0, 100) and _num(m["ramMb"], 0, 1e6)
                              and isinstance(m["processes"], int) and _num(m["processes"], 0, 64)),

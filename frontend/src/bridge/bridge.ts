@@ -46,6 +46,7 @@ export async function startBridge(): Promise<void> {
     onEvent = (raw: string) => { const ev = parseHostEvent(raw); if (!ev) return;
       useUi.getState().apply(ev);
       if (ev.type === 'task.flow' || ev.type === 'ui.task_flow') useFlows.getState().apply(ev);
+      if (ev.type === 'hologram.shape') useUi.getState().formShape(ev.shape, ev.text);
       if (ev.type === 'hologram.perf_report') usePerf.getState().setHost({ cpu: ev.cpu, ramMb: ev.ramMb, processes: ev.processes });
       onHostEvent(ev);
       if (ev.type === 'workspace.loaded' && ev.layout) {

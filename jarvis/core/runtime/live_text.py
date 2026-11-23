@@ -63,6 +63,8 @@ class TextCommandMixin:
         # report) are answered locally so they keep working while Live is busy,
         # rate-limited or disconnected. Anything unrelated returns None and the
         # sentence continues to the model unchanged.
+        if self._run_phrase_routine(str(text or "").strip()):
+            return
         agent_reply = self._route_agent_text(str(text or "").strip())
         if agent_reply is not None:
             self._interrupted = False
@@ -89,6 +91,38 @@ class TextCommandMixin:
             ),
             self._loop
         )
+
+    def _run_phrase_routine(self, text: str) -> bool:
+        """Start an owner-file routine whose trigger phrase is exactly ``text``."""
+        try:
+            from jarvis.core import routines_file
+            name = routines_file.match_phrase(text)
+        except Exception:
+            failsoft.suppress("main:_run_phrase_routine")
+            return False
+        if not name:
+            return False
+        self._interrupted = False
+        security.mark_user_turn_started(voice_verified=True)
+        try:
+            self.ui.write_log(f"SYS: Starting routine '{name}'.")
+        except Exception:
+            failsoft.suppress("main:_run_phrase_routine")
+
+        def _work() -> None:
+            result = self._dispatch_tool_sync("routine", {"action": "run", "name": name}, timeout=900)
+            try:
+                self.ui.write_log(f"JARVIS: {result}")
+            except Exception:
+                failsoft.suppress("main:_run_phrase_routine")
+            first = str(result).splitlines()[0] if result else f"Routine {name} finished."
+            if self._loop and self.session:
+                self.speak(f"[Routine '{name}' finished: {first}] Tell the owner briefly.")
+            else:
+                self._speak_offline(first)
+
+        __import__("threading").Thread(target=_work, name="jarvis-routine", daemon=True).start()
+        return True
 
     def _route_agent_text(self, text: str) -> str | None:
         """Answer an autonomous-task command locally; None if it is not one."""

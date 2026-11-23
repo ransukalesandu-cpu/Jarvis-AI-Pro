@@ -44,9 +44,6 @@ button { font: inherit; color: inherit; }
 .nav-item[aria-current='page'] { background: rgba(47, 155, 255, 0.22); box-shadow: inset 2px 0 0 var(--primary); }
 .nav-item svg { opacity: 0.85; }
 
-.page { position: absolute; top: 64px; bottom: var(--space-4); left: var(--space-4); width: min(460px, calc(100% - 32px)); z-index: var(--z-hud); padding: var(--space-5); overflow: auto; background: var(--glass-strong); }
-.page h1 { margin: 0 0 var(--space-2); font-size: 18px; font-weight: 500; }
-.page p { color: var(--text-dim); max-width: 60ch; }
 .status { position: absolute; left: 50%; bottom: var(--space-4); transform: translateX(-50%); z-index: var(--z-hud); padding: 6px var(--space-4); border-radius: var(--radius-pill); font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; color: var(--text-dim); display: flex; gap: var(--space-3); align-items: center; }
 .banner { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); z-index: var(--z-hud); padding: 8px var(--space-4); font-size: 12px; color: var(--warn); }
 .row { display: flex; justify-content: space-between; align-items: center; padding: 10px var(--space-3); border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 13px; }
@@ -55,11 +52,9 @@ button { font: inherit; color: inherit; }
 .toggle[aria-pressed='true'] { border-color: var(--primary); color: var(--primary-bright); }
 @media (max-width: 900px) { .widgets.right { display: none; } }
 
-/* Panels never cover the hologram: opening a page or settings hides the widgets underneath it. */
+/* Panels never cover the hologram: opening settings hides the widgets underneath it. */
 .app { position: absolute; inset: 0; }
-.app[data-page='open'] .widgets.left { display: none; }
 .app[data-settings='open'] .widgets.right { display: none; }
-.app[data-page='open'] .banner { left: auto; right: var(--space-4); transform: none; }
 
 /* Floating windows */
 .win { border-radius: var(--radius-md); overflow: hidden; background: rgba(7, 12, 21, 0.96); color-scheme: dark; }
@@ -184,3 +179,41 @@ button { font: inherit; color: inherit; }
 .news-title { grid-column: 1; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
 .news-source { grid-column: 1; font-size: 11px; opacity: .6; }
 .news-item .toggle { grid-column: 2; grid-row: 1 / span 2; }
+
+/* Reduced motion (Settings / palette toggle), not only the OS setting: stop CSS animation and transitions too. */
+.app[data-reduced="true"] *, .app[data-reduced="true"] *::before, .app[data-reduced="true"] *::after {
+  animation-duration: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; }
+
+/* Smaller screens (the Android tablet display, narrow windows): nothing at the bottom may overlap. */
+@media (max-width: 1100px) {
+  .widgets { width: 164px; }
+  .widget .value { font-size: 17px; }
+}
+@media (max-width: 900px) {
+  .cmdbar { left: var(--space-4); transform: none; width: calc(100% - 2 * var(--space-4) - 136px); }
+  .tray { bottom: 76px; max-width: calc(100% - 2 * var(--space-4)); overflow-x: auto; }
+  .reply { bottom: 136px; }
+  .toast-region { bottom: 120px; }
+  .panel { width: min(300px, calc(100% - 2 * var(--space-4))); }
+}
+@media (max-width: 600px) {
+  .widgets.left { display: none; }
+  .cmdbar { width: calc(100% - 2 * var(--space-4)); bottom: var(--space-4); }
+  .controls { bottom: 72px; }
+  .tray { bottom: 124px; }
+  .reply { bottom: 184px; width: calc(100% - 2 * var(--space-4)); }
+  .controls-note { display: none; }
+}
+@media (max-height: 640px) {
+  .widgets > :nth-child(n + 3) { display: none; }   /* keep the first two widgets on short landscape screens */
+}
+/* Touch screens: finger-sized targets. */
+@media (pointer: coarse) {
+  .icon-btn { width: 46px; height: 46px; }
+  .win-actions button { width: 38px; height: 34px; }
+  .controls button, .cmdbar button { width: 42px; height: 42px; }
+  .nav-item { padding: 14px var(--space-3); }
+  .toggle { padding: 8px 14px; }
+  .tray button { padding: 8px 14px; }
+  .win-title { padding: 10px 10px 10px 14px; }
+}

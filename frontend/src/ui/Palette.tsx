@@ -35,7 +35,7 @@ export function Palette() {
       <Command.List>
         <Command.Empty>No matching command.</Command.Empty>
         <Command.Group heading="Navigate">
-          {PAGES.filter((p) => p.ready).map((p) => <Command.Item key={p.id} value={`go ${p.label}`} onSelect={run(() => go(p.id))}>{p.icon}<span>{p.label}</span></Command.Item>)}
+          {PAGES.map((p) => <Command.Item key={p.id} value={`go ${p.label}`} onSelect={run(() => go(p.id))}>{p.icon}<span>{p.label}</span></Command.Item>)}
         </Command.Group>
         <Command.Group heading="Assistant">
           {connected && <Command.Item value="interrupt stop speaking" onSelect={run(() => doControl('interrupt'))}>Interrupt JARVIS</Command.Item>}

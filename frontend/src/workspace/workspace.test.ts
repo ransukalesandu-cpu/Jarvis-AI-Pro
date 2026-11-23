@@ -68,6 +68,15 @@ describe('window store', () => {
     s.restore(a); expect(useWindows.getState().windows.find((w) => w.id === a)!.state).toBe('normal');
     s.close(a); expect(useWindows.getState().windows.map((w) => w.id)).toEqual([b]);
   });
+  it('z stays within 1..n however often windows are focused (never climbs over panels/palette)', () => {
+    const s = useWindows.getState();
+    const a = s.open('monitor')!, b = s.open('models')!, c = s.open('news')!;
+    for (let i = 0; i < 200; i++) s.focus([a, b, c][i % 3]);
+    s.toggleMaximize(a); s.minimize(b); s.restore(b);
+    const zs = useWindows.getState().windows.map((w) => w.z).sort();
+    expect(zs).toEqual([1, 2, 3]);
+    expect(useWindows.getState().windows.find((w) => w.id === b)!.z).toBe(3);   // last restored is on top
+  });
   it('snapshot output passes validation and apply restores it', () => {
     const s = useWindows.getState();
     s.open('monitor'); s.open('activity');

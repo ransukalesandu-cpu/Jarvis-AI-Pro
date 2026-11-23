@@ -78,3 +78,39 @@ def test_contract_requests():
     assert not ok({"kind": "workspace.save", "name": "a", "layout": {"windows": [{"id": 1}], "page": "home"}})
     assert not ok({"kind": "workspace.save", "name": "../x", "layout": _layout()})
     assert not ok({"kind": "workspace.load", "name": "x", "extra": 1})
+
+
+def test_prefs_roundtrip_and_validation(tmp_path):
+    from jarvis.webui.workspace_store import validate_prefs
+    store = WorkspaceStore(tmp_path / "ws.json")
+    good = {"reducedMotion": True, "clock24": False, "taskflowAutoShow": True}
+    assert store.load_prefs() is None
+    assert store.save_prefs(good) and store.load_prefs() == good
+    assert "_prefs" not in store.names()                      # never listed as a workspace
+    assert store.load("_prefs") is None                        # and never loadable as one
+    for bad in (None, [], {}, {**good, "x": True}, {**good, "clock24": 1}, {"clock24": True}):
+        assert validate_prefs(bad) is None and not store.save_prefs(bad)
+
+
+def test_prefs_messages():
+    good = {"reducedMotion": False, "clock24": True, "taskflowAutoShow": False}
+    assert contract.parse_request(json.dumps({"kind": "prefs.save", "prefs": good}))
+    assert contract.parse_request(json.dumps({"kind": "prefs.save", "prefs": {**good, "evil": True}})) is None
+    assert contract.parse_request('{"kind":"prefs.load"}') == {"kind": "prefs.load"}
+    assert json.loads(contract.encode_event("ui.prefs", prefs=good))["prefs"] == good
+    assert json.loads(contract.encode_event("ui.prefs", prefs=None))["prefs"] is None
+    assert contract.encode_event("ui.prefs", prefs={"clock24": "yes"}) is None
+
+
+def test_bridge_saves_and_loads_prefs(tmp_path):
+    pytest.importorskip("PyQt6")
+    from jarvis.webui.bridge import WebUIBridge
+    b = WebUIBridge(store=WorkspaceStore(tmp_path / "ws.json"))
+    got = []
+    b.event.connect(lambda s: got.append(json.loads(s)))
+    b.request('{"kind":"prefs.load"}')
+    assert got[-1] == {"type": "ui.prefs", "prefs": None}
+    good = {"reducedMotion": True, "clock24": True, "taskflowAutoShow": False}
+    b.request(json.dumps({"kind": "prefs.save", "prefs": good}))
+    b.request('{"kind":"prefs.load"}')
+    assert got[-1] == {"type": "ui.prefs", "prefs": good}

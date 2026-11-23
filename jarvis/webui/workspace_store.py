@@ -20,6 +20,8 @@ PAGES = frozenset({"home", "chat", "activity", "models", "research", "reminders"
 MAX_WINDOWS = 12
 MAX_WORKSPACES = 24
 LAST = "_last"                      # autosaved layout restored on start; hidden from the user's list
+PREFS = "_prefs"                    # web UI preferences (the page's own storage is off the record)
+PREF_KEYS = frozenset({"reducedMotion", "clock24", "taskflowAutoShow"})
 _NAME = re.compile(r"^[a-z0-9][a-z0-9 _-]{0,31}$")
 
 
@@ -64,6 +66,13 @@ def validate_layout(layout: Any) -> dict | None:
         out.append({"id": w["id"], "kind": w["kind"], "x": float(w["x"]), "y": float(w["y"]),
                     "w": float(w["w"]), "h": float(w["h"]), "z": int(w["z"]), "state": w["state"]})
     return {"windows": out, "page": page}
+
+
+def validate_prefs(prefs: Any) -> dict | None:
+    """Web UI preferences: exactly the known keys, each a bool. Anything else is rejected."""
+    if not isinstance(prefs, dict) or set(prefs) != PREF_KEYS or not all(isinstance(v, bool) for v in prefs.values()):
+        return None
+    return {k: prefs[k] for k in sorted(PREF_KEYS)}
 
 
 class WorkspaceStore:
@@ -115,3 +124,14 @@ class WorkspaceStore:
         if data.pop(n, None) is None:
             return False
         return self._write(data)
+
+    def save_prefs(self, prefs: Any) -> bool:
+        p = validate_prefs(prefs)
+        if p is None:
+            return False
+        data = self._read()
+        data[PREFS] = p
+        return self._write(data)
+
+    def load_prefs(self) -> dict | None:
+        return validate_prefs(self._read().get(PREFS))

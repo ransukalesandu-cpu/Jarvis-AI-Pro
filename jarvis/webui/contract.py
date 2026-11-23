@@ -14,7 +14,7 @@ from jarvis.core.task_flow import FLOW_SOURCES, FLOW_STATES, MAX_STEPS, STEP_STA
 from .command_gate import ACTIONS, AVAILABILITY, MAX_TEXT, REASONS
 from .features_feed import FEATURES, MAX_DETAIL, MAX_ITEMS as FEATURE_MAX_ITEMS, MAX_SUMMARY, MAX_TITLE
 from .redact import KINDS as LOG_KINDS, MAX_LINE
-from .workspace_store import clean_name, validate_layout
+from .workspace_store import clean_name, validate_layout, validate_prefs
 
 MAX_EVENT_CHARS = 16384
 MAX_REQUEST_CHARS = 16384          # upper bound; each request kind has a tighter cap below
@@ -100,6 +100,7 @@ _EVENTS = {
                              and (j["finishedAt"] is None or _num(j["finishedAt"], 0, 4e12)) for j in m["jobs"])),
     "task.flow": ({"flow"}, lambda m: flow_ok(m["flow"])),
     "ui.task_flow": ({"view"}, lambda m: m["view"] in FLOW_VIEWS),
+    "ui.prefs": ({"prefs"}, lambda m: m["prefs"] is None or validate_prefs(m["prefs"]) is not None),
     "host.hello": ({"version"}, lambda m: _num(m["version"], 0, 1000)),
     "feature.snapshot": ({"feature", "summary", "items"},
                          lambda m: m["feature"] in FEATURES and _str(m["summary"], MAX_SUMMARY)
@@ -142,6 +143,8 @@ _REQUESTS = {
     "ping": ({"n"}, lambda m: isinstance(m["n"], int) and not isinstance(m["n"], bool) and 0 <= m["n"] < 2 ** 31),
     "hologram.capability": ({"webgl2"}, lambda m: isinstance(m["webgl2"], bool)),
     "feature.refresh": ({"feature"}, lambda m: m["feature"] in FEATURES),
+    "prefs.load": (set(), lambda m: True),
+    "prefs.save": ({"prefs"}, lambda m: validate_prefs(m["prefs"]) is not None),
 }
 
 

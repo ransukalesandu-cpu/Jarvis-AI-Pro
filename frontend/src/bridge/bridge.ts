@@ -11,6 +11,7 @@ interface QtChannelObject { event: { connect: (fn: (s: string) => void) => void;
 declare global { interface Window { qt?: { webChannelTransport?: unknown }; QWebChannel?: new (t: unknown, cb: (c: { objects: Record<string, QtChannelObject> }) => void) => unknown } }
 
 let started = false;
+let generation = 0;                    // bumped by stopBridge: a start that was stopped mid-way must not connect
 let channelObj: QtChannelObject | null = null;
 let onEvent: ((s: string) => void) | null = null;
 
@@ -29,29 +30,31 @@ function loadChannelScript(): Promise<void> {
 export async function startBridge(): Promise<void> {
   if (started) return; // never register listeners twice
   started = true;
+  const gen = ++generation;
   const store = useUi.getState();
   if (!window.qt?.webChannelTransport) { store.setLink('detached'); return; }
   usePending.getState().begin('startup', 'startup', 'Connecting to JARVIS');
   setResync(() => sendRequest({ kind: 'workspace.list' }));
   try {
     await loadChannelScript();
-    await new Promise<void>((resolve) => {
-      new window.QWebChannel!(window.qt!.webChannelTransport, (ch) => {
-        channelObj = ch.objects.jarvis ?? null;
-        resolve();
-      });
+    if (gen !== generation) return;       // stopped while loading (React StrictMode mounts twice in dev)
+    const obj = await new Promise<QtChannelObject | null>((resolve) => {
+      new window.QWebChannel!(window.qt!.webChannelTransport, (ch) => resolve(ch.objects.jarvis ?? null));
     });
+    if (gen !== generation) return;
+    channelObj = obj;
     if (!channelObj) { store.setLink('detached'); usePending.getState().end('startup', false); return; }
     onEvent = (raw: string) => { const ev = parseHostEvent(raw); if (!ev) return;
       useUi.getState().apply(ev);
       if (ev.type === 'task.flow' || ev.type === 'ui.task_flow') useFlows.getState().apply(ev);
+      if (ev.type === 'ui.prefs' && ev.prefs) useFlows.getState().setAutoShow(ev.prefs.taskflowAutoShow);
       onHostEvent(ev);
       if (ev.type === 'workspace.loaded' && ev.layout) {
         useWindows.getState().apply(ev.layout);
         const kind = PAGE_WINDOWS[ev.layout.page];      // an old layout saved with a side-panel page reopens it as a window
         if (kind) useWindows.getState().open(kind);
       }
-      if (ev.type === 'host.hello') { sendRequest({ kind: 'workspace.list' }); sendRequest({ kind: 'workspace.load', name: '_last' }); } };
+      if (ev.type === 'host.hello') { sendRequest({ kind: 'prefs.load' }); sendRequest({ kind: 'workspace.list' }); sendRequest({ kind: 'workspace.load', name: '_last' }); } };
     channelObj.event.connect(onEvent);
     sendRequest({ kind: 'ready' });
     sendRequest({ kind: 'hologram.capability', webgl2: hasWebGL2() });   // false => Python shows the classic HUD
@@ -68,5 +71,5 @@ export function sendRequest(r: UiRequest): void {
 
 export function stopBridge(): void {
   if (channelObj && onEvent) channelObj.event.disconnect?.(onEvent);
-  channelObj = null; onEvent = null; started = false; resetActions();
+  channelObj = null; onEvent = null; started = false; generation++; resetActions();
 }

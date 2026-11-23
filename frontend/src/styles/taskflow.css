@@ -104,7 +104,6 @@
 .tf-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-faint); font-size: 12px; pointer-events: none; }
 
 /* ── page ───────────────────────────────────────────────────────────── */
-.page.wide { width: min(1180px, calc(100% - 32px)); bottom: 92px; display: flex; flex-direction: column; }
 .tf-page { display: flex; flex-direction: column; gap: var(--space-3); flex: 1; min-height: 0; }
 .tf-page-hd { display: flex; gap: var(--space-4); justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
 .tf-page-hd p { margin: 0; }

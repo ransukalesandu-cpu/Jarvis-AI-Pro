@@ -6,6 +6,24 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed (web UI review)
+- Floating windows no longer climb over the nav menu, settings, command palette and toasts after
+  many clicks: stacking order is kept as z = 1..n.
+- Reduced motion, 24-hour clock and Task Flow auto-show are now saved by Python
+  (`config/web_workspaces.json`, key `_prefs`); the off-the-record page lost them on every launch.
+- The Reduced motion toggle now also stops CSS animations and transitions, not only the OS setting.
+- Result notes ("Too fast…", "Sent") clear themselves after 5 s.
+- Dev only: React StrictMode no longer connects the bridge twice (events were applied twice).
+
+### Changed (web UI review)
+- Nav menu: the disabled "Phase 2/3" pages are gone; Features Hub, Dashboard, News, Background Jobs
+  and Timer are listed so they are reachable without Ctrl+K (tablet).
+- Settings: the stale "Not yet connected" list is replaced by a Features Hub shortcut; the
+  performance tier in use is marked; Task Flow auto-show toggle added.
+- Tablet and narrow-window layout: the command bar, controls, tray and reply no longer overlap;
+  finger-sized targets on touch screens.
+- Removed the unused side-panel `PageView` (every page opens as a floating window).
+
 ### Security
 - **Telemetry removed from the NextChat web app (`web/`)**: the upstream default Google Analytics
   ID (`G-89WN60ZK2E`), Vercel Analytics, Vercel Speed Insights, the Google Fonts fetch and the

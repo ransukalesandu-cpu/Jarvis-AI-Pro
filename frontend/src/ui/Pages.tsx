@@ -1,11 +1,7 @@
-import { Maximize2 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { Spark } from './Spark';
 import type { LogTag } from '../bridge/contract';
-import { useUi, type Page } from '../store';
-import { useWindows } from '../workspace/windows';
-import type { WinKind } from '../workspace/layout';
-import { TaskProgressPage } from '../taskflow/TaskProgressPage';
+import { useUi } from '../store';
 
 const fmt = (n: number | undefined | null, unit = '%') => (n === undefined || n === null ? '--' : `${Math.round(n)}${unit}`);
 
@@ -86,17 +82,4 @@ export function LogContent() {
   const log = useUi((s) => s.log);
   const clear = useUi((s) => s.clearLog);
   return <LogView lines={log} onClear={clear} />;
-}
-
-export function PageView() {
-  const page = useUi((s) => s.page) as Page;
-  if (page === 'home') return null;
-  return (
-    <main className={`page glass${page === 'tasks' ? ' wide' : ''}`} aria-live={page === 'tasks' ? 'off' : 'polite'}>
-      {(page === 'monitor' || page === 'models' || page === 'activity' || page === 'chat') && (
-        <button className="toggle detach" onClick={() => { useWindows.getState().open((page === 'chat' ? 'log' : page) as WinKind); useUi.getState().go('home'); }} aria-label="Open as floating window"><Maximize2 size={12} /> Window</button>
-      )}
-      {page === 'monitor' ? <MonitorContent /> : page === 'models' ? <ModelsContent /> : page === 'activity' ? <ActivityContent /> : page === 'chat' ? <LogContent /> : page === 'tasks' ? <TaskProgressPage /> : <h1>Not available yet</h1>}
-    </main>
-  );
 }

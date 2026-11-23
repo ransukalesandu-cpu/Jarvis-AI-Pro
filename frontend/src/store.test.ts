@@ -77,3 +77,19 @@ describe('log feed', () => {
     expect(useUi.getState().log).toHaveLength(0);
   });
 });
+
+describe('ui.prefs and result notes', () => {
+  it('applies saved prefs and marks them loaded (null keeps defaults)', () => {
+    useUi.setState({ prefsLoaded: false, reducedMotion: false, clock24: true });
+    useUi.getState().apply({ type: 'ui.prefs', prefs: null });
+    expect(useUi.getState()).toMatchObject({ prefsLoaded: true, reducedMotion: false, clock24: true });
+    useUi.getState().apply({ type: 'ui.prefs', prefs: { reducedMotion: true, clock24: false, taskflowAutoShow: false } });
+    expect(useUi.getState()).toMatchObject({ reducedMotion: true, clock24: false });
+  });
+  it('counts every result so the same reason twice is shown again', () => {
+    const before = useUi.getState().resultSeq;
+    useUi.getState().apply({ type: 'control.result', reason: 'rate_limited' });
+    useUi.getState().apply({ type: 'control.result', reason: 'rate_limited' });
+    expect(useUi.getState().resultSeq).toBe(before + 2);
+  });
+});

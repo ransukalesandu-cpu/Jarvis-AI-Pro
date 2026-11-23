@@ -27,3 +27,16 @@ describe('ui.perf', () => {
     for (const tier of ['auto', 'turbo', '', 3, null]) expect(parseHostEvent(j({ type: 'ui.perf', tier }))).toBeNull();
   });
 });
+
+describe('ui.prefs', () => {
+  const good = { reducedMotion: true, clock24: false, taskflowAutoShow: true };
+  it('accepts exactly the three boolean prefs, or null', () => {
+    expect(parseHostEvent(j({ type: 'ui.prefs', prefs: good }))).toEqual({ type: 'ui.prefs', prefs: good });
+    expect(parseHostEvent(j({ type: 'ui.prefs', prefs: null }))).toEqual({ type: 'ui.prefs', prefs: null });
+  });
+  it('rejects extra keys, missing keys and non-booleans', () => {
+    expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { ...good, x: true } }))).toBeNull();
+    expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { clock24: true } }))).toBeNull();
+    expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { ...good, clock24: 1 } }))).toBeNull();
+  });
+});

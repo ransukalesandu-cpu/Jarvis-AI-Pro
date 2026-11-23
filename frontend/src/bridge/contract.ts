@@ -37,6 +37,16 @@ export const FEATURE_MAX_ITEMS = 30;
 export interface FeatureItem { title: string; detail: string }
 export interface FeatureSnapshot { summary: string; items: FeatureItem[] }
 
+/** Web UI preferences, saved by Python (jarvis/webui/workspace_store.validate_prefs): exactly these keys, all booleans. */
+export const PREF_KEYS = ['reducedMotion', 'clock24', 'taskflowAutoShow'] as const;
+export type Prefs = Record<(typeof PREF_KEYS)[number], boolean>;
+export function validatePrefs(p: unknown): Prefs | null {
+  if (p === null || typeof p !== 'object' || Array.isArray(p)) return null;
+  const o = p as Record<string, unknown>;
+  if (Object.keys(o).length !== PREF_KEYS.length || !PREF_KEYS.every((k) => typeof o[k] === 'boolean')) return null;
+  return { reducedMotion: o.reducedMotion as boolean, clock24: o.clock24 as boolean, taskflowAutoShow: o.taskflowAutoShow as boolean };
+}
+
 export type HostEvent =
   | { type: 'assistant.state_changed'; state: AssistantState }
   | { type: 'assistant.audio_level'; level: number; source: 'input' | 'output' }
@@ -56,6 +66,7 @@ export type HostEvent =
   | { type: 'task.flow'; flow: Flow }
   | { type: 'ui.task_flow'; view: FlowView }
   | { type: 'host.hello'; version: number }
+  | { type: 'ui.prefs'; prefs: Prefs | null }
   | { type: 'feature.snapshot'; feature: Feature; summary: string; items: FeatureItem[] };
 
 /** UI -> Python requests. Authorization always happens in Python; this list is only the shape. */
@@ -68,7 +79,8 @@ export type UiRequest =
   | { kind: 'job.cancel'; id: string }
   | { kind: 'control.do'; action: ControlAction }
   | { kind: 'hologram.capability'; webgl2: boolean }
-  | { kind: 'feature.refresh'; feature: Feature };
+  | { kind: 'feature.refresh'; feature: Feature }
+  | { kind: 'prefs.load' } | { kind: 'prefs.save'; prefs: Prefs };
 
 export const COMMAND_MAX = 500;
 export const COMMAND_REASONS = ['sent', 'empty', 'too_long', 'locked', 'auth_required', 'silent', 'guest', 'credential', 'rate_limited', 'unavailable', 'done', 'noop'] as const;
@@ -184,6 +196,11 @@ export function parseHostEvent(raw: unknown): HostEvent | null {
     }
     case 'ui.task_flow':
       return (FLOW_VIEWS as readonly unknown[]).includes(m.view) ? { type: m.type, view: m.view as FlowView } : null;
+    case 'ui.prefs': {
+      if (m.prefs === null) return { type: m.type, prefs: null };
+      const prefs = validatePrefs(m.prefs);
+      return prefs ? { type: m.type, prefs } : null;
+    }
     case 'host.hello':
       return num(m.version, 0, 1000) ? { type: m.type, version: m.version } : null;
     case 'feature.snapshot': {

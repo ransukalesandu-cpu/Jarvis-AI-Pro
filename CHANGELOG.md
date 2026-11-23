@@ -14,6 +14,9 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   index instead of pixels. New agent tools `screen_elements`, `tap_element`, `fill_field`, `wait_for_element`,
   `scroll_to_element`; `phone_control` gains `read_screen`, `tap_element`, `fill_field`, `wait_for`, `scroll_to`.
   Uses uiautomator2 when installed, plain `adb shell uiautomator dump` otherwise. Password fields are never echoed.
+- **Phone control away from home**: `devices.json` accepts `adb.remote_address` (the phone's Tailscale
+  address); the agent falls back to it when the home address is unreachable and reports `transport: tailscale`.
+  New agent tool `remote_access` (`adb tcpip 5555`). See docs/PHONE_REMOTE_ADB.md.
 
 ### Fixed (web UI review)
 - Floating windows no longer climb over the nav menu, settings, command palette and toasts after

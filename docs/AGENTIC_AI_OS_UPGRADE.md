@@ -131,3 +131,17 @@ Run full Python, frontend, security, Supabase, and Windows verification. Add end
 - Do not bypass configured review approvals or branch protections.
 - Squash merge after CI/security/review requirements are satisfied and the PR head has not changed since verification.
 - Repository-level GitHub Auto-merge is disabled at the time of this audit; enabling it requires a repository setting change by an authorized GitHub administrator. Until then, merge eligibility must be checked explicitly for each PR.
+
+
+### Phase 2 preliminary code-map (audit extension)
+
+The repository has two orchestration surfaces that overlap but are not interchangeable:
+
+- `jarvis/agent/AgentService` + `TaskRunner`: general multi-step assistant tasks, typed `TaskStep` kinds, dependency graph, bounded parallel read execution, cloud task persistence, screen vision, browser automation, and policy checks.
+- `jarvis/computer_control/orchestrator/HostAgent` + `jobs.run_objective`: computer-control-specific plans, app-agent registry, shared step context, trace, limited recovery, expectation verification, and JobManager/StateBus progress.
+
+The computer-control host delegates individual actions through the existing computer-control runner/policy layer; the general agent runner has a separate plan/model and task-state contract. A wholesale replacement of either stack would risk breaking the existing computer-control tool contract and background-job lifecycle.
+
+**Phase 2 decision:** keep the computer-control HostAgent as a specialist execution adapter initially, and make the general AgentService/TaskRunner the candidate top-level lifecycle owner only after a compatibility adapter is designed and tests cover cancellation, approvals, trace/evidence, cloud persistence, and existing `cc_task` JobManager behavior. Do not merge the two codepaths by renaming classes or deleting files. First add contract/adapter tests; then migrate one entry point at a time.
+
+Current evidence includes `jarvis/tests/test_agent_integration.py`, `test_agent_runner.py`, `test_computer_control_orchestrator.py`, and `test_computer_control_workflows.py`. Repository API inspection does not execute these tests; they remain required verification in CI/local checkout.

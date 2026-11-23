@@ -546,6 +546,9 @@ class AgentService:
                     "You are JARVIS's task planner. Answer with JSON only, as "
                     "instructed by the user's message."
                 ),
+                # Cloud planner refused -> local uncensored model (owner's choice;
+                # core/uncensored_fallback.py). Approvals and policy still apply.
+                **({"allow_uncensored": True} if _uncensored_tools() else {}),
             )
             return str(result.get("text") or "")
 
@@ -703,3 +706,11 @@ __all__ = [
     "shutdown_service",
     "service_available",
 ]
+
+
+def _uncensored_tools() -> bool:
+    try:
+        from jarvis.core import uncensored_fallback
+        return uncensored_fallback.tools_enabled()
+    except Exception:
+        return False

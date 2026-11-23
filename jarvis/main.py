@@ -1666,6 +1666,20 @@ class JarvisLive(
             self._loop
         )
 
+    @staticmethod
+    def _start_uncensored_task(objective: str) -> str:
+        """A refused voice request that needs actions: run it as an autonomous
+        task. AgentService.start still checks owner verification, Privacy Lock
+        and the settings switch; its planner falls back to the local model."""
+        try:
+            from jarvis.agent.integration import get_service
+            task = get_service().start(objective, source="uncensored-fallback")
+        except (PermissionError, ValueError) as exc:
+            return str(exc)
+        except Exception as exc:
+            return f"I couldn't start that task ({type(exc).__name__})."
+        return f"Gemini declined, so I started it as task {task.id} with the local model, sir."
+
     def _deliver_uncensored_answer(self, text: str) -> None:
         """Runs on the fallback's worker thread: show the local model's answer and
         read it with JARVIS's own TTS (Gemini already declined, so it is not asked
@@ -2956,7 +2970,8 @@ class JarvisLive(
                                 try:
                                     from jarvis.core import uncensored_fallback
                                     if uncensored_fallback.maybe_handle_live_turn(
-                                            full_in, full_out, self._deliver_uncensored_answer):
+                                            full_in, full_out, self._deliver_uncensored_answer,
+                                            start_task=self._start_uncensored_task):
                                         self.ui.write_log("SYS: Gemini declined; asking the local model…")
                                 except Exception:
                                     failsoft.suppress('main:uncensored_fallback')

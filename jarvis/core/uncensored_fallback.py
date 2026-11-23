@@ -7,12 +7,18 @@ a local model running in Ollama on the laptop — typically a Heretic-processed
 open-weight model (github.com/p-e-w/heretic, run separately; nothing from that
 AGPL project is copied here). See docs/UNCENSORED_FALLBACK.md.
 
-Scope is deliberately narrow:
-    * TEXT ANSWERS ONLY. The fallback is used for spoken/chat answers. It is
-      never used for tool calling, the computer-control planner or the agent
-      planner: a model with its refusal training removed agrees to injected
-      instructions (emails, web pages) far more easily, and those paths can act
-      on the PC without confirmation in Full Access.
+Scope:
+    * Text answers (voice + chat).
+    * Actions too, unless switched off (``uncensored_for_tools`` /
+      ``JARVIS_UNCENSORED_TOOLS=0``): the agent planner and the
+      computer-control planner fall back to the local model when the cloud
+      planner refuses, and a refused voice request that needs actions on the PC
+      is started as an autonomous task. The owner chose this knowing that a
+      model without refusal training follows injected instructions (emails, web
+      pages) more easily; what still protects the PC does not depend on the
+      model: owner verification and Privacy Lock before a task starts, the
+      planners' tool allow-lists, untrusted-content wrapping, path_guard, the
+      action log and the stop word / emergency stop.
     * Off by default. It turns on only when a local model name is configured:
       ``uncensored_model`` in config/api_keys.json or ``JARVIS_UNCENSORED_MODEL``.
     * Local only: the request goes to Ollama (``OLLAMA_HOST``, default
@@ -86,6 +92,19 @@ def enabled() -> bool:
     return bool(model_name())
 
 
+def tools_enabled() -> bool:
+    """Planners and voice actions may use the local model (owner's choice, on by
+    default once a model is configured; ``JARVIS_UNCENSORED_TOOLS=0`` or
+    ``"uncensored_for_tools": false`` turns it off)."""
+    if not enabled():
+        return False
+    env = os.environ.get("JARVIS_UNCENSORED_TOOLS", "").strip().lower()
+    if env:
+        return env not in {"0", "false", "off", "no"}
+    value = _config().get("uncensored_for_tools", True)
+    return value is not False and str(value).strip().lower() not in {"0", "false", "off", "no"}
+
+
 def speak_enabled() -> bool:
     return os.environ.get("JARVIS_UNCENSORED_SPEAK", "1").strip().lower() not in {"0", "false", "off", "no"}
 
@@ -108,7 +127,8 @@ def _http_post(url: str, payload: dict, timeout: float) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def answer(prompt: str, system: str = SYSTEM_PROMPT, *, timeout: float = DEFAULT_TIMEOUT_S) -> Optional[dict]:
+def answer(prompt: str, system: str = SYSTEM_PROMPT, *, timeout: float = DEFAULT_TIMEOUT_S,
+           num_ctx: int = 4096) -> Optional[dict]:
     """Ask the local model. Returns {'text', 'model', 'provider'} or None when
     the fallback is off, Ollama is unreachable, or the local model refused too."""
     prompt = str(prompt or "").strip()
@@ -121,7 +141,7 @@ def answer(prompt: str, system: str = SYSTEM_PROMPT, *, timeout: float = DEFAULT
         "think": False,
         "messages": [{"role": "system", "content": system or SYSTEM_PROMPT},
                      {"role": "user", "content": prompt}],
-        "options": {"num_ctx": 4096},
+        "options": {"num_ctx": int(num_ctx)},
     }
     try:
         data = (_post or _http_post)(_endpoint() + "/api/chat", payload, timeout)
@@ -136,11 +156,29 @@ def answer(prompt: str, system: str = SYSTEM_PROMPT, *, timeout: float = DEFAULT
 
 
 # ── Gemini Live hook ────────────────────────────────────────────────────────
+_CLASSIFY_PROMPT = (
+    "Does this request need actions on the owner's computer or phone (opening, "
+    "creating, deleting, moving, downloading, installing, sending, clicking, typing, "
+    "running something), or only a spoken answer? Reply with exactly one word: "
+    "ACT or ANSWER.\n\nRequest: "
+)
+
+
+def needs_action(user_text: str) -> bool:
+    """Ask the local model whether a refused request is an action or a question."""
+    result = answer(_CLASSIFY_PROMPT + user_text, "You classify requests. One word only.",
+                    timeout=60.0)
+    return bool(result) and result["text"].strip().upper().startswith("ACT")
+
+
 def maybe_handle_live_turn(user_text: str, assistant_text: str,
-                           deliver: Callable[[str], None]) -> bool:
+                           deliver: Callable[[str], None],
+                           start_task: Optional[Callable[[str], str]] = None) -> bool:
     """Called once per finished Live turn. When Gemini's spoken reply was a
-    short refusal of the owner's request, answer it locally in the background
-    and pass the text to ``deliver``. Returns True when a fallback was started."""
+    short refusal of the owner's request, handle it locally in the background:
+    an action request becomes an autonomous task (``start_task``, when tools are
+    allowed), anything else gets a local text answer passed to ``deliver``.
+    Returns True when a fallback was started."""
     if not enabled():
         return False
     user_text = str(user_text or "").strip()
@@ -148,14 +186,17 @@ def maybe_handle_live_turn(user_text: str, assistant_text: str,
         return False
 
     def _work():
-        result = answer(user_text)
-        if result:
-            try:
+        try:
+            if start_task is not None and tools_enabled() and needs_action(user_text):
+                deliver(start_task(user_text))
+                return
+            result = answer(user_text)
+            if result:
                 deliver(result["text"])
-            except Exception as exc:
-                print(f"[Uncensored] delivery failed: {type(exc).__name__}")
-        else:
-            print("[Uncensored] the local model had no answer either.")
+            else:
+                print("[Uncensored] the local model had no answer either.")
+        except Exception as exc:
+            print(f"[Uncensored] fallback failed: {type(exc).__name__}")
 
     threading.Thread(target=_work, name="uncensored-fallback", daemon=True).start()
     return True

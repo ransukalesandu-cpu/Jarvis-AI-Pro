@@ -97,7 +97,7 @@ def test_router_falls_back_on_refusal_for_chat(local):
 
 
 def test_router_never_falls_back_without_permission(local):
-    """Planners and tool paths call query() without allow_uncensored."""
+    """A caller that does not pass allow_uncensored (translate, compare, ...)."""
     out = _router("I'm sorry, but I can't help with that.").query("q", task="chat")
     assert out["provider"] == "gemini"
     assert local == []
@@ -146,3 +146,72 @@ def test_live_hook_ignores_normal_turns(local):
     assert not uf.maybe_handle_live_turn("open spotify", "Opening Spotify, sir.", lambda t: None)
     assert not uf.maybe_handle_live_turn("", "Sorry, I can't help with that.", lambda t: None)
     assert local == []
+
+
+def test_tools_enabled_default_on_with_kill_switch(local, monkeypatch):
+    monkeypatch.setattr(uf, "_config", lambda: {})
+    monkeypatch.delenv("JARVIS_UNCENSORED_TOOLS", raising=False)
+    assert uf.tools_enabled()
+    monkeypatch.setenv("JARVIS_UNCENSORED_TOOLS", "0")
+    assert not uf.tools_enabled()
+    monkeypatch.delenv("JARVIS_UNCENSORED_TOOLS")
+    monkeypatch.setattr(uf, "_config", lambda: {"uncensored_for_tools": False})
+    assert not uf.tools_enabled()
+
+
+def test_tools_off_when_fallback_off(monkeypatch):
+    monkeypatch.delenv("JARVIS_UNCENSORED_MODEL", raising=False)
+    monkeypatch.setattr(uf, "_config", lambda: {})
+    assert not uf.tools_enabled()
+
+
+def _wait_hook(user, start_task, monkeypatch, classify):
+    monkeypatch.setattr(uf, "_post", lambda url, payload, timeout: {
+        "message": {"content": classify if "ACT or ANSWER" in payload["messages"][-1]["content"]
+                    else "Local text answer."}})
+    got, done = [], threading.Event()
+
+    def deliver(text):
+        got.append(text)
+        done.set()
+    assert uf.maybe_handle_live_turn(user, "Sorry, I can't help with that.", deliver, start_task=start_task)
+    assert done.wait(5)
+    return got
+
+
+def test_live_action_request_starts_agent_task(local, monkeypatch):
+    started = []
+    got = _wait_hook("delete the temp folder", lambda t: started.append(t) or "started task", monkeypatch, "ACT")
+    assert started == ["delete the temp folder"] and got == ["started task"]
+
+
+def test_live_question_gets_text_answer(local, monkeypatch):
+    started = []
+    got = _wait_hook("explain this", lambda t: started.append(t) or "x", monkeypatch, "ANSWER")
+    assert started == [] and got == ["Local text answer."]
+
+
+def test_live_action_needs_tools_enabled(local, monkeypatch):
+    monkeypatch.setenv("JARVIS_UNCENSORED_TOOLS", "0")
+    started = []
+    got = _wait_hook("delete the temp folder", lambda t: started.append(t) or "x", monkeypatch, "ACT")
+    assert started == [] and got == ["Local text answer."]
+
+
+def test_planners_pass_allow_uncensored(local, monkeypatch):
+    from jarvis.agent import integration
+    from jarvis.computer_control.orchestrator import planner
+    assert integration._uncensored_tools() is True
+    assert planner._uncensored_tools() is True
+    monkeypatch.setenv("JARVIS_UNCENSORED_TOOLS", "0")
+    assert integration._uncensored_tools() is False
+    assert planner._uncensored_tools() is False
+
+
+def test_planner_style_json_falls_back(local, monkeypatch):
+    monkeypatch.setattr(uf, "_post", lambda url, payload, timeout: {
+        "message": {"content": '{"steps": []}'}, "model": "m"})
+    out = _router("I'm sorry, but I can't help with that.").query(
+        "plan", system_prompt="You are JARVIS's task planner. Answer with JSON only.",
+        allow_uncensored=True)
+    assert out["provider"] == "ollama-uncensored" and out["text"] == '{"steps": []}'

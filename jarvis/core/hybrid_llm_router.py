@@ -294,7 +294,7 @@ class HybridLLMRouter:
             return None
         if cloud_text is not None and not uncensored_fallback.is_refusal(cloud_text):
             return None
-        local = uncensored_fallback.answer(prompt, system_prompt)
+        local = uncensored_fallback.answer(prompt, system_prompt, num_ctx=8192)
         if local is None:
             return None
         logger.info("Cloud reply was refused/blocked; answered by the local uncensored model")

@@ -24,6 +24,7 @@ anthropic>=1.17,<2  # output_config and server-side fallbacks (ask_claude)
 mcp>=1.2,<3  # Model Context Protocol client (core/mcp_client.py)
 
 # ── Web search & browser control ──────────────────────────────────────────────
+curl_cffi>=0.7,<1  # HTTP client with browser impersonation support
 requests>=2.31,<3
 beautifulsoup4>=4.12,<5
 playwright>=1.40,<2

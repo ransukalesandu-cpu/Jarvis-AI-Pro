@@ -12,6 +12,12 @@ API_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "api_keys.jso
 _ALLOWED_INTENTS = {"CHAT", "BROWSER"}
 
 
+def _gemini_env_key() -> str:
+    """GEMINI_API_KEY / GOOGLE_API_KEY from the environment ("" if unset)."""
+    from jarvis.core import gemini as _gemini
+    return _gemini.env_api_key()
+
+
 def _configured_preferred_provider() -> str:
     try:
         data = json.loads(API_CONFIG_PATH.read_text(encoding="utf-8"))
@@ -35,7 +41,7 @@ def _configured_keys() -> dict[str, str]:
     if not isinstance(data, dict):
         return {}
     return {
-        "gemini": str(data.get("gemini_api_key") or "").strip(),
+        "gemini": str(data.get("gemini_api_key") or "").strip() or _gemini_env_key(),
         "groq": str(data.get("groq_api_key") or "").strip(),
         "openai": str(data.get("openai_api_key") or "").strip(),
         "claude": str(data.get("anthropic_api_key") or data.get("claude_api_key") or "").strip(),

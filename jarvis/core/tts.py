@@ -288,6 +288,12 @@ class KokoroTTSEngine:
                 "offline", "not found", "cache", "localentry",
                 "does not exist", "outgoing", "local_files_only",
             )
+            from jarvis.core import privacy as _privacy
+            if _privacy.offline_enabled():
+                raise RuntimeError(
+                    "Kokoro model is not in the local cache and OFFLINE mode is on. "
+                    "Run JARVIS once without OFFLINE=1 to download it, or use EdgeTTS."
+                ) from _first_err
             if any(k in _e for k in _offline_keywords):
                 print("[TTS] Kokoro model not in local cache — downloading (one-time, internet required)…")
                 os.environ.pop("HF_HUB_OFFLINE",      None)

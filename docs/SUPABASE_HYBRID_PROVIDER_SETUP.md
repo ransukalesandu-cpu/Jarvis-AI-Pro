@@ -19,7 +19,7 @@ The Edge Function is `jarvis-cloud-ai`, requires a valid Supabase Auth JWT, and 
 
 Set only these public configuration values for the JARVIS process; do not commit local values to Git:
 
-- `SUPABASE_URL=https://pitsvturrmtqrhfxtclg.supabase.co`
+- `SUPABASE_URL=https://<your-project-ref>.supabase.co`
 - `SUPABASE_ANON_KEY=<Supabase anon/publishable key>`
 
 No email or password is required. The client creates an anonymous Supabase Auth session and refreshes its access token in memory. Enable anonymous sign-ins in Supabase Auth settings. The host enrollment token is only needed for first host-device registration; remove it from the desktop environment after enrollment.

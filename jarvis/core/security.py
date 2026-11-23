@@ -556,6 +556,25 @@ _DANGEROUS_ACTIONS: dict[str, set[str]] = {
 }
 
 
+# (safe actions, dangerous actions) per tool; anything else is SENSITIVE.
+_FEATURE_TIERS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    "knowledge": (frozenset({"list", "sources", "ask", "search", "stats"}),
+                  frozenset({"delete_base"})),
+    "telegram": (frozenset({"status"}), frozenset({"pair", "send_file"})),
+    "translate": (frozenset({"text", "history"}), frozenset()),
+    "quick_action": (frozenset(), frozenset()),
+    "notes": (frozenset({"read", "search", "list", "folder"}), frozenset({"set_folder"})),
+    "compare_models": (frozenset({"compare", "show", "wins"}), frozenset()),
+    "backup": (frozenset({"status", "list", "preview"}), frozenset({"restore", "set_folder"})),
+    "ai_providers": (frozenset({"status", "test", "routes", "usage"}), frozenset()),
+    "assistant_profiles": (frozenset({"list", "current"}), frozenset({"create", "delete"})),
+    "file_library": (frozenset({"list", "search", "forget_missing"}), frozenset({"send_to_phone"})),
+    "mini_app": (frozenset({"list"}), frozenset({"add", "remove"})),
+    "global_search": (frozenset({"search"}), frozenset({"clear_history"})),
+    "dictation": (frozenset({"status", "stop"}), frozenset()),
+}
+
+
 _AUTONOMOUS_SAFE_ACTIONS = {
     "status", "report", "pending", "pause", "resume", "stop",
     "save_workflow", "list_workflows", "suggest_workflows",
@@ -614,6 +633,13 @@ def tier_for(name: str, params: dict | None = None) -> str:
         if action in {"list", "use"}:
             return TIER_SAFE
         return TIER_DANGEROUS if action in {"create", "delete"} else TIER_SENSITIVE
+    if name in _FEATURE_TIERS:
+        # Cherry Studio parity tools: reads are free, edits are routine (SENSITIVE),
+        # irreversible or owner-level operations need approval.
+        safe, dangerous = _FEATURE_TIERS[name]
+        if action in dangerous:
+            return TIER_DANGEROUS
+        return TIER_SAFE if action in safe else TIER_SENSITIVE
     if name == "self_update":
         return TIER_SAFE if operation == "check" else TIER_DANGEROUS
     if name == "open_app":
@@ -973,6 +999,16 @@ def guard(name: str, params: dict, run: Callable[[], str]) -> str:
     tier = tier_for(name, params)
     auth = _auth_manager
     auth.get_state()
+
+    # An active assistant profile may narrow the tool set (never widens it).
+    try:
+        from jarvis.assistants import tool_block_reason
+        profile_block = tool_block_reason(name)
+    except Exception:
+        profile_block = ""
+    if profile_block:
+        audit("call", name, tier, "denied", "assistant profile allow-list")
+        return profile_block
 
     # Security V2: once a Guest session was started explicitly, the identity manager
     # decides first and denies by default. Without one, nothing changes.

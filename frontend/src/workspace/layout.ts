@@ -1,6 +1,6 @@
 import type { Page } from '../store';
 
-export const WINDOW_KINDS = ['monitor', 'models', 'activity', 'log', 'timer', 'bento', 'news', 'jobs', 'tasks'] as const;
+export const WINDOW_KINDS = ['monitor', 'models', 'activity', 'log', 'timer', 'bento', 'news', 'jobs', 'tasks', 'features'] as const;
 export type WinKind = (typeof WINDOW_KINDS)[number];
 export const WINDOW_STATES = ['normal', 'minimized', 'maximized'] as const;
 export type WinState = (typeof WINDOW_STATES)[number];
@@ -14,13 +14,13 @@ export const MIN_H = 180;
 export const MAX_WINDOWS = 12;
 export const TOP = 64;      // below the top bar
 export const MARGIN = 16;
-export const TITLES: Record<WinKind, string> = { monitor: 'System Monitor', models: 'AI Models', activity: 'Activity Center', log: 'Conversation Log', timer: 'Timer', bento: 'Dashboard', news: 'News', jobs: 'Background Jobs', tasks: 'Task Progress' };
+export const TITLES: Record<WinKind, string> = { monitor: 'System Monitor', models: 'AI Models', activity: 'Activity Center', log: 'Conversation Log', timer: 'Timer', bento: 'Dashboard', news: 'News', jobs: 'Background Jobs', tasks: 'Task Progress', features: 'Features Hub' };
 
 /** Pages that open as floating windows (drag them anywhere around the hologram) instead of the side panel. */
 export const PAGE_WINDOWS: Partial<Record<Page, WinKind>> = { chat: 'log', activity: 'activity', models: 'models', monitor: 'monitor', tasks: 'tasks' };
 
 /** Kinds that need more room than the default gutter size. */
-export const PREFERRED_SIZE: Partial<Record<WinKind, { w: number; h: number }>> = { tasks: { w: 900, h: 560 }, log: { w: 380, h: 460 } };
+export const PREFERRED_SIZE: Partial<Record<WinKind, { w: number; h: number }>> = { tasks: { w: 900, h: 560 }, log: { w: 380, h: 460 }, features: { w: 760, h: 540 } };
 
 const isNum = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 

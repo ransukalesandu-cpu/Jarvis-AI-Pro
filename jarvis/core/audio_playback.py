@@ -364,18 +364,22 @@ async def run_audio_playback(
 
                     # Short replies must not be held forever waiting for
                     # 300 ms that will never arrive. Flush remaining audio
-                    # once Live confirms the turn is complete.
-                    if turn_complete and queue_empty:
-                        if pending_pcm:
-                            if not playback_started:
-                                print(
-                                    "[AudioTrace 4/BUFFER] Short response: flushing "
-                                    f"{len(pending_pcm)} buffered PCM bytes below the "
-                                    "300 ms prebuffer target."
-                                )
-                                playback_started = True
-                            break
+                    # once Live confirms the turn is complete — or once the
+                    # model has paused for a tool call, whose turn_complete
+                    # only arrives after the tool round trip.
+                    drain = bool(getattr(host, "_audio_drain_requested", False))
+                    if queue_empty and pending_pcm and (turn_complete or drain):
+                        if not playback_started:
+                            print(
+                                "[AudioTrace 4/BUFFER] "
+                                + ("Short response" if turn_complete else "Model paused")
+                                + f": flushing {len(pending_pcm)} buffered PCM bytes "
+                                "below the prebuffer target."
+                            )
+                            playback_started = True
+                        break
 
+                    if turn_complete and queue_empty:
                         audio_debug.log("playback_finished", stage="prebuffer")
                         finish_buffer_turn()
                         host.set_speaking(False)
@@ -442,6 +446,17 @@ async def run_audio_playback(
                         host._assistant_turn_pending
                         and not turn_complete
                         and host.audio_in_queue.empty()
+                        and getattr(host, "_audio_drain_requested", False)
+                    ):
+                        # The model stopped speaking for a tool call. Re-arm the
+                        # jitter buffer for the answer that follows, but this is
+                        # not a network underrun: do not grow the prebuffer.
+                        playback_started = False
+                        prebuffer_logged = False
+                    elif (
+                        host._assistant_turn_pending
+                        and not turn_complete
+                        and host.audio_in_queue.empty()
                     ):
                         # Live audio can arrive in bursts. If the speaker queue
                         # has actually run dry mid-turn, re-arm the jitter buffer
@@ -476,7 +491,10 @@ async def run_audio_playback(
                                     dropped_chunk=len(next_chunk))
                     host._playback_interrupt_requested.clear()
                     host.set_speaking(False)
-                    pending_pcm.clear()
+                    # Same as the other interrupt paths: a provisional barge-in
+                    # keeps this chunk in the held answer instead of losing it.
+                    pending_pcm.extend(next_chunk)
+                    drop_pending_pcm(host, pending_pcm)
                     playback_started = False
                     try:
                         if not stream.active:

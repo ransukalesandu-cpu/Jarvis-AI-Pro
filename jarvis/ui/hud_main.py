@@ -1019,7 +1019,8 @@ class _HudSetupController(QObject):
         """
         try:
             from jarvis.memory.config_manager import load_api_keys
-            key = load_api_keys().get("gemini_api_key", "")
+            from jarvis.core import gemini as _gemini
+            key = _gemini.env_api_key() or load_api_keys().get("gemini_api_key", "")
             return isinstance(key, str) and len(key.strip()) > 15
         except Exception:
             return False

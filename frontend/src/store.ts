@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { usePending } from './ux/pending';
 import { PAGE_WINDOWS } from './workspace/layout';
 import { useWindows } from './workspace/windows';
-import type { AssistantState, Battery, CommandReason, CommandState, HostEvent, JobRow, LogTag, NewsItem, Net, Persona, PerfTier } from './bridge/contract';
+import type { AssistantState, Battery, CommandReason, CommandState, Feature, FeatureSnapshot, HostEvent, JobRow, LogTag, NewsItem, Net, Persona, PerfTier } from './bridge/contract';
 
 export type Page = 'home' | 'chat' | 'activity' | 'models' | 'research' | 'reminders' | 'apps' | 'files' | 'memory' | 'automation' | 'monitor' | 'security' | 'tasks';
 
@@ -25,6 +25,7 @@ export interface UiState {
   perfTier: PerfTier | null;
   news: { heading: string; items: NewsItem[] } | null;
   jobs: JobRow[] | null;
+  features: Partial<Record<Feature, FeatureSnapshot & { at: number }>>;
   outputLevel: number;
   inputLevel: number;
   series: Series;
@@ -71,7 +72,7 @@ export interface BrainShapeRequest { shape: ShapeName; text: string; seq: number
 const prefersReduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export const useUi = create<UiState>((set) => ({
-  link: 'connecting', assistant: 'idle', persona: 'jarvis', perfTier: null, news: null, jobs: null, outputLevel: 0, inputLevel: 0,
+  link: 'connecting', assistant: 'idle', persona: 'jarvis', perfTier: null, news: null, jobs: null, features: {}, outputLevel: 0, inputLevel: 0,
   series: EMPTY, metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, perfOverlay: false, faceStyle: 'circuit', centerStyle: 'brain', brainShape: null, clock24: true, history: [], workspaceNames: [], paletteOpen: false, muted: false, command: { state: 'unavailable', last: null }, control: null, log: [],
   setLink: (link) => set({ link }),
   apply: (e) => set((s) => {
@@ -93,6 +94,7 @@ export const useUi = create<UiState>((set) => ({
         return { jobs: e.jobs };
       }
       case 'news.items': return { news: { heading: e.heading, items: e.items } };
+      case 'feature.snapshot': return { features: { ...s.features, [e.feature]: { summary: e.summary, items: e.items, at: Date.now() } } };
       case 'workspace.list': return { workspaceNames: e.names };
       case 'workspace.loaded': return e.layout ? { page: PAGE_WINDOWS[e.layout.page] ? 'home' as const : e.layout.page } : s;
       case 'host.hello': return { link: 'connected' as const };

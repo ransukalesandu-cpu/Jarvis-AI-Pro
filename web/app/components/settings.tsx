@@ -645,8 +645,8 @@ export function Settings() {
 
   const showUsage = accessStore.isAuthorized();
   useEffect(() => {
-    // checks per minutes
-    checkUpdate();
+    // Privacy: no automatic update check against api.github.com; the
+    // "Check update" button in Settings still works on demand.
     showUsage && checkUsage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

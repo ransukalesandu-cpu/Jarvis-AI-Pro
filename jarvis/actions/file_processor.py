@@ -27,9 +27,12 @@ from pathlib import Path
 from jarvis.core import gemini, injection_guard
 
 def _get_api_key() -> str:
-    config_path = Path(__file__).resolve().parent.parent / "config" / "api_keys.json"
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    # One source of truth: env (GEMINI_API_KEY / GOOGLE_API_KEY), then config/api_keys.json.
+    from jarvis.core import gemini as _gemini
+    key = _gemini.api_key(refresh=True)
+    if not key:
+        raise KeyError("gemini_api_key")
+    return key
 
 
 def _gemini_client(tier: str = gemini.SMART):

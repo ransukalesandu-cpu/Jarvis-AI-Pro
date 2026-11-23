@@ -13,6 +13,7 @@ from jarvis.core import brain_shapes
 from jarvis.core.task_flow import FLOW_SOURCES, FLOW_STATES, MAX_STEPS, STEP_STATES, VIEWS as FLOW_VIEWS
 
 from .command_gate import ACTIONS, AVAILABILITY, MAX_TEXT, REASONS
+from .features_feed import FEATURES, MAX_DETAIL, MAX_ITEMS as FEATURE_MAX_ITEMS, MAX_SUMMARY, MAX_TITLE
 from .redact import KINDS as LOG_KINDS, MAX_LINE
 from .workspace_store import clean_name, validate_layout
 
@@ -107,6 +108,11 @@ _EVENTS = {
                              lambda m: _num(m["cpu"], 0, 100) and _num(m["ramMb"], 0, 1e6)
                              and isinstance(m["processes"], int) and _num(m["processes"], 0, 64)),
     "host.hello": ({"version"}, lambda m: _num(m["version"], 0, 1000)),
+    "feature.snapshot": ({"feature", "summary", "items"},
+                         lambda m: m["feature"] in FEATURES and _str(m["summary"], MAX_SUMMARY)
+                         and isinstance(m["items"], list) and len(m["items"]) <= FEATURE_MAX_ITEMS
+                         and all(isinstance(i, dict) and set(i) == {"title", "detail"} and _str(i["title"], MAX_TITLE)
+                                 and isinstance(i["detail"], str) and len(i["detail"]) <= MAX_DETAIL for i in m["items"])),
 }
 
 
@@ -147,6 +153,7 @@ _REQUESTS = {
                       and isinstance(m["drawCalls"], int) and _num(m["drawCalls"], 0, 1e6)
                       and isinstance(m["triangles"], int) and _num(m["triangles"], 0, 1e9)
                       and (m["heapMb"] is None or _num(m["heapMb"], 0, 1e5)) and _num(m["dpr"], 0.25, 4)),
+    "feature.refresh": ({"feature"}, lambda m: m["feature"] in FEATURES),
 }
 
 

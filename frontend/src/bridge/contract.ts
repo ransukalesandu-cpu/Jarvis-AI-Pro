@@ -31,6 +31,13 @@ export interface FlowStep { id: string; tool: string; label: string; status: Ste
 /** One thing the owner asked for (jarvis/core/task_flow.py): a brain node and one node per step. */
 export interface Flow { id: string; title: string; source: FlowSource; state: FlowState; startedAt: number; finishedAt: number | null; steps: FlowStep[] }
 
+/** Features Hub (jarvis/webui/features_feed.py): read-only, bounded snapshots. Actions go through command.submit. */
+export const FEATURES = ['knowledge', 'notes', 'telegram', 'providers', 'compare', 'backup', 'profiles', 'files', 'apps'] as const;
+export type Feature = (typeof FEATURES)[number];
+export const FEATURE_MAX_ITEMS = 30;
+export interface FeatureItem { title: string; detail: string }
+export interface FeatureSnapshot { summary: string; items: FeatureItem[] }
+
 export type HostEvent =
   | { type: 'assistant.state_changed'; state: AssistantState }
   | { type: 'assistant.audio_level'; level: number; source: 'input' | 'output' }
@@ -51,7 +58,8 @@ export type HostEvent =
   | { type: 'ui.task_flow'; view: FlowView }
   | { type: 'hologram.shape'; shape: ShapeName; text: string }
   | { type: 'hologram.perf_report'; cpu: number; ramMb: number; processes: number }
-  | { type: 'host.hello'; version: number };
+  | { type: 'host.hello'; version: number }
+  | { type: 'feature.snapshot'; feature: Feature; summary: string; items: FeatureItem[] };
 
 /** UI -> Python requests. Authorization always happens in Python; this list is only the shape. */
 export type UiRequest =
@@ -63,7 +71,8 @@ export type UiRequest =
   | { kind: 'job.cancel'; id: string }
   | { kind: 'control.do'; action: ControlAction }
   | { kind: 'hologram.capability'; webgl2: boolean }
-  | { kind: 'hologram.perf'; fps: number; frameMs: number; drawCalls: number; triangles: number; heapMb: number | null; dpr: number };
+  | { kind: 'hologram.perf'; fps: number; frameMs: number; drawCalls: number; triangles: number; heapMb: number | null; dpr: number }
+  | { kind: 'feature.refresh'; feature: Feature };
 
 export const COMMAND_MAX = 500;
 export const COMMAND_REASONS = ['sent', 'empty', 'too_long', 'locked', 'auth_required', 'silent', 'guest', 'credential', 'rate_limited', 'unavailable', 'done', 'noop'] as const;
@@ -188,6 +197,16 @@ export function parseHostEvent(raw: unknown): HostEvent | null {
         ? { type: m.type, cpu: m.cpu, ramMb: m.ramMb, processes: m.processes as number } : null;
     case 'host.hello':
       return num(m.version, 0, 1000) ? { type: m.type, version: m.version } : null;
+    case 'feature.snapshot': {
+      if (!(FEATURES as readonly unknown[]).includes(m.feature) || !str(m.summary, 200)) return null;
+      if (!Array.isArray(m.items) || m.items.length > FEATURE_MAX_ITEMS) return null;
+      const items: FeatureItem[] = [];
+      for (const i of m.items as unknown[]) {
+        if (!isObj(i) || !exactKeys(i, ['title', 'detail']) || !str(i.title, 120) || typeof i.detail !== 'string' || i.detail.length > 200) return null;
+        items.push({ title: i.title, detail: i.detail });
+      }
+      return { type: m.type, feature: m.feature as Feature, summary: m.summary, items };
+    }
     default:
       return null;
   }

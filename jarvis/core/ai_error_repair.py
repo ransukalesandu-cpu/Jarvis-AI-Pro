@@ -37,6 +37,12 @@ _SECRET_PATTERNS = (
 )
 
 
+def _gemini_env_key() -> str:
+    """GEMINI_API_KEY / GOOGLE_API_KEY from the environment ("" if unset)."""
+    from jarvis.core import gemini as _gemini
+    return _gemini.env_api_key()
+
+
 def redact_secrets(text: str) -> str:
     """Mask common credential forms before diagnostic text leaves the device."""
     result = str(text or "")
@@ -56,7 +62,7 @@ def _load_keys(config_path: str | Path | None = None) -> dict[str, str]:
             if isinstance(config, dict):
                 keys = {
                     "groq": str(config.get("groq_api_key") or "").strip(),
-                    "gemini": str(config.get("gemini_api_key") or "").strip(),
+                    "gemini": str(config.get("gemini_api_key") or "").strip() or _gemini_env_key(),
                     "openai": str(config.get("openai_api_key") or "").strip(),
                     "claude": str(config.get("anthropic_api_key") or config.get("claude_api_key") or "").strip(),
                 }

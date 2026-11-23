@@ -358,6 +358,10 @@ def _render_prompt(template: str, values: dict) -> str:
 
 def _get_api_key() -> str:
     """Load a non-empty Gemini API key without exposing credentials in errors."""
+    from jarvis.core import gemini as _gemini
+    env_key = _gemini.env_api_key()
+    if env_key:
+        return env_key
     try:
         with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
             config = json.load(f)
@@ -723,6 +727,19 @@ class JarvisLive(
         self._output_stream       = None
         self._playback_interrupt_requested = threading.Event()
         self._assistant_turn_pending = False
+        # Voice ID runs beside the Live receive loop, never inside it: a check
+        # awaited per transcript chunk stopped the loop reading server events
+        # and the reply audio already in flight ran dry mid-sentence.
+        self._voice_auth_task: asyncio.Task | None = None
+        self._voice_auth_rerun = False
+        # Not None while the first Voice ID check of a turn is still running;
+        # the reply's PCM waits here so a stranger never hears the start of it.
+        self._auth_gated_pcm: list[bytes] | None = None
+        self._auth_gated_turn_complete = False
+        # Set when the model has finished speaking for now (tool call or
+        # generation_complete) so playback flushes its short tail instead of
+        # waiting for a prebuffer that will not fill until the tool returns.
+        self._audio_drain_requested = False
         self._barge_in_until      = 0.0
         self._speaking_lock       = threading.Lock()
         self._phone_active        = False   # True while phone mic is streaming; pauses PC mic
@@ -793,6 +810,31 @@ class JarvisLive(
         self.ui.on_push_to_talk   = self.set_push_to_talk
         self.ui.ptt_hold          = self._on_ptt
         self.ui.on_text_command   = self._on_text_command
+        try:                                        # Telegram channel (only when a bot token is configured)
+            from jarvis.channels import start_if_configured
+            start_if_configured(self._on_text_command)
+        except Exception:
+            failsoft.suppress("main:telegram_channel")
+        try:                                        # Quick Assistant selection hotkey (Windows)
+            from jarvis.quick import start_hotkey
+            start_hotkey(self._on_text_command)
+        except Exception:
+            failsoft.suppress("main:quick_assistant")
+        try:                                        # scheduled backups (off until the owner schedules one)
+            from jarvis import backup as _backup
+            _backup.start_scheduler(self._notify_owner)
+        except Exception:
+            failsoft.suppress("main:backup_scheduler")
+        try:                                        # daily AI budget alerts (off until a budget is set)
+            from jarvis.core import usage_meter
+            usage_meter.set_notifier(self._notify_owner)
+        except Exception:
+            failsoft.suppress("main:usage_meter")
+        try:                                        # local conversation archive for global search
+            from jarvis.search import start_archive
+            start_archive()
+        except Exception:
+            failsoft.suppress("main:conversation_archive")
         self.ui.on_remote_clicked = self._make_remote_key
         self.ui.on_interrupt      = self.interrupt
         self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session
@@ -1276,6 +1318,20 @@ class JarvisLive(
         elif not self.ui.muted:
             self.ui.set_state("LISTENING")
 
+    def _notify_owner(self, message: str) -> None:
+        """Background features (backups, budget alerts) report here: HUD log + paired Telegram chat."""
+        try:
+            self.ui.write_log(f"SYS: {message}")
+        except Exception:
+            failsoft.suppress("main:_notify_owner")
+        try:
+            from jarvis.channels import get_channel
+            ch = get_channel()
+            if ch is not None:
+                ch.notify(message)
+        except Exception:
+            failsoft.suppress("main:_notify_owner")
+
     def set_push_to_talk(self, enabled: bool) -> str:
         """Turn hold-to-talk on or off. Returns the scope actually achieved."""
         from jarvis.core.hotkey import PushToTalk
@@ -1729,8 +1785,9 @@ class JarvisLive(
             from jarvis.core import mcp_client
             from jarvis.core.skills import get_skill_registry
             from jarvis.core import standing_orders
+            from jarvis import assistants
             for extra in (standing_orders.prompt_block(), get_skill_registry().index_text(),
-                          mcp_client.get_manager().index_text()):
+                          mcp_client.get_manager().index_text(), assistants.prompt_block()):
                 if extra:
                     parts.append(extra)
         except Exception as exc:
@@ -2218,10 +2275,130 @@ class JarvisLive(
             self._vision_busy = False
         return True
 
+    def _spawn_background(self, coro, label: str) -> None:
+        """Run bookkeeping without holding up the Live receive loop."""
+        async def _guarded():
+            try:
+                await coro
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                print(f"[JARVIS] Background {label} failed: {type(exc).__name__}: {exc}")
+        tasks = self.__dict__.setdefault("_background_tasks", set())
+        task = asyncio.create_task(_guarded())
+        tasks.add(task)
+        task.add_done_callback(tasks.discard)
+
+    # ── Voice ID beside the receive loop ─────────────────────────────────────
+    def _schedule_voice_auth(self, *, first: bool) -> None:
+        """Start (or coalesce into) a background Voice ID check for this turn.
+
+        At most one check runs at a time; chunks that arrive meanwhile ask for
+        one more pass over the newest turn audio instead of queueing a check
+        each. The first check of a turn gates the reply audio (see
+        ``_enqueue_reply_pcm``); later re-checks do not delay playback, but tool
+        calls, voice confirmations and voice UI commands still wait for them.
+        """
+        if first and self.__dict__.get("_auth_gated_pcm") is None:
+            self._auth_gated_pcm = []
+            self._auth_gated_turn_complete = False
+            self._auth_gated_queue = self.audio_in_queue
+        task = self.__dict__.get("_voice_auth_task")
+        if task is not None and not task.done():
+            self._voice_auth_rerun = True
+            return
+        self._voice_auth_rerun = False
+        self._voice_auth_task = asyncio.create_task(self._run_voice_auth())
+
+    async def _run_voice_auth(self) -> None:
+        cancelled = False
+        try:
+            while True:
+                self._voice_auth_rerun = False
+                manager = security.get_auth_manager()
+                if manager.is_silent() or manager.requires_owner_reauthentication():
+                    break
+                await asyncio.to_thread(
+                    manager.process_voice_authentication,
+                    self._get_current_turn_audio(),
+                )
+                self._queue_auth_state_broadcast()
+                if not self._voice_auth_rerun:
+                    break
+        except asyncio.CancelledError:
+            cancelled = True
+            raise
+        except Exception as exc:
+            print(f"[JARVIS] Voice ID check failed: {type(exc).__name__}: {exc}")
+        finally:
+            self._release_auth_gated_audio(drop=cancelled)
+
+    async def _await_voice_auth(self) -> None:
+        """Wait for a running Voice ID check before an auth-dependent decision."""
+        task = self.__dict__.get("_voice_auth_task")
+        if task is not None and not task.done():
+            await asyncio.wait({task})
+
+    def _enqueue_reply_pcm(self, chunks: list[bytes]) -> None:
+        """Queue reply PCM for playback, or hold it while the turn's first
+        Voice ID check is still running."""
+        if not chunks:
+            return
+        self._audio_drain_requested = False
+        self._assistant_turn_pending = True
+        if self._turn_done_event and self._turn_done_event.is_set():
+            self._turn_done_event.clear()
+        gated = self.__dict__.get("_auth_gated_pcm")
+        if gated is not None:
+            gated.extend(chunks)
+            return
+        for chunk in chunks:
+            self.audio_in_queue.put_nowait(chunk)
+
+    def _release_auth_gated_audio(self, *, drop: bool = False) -> None:
+        """Hand held reply audio to playback once the first check has finished.
+
+        Fails closed: if JARVIS was silenced (stranger, Privacy Lock), the turn
+        was interrupted, or the auth state cannot be read, the audio is dropped.
+        """
+        gated = self.__dict__.get("_auth_gated_pcm")
+        turn_complete = bool(self.__dict__.get("_auth_gated_turn_complete"))
+        self._auth_gated_pcm = None
+        self._auth_gated_turn_complete = False
+        if not gated:
+            return
+        try:
+            silent = security.get_auth_manager().is_silent()
+        except Exception:
+            silent = True
+        queue = self.audio_in_queue
+        if queue is not self.__dict__.get("_auth_gated_queue"):
+            drop = True   # the Live session was rebuilt meanwhile
+        if (drop or silent or queue is None or self._interrupted
+                or self.__dict__.get("_stop_word_turn")):
+            audio_debug.log("auth_gated_audio_dropped", chunks=len(gated), silent=silent)
+            return
+        for chunk in gated:
+            queue.put_nowait(chunk)
+        audio_debug.log("auth_gated_audio_released", chunks=len(gated),
+                        turn_complete=turn_complete)
+        if turn_complete:
+            # Live already finished this turn; let playback end it after the
+            # released audio instead of waiting for another turn_complete.
+            if self._turn_done_event:
+                self._turn_done_event.set()
+        else:
+            self._assistant_turn_pending = True
+            if self._turn_done_event and self._turn_done_event.is_set():
+                self._turn_done_event.clear()
+
     async def _answer_tool_calls(self, function_calls, *, voice_confirmation_consumed: bool,
                                  voice_ui_action_consumed: bool,
                                  holo_open_request_pending: bool) -> None:
         """Run one tool_call batch and send its responses (own task; see _receive_audio)."""
+        # Tools are authorised from the auth state; never run them on the
+        # previous speaker's access while this turn's Voice ID check is running.
+        await self._await_voice_auth()
         try:
             fn_responses = []
             for fc in function_calls:
@@ -2379,13 +2556,10 @@ class JarvisLive(
                                     for event in self._vocal_plan.before:
                                         self._enqueue_vocal_event(event)
                                 self._vocal_audio_started = True
-                                self._assistant_turn_pending = True
-                                if self._turn_done_event and self._turn_done_event.is_set():
-                                    self._turn_done_event.clear()
-                                for _i in range(0, len(playable_audio), _PLAYBACK_SLICE_BYTES):
-                                    self.audio_in_queue.put_nowait(
-                                        playable_audio[_i : _i + _PLAYBACK_SLICE_BYTES]
-                                    )
+                                self._enqueue_reply_pcm([
+                                    playable_audio[_i : _i + _PLAYBACK_SLICE_BYTES]
+                                    for _i in range(0, len(playable_audio), _PLAYBACK_SLICE_BYTES)
+                                ])
                             elif (not receive_diagnostics.checkpoint_claimed("output_audio")
                                   and receive_diagnostics.claim_checkpoint("short_audio_fragment")):
                                 buffered_bytes = len(audio_fragment_buffer) & ~1
@@ -2427,6 +2601,10 @@ class JarvisLive(
                                         break
                             self.set_speaking(False)
                             audio_fragment_buffer.clear()
+                            gated = self.__dict__.get("_auth_gated_pcm")
+                            if gated:
+                                gated.clear()
+                            self._audio_drain_requested = False
                             self._visemes.reset()
                             self._play_cursor = 0.0
                             # This server event confirms the old assistant turn
@@ -2514,17 +2692,17 @@ class JarvisLive(
                                     self.ui.write_log(f"SEC: Speaker identified as '{current_speaker_role}'.")
                                     manager = security.get_auth_manager()
                                     if not manager.is_silent() and not manager.requires_owner_reauthentication():
-                                        await asyncio.to_thread(
-                                            manager.process_voice_authentication,
-                                            self._get_current_turn_audio(),
-                                        )
-                                    self._queue_auth_state_broadcast()
+                                        self._schedule_voice_auth(first=first_audio_transcript)
+                                    else:
+                                        self._queue_auth_state_broadcast()
                                 security.mark_user_turn_started()
                                 if voice_ui_action_consumed:
                                     # Ignore any remaining transcript chunks from a UI
                                     # command already routed locally in this turn.
                                     pass
                                 elif not voice_confirmation_consumed:
+                                    if confirm_gate.pending_title():
+                                        await self._await_voice_auth()
                                     decision = await asyncio.to_thread(
                                         confirm_gate.resolve_by_voice, txt
                                     )
@@ -2566,6 +2744,7 @@ class JarvisLive(
                                                     "SYS: Voice UI command ignored while sleeping — say 'Hey Jarvis' or use WAKE NOW first."
                                                 )
                                             else:
+                                                await self._await_voice_auth()
                                                 owner_authorized = security.is_owner_access_allowed()
                                                 if owner_authorized and security.voice_id_required():
                                                     owner_authorized = security.authorize_voice_confirmation()
@@ -2609,10 +2788,7 @@ class JarvisLive(
                                     for event in self._vocal_plan.before:
                                         self._enqueue_vocal_event(event)
                                 self._vocal_audio_started = True
-                                self._assistant_turn_pending = True
-                                if self._turn_done_event and self._turn_done_event.is_set():
-                                    self._turn_done_event.clear()
-                                self.audio_in_queue.put_nowait(final_pcm)
+                                self._enqueue_reply_pcm([final_pcm])
                                 if receive_diagnostics.claim_checkpoint("output_audio"):
                                     print(
                                         f"[AudioTrace 3→4/AUDIO] Queued final PCM tail "
@@ -2644,6 +2820,11 @@ class JarvisLive(
                                 for event in self._vocal_plan.after:
                                     self._enqueue_vocal_event(event)
                             self._assistant_turn_pending = False
+                            self._audio_drain_requested = False
+                            if self.__dict__.get("_auth_gated_pcm") is not None:
+                                # Audio still held for Voice ID: release it as a
+                                # finished turn (see _release_auth_gated_audio).
+                                self._auth_gated_turn_complete = True
                             # The reply to a stop word is over; speak normally again.
                             self._stop_word_turn = False
                             with self._voice_id_audio_lock:
@@ -2731,11 +2912,11 @@ class JarvisLive(
                                 response_memory_ids = list(dict.fromkeys(
                                     self._session_memory_ids + self._pending_response_memory_ids))[:20]
                                 self._pending_response_memory_ids = []
-                                await asyncio.to_thread(
+                                self._spawn_background(asyncio.to_thread(
                                     record_memory_usage, response_memory_ids,
                                     f"response-{secrets.token_hex(8)}", "assistant_response",
                                     allow_empty=True,
-                                )
+                                ), "record_memory_usage")
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
                                         "type": "log", "speaker": "jarvis",
@@ -2755,6 +2936,19 @@ class JarvisLive(
                                     await asyncio.sleep(2.0)
                                     self.ui.stop_camera_stream()
                                 asyncio.create_task(_cam_close())
+
+                    _gen_done = bool(sc and getattr(sc, "generation_complete", False))
+                    if ((response.tool_call or _gen_done)
+                            and not (sc and sc.turn_complete)
+                            and not self._interrupted
+                            and not self.__dict__.get("_stop_word_turn")):
+                        # The model has stopped speaking for now. Release the
+                        # short tail and let playback drain below its prebuffer:
+                        # turn_complete only follows the tool round trip.
+                        tail_pcm = _take_playback_pcm(audio_fragment_buffer, final=True)
+                        if tail_pcm:
+                            self._enqueue_reply_pcm([tail_pcm])
+                        self._audio_drain_requested = True
 
                     if response.tool_call:
                         if self._inflight_user_text:
@@ -2974,6 +3168,11 @@ class JarvisLive(
                     self._vision_last_time     = 0.0
                     self._interrupted          = False
                     self._assistant_turn_pending = False
+                    # Reply audio held for a Voice ID check belongs to the old
+                    # socket; _release_auth_gated_audio drops it (queue changed).
+                    self._auth_gated_pcm       = None
+                    self._auth_gated_turn_complete = False
+                    self._audio_drain_requested = False
                     self._briefing_active      = False
                     self._briefing_cancelled   = False
                     self._briefing_task        = None

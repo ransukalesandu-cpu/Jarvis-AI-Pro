@@ -23,6 +23,12 @@ _FALLBACK_PROMPT_RULES = (
 )
 
 
+def _gemini_env_key() -> str:
+    """GEMINI_API_KEY / GOOGLE_API_KEY from the environment ("" if unset)."""
+    from jarvis.core import gemini as _gemini
+    return _gemini.env_api_key()
+
+
 def build_fallback_system_prompt(base_prompt: str) -> str:
     """Append the no-tools contract used by the text-only fallback."""
     return (base_prompt or "") + _FALLBACK_PROMPT_RULES
@@ -47,7 +53,7 @@ def _shared_claude_key() -> str:
 def _provider_keys(config: dict[str, Any]) -> dict[str, str]:
     """Map local provider credential fields to the hybrid router names."""
     return {
-        "gemini": str(config.get("gemini_api_key") or "").strip(),
+        "gemini": str(config.get("gemini_api_key") or "").strip() or _gemini_env_key(),
         "groq": str(config.get("groq_api_key") or "").strip(),
         "openai": str(config.get("openai_api_key") or "").strip(),
         "claude": str(

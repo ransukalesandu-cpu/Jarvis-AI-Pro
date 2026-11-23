@@ -77,7 +77,7 @@ def _run(path, argv):
         out, code = f"error: device '{serial}' not found", 1
     elif cmd == "exec-out":
         sys.stdout.buffer.write(PNG)
-    elif cmd in ("reverse", "push", "pull", "pair"):
+    elif cmd in ("reverse", "push", "pull", "pair", "tcpip"):
         if cmd == "pull":
             open(argv[2], "w").write("pulled")
         if cmd == "push":

@@ -4,8 +4,12 @@
   tablet's localhost:8765 to the laptop, so the tablet's browser reaches the
   hub with no Wi-Fi at all.
 * The phone uses wireless debugging (Android 11+) while it is on the same
-  network: ``adb pair`` once, then ``adb connect ip:port``. Away from home this
-  does not work; the Phase 3 companion app removes that limit.
+  network: ``adb pair`` once, then ``adb connect ip:port``.
+* Away from home: ``remote_address`` is the phone's Tailscale address with a
+  fixed ADB port (``100.x.y.z:5555``). ``enable_remote`` runs ``adb tcpip 5555``
+  once while the phone is reachable (USB or home Wi-Fi); after that the laptop
+  reaches the phone over Tailscale on any network, mobile data included. It is
+  lost when the phone reboots (run it again). See docs/PHONE_REMOTE_ADB.md.
 
 Every function shells out to ``adb`` with a timeout and raises AdbError with a
 sentence JARVIS can speak. ``AndroidManager`` keeps connections alive: it
@@ -19,11 +23,28 @@ import re
 import shlex
 import shutil
 import subprocess
+import ipaddress
 import threading
 import time
 from dataclasses import dataclass, field
 
 USB = "usb"
+REMOTE_ADB_PORT = 5555
+_TAILSCALE_V4 = ipaddress.ip_network("100.64.0.0/10")
+
+
+def transport_of(serial: str) -> str:
+    """'usb', 'tailscale' or 'wifi' for an adb serial."""
+    if ":" not in serial:
+        return "usb"
+    host = serial.rsplit(":", 1)[0].strip("[]")
+    try:
+        if ipaddress.ip_address(host) in _TAILSCALE_V4:
+            return "tailscale"
+    except ValueError:
+        if host.endswith(".ts.net"):
+            return "tailscale"
+    return "wifi"
 KEYCODES = {
     "home": "KEYCODE_HOME", "back": "KEYCODE_BACK", "enter": "KEYCODE_ENTER",
     "recent": "KEYCODE_APP_SWITCH", "recents": "KEYCODE_APP_SWITCH", "menu": "KEYCODE_MENU",
@@ -69,6 +90,10 @@ class AndroidTarget:
     serial: str = ""          # explicit serial, or "usb" for the first USB device
     address: str = ""         # ip:port for wireless debugging
     reverse_ports: list[int] = field(default_factory=list)
+    remote_address: str = ""  # tailscale-ip:5555 for control away from home
+
+    def wireless(self) -> list[str]:
+        return [a for a in (self.address, self.remote_address) if a]
 
 
 class Adb:
@@ -109,15 +134,15 @@ class AndroidDevice:
     def serial(self) -> str:
         devices = [d for d in self.adb.devices() if d["state"] == "device"]
         t = self.target
-        if t.address:
+        for addr in t.wireless():
             for d in devices:
-                if d["serial"] == t.address:
+                if d["serial"] == addr:
                     return d["serial"]
         if t.serial and t.serial != USB:
             for d in devices:
                 if d["serial"] == t.serial:
                     return d["serial"]
-        if t.serial == USB or (not t.serial and not t.address):
+        if t.serial == USB or (not t.serial and not t.wireless()):
             usb = [d for d in devices if d["usb"]]
             if usb:
                 return usb[0]["serial"]
@@ -228,6 +253,18 @@ class AndroidDevice:
     def reverse(self, port: int) -> None:
         self.adb.run("reverse", f"tcp:{port}", f"tcp:{port}", serial=self.serial())
 
+    def enable_remote(self, port: int = REMOTE_ADB_PORT) -> str:
+        """Switch adbd to a fixed TCP port so the phone is reachable over Tailscale.
+
+        Run while the phone is connected by USB or home Wi-Fi. The setting lasts
+        until the phone reboots.
+        """
+        serial = self.serial()
+        self.adb.run("tcpip", str(int(port)), serial=serial, timeout=15)
+        hint = self.target.remote_address or f"<phone tailscale ip>:{int(port)}"
+        return (f"Remote ADB is on for the {self.name} (port {int(port)}). Away from home the laptop "
+                f"connects to {hint} over Tailscale. Run this again after the phone restarts.")
+
 
 class AndroidManager:
     """Keeps the configured devices connected and reports their state."""
@@ -247,7 +284,8 @@ class AndroidManager:
                 if name:
                     target = AndroidTarget(name=name, serial=str(row.get("serial") or ""),
                                            address=str(row.get("address") or ""),
-                                           reverse_ports=[int(p) for p in row.get("reverse_ports") or []])
+                                           reverse_ports=[int(p) for p in row.get("reverse_ports") or []],
+                                           remote_address=str(row.get("remote_address") or ""))
                     self.devices[name] = AndroidDevice(target, self.adb)
             self.state = {}
 
@@ -270,12 +308,17 @@ class AndroidManager:
                 return {name: {"online": False, "error": str(exc)} for name in self.devices}
             for name, dev in self.devices.items():
                 t = dev.target
-                if t.address and listed.get(t.address, {}).get("state") != "device":
-                    try:
-                        self.adb.run("connect", t.address, timeout=5, check=False)
-                        listed = {d["serial"]: d for d in self.adb.devices()}
-                    except AdbError:
-                        pass
+                wireless = t.wireless()
+                if wireless and not any(listed.get(a, {}).get("state") == "device" for a in wireless):
+                    # Home address first; the Tailscale one only when that fails.
+                    for addr in wireless:
+                        try:
+                            self.adb.run("connect", addr, timeout=5, check=False)
+                            listed = {d["serial"]: d for d in self.adb.devices()}
+                        except AdbError:
+                            continue
+                        if listed.get(addr, {}).get("state") == "device":
+                            break
                 try:
                     serial = dev.serial()
                 except AdbError as exc:
@@ -289,7 +332,7 @@ class AndroidManager:
                         except AdbError as exc:
                             status.setdefault(name, {})["reverse_error"] = str(exc)
                 status[name] = {**status.get(name, {}), "online": True, "serial": serial,
-                                "transport": "wifi" if ":" in serial else "usb"}
+                                "transport": transport_of(serial)}
             self.state = status
             return status
 

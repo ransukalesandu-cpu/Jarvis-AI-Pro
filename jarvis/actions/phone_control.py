@@ -30,7 +30,12 @@ _APP_PACKAGES = {
 _ACTIONS = {
     "status", "open_app", "home", "back", "volume_up", "volume_down",
     "mute_volume", "open_dialer", "open_messages", "wake_screen",
+    # UI-tree actions: act on what is on screen by its visible text.
+    "read_screen", "tap_element", "fill_field", "wait_for", "scroll_to",
+    # Live screen window on the laptop (scrcpy).
+    "show_screen", "hide_screen",
 }
+_UI_ACTIONS = {"read_screen", "tap_element", "fill_field", "wait_for", "scroll_to"}
 _DEVICE_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
@@ -97,6 +102,17 @@ def phone_control(parameters: dict[str, Any] | None = None, player=None) -> str:
     def run_phone(args: list[str], timeout: float = 10.0) -> tuple[bool, str]:
         return _run([adb, "-s", serial, *args], timeout=timeout)
 
+    if action in _UI_ACTIONS:
+        return _ui_action(adb, serial, action, params)
+    if action in {"show_screen", "hide_screen"}:
+        from jarvis.laptop_agent.devices.scrcpy import ScrcpyError, get_manager
+        try:
+            if action == "hide_screen":
+                return get_manager().hide("phone")
+            return get_manager().show("phone", serial, adb_path=adb, control=params.get("control") is not False)
+        except ScrcpyError as exc:
+            return str(exc)
+
     if action == "status":
         ok_model, model = run_phone(["shell", "getprop", "ro.product.model"])
         ok_android, android = run_phone(["shell", "getprop", "ro.build.version.release"])
@@ -162,12 +178,40 @@ def phone_control(parameters: dict[str, Any] | None = None, player=None) -> str:
     return messages[action]
 
 
+def _ui_action(adb: str, serial: str, action: str, params: dict[str, Any]) -> str:
+    from jarvis.core import injection_guard
+    from jarvis.laptop_agent.devices.android import Adb, AdbError, AndroidDevice, AndroidTarget
+    from jarvis.laptop_agent.devices.android_ui import AndroidUi, UiError
+
+    ui = AndroidUi(AndroidDevice(AndroidTarget(name="phone", serial=serial), Adb(adb)))
+    target = str(params.get("target") or "").strip()
+    try:
+        if action == "read_screen":
+            return injection_guard.wrap_untrusted(
+                "Elements (#index kind \"label\" id [C=clickable S=scrollable F=focused] @x,y):\n" + ui.tree(),
+                "phone screen")
+        if action == "fill_field":
+            return ui.set_text(target, str(params.get("text") or ""))
+        if not target:
+            return "Say which element: its visible text, 'id:...' or '#index' from read_screen."
+        if action == "tap_element":
+            return ui.tap(target)
+        if action == "wait_for":
+            return ui.wait_for(target, float(params.get("timeout_seconds") or 10))
+        return ui.scroll_to(target, direction=str(params.get("direction") or "down"))
+    except (AdbError, UiError) as exc:
+        return str(exc)
+
+
 TOOL = {
     "name": "phone_control",
     "description": (
         "Control a connected, already-authorized Android phone using a safe allow-list. "
         "Use for phone status/battery, opening supported apps, Home/Back, volume, "
-        "waking the display, and opening the dialer or messaging app. Never claims to "
+        "waking the display, and opening the dialer or messaging app. read_screen lists "
+        "the buttons/texts on screen; tap_element, fill_field, wait_for and scroll_to act "
+        "on an element by its visible text (target). show_screen opens the phone's live screen "
+        "in a window on the laptop (scrcpy); hide_screen closes it. Never claims to "
         "send a call or message; opening those apps does not perform the action. "
         "Do not use for arbitrary shell commands."
     ),
@@ -183,6 +227,14 @@ TOOL = {
                 "type": "STRING",
                 "description": "Required only for action=open_app; supported app name such as YouTube or WhatsApp.",
             },
+            "target": {
+                "type": "STRING",
+                "description": "For UI actions: visible text/description, 'id:resource_id' or '#index' from read_screen.",
+            },
+            "text": {"type": "STRING", "description": "For fill_field: the text to type."},
+            "timeout_seconds": {"type": "NUMBER", "description": "For wait_for (default 10)."},
+            "direction": {"type": "STRING", "enum": ["down", "up"], "description": "For scroll_to."},
+            "control": {"type": "BOOLEAN", "description": "For show_screen: false = view only."},
             "target_device": {
                 "type": "STRING",
                 "description": "Optional exact serial shown by 'adb devices'; only needed when multiple authorized devices are connected.",

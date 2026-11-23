@@ -10,6 +10,15 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 - **Offline voice loop** (`voice/offline_loop.py`, `core/runtime/live_offline_voice.py`): while Gemini Live is
   down or `OFFLINE=1` is set, JARVIS listens locally (wake word → VAD → faster-whisper), answers through the
   Brain Engine fallback and speaks with a local voice. `JARVIS_OFFLINE_VOICE=off` disables it. See docs/OFFLINE_VOICE.md.
+- **Android UI tree** (`laptop_agent/devices/android_ui.py`): act on phone/tablet elements by visible text, id or
+  index instead of pixels. New agent tools `screen_elements`, `tap_element`, `fill_field`, `wait_for_element`,
+  `scroll_to_element`; `phone_control` gains `read_screen`, `tap_element`, `fill_field`, `wait_for`, `scroll_to`.
+  Uses uiautomator2 when installed, plain `adb shell uiautomator dump` otherwise. Password fields are never echoed.
+- **Phone control away from home**: `devices.json` accepts `adb.remote_address` (the phone's Tailscale
+  address); the agent falls back to it when the home address is unreachable and reports `transport: tailscale`.
+  New agent tool `remote_access` (`adb tcpip 5555`). See docs/PHONE_REMOTE_ADB.md.
+- **Live phone screen on the laptop** (`laptop_agent/devices/scrcpy.py`): `phone_control` `show_screen` /
+  `hide_screen` and agent tool `phone_screen` open/close a scrcpy window (mirror + mouse/keyboard control).
 
 ### Fixed (web UI review)
 - Floating windows no longer climb over the nav menu, settings, command palette and toasts after

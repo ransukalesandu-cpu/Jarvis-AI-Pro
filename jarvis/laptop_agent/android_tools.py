@@ -1,8 +1,10 @@
 """Android tools, each taking ``device`` (tablet, phone...). Generic: no per-app code.
 
 device_screenshot, open_app, open_url, tap, swipe, type_text, press_key,
-device_shell, list_apps, device_info, push_file, pull_file, and ui_automate
-(the Phase 1 screenshot -> Gemini vision -> act loop, with ADB as backend).
+device_shell, list_apps, device_info, push_file, pull_file, ui_automate
+(the Phase 1 screenshot -> Gemini vision -> act loop, with ADB as backend), and
+the UI-tree tools screen_elements, tap_element, fill_field, wait_for_element,
+scroll_to_element (act by visible text/id; see devices/android_ui.py).
 
 Where a name also exists for the laptop (open_app, ui_automate) the agent
 announces one merged declaration and routes by ``device``. For device=laptop
@@ -15,6 +17,7 @@ import json
 import os
 
 from jarvis.laptop_agent.devices.android import AdbError, AndroidManager
+from jarvis.laptop_agent.devices.android_ui import AndroidUi, UiError
 
 
 def _png_to_jpeg(png: bytes, max_side: int = 1600) -> tuple[bytes, float, int, int]:
@@ -77,7 +80,7 @@ class AndroidTools:
         dev = self.manager.get(device)
         try:
             return getattr(self, f"_{name}")(dev, args, ctx)
-        except AdbError as exc:
+        except (AdbError, UiError) as exc:
             return str(exc)
 
     # ── handlers ─────────────────────────────────────────────────────────────
@@ -139,6 +142,45 @@ class AndroidTools:
         if os.path.isdir(dest):
             dest = os.path.join(dest, os.path.basename(remote.rstrip("/")))
         return dev.pull(remote, dest)
+
+    # ── UI tree (element-level) ──────────────────────────────────────────────
+    def _screen_elements(self, dev, args, ctx):
+        from jarvis.core import injection_guard
+        tree = AndroidUi(dev).tree(limit=int(args.get("limit") or 60))
+        return injection_guard.wrap_untrusted(
+            "Elements (#index kind \"label\" id [C=clickable S=scrollable F=focused] @x,y):\n" + tree,
+            f"{dev.name} screen")
+
+    def _tap_element(self, dev, args, ctx):
+        return AndroidUi(dev).tap(str(args.get("target") or ""))
+
+    def _fill_field(self, dev, args, ctx):
+        return AndroidUi(dev).set_text(str(args.get("target") or ""), str(args.get("text") or ""))
+
+    def _wait_for_element(self, dev, args, ctx):
+        return AndroidUi(dev).wait_for(str(args.get("target") or ""), float(args.get("timeout_seconds") or 10),
+                                       gone=bool(args.get("until_gone")))
+
+    def _scroll_to_element(self, dev, args, ctx):
+        return AndroidUi(dev).scroll_to(str(args.get("target") or ""), int(args.get("max_swipes") or 8),
+                                        str(args.get("direction") or "down"))
+
+    def _phone_screen(self, dev, args, ctx):
+        from jarvis.laptop_agent.devices.scrcpy import ScrcpyError, get_manager
+        mgr = get_manager()
+        action = str(args.get("action") or "show").lower()
+        try:
+            if action == "hide":
+                return mgr.hide(dev.name)
+            if action == "status":
+                return f"The {dev.name} screen is {'open' if mgr.is_open(dev.name) else 'not open'} on the laptop."
+            return mgr.show(dev.name, dev.serial(), adb_path=dev.adb.path or "",
+                            control=args.get("control") is not False)
+        except ScrcpyError as exc:
+            return str(exc)
+
+    def _remote_access(self, dev, args, ctx):
+        return dev.enable_remote()
 
     def _ui_automate(self, dev, args, ctx):
         from jarvis.core.capture import Frame
@@ -204,6 +246,38 @@ DECLARATIONS = [
      "parameters": {"type": "OBJECT", "properties": {"device": _DEV, "path": {"type": "STRING"},
                                                      "destination": {"type": "STRING"}},
                     "required": ["path"]}},
+    {"name": "screen_elements", "description": "List the buttons, texts and fields on an Android device's "
+     "screen (from Android's UI tree, no screenshot). Use before tap_element to see exact labels.",
+     "parameters": {"type": "OBJECT", "properties": {"device": _DEV, "limit": {"type": "INTEGER"}}}},
+    {"name": "tap_element", "description": "Tap an element on an Android device by its visible text or "
+     "description ('Send', 'Install'), by 'id:resource_id', or by '#index' from screen_elements. "
+     "Prefer this over tap with coordinates.",
+     "parameters": {"type": "OBJECT", "properties": {"device": _DEV, "target": {"type": "STRING"}},
+                    "required": ["target"]}},
+    {"name": "fill_field", "description": "Tap a field on an Android device (by text, hint, 'id:...' or "
+     "'#index'; empty = the focused field) and type text into it.",
+     "parameters": {"type": "OBJECT", "properties": {"device": _DEV, "target": {"type": "STRING"},
+                                                     "text": {"type": "STRING"}}, "required": ["text"]}},
+    {"name": "wait_for_element", "description": "Wait until text/an element appears on an Android device "
+     "(or disappears with until_gone=true), e.g. wait for 'Installed'.",
+     "parameters": {"type": "OBJECT", "properties": {"device": _DEV, "target": {"type": "STRING"},
+                                                     "timeout_seconds": {"type": "NUMBER"},
+                                                     "until_gone": {"type": "BOOLEAN"}},
+                    "required": ["target"]}},
+    {"name": "scroll_to_element", "description": "Scroll an Android device's screen until an element with "
+     "this text is visible.",
+     "parameters": {"type": "OBJECT", "properties": {"device": _DEV, "target": {"type": "STRING"},
+                                                     "direction": {"type": "STRING", "enum": ["down", "up"]},
+                                                     "max_swipes": {"type": "INTEGER"}},
+                    "required": ["target"]}},
+    {"name": "phone_screen", "description": "Show an Android device's live screen in a window on the laptop "
+     "(scrcpy: mirror, and mouse/keyboard control unless control=false), or hide it.",
+     "parameters": {"type": "OBJECT", "properties": {
+         "device": _DEV, "action": {"type": "STRING", "enum": ["show", "hide", "status"]},
+         "control": {"type": "BOOLEAN"}}}},
+    {"name": "remote_access", "description": "Turn on remote control of an Android phone over Tailscale "
+     "(adb tcpip 5555). Run while the phone is at home/on USB; needed again after the phone restarts.",
+     "parameters": {"type": "OBJECT", "properties": {"device": _DEV}}},
     # Shared with laptop tools of the same name; merged by the tool host.
     {"name": "open_app", "description": "With device=tablet or phone: open an Android app by package "
      "name or app name (searches installed packages).",
@@ -219,4 +293,9 @@ META = {"device_shell": {"risk": "destructive", "timeout": 120},
         "push_file": {"risk": "write", "timeout": 900}, "pull_file": {"risk": "write", "timeout": 900},
         "ui_automate": {"risk": "destructive", "long_running": True},
         "device_screenshot": {"risk": "read", "timeout": 30}, "device_info": {"risk": "read", "timeout": 30},
-        "list_apps": {"risk": "read", "timeout": 30}}
+        "list_apps": {"risk": "read", "timeout": 30},
+        "screen_elements": {"risk": "read", "timeout": 30},
+        "remote_access": {"risk": "destructive", "timeout": 30},
+        "phone_screen": {"risk": "write", "timeout": 20},
+        "wait_for_element": {"risk": "read", "timeout": 130},
+        "scroll_to_element": {"risk": "write", "timeout": 90}}

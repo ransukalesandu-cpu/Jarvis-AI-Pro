@@ -196,7 +196,7 @@ python -m laptop_agent install-startup     # optional: start the agent with Wind
 
 ### 6. Phone: wireless debugging, then install the app
 1. On the phone (Android 11+): *Developer options → Wireless debugging* on → **Pair device with pairing code**. On the laptop: `python -m laptop_agent adb-pair 192.168.1.50:37123 123456` (address and code from the phone's screen).
-2. Put the address shown under *Wireless debugging → IP address & port* into `devices.json` for the phone and restart the hub. The agent reconnects to it automatically while the phone is on the same network. (Away from home, phone *control* is unavailable until the Phase 3 phone app; talking to JARVIS from the phone still works over Tailscale.)
+2. Put the address shown under *Wireless debugging → IP address & port* into `devices.json` for the phone and restart the hub. The agent reconnects to it automatically while the phone is on the same network. (Away from home: add the phone's Tailscale address as `remote_address` and say "turn on remote access for my phone" once at home — see docs/PHONE_REMOTE_ADB.md.)
 3. On the phone open the phone's pairing URL (the `https://...ts.net:8766` one) and pair, then Chrome menu → **Install app**.
 
 ### 7. First connection

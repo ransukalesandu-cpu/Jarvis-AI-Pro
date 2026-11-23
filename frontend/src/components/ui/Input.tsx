@@ -9,13 +9,14 @@ interface Common {
     size?: Size;
     /** Shows a busy state (e.g. while a value is checked). */
     loading?: boolean;
+    hideLabel?: boolean;
 }
 
 export type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> & Common;
 
-export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ label, hint, error, size, loading, className, ...rest }, ref) {
+export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ label, hint, error, size, loading, hideLabel, className, ...rest }, ref) {
     return (
-        <Field label={label} hint={hint} error={error}>
+        <Field label={label} hint={hint} error={error} hideLabel={hideLabel}>
             {({ id, describedBy, invalid }) => (
                 <input
                     ref={ref}
@@ -34,9 +35,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ l
 
 export type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & Common;
 
-export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea({ label, hint, error, size, loading, className, ...rest }, ref) {
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
+    { label, hint, error, size, loading, hideLabel, className, ...rest },
+    ref,
+) {
     return (
-        <Field label={label} hint={hint} error={error}>
+        <Field label={label} hint={hint} error={error} hideLabel={hideLabel}>
             {({ id, describedBy, invalid }) => (
                 <textarea
                     ref={ref}

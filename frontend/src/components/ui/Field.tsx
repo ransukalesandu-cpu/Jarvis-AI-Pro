@@ -5,18 +5,20 @@ export interface FieldProps {
     hint?: ReactNode;
     /** Error text: marks the control invalid and is announced (aria-describedby + role="alert"). */
     error?: ReactNode;
+    /** Keep the label for screen readers only (when the context already labels it visually). */
+    hideLabel?: boolean;
     children: (ids: { id: string; describedBy: string | undefined; invalid: boolean }) => ReactNode;
 }
 
 /** Label + control + hint/error wiring shared by Input, Textarea, Select and Checkbox. */
-export function Field({ label, hint, error, children }: FieldProps) {
+export function Field({ label, hint, error, hideLabel, children }: FieldProps) {
     const id = useId();
     const hintId = hint ? `${id}-hint` : undefined;
     const errId = error ? `${id}-err` : undefined;
     const describedBy = [hintId, errId].filter(Boolean).join(' ') || undefined;
     return (
         <div className="ui-field" data-invalid={error ? 'true' : undefined}>
-            <label className="ui-label" htmlFor={id}>
+            <label className={hideLabel ? 'ui-sr-only' : 'ui-label'} htmlFor={id}>
                 {label}
             </label>
             {children({ id, describedBy, invalid: Boolean(error) })}

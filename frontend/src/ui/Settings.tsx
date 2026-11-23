@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { sendRequest } from '../bridge/bridge';
 import type { CommandState, ControlAction, MemoryStatus, Net } from '../bridge/contract';
@@ -10,6 +10,7 @@ import { useFresh } from '../ux/useFresh';
 import { useWindows } from '../workspace/windows';
 import { RESULT } from './CommandBar';
 import { DURATIONS } from '../styles/tokens';
+import { Button, Segmented, Switch, Tabs } from '../components/ui';
 
 const ask = (action: ControlAction) => sendRequest({ kind: 'control.do', action });
 export const PERSONA_OPTS = [
@@ -68,60 +69,8 @@ function Row({ label, children }: { label: ReactNode; children: ReactNode }) {
     );
 }
 
-function Toggle({ on, onClick, disabled }: { on: boolean; onClick: () => void; disabled?: boolean }) {
-    return (
-        <button className="toggle" aria-pressed={on} onClick={onClick} disabled={disabled}>
-            {on ? 'On' : 'Off'}
-        </button>
-    );
-}
-
-/** Tabs with arrow-key, Home and End movement (WAI-ARIA tabs pattern). */
-function SectionTabs({ value, onChange }: { value: Section; onChange: (s: Section) => void }) {
-    const refs = useRef<Partial<Record<Section, HTMLButtonElement | null>>>({});
-    const move = (e: KeyboardEvent, i: number) => {
-        const last = SECTIONS.length - 1;
-        const to =
-            e.key === 'ArrowRight'
-                ? i === last
-                    ? 0
-                    : i + 1
-                : e.key === 'ArrowLeft'
-                  ? i === 0
-                      ? last
-                      : i - 1
-                  : e.key === 'Home'
-                    ? 0
-                    : e.key === 'End'
-                      ? last
-                      : -1;
-        if (to < 0) return;
-        e.preventDefault();
-        onChange(SECTIONS[to]);
-        refs.current[SECTIONS[to]]?.focus();
-    };
-    return (
-        <div className="settings-tabs" role="tablist" aria-label="Settings sections">
-            {SECTIONS.map((s, i) => (
-                <button
-                    key={s}
-                    ref={(el) => {
-                        refs.current[s] = el;
-                    }}
-                    id={`settings-tab-${s}`}
-                    role="tab"
-                    aria-selected={value === s}
-                    aria-controls="settings-section"
-                    tabIndex={value === s ? 0 : -1}
-                    className="settings-tab"
-                    onClick={() => onChange(s)}
-                    onKeyDown={(e) => move(e, i)}
-                >
-                    {SECTION_LABEL[s]}
-                </button>
-            ))}
-        </div>
-    );
+function Toggle({ label, on, onClick, disabled }: { label: string; on: boolean; onClick: () => void; disabled?: boolean }) {
+    return <Switch label={label} checked={on} onCheckedChange={onClick} disabled={disabled} />;
 }
 
 /** System Control Center. Only settings that really do something are interactive; status rows show real backend values. */
@@ -189,32 +138,36 @@ export function SettingsPanel() {
         general: (
             <>
                 <Row label="Reduced motion">
-                    <Toggle on={reducedMotion} onClick={() => setReducedMotion(!reducedMotion)} />
+                    <Toggle label="Reduced motion" on={reducedMotion} onClick={() => setReducedMotion(!reducedMotion)} />
                 </Row>
                 <Row label="24-hour clock">
-                    <Toggle on={clock24} onClick={() => setClock24(!clock24)} />
+                    <Toggle label="24-hour clock" on={clock24} onClick={() => setClock24(!clock24)} />
                 </Row>
                 <Row label="Show Task Flow on new tasks">
-                    <Toggle on={autoShow} onClick={() => useFlows.getState().setAutoShow(!autoShow)} />
+                    <Toggle label="Show Task Flow on new tasks" on={autoShow} onClick={() => useFlows.getState().setAutoShow(!autoShow)} />
                 </Row>
                 <Row label="Centre">
-                    <span className="seg" role="group" aria-label="Centre">
-                        {(['brain', 'hologram'] as const).map((c) => (
-                            <button key={c} className="toggle" aria-pressed={centerStyle === c} onClick={() => setCenterStyle(c)}>
-                                {c === 'brain' ? 'Neural brain' : 'Hologram head'}
-                            </button>
-                        ))}
-                    </span>
+                    <Segmented
+                        label="Centre"
+                        value={centerStyle}
+                        onValueChange={(v) => setCenterStyle(v as typeof centerStyle)}
+                        options={[
+                            { value: 'brain', label: 'Neural brain' },
+                            { value: 'hologram', label: 'Hologram head' },
+                        ]}
+                    />
                 </Row>
                 {centerStyle === 'hologram' && (
                     <Row label="Face style">
-                        <span className="seg" role="group" aria-label="Face style">
-                            {(['circuit', 'mechanical'] as const).map((f) => (
-                                <button key={f} className="toggle" aria-pressed={faceStyle === f} onClick={() => setFaceStyle(f)}>
-                                    {f === 'circuit' ? 'Circuit' : 'Mechanical'}
-                                </button>
-                            ))}
-                        </span>
+                        <Segmented
+                            label="Face style"
+                            value={faceStyle}
+                            onValueChange={(v) => setFaceStyle(v as typeof faceStyle)}
+                            options={[
+                                { value: 'circuit', label: 'Circuit' },
+                                { value: 'mechanical', label: 'Mechanical' },
+                            ]}
+                        />
                     </Row>
                 )}
                 <p className="settings-note">{saved}</p>
@@ -232,15 +185,17 @@ export function SettingsPanel() {
                     <span>{!provider ? '—' : !provider.connected ? 'offline' : provider.fallback ? 'connected (fallback)' : 'connected'}</span>
                 </Row>
                 <Row label="API keys, providers, compare">
-                    <button
-                        className="toggle"
+                    <Button
+                        variant="outline"
+                        tone="neutral"
+                        size="sm"
                         onClick={() => {
                             useWindows.getState().open('features');
                             toggleSettings(false);
                         }}
                     >
                         Features Hub
-                    </button>
+                    </Button>
                 </Row>
                 <p className="settings-note">Keys stay in Python and are never sent to this page.</p>
             </>
@@ -248,21 +203,31 @@ export function SettingsPanel() {
         voice: (
             <>
                 <Row label="Microphone">
-                    <button className="toggle" aria-pressed={up && !muted} disabled={!up} onClick={() => ask(muted ? 'unmute' : 'mute')}>
+                    <Button
+                        variant="outline"
+                        tone={up && muted ? 'warn' : 'neutral'}
+                        size="sm"
+                        aria-pressed={up && !muted}
+                        disabled={!up}
+                        onClick={() => ask(muted ? 'unmute' : 'mute')}
+                    >
                         {!up ? 'Unknown' : muted ? 'Muted' : 'On'}
-                    </button>
+                    </Button>
                 </Row>
                 <Row label="Voice state">
                     <span>{vs}</span>
                 </Row>
                 <Row label="Persona and voice">
-                    <span className="seg" role="group" aria-label="Persona">
-                        {PERSONA_OPTS.map((o) => (
-                            <button key={o.action} className="toggle" aria-pressed={persona === o.id} disabled={!up} onClick={() => ask(o.action)}>
-                                {o.label}
-                            </button>
-                        ))}
-                    </span>
+                    <Segmented
+                        label="Persona"
+                        value={persona ?? ''}
+                        disabled={!up}
+                        onValueChange={(v) => {
+                            const o = PERSONA_OPTS.find((p) => p.id === v);
+                            if (o) ask(o.action);
+                        }}
+                        options={PERSONA_OPTS.map((o) => ({ value: o.id, label: o.label }))}
+                    />
                 </Row>
                 <p className="settings-note">Unmuting and switching persona go through the same checks as the voice commands.</p>
             </>
@@ -296,19 +261,16 @@ export function SettingsPanel() {
                         </>
                     }
                 >
-                    <span className="seg" role="group" aria-label="Rendering quality">
-                        {PERF_OPTS.map((o) => (
-                            <button
-                                key={o.action}
-                                className="toggle"
-                                aria-pressed={o.label.toLowerCase() === perfTier}
-                                disabled={!up}
-                                onClick={() => ask(o.action)}
-                            >
-                                {o.label}
-                            </button>
-                        ))}
-                    </span>
+                    <Segmented
+                        label="Rendering quality"
+                        value={perfTier ?? ''}
+                        disabled={!up}
+                        onValueChange={(v) => {
+                            const o = PERF_OPTS.find((p) => p.label.toLowerCase() === v);
+                            if (o) ask(o.action);
+                        }}
+                        options={PERF_OPTS.map((o) => ({ value: o.label.toLowerCase(), label: o.label }))}
+                    />
                 </Row>
                 <Row
                     label={
@@ -317,7 +279,7 @@ export function SettingsPanel() {
                         </>
                     }
                 >
-                    <Toggle on={perfOverlay} onClick={() => setPerfOverlay(!perfOverlay)} />
+                    <Toggle label="Performance overlay" on={perfOverlay} onClick={() => setPerfOverlay(!perfOverlay)} />
                 </Row>
                 <p className="settings-note">Auto picks a tier from this PC; the renderer also lowers its resolution when frames run slow.</p>
             </>
@@ -350,10 +312,12 @@ export function SettingsPanel() {
                     transition={{ duration: reducedMotion ? 0 : DURATIONS.dur / 1000 }}
                 >
                     <h2>SYSTEM CONTROL CENTER</h2>
-                    <SectionTabs value={section} onChange={setSection} />
-                    <div id="settings-section" role="tabpanel" aria-labelledby={`settings-tab-${section}`}>
-                        {body[section]}
-                    </div>
+                    <Tabs
+                        label="Settings sections"
+                        value={section}
+                        onValueChange={(v) => setSection(v as Section)}
+                        items={SECTIONS.map((sec) => ({ value: sec, label: SECTION_LABEL[sec], content: body[sec] }))}
+                    />
                     <p className="settings-note" role="status" aria-live="polite">
                         {control && control !== 'done' ? RESULT[control] : ''}
                     </p>

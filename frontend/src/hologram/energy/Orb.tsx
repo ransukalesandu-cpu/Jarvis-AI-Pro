@@ -7,6 +7,7 @@ import { COLORS, orbColor } from '../palette';
 import { plasmaMaterial } from './plasma';
 import { LAYOUT } from './paths';
 import { busyState } from './Strands';
+import { visualState } from '../visualState';
 
 const add = (color: Color, opacity: number) => ({ color, transparent: true, opacity, blending: AdditiveBlending, depthWrite: false } as const);
 
@@ -24,9 +25,10 @@ export function Orb() {
   const col = useMemo(() => new Color(COLORS.orb), []);
   useFrame((s, dt) => {
     const ui = useUi.getState(), t = s.clock.elapsedTime, red = ui.reducedMotion ? 0.3 : 1;
-    col.lerp(orbColor(ui.assistant), Math.min(1, dt * 4));
-    const level = ui.assistant === 'speaking' ? ui.outputLevel : ui.assistant === 'listening' ? ui.inputLevel : 0;
-    const busy = busyState(ui.assistant);
+    const vs = visualState(ui);   // real state only: 'offline' when the backend link is down, never 'listening' with the mic muted
+    col.lerp(orbColor(vs), Math.min(1, dt * 4));
+    const level = vs === 'speaking' ? ui.outputLevel : vs === 'listening' ? ui.inputLevel : 0;
+    const busy = busyState(vs);
     glass.uniforms.rim.value.copy(col);
     glass.uniforms.boost.value = level * 0.5;
     glass.uniforms.time.value = t * red;

@@ -5,6 +5,7 @@ import { useUi } from '../../store';
 import { COLORS } from '../palette';
 import { LAYOUT, particleSeeds } from './paths';
 import { busyState } from './Strands';
+import { visualState } from '../visualState';
 
 /**
  * Neural energy particles rising in a helix from the orb up the strands to the neck. One Points
@@ -53,8 +54,9 @@ export function Particles({ count }: { count: number }) {
   useEffect(() => { mat.uniforms.scale.value = height * 2; }, [mat, height]);
   useFrame((_s, dt) => {
     const ui = useUi.getState(), red = ui.reducedMotion ? 0.3 : 1;
+    const vs = visualState(ui);   // real state only: 'offline' when the backend link is down, never 'listening' with the mic muted
     // Faster while JARVIS works: the clock itself runs faster, so particles never jump.
-    const goal = busyState(ui.assistant) ? 2.2 : ui.assistant === 'sleeping' ? 0.3 : 1;
+    const goal = busyState(vs) ? 2.2 : (vs === 'sleeping' || vs === 'offline') ? 0.3 : 1;
     rate.current += (goal - rate.current) * Math.min(1, dt * 2);
     mat.uniforms.time.value += dt * red * rate.current;
   });

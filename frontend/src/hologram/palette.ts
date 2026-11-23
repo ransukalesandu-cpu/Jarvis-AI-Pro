@@ -1,5 +1,5 @@
 import { Color } from 'three';
-import type { AssistantState } from '../bridge/contract';
+import type { VisualState } from './visualState';
 
 // JARVIS look: a dark circuit-board head in orange: glowing traces and vias over the face, orange
 // rim light, burning orange eyes, orange strands into an orange glass orb. (UI chrome stays cyan.)
@@ -23,17 +23,19 @@ export const COLORS = {
   ring: new Color('#ff7a1a'),
   warning: new Color('#ffc21a'),   // something needs attention, still working
   error: new Color('#ff3030'),
+  offline: new Color('#5d6f80'),   // backend link down: cold grey, no energy
   backdrop: new Color('#1e8fff'),   // blue circuits behind the head
   spark: new Color('#ff7a1a'),      // orange sparks among them
 };
 
 /** How often the glass glitches (chance per 1/8 s): only when something is wrong, never at rest. */
-export function glitchChance(state: AssistantState): number {
+export function glitchChance(state: VisualState): number {
   return state === 'error' ? 0.3 : state === 'warning' ? 0.12 : 0;
 }
 
-export function orbColor(state: AssistantState): Color {
+export function orbColor(state: VisualState): Color {
   switch (state) {
+    case 'offline': return COLORS.offline;
     case 'error': return COLORS.error;
     case 'warning': return COLORS.warning;
     case 'thinking': return new Color('#ffb15c');

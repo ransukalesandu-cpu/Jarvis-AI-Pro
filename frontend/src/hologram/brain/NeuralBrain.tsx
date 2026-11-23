@@ -10,6 +10,7 @@ import { brainMood } from './lobes';
 import { LINK_STEPS, linkPoint, orbLinks } from './orbLinks';
 import { assign, type ShapeName, shapePoints, textPoints } from './shapes';
 import { textMask } from './textMask';
+import { visualState } from '../visualState';
 
 /** Seconds a shape is held before the brain flows back. */
 export const SHAPE_HOLD_S = 12;
@@ -126,13 +127,14 @@ export function NeuralBrain({ nodes, links: linkCount = 36 }: { nodes: number; l
   const mood = useRef(brainMood('idle'));
   useFrame((s, dt) => {
     const ui = useUi.getState(), red = ui.reducedMotion ? 0.3 : 1;
-    const level = ui.assistant === 'speaking' ? ui.outputLevel : ui.assistant === 'listening' ? ui.inputLevel : 0;
+    const vs = visualState(ui);   // real state only: 'offline' when the backend link is down, never 'listening' with the mic muted
+    const level = vs === 'speaking' ? ui.outputLevel : vs === 'listening' ? ui.inputLevel : 0;
     const mo = morph.current, now = s.clock.elapsedTime;
     if (mo.pending && mo.value < 0.02) { applyShape(mo.pending.shape, mo.pending.text); mo.pending = null; mo.goal = 1; mo.until = now + SHAPE_HOLD_S; }
     if (mo.goal === 1 && now > mo.until) mo.goal = 0;
     mo.value = ease(mo.value, mo.goal, ui.reducedMotion ? 6 : 2.2, dt);
     nodeMat.uniforms.morph.value = synMat.uniforms.morph.value = mo.value;
-    const goal = brainMood(ui.assistant, level), m = mood.current;
+    const goal = brainMood(vs, level), m = mood.current;
     m.lobes = m.lobes.map((v, i) => ease(v, goal.lobes[i], 4, dt)) as typeof m.lobes;
     m.firing = ease(m.firing, goal.firing, 3, dt);
     m.growth = ease(m.growth, goal.growth, 1.5, dt);

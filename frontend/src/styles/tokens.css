@@ -22,7 +22,7 @@
   --dur-fast: 120ms; --dur: 220ms; --dur-slow: 420ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --z-scene: 0; --z-hud: 10; --z-nav: 30; --z-settings: 30; --z-toast: 50;
-  --font: 'Segoe UI', 'Inter', system-ui, -apple-system, sans-serif;
+  --font: 'Segoe UI', 'Inter', 'Nirmala UI', 'Iskoola Pota', 'Noto Sans Sinhala', system-ui, -apple-system, sans-serif;
   --mono: 'Cascadia Mono', 'JetBrains Mono', Consolas, monospace;
 }
 @media (prefers-reduced-motion: reduce) { :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; } }

@@ -3,12 +3,12 @@
  * objects it writes to, so both the circuit and the mechanical head behave identically.
  */
 import type { Mesh, ShaderMaterial } from 'three';
-import type { AssistantState } from '../../bridge/contract';
+import type { VisualState } from '../visualState';
 
 export interface EyeLife { blink: number; nextBlink: number; gx: number; gy: number; tx: number; ty: number; nextLook: number; dilate: number }
 export const newEyeLife = (): EyeLife => ({ blink: 0, nextBlink: 2.5, gx: 0, gy: 0, tx: 0, ty: 0, nextLook: 1.5, dilate: 0.3 });
 
-export interface EyeInputs { state: AssistantState; outputLevel: number; reducedMotion: boolean; t: number; dt: number; random?: () => number }
+export interface EyeInputs { state: VisualState; outputLevel: number; reducedMotion: boolean; t: number; dt: number; random?: () => number }
 
 /** How open the lids are right now (1 open, ~0.08 shut), from the blink phase. */
 export function lidOpen(st: EyeLife): number {

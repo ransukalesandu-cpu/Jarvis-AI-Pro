@@ -1,10 +1,11 @@
-import { Suspense, useEffect } from 'react';
+import { useEffect } from 'react';
 import { HologramScene } from './hologram/HologramScene';
 import { PerfOverlay } from './hologram/engine/PerfOverlay';
 import { hasWebGL2 } from './hologram/engine/capability';
+import { RendererGuard } from './hologram/engine/RendererGuard';
 import { startBridge, stopBridge } from './bridge/bridge';
 import { useUi } from './store';
-import { ActivityWidget, BatteryWidget, BrainWidget, ClockWidget, NetworkWidget, SystemWidget } from './ui/Widgets';
+import { ActivityWidget, BatteryWidget, BrainWidget, ClockWidget, NetworkWidget, SystemWidget, VoiceLinkWidget } from './ui/Widgets';
 import { NavPanel, TopBar } from './ui/Chrome';
 import { SettingsPanel } from './ui/Settings';
 import { Tray, Windows } from './ui/Windows';
@@ -63,10 +64,10 @@ export default function App() {
   }, [toggleNav, toggleSettings, setPalette]);
   return (
     <div className="app" data-reduced={reducedMotion ? 'true' : 'false'} data-settings={settingsOpen ? 'open' : 'closed'} data-loading={loading ? 'true' : 'false'}>
-      <div className="stage" role="region" aria-label="JARVIS hologram">{hasWebGL2() && <Suspense fallback={null}><HologramScene /></Suspense>}<PerfOverlay /></div>
+      <div className="stage" role="region" aria-label="JARVIS hologram"><RendererGuard webgl2={hasWebGL2()} scene={(onLost) => <HologramScene onContextLost={onLost} />} /><PerfOverlay /></div>
       <div className="vignette" />
       <TopBar />
-      <div className="widgets left"><ClockWidget /><BatteryWidget /><SystemWidget /></div>
+      <div className="widgets left"><ClockWidget /><BatteryWidget /><SystemWidget /><VoiceLinkWidget /></div>
       <div className="widgets right"><BrainWidget /><NetworkWidget /><ActivityWidget /></div>
       {link === 'detached' && <div className="banner glass" role="status">Backend not connected: showing no live data</div>}
       <StartupSkeleton />

@@ -5,8 +5,9 @@ import { useUi } from '../../store';
 import { COLORS } from '../palette';
 import { flowLineMaterial } from './flowLines';
 import { strandSegments } from './paths';
+import { visualState } from '../visualState';
 
-export const busyState = (s: string) => s === 'speaking' || s === 'thinking' || s === 'executing' || s === 'searching';
+export const busyState = (s: string): boolean => s === 'speaking' || s === 'thinking' || s === 'executing' || s === 'searching';
 
 /** Energy strands from the neck into the orb, all in one draw; light runs down them on the GPU. */
 export function Strands() {
@@ -20,7 +21,9 @@ export function Strands() {
   }, []);
   useEffect(() => () => { geo.dispose(); mat.dispose(); }, [geo, mat]);
   useFrame((s, dt) => {
-    const ui = useUi.getState(), red = ui.reducedMotion ? 0.3 : 1, busy = busyState(ui.assistant);
+    const ui = useUi.getState(), red = ui.reducedMotion ? 0.3 : 1;
+    const vs = visualState(ui);   // real state only: 'offline' when the backend link is down, never 'listening' with the mic muted
+    const busy = busyState(vs);
     const u = mat.uniforms;
     u.time.value += dt * red;
     u.speed.value += ((busy ? 0.5 : 0.15) - u.speed.value) * Math.min(1, dt * 3);

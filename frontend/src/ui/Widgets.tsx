@@ -1,4 +1,7 @@
-import { Activity, BatteryCharging, BatteryFull, BatteryLow, Brain, Cpu, Wifi, WifiOff } from 'lucide-react';
+import { Activity, BatteryCharging, BatteryFull, BatteryLow, Brain, Cpu, Mic, MicOff, Plug, Volume2, Wifi, WifiOff, Workflow } from 'lucide-react';
+import type { AssistantState, Flow } from '../bridge/contract';
+import { useFlows } from '../taskflow/flows';
+import { visualState } from '../hologram/visualState';
 import { useEffect, useState } from 'react';
 import { useUi, type Page } from '../store';
 
@@ -71,7 +74,64 @@ export function NetworkWidget() {
 }
 
 export function ActivityWidget() {
-  const a = useUi((s) => s.assistant);
+  const a = useUi((s) => visualState(s));
   const last = useUi((s) => s.history.at(-1));
   return <Widget label="Activity" value={a.toUpperCase()} sub={last ? `since ${new Date(last.at).toLocaleTimeString()}` : 'no events yet'} icon={<Activity size={12} />} to="activity" />;
+}
+
+export type Link = 'connecting' | 'connected' | 'detached';
+export interface VoiceLinkInput { link: Link; muted: boolean; assistant: AssistantState; flows: Flow[] }
+export interface VoiceLinkRow { key: 'mic' | 'output' | 'backend' | 'task'; label: string; value: string; tone: 'ok' | 'warn' | 'dim' }
+
+/** The four live status lines, from real state only: no value is shown that the backend did not report. */
+export function voiceLinkRows(s: VoiceLinkInput): VoiceLinkRow[] {
+  const up = s.link === 'connected';
+  const task = s.flows.filter((f) => f.state === 'running').at(-1);
+  return [
+    { key: 'mic', label: 'Mic', tone: !up ? 'dim' : s.muted ? 'warn' : 'ok',
+      value: !up ? 'unknown' : s.muted ? 'muted' : s.assistant === 'listening' ? 'listening' : 'on' },
+    { key: 'output', label: 'Voice', tone: up && s.assistant === 'speaking' ? 'ok' : 'dim',
+      value: !up ? 'unknown' : s.assistant === 'speaking' ? 'speaking' : 'quiet' },
+    { key: 'backend', label: 'Backend', tone: up ? 'ok' : s.link === 'connecting' ? 'warn' : 'dim',
+      value: up ? 'connected' : s.link === 'connecting' ? 'connecting' : 'offline' },
+    { key: 'task', label: 'Task', tone: task ? 'ok' : 'dim', value: task ? task.title : 'none' },
+  ];
+}
+
+const ROW_ICON = { mic: Mic, output: Volume2, backend: Plug, task: Workflow } as const;
+
+export function VoiceLinkView({ rows, level }: { rows: VoiceLinkRow[]; level: number | null }) {
+  return (
+    <>
+      <div className="label">Voice &amp; Link</div>
+      <ul className="vl-rows">
+        {rows.map((r) => {
+          const Icon = r.key === 'mic' && r.value === 'muted' ? MicOff : ROW_ICON[r.key];
+          return (
+            <li key={r.key} data-tone={r.tone}>
+              <Icon size={12} aria-hidden /><span className="vl-label">{r.label}</span><span className="vl-value" title={r.value}>{r.value}</span>
+            </li>
+          );
+        })}
+      </ul>
+      {level !== null && <Bar value={level * 100} />}
+    </>
+  );
+}
+
+/** Mic, voice output, backend link and the running task in one small, live indicator. Opens the Activity Center. */
+export function VoiceLinkWidget() {
+  const link = useUi((s) => s.link);
+  const muted = useUi((s) => s.muted);
+  const assistant = useUi((s) => s.assistant);
+  const go = useUi((s) => s.go);
+  const listening = link === 'connected' && !muted && assistant === 'listening';
+  const inputLevel = useUi((s) => (listening ? Math.round(s.inputLevel * 20) / 20 : 0));   // 5% steps: no re-render per audio frame
+  const flows = useFlows((s) => s.flows);
+  const rows = voiceLinkRows({ link, muted, assistant, flows });
+  return (
+    <button className="widget glass voice-link" onClick={() => go('activity')} aria-label={`Voice and link: ${rows.map((r) => `${r.label} ${r.value}`).join(', ')}. Open Activity Center`}>
+      <VoiceLinkView rows={rows} level={listening ? inputLevel : null} />
+    </button>
+  );
 }

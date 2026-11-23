@@ -3,7 +3,7 @@
  * independently (counter-rotating scan rings while thinking, alternating sweeps while searching).
  * Audio only modulates (speaking): there is no phoneme or viseme logic here.
  */
-import type { AssistantState } from '../../bridge/contract';
+import type { VisualState } from '../visualState';
 
 export type Side = 'L' | 'R';
 export interface EyeTarget {
@@ -19,11 +19,12 @@ const RED: [number, number, number] = [1, 0.25, 0.2];
 const DIM: [number, number, number] = [0.5, 0.5, 0.5];
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
-export function eyeTarget(state: AssistantState, side: Side, t: number, level = 0): EyeTarget {
+export function eyeTarget(state: VisualState, side: Side, t: number, level = 0): EyeTarget {
   const sgn = side === 'L' ? 1 : -1;
   const ph = side === 'L' ? 0 : Math.PI;
   let r: EyeTarget;
   switch (state) {
+    case 'offline': r = { aperture: 0.08, glow: 0.04, scan: 0, tint: DIM }; break;
     case 'sleeping': r = { aperture: 0.12, glow: 0.08, scan: 0.03, tint: DIM }; break;
     case 'listening': r = { aperture: 0.92, glow: 0.55, scan: 0.25, tint: WHITE }; break;
     case 'thinking': r = { aperture: 0.45 + 0.15 * Math.sin(t * 3 + ph), glow: 0.6, scan: 0.6 * sgn, tint: WHITE }; break;

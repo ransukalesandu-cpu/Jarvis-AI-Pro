@@ -44,7 +44,7 @@ function usePageHidden(): boolean {
   return hidden;
 }
 
-export function HologramScene() {
+export function HologramScene({ onContextLost }: { onContextLost?: () => void } = {}) {
   const q = qualityFor(useUi((s) => s.perfTier));
   const hidden = usePageHidden();
   const faceStyle = useUi((s) => s.faceStyle);
@@ -56,7 +56,11 @@ export function HologramScene() {
       gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
       dpr={q.dpr}
       frameloop={frameloop}
-      onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
+      onCreated={({ gl }) => {
+        gl.setClearColor(0x000000, 0);
+        // A lost GPU context would otherwise leave a frozen or blank stage: report it so a notice and a restart show.
+        gl.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); onContextLost?.(); }, { once: true });
+      }}
     >
       <FitCamera />
       <PerfGovernor quality={q} />

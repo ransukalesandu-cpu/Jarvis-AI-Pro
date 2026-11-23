@@ -18,6 +18,7 @@ import { MechanicalEye, makeIris } from './MechanicalEye';
 import { poseIris } from './irisMaterial';
 import { neckRings } from './neck';
 import { buildMechanicalFace, type Panel } from './panels';
+import { visualState } from '../visualState';
 
 const [, PIVOT_Y, PIVOT_Z] = mesh.jawPivot;
 const ACCENT = new Set(['browL', 'browR', 'cheekboneL', 'cheekboneR', 'noseBridge', 'chin', 'crown']);   // titanium; the rest black chrome
@@ -148,10 +149,11 @@ export function MechanicalHead() {
   const life = useRef({ mouth: 0, eyes: newEyeLife() });
   useFrame((s, dt) => {
     const ui = useUi.getState();
+    const vs = visualState(ui);   // real state only: 'offline' when the backend link is down, never 'listening' with the mic muted
     const st = life.current;
     const t = s.clock.elapsedTime;
-    const speaking = ui.assistant === 'speaking';
-    const working = speaking || ui.assistant === 'thinking' || ui.assistant === 'executing' || ui.assistant === 'searching';
+    const speaking = vs === 'speaking';
+    const working = speaking || vs === 'thinking' || vs === 'executing' || vs === 'searching';
     const reduced = ui.reducedMotion ? 0.3 : 1;
     // The jaw: one rigid part on its hinge, from the OUTPUT level only, only while speaking.
     const target = speaking ? Math.min(1, ui.outputLevel * 1.6) : 0;
@@ -159,10 +161,10 @@ export function MechanicalHead() {
     if (jawRef.current) jawRef.current.rotation.x = st.mouth * mesh.jawMax * 2.4;
     // Shared gaze and blink timing; the mechanical iris then takes over aperture, glow, scan and tint,
     // per eye (they act independently while thinking and searching).
-    stepEyes(st.eyes, [], eyeMats as ShaderMaterial[], { state: ui.assistant, outputLevel: ui.outputLevel, reducedMotion: ui.reducedMotion, t, dt });
+    stepEyes(st.eyes, [], eyeMats as ShaderMaterial[], { state: vs, outputLevel: ui.outputLevel, reducedMotion: ui.reducedMotion, t, dt });
     const lid = lidOpen(st.eyes);
     (['L', 'R'] as const).forEach((side, i) => {
-      const goal = eyeTarget(ui.assistant, side, t * reduced, ui.outputLevel);
+      const goal = eyeTarget(vs, side, t * reduced, ui.outputLevel);
       const is = irisState.current[i];
       is.aperture = ease(is.aperture, goal.aperture, 8, dt);
       is.glow = ease(is.glow, goal.glow, 6, dt);
@@ -184,7 +186,7 @@ export function MechanicalHead() {
     const h = materials.holo;
     h.uniforms.time.value = t * reduced;
     h.uniforms.boost.value = speaking ? ui.outputLevel * 0.5 : 0;
-    h.uniforms.glitch.value = ui.reducedMotion ? 0 : glitchChance(ui.assistant);
+    h.uniforms.glitch.value = ui.reducedMotion ? 0 : glitchChance(vs);
     // Current in the engravings: faster while working, with the voice.
     mats.flow.dashOffset -= dt * (working ? 0.5 : 0.15) * reduced;
     const glow = (working ? 1 : 0.8) + 0.08 * Math.sin(t * 2.1) * reduced + (speaking ? ui.outputLevel * 0.3 : 0);

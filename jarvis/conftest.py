@@ -31,6 +31,8 @@ os.environ.setdefault("JARVIS_DATA_DIR", tempfile.mkdtemp(prefix="jarvis-test-da
 # The security-layer tests describe the confirmation gate, so the suite runs
 # with Full Access off; tests for Full Access turn it on explicitly.
 os.environ.setdefault("JARVIS_FULL_ACCESS", "0")
+# The web UI is the app default; tests that build the classic window keep it un-mounted unless they opt in.
+os.environ.setdefault("JARVIS_UI", "legacy")
 
 JARVIS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = JARVIS_DIR.parent

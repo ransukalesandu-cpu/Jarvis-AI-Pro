@@ -16,6 +16,8 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 - Dev only: React StrictMode no longer connects the bridge twice (events were applied twice).
 
 ### Changed (web UI review)
+- **The web UI is now the default.** `JARVIS_UI=legacy` starts the classic HUD instead; if the web UI
+  cannot start (no QtWebEngine or WebGL 2) the classic HUD still takes over.
 - Nav menu: the disabled "Phase 2/3" pages are gone; Features Hub, Dashboard, News, Background Jobs
   and Timer are listed so they are reachable without Ctrl+K (tablet).
 - Settings: the stale "Not yet connected" list is replaced by a Features Hub shortcut; the

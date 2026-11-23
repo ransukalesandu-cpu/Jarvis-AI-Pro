@@ -59,20 +59,24 @@ def test_telemetry_values_are_real_and_bounded():
     assert s["battery"] is None or 0 <= s["battery"]["percent"] <= 100
 
 
-def test_ui_mode_defaults_to_legacy(monkeypatch):
+def test_ui_mode_defaults_to_web_with_legacy_escape(monkeypatch):
     monkeypatch.delenv("JARVIS_UI", raising=False)
-    assert webui.ui_mode() == "legacy"
+    assert webui.ui_mode() == ("web" if webui.dist_ready() else "legacy")
     monkeypatch.setenv("JARVIS_UI", "web")
     assert webui.ui_mode() == ("web" if webui.dist_ready() else "legacy")
+    monkeypatch.setenv("JARVIS_UI", "legacy")
+    assert webui.ui_mode() == "legacy"
+    monkeypatch.setenv("JARVIS_UI", "bogus")
+    assert webui.ui_mode() == "legacy"
 
 
-def test_attach_is_a_noop_unless_web_mode_is_requested(monkeypatch):
+def test_attach_is_a_noop_in_legacy_mode(monkeypatch):
     from jarvis.webui import attach as A
 
     class W:  # attach must not even touch the window when the mode is legacy
         def centralWidget(self): raise AssertionError("touched the window")
 
-    monkeypatch.delenv("JARVIS_UI", raising=False)
+    monkeypatch.setenv("JARVIS_UI", "legacy")
     assert A.attach(W()) is None
     monkeypatch.setenv("JARVIS_UI", "bogus")
     assert A.attach(W()) is None

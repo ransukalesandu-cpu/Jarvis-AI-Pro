@@ -106,6 +106,12 @@ Use harmless, reversible actions first. Never use important files or accounts fo
 - Repeatable?:
 - Result after restart:
 
+## Offline voice loop
+
+- [ ] With `OFFLINE=1` (or Wi-Fi off), JARVIS logs "Offline voice active" within ~10 s.
+- [ ] A spoken request is transcribed, answered and spoken back; JARVIS does not react to its own voice.
+- [ ] Reconnecting the network brings Gemini Live back and the log shows "Offline voice stopped".
+
 ## Sign-off
 
 - [ ] All required checks passed on the target Windows machine.

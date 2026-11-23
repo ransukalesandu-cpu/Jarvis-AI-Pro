@@ -6,6 +6,11 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (five-layer stack)
+- **Offline voice loop** (`voice/offline_loop.py`, `core/runtime/live_offline_voice.py`): while Gemini Live is
+  down or `OFFLINE=1` is set, JARVIS listens locally (wake word → VAD → faster-whisper), answers through the
+  Brain Engine fallback and speaks with a local voice. `JARVIS_OFFLINE_VOICE=off` disables it. See docs/OFFLINE_VOICE.md.
+
 ### Fixed (web UI review)
 - Floating windows no longer climb over the nav menu, settings, command palette and toasts after
   many clicks: stacking order is kept as z = 1..n.

@@ -11,18 +11,18 @@ import type { AssistantState } from '../bridge/contract';
 export type VisualState = AssistantState | 'offline';
 
 export interface VisualInputs {
-  assistant: AssistantState;
-  link: 'connecting' | 'connected' | 'detached';
-  muted: boolean;
+    assistant: AssistantState;
+    link: 'connecting' | 'connected' | 'detached';
+    muted: boolean;
 }
 
 export function visualState(s: VisualInputs): VisualState {
-  if (s.link === 'detached') return 'offline';
-  if (s.assistant === 'listening' && s.muted) return 'idle';
-  return s.assistant;
+    if (s.link === 'detached') return 'offline';
+    if (s.assistant === 'listening' && s.muted) return 'idle';
+    return s.assistant;
 }
 
 /** The audio level that should drive the visuals in this state (input while listening, output while speaking). */
 export function visualLevel(state: VisualState, s: { inputLevel: number; outputLevel: number }): number {
-  return state === 'speaking' ? s.outputLevel : state === 'listening' ? s.inputLevel : 0;
+    return state === 'speaking' ? s.outputLevel : state === 'listening' ? s.inputLevel : 0;
 }

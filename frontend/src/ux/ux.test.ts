@@ -13,7 +13,7 @@ describe('phaseFor (the three rules)', () => {
     for (const ms of [PROGRESS_AFTER_MS, 30_000, 10 ** 7]) expect(phaseFor(ms)).toBe('progress');
   });
   it('treats garbage as nothing', () => {
-    for (const v of [NaN, -5, Infinity * 0]) expect(phaseFor(v)).toBe('none');
+    for (const v of [NaN, -5, Infinity - Infinity]) expect(phaseFor(v)).toBe('none');
   });
 });
 

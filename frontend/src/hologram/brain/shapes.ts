@@ -12,7 +12,7 @@ function rng(seed: number) {
 export const SHAPES = ['brain', 'sphere', 'cube', 'torus', 'helix', 'heart', 'globe', 'star', 'text'] as const;
 export type ShapeName = (typeof SHAPES)[number];
 export const TEXT_MAX = 16;
-export const TEXT_OK = /^[A-Za-z0-9 .!?&+\-]*$/;
+export const TEXT_OK = /^[A-Za-z0-9 .!?&+-]*$/;
 export const CENTER_Y = -0.05;
 
 type Gen = (n: number, r: () => number) => Float32Array;

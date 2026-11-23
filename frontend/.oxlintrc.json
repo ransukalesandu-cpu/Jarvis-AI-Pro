@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "react",
+    "unicorn",
+    "oxc",
+    "vitest"
+  ],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "warn",
+    "react/immutability": "off",
+    "react/use-memo": "off",
+    "react/purity": "off",
+    "react/react-in-jsx-scope": "off",
+    "react/set-state-in-effect": "off",
+    "vitest/valid-expect": "off",
+    "vitest/no-conditional-expect": "off"
+  },
+  "ignorePatterns": [
+    "dist",
+    "node_modules"
+  ]
+}

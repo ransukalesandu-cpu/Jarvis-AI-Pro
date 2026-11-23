@@ -24,7 +24,7 @@ describe('circuit face', () => {
   it('designed traces are symmetric and every index is a real vertex', () => {
     const c = buildFaceCircuit();
     const n = mesh.verts.length / 3;
-    for (const arr of [c.main, c.contour, c.fill, c.nose, c.vias]) for (const v of arr) expect(v).toBeGreaterThanOrEqual(0), expect(v).toBeLessThan(n);
+    for (const arr of [c.main, c.contour, c.fill, c.nose, c.vias]) for (const v of arr) { expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThan(n); }
     const left = c.main.filter((v) => x(v) < -0.02).length, right = c.main.filter((v) => x(v) > 0.02).length;
     expect(Math.abs(left - right)).toBeLessThanOrEqual(Math.max(4, left * 0.1));
     expect(c.main.length % 2).toBe(0);

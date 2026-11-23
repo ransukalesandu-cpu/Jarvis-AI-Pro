@@ -26,7 +26,7 @@ DEFAULT_DEVICES = {
          "adb": {"serial": "usb", "via": "laptop"},
          "description": "Android tablet next to the laptop: main display, USB to the laptop"},
         {"name": "phone", "kind": "android", "client": True,
-         "adb": {"address": "", "via": "laptop"},
+         "adb": {"address": "", "remote_address": "", "via": "laptop"},
          "description": "Android phone: wireless debugging when on the same network"},
     ]
 }

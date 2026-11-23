@@ -165,6 +165,9 @@ class AndroidTools:
         return AndroidUi(dev).scroll_to(str(args.get("target") or ""), int(args.get("max_swipes") or 8),
                                         str(args.get("direction") or "down"))
 
+    def _remote_access(self, dev, args, ctx):
+        return dev.enable_remote()
+
     def _ui_automate(self, dev, args, ctx):
         from jarvis.core.capture import Frame
         from jarvis.core.ui_automation import automate
@@ -253,6 +256,9 @@ DECLARATIONS = [
                                                      "direction": {"type": "STRING", "enum": ["down", "up"]},
                                                      "max_swipes": {"type": "INTEGER"}},
                     "required": ["target"]}},
+    {"name": "remote_access", "description": "Turn on remote control of an Android phone over Tailscale "
+     "(adb tcpip 5555). Run while the phone is at home/on USB; needed again after the phone restarts.",
+     "parameters": {"type": "OBJECT", "properties": {"device": _DEV}}},
     # Shared with laptop tools of the same name; merged by the tool host.
     {"name": "open_app", "description": "With device=tablet or phone: open an Android app by package "
      "name or app name (searches installed packages).",
@@ -270,5 +276,6 @@ META = {"device_shell": {"risk": "destructive", "timeout": 120},
         "device_screenshot": {"risk": "read", "timeout": 30}, "device_info": {"risk": "read", "timeout": 30},
         "list_apps": {"risk": "read", "timeout": 30},
         "screen_elements": {"risk": "read", "timeout": 30},
+        "remote_access": {"risk": "destructive", "timeout": 30},
         "wait_for_element": {"risk": "read", "timeout": 130},
         "scroll_to_element": {"risk": "write", "timeout": 90}}

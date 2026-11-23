@@ -145,7 +145,8 @@ class RemoteToolRegistry:
             if dev.kind == "android" and str(dev.adb.get("via") or "laptop") == conn.device:
                 reverse = dev.adb.get("reverse", [self.hub.config.port] if dev.client else [])
                 android.append({"name": dev.name, "serial": dev.adb.get("serial", ""),
-                                "address": dev.adb.get("address", ""), "reverse_ports": reverse})
+                                "address": dev.adb.get("address", ""), "reverse_ports": reverse,
+                                "remote_address": dev.adb.get("remote_address", "")})
         await conn.send({"type": "android_config", "devices": android})
         self._announce(conn)
 

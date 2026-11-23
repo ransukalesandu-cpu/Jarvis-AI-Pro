@@ -3,6 +3,7 @@ import { SendHorizonal } from 'lucide-react';
 import { COMMAND_MAX, type CommandReason, type CommandState } from '../bridge/contract';
 import { sendRequest } from '../bridge/bridge';
 import { useUi } from '../store';
+import { useFresh } from '../ux/useFresh';
 
 export const BLOCKED: Record<Exclude<CommandState, 'ok'>, string> = {
   locked: 'JARVIS is locked. Unlock it with the native prompt.',
@@ -39,7 +40,8 @@ export function CommandBarView({ state, last, linked, text, onText, onSubmit, in
 
 /** Ask JARVIS. The only write path from the page; Python decides whether it is allowed. Never use for secrets. */
 export function CommandBar() {
-  const { state, last } = useUi((s) => s.command);
+  const { state, last: lastRaw } = useUi((s) => s.command);
+  const last = useFresh(lastRaw, useUi((s) => s.resultSeq));
   const linked = useUi((s) => s.link) === 'connected';
   const [text, setText] = useState('');
   const ref = useRef<HTMLInputElement>(null);

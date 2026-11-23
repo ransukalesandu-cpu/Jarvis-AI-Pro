@@ -1,24 +1,26 @@
-import { Bot, Brain, Clock, FolderOpen, Globe, Home, Menu, MonitorCog, Network, Settings, Shield, Sparkles, Workflow, AppWindow, X } from 'lucide-react';
+import { Bot, Boxes, Brain, Home, LayoutDashboard, Menu, MonitorCog, Network, Newspaper, Settings, Sparkles, Timer, Workflow, X } from 'lucide-react';
 import { useUi, type Page } from '../store';
 import { motion, AnimatePresence } from 'motion/react';
 import { Island } from './Island';
-import { PAGE_WINDOWS } from '../workspace/layout';
+import { PAGE_WINDOWS, TITLES, type WinKind } from '../workspace/layout';
 import { useWindows } from '../workspace/windows';
 
-export const PAGES: { id: Page; label: string; icon: React.ReactNode; ready: boolean; phase?: string }[] = [
-  { id: 'home', label: 'Home', icon: <Home size={16} />, ready: true },
-  { id: 'chat', label: 'Conversation Log', icon: <Bot size={16} />, ready: true },
-  { id: 'activity', label: 'Activity Center', icon: <Sparkles size={16} />, ready: true },
-  { id: 'tasks', label: 'Task Progress', icon: <Network size={16} />, ready: true },
-  { id: 'models', label: 'AI Models', icon: <Brain size={16} />, ready: true },
-  { id: 'research', label: 'Web Research', icon: <Globe size={16} />, ready: false, phase: 'Phase 2' },
-  { id: 'reminders', label: 'Reminders', icon: <Clock size={16} />, ready: false, phase: 'Phase 2' },
-  { id: 'apps', label: 'Applications', icon: <AppWindow size={16} />, ready: false, phase: 'Phase 2' },
-  { id: 'files', label: 'Files & Media', icon: <FolderOpen size={16} />, ready: false, phase: 'Phase 2' },
-  { id: 'memory', label: 'Memory', icon: <Brain size={16} />, ready: false, phase: 'Phase 2' },
-  { id: 'automation', label: 'Automation', icon: <Workflow size={16} />, ready: false, phase: 'Phase 3' },
-  { id: 'monitor', label: 'System Monitor', icon: <MonitorCog size={16} />, ready: true },
-  { id: 'security', label: 'Security', icon: <Shield size={16} />, ready: false, phase: 'Phase 3' },
+export const PAGES: { id: Page; label: string; icon: React.ReactNode }[] = [
+  { id: 'home', label: 'Home', icon: <Home size={16} /> },
+  { id: 'chat', label: 'Conversation Log', icon: <Bot size={16} /> },
+  { id: 'activity', label: 'Activity Center', icon: <Sparkles size={16} /> },
+  { id: 'tasks', label: 'Task Progress', icon: <Network size={16} /> },
+  { id: 'models', label: 'AI Models', icon: <Brain size={16} /> },
+  { id: 'monitor', label: 'System Monitor', icon: <MonitorCog size={16} /> },
+];
+
+/** Working windows that are not pages: listed in the menu too, so they are reachable without a keyboard (tablet). */
+export const TOOL_WINDOWS: { kind: WinKind; icon: React.ReactNode }[] = [
+  { kind: 'features', icon: <Boxes size={16} /> },
+  { kind: 'bento', icon: <LayoutDashboard size={16} /> },
+  { kind: 'news', icon: <Newspaper size={16} /> },
+  { kind: 'jobs', icon: <Workflow size={16} /> },
+  { kind: 'timer', icon: <Timer size={16} /> },
 ];
 
 export function TopBar() {
@@ -35,10 +37,11 @@ export function TopBar() {
 }
 
 export function NavPanel() {
-  const { navOpen, page, go } = useUi();
+  const { navOpen, page, go, toggleNav } = useUi();
   const reduced = useUi((s) => s.reducedMotion);
   const openKinds = useWindows((s) => s.windows.map((w) => w.kind).join(' '));
-  const isOpen = (id: Page) => { const k = PAGE_WINDOWS[id]; return k ? openKinds.split(' ').includes(k) : page === id; };
+  const kinds = openKinds.split(' ');
+  const isOpen = (id: Page) => { const k = PAGE_WINDOWS[id]; return k ? kinds.includes(k) : page === id; };
   return (
     <AnimatePresence>
       {navOpen && (
@@ -46,9 +49,15 @@ export function NavPanel() {
           initial={{ opacity: 0, x: reduced ? 0 : -24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: reduced ? 0 : -24 }} transition={{ duration: reduced ? 0 : 0.22 }}>
           <h2>NAVIGATE</h2>
           {PAGES.map((p) => (
-            <button key={p.id} className="nav-item" aria-current={isOpen(p.id) ? 'page' : undefined} disabled={!p.ready} onClick={() => go(p.id)}
-              style={!p.ready ? { opacity: 0.45, cursor: 'not-allowed' } : undefined} title={p.ready ? undefined : `${p.phase}: needs a backend connection that does not exist yet`}>
-              {p.icon}<span>{p.label}</span>{!p.ready && <span style={{ marginLeft: 'auto', fontSize: 10, letterSpacing: '0.1em' }}>{p.phase}</span>}
+            <button key={p.id} className="nav-item" aria-current={isOpen(p.id) ? 'page' : undefined} onClick={() => go(p.id)}>
+              {p.icon}<span>{p.label}</span>
+            </button>
+          ))}
+          <h2>WINDOWS</h2>
+          {TOOL_WINDOWS.map((t) => (
+            <button key={t.kind} className="nav-item" aria-current={kinds.includes(t.kind) ? 'page' : undefined}
+              onClick={() => { useWindows.getState().open(t.kind); toggleNav(false); }}>
+              {t.icon}<span>{TITLES[t.kind]}</span>
             </button>
           ))}
         </motion.nav>

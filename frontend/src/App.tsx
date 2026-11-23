@@ -7,7 +7,6 @@ import { useUi } from './store';
 import { ActivityWidget, BatteryWidget, BrainWidget, ClockWidget, NetworkWidget, SystemWidget } from './ui/Widgets';
 import { NavPanel, TopBar } from './ui/Chrome';
 import { SettingsPanel } from './ui/Settings';
-import { PageView } from './ui/Pages';
 import { Tray, Windows } from './ui/Windows';
 import { Palette } from './ui/Palette';
 import { CommandBar } from './ui/CommandBar';
@@ -21,7 +20,6 @@ import { useFlows } from './taskflow/flows';
 
 export default function App() {
   const link = useUi((s) => s.link);
-  const pageOpen = useUi((s) => s.page !== 'home');
   const settingsOpen = useUi((s) => s.settingsOpen);
   const toggleNav = useUi((s) => s.toggleNav);
   const toggleSettings = useUi((s) => s.toggleSettings);
@@ -30,6 +28,17 @@ export default function App() {
   const setPalette = useUi((s) => s.setPalette);
   const loading = useStartupLoading();
   const pageRequested = useFlows((s) => s.pageRequested);
+  const reducedMotion = useUi((s) => s.reducedMotion);
+  const clock24 = useUi((s) => s.clock24);
+  const prefsLoaded = useUi((s) => s.prefsLoaded);
+  const taskflowAutoShow = useFlows((s) => s.autoShow);
+  const centerStyle = useUi((s) => s.centerStyle);
+  const faceStyle = useUi((s) => s.faceStyle);
+  useEffect(() => {                       // save UI prefs in Python: the page's own storage is wiped every launch
+    if (link !== 'connected' || !prefsLoaded) return;
+    const id = setTimeout(() => sendRequest({ kind: 'prefs.save', prefs: { reducedMotion, clock24, taskflowAutoShow, centerStyle, faceStyle } }), 300);
+    return () => clearTimeout(id);
+  }, [link, prefsLoaded, reducedMotion, clock24, taskflowAutoShow, centerStyle, faceStyle]);
   useEffect(() => { if (pageRequested) useUi.getState().go('tasks'); }, [pageRequested]);   // "open the task progress page"
   useEffect(() => {
     const sync = () => useWindows.getState().setViewport({ w: innerWidth, h: innerHeight });
@@ -53,7 +62,7 @@ export default function App() {
     return () => { removeEventListener('keydown', onKey); stopBridge(); };
   }, [toggleNav, toggleSettings, setPalette]);
   return (
-    <div className="app" data-page={pageOpen ? 'open' : 'home'} data-settings={settingsOpen ? 'open' : 'closed'} data-loading={loading ? 'true' : 'false'}>
+    <div className="app" data-reduced={reducedMotion ? 'true' : 'false'} data-settings={settingsOpen ? 'open' : 'closed'} data-loading={loading ? 'true' : 'false'}>
       <div className="stage" role="region" aria-label="JARVIS hologram">{hasWebGL2() && <Suspense fallback={null}><HologramScene /></Suspense>}<PerfOverlay /></div>
       <div className="vignette" />
       <TopBar />
@@ -62,7 +71,6 @@ export default function App() {
       {link === 'detached' && <div className="banner glass" role="status">Backend not connected: showing no live data</div>}
       <StartupSkeleton />
       <SyncStatus />
-      <PageView />
       <Windows />
       <TaskFlowWindow />
       <Tray />

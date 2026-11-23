@@ -16,6 +16,9 @@ def dist_ready() -> bool:
 
 
 def ui_mode() -> str:
-    """'web' only when explicitly requested and the bundle exists; everything else keeps the legacy HUD."""
-    want = os.environ.get("JARVIS_UI", "legacy").strip().lower()
+    """'web' by default when the bundle exists; JARVIS_UI=legacy (or any other value) forces the classic HUD.
+
+    A web start-up failure (no QtWebEngine, no WebGL 2) still falls back to the classic HUD.
+    """
+    want = os.environ.get("JARVIS_UI", "web").strip().lower()
     return "web" if want == "web" and dist_ready() else "legacy"

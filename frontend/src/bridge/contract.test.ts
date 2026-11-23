@@ -28,6 +28,20 @@ describe('ui.perf', () => {
   });
 });
 
+describe('ui.prefs', () => {
+  const good = { reducedMotion: true, clock24: false, taskflowAutoShow: true, centerStyle: 'brain', faceStyle: 'circuit' };
+  it('accepts exactly the three boolean prefs, or null', () => {
+    expect(parseHostEvent(j({ type: 'ui.prefs', prefs: good }))).toEqual({ type: 'ui.prefs', prefs: good });
+    expect(parseHostEvent(j({ type: 'ui.prefs', prefs: null }))).toEqual({ type: 'ui.prefs', prefs: null });
+  });
+  it('rejects extra keys, missing keys and non-booleans', () => {
+    expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { ...good, x: true } }))).toBeNull();
+    expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { clock24: true } }))).toBeNull();
+    expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { ...good, clock24: 1 } }))).toBeNull();
+    expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { ...good, centerStyle: 'evil' } }))).toBeNull();
+  });
+});
+
 describe('hologram engine v2 phase 1 messages', () => {
   it('accepts the warning state', () => {
     expect(parseHostEvent(JSON.stringify({ type: 'assistant.state_changed', state: 'warning' }))).toEqual({ type: 'assistant.state_changed', state: 'warning' });

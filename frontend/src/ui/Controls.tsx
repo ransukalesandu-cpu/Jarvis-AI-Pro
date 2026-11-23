@@ -3,6 +3,7 @@ import { sendRequest } from '../bridge/bridge';
 import type { ControlAction, CommandReason } from '../bridge/contract';
 import { useUi } from '../store';
 import { RESULT } from './CommandBar';
+import { useFresh } from '../ux/useFresh';
 
 export interface ControlsProps { muted: boolean; busy: boolean; linked: boolean; result: CommandReason | null; onDo: (a: ControlAction) => void }
 
@@ -24,7 +25,7 @@ export function Controls() {
   const muted = useUi((s) => s.muted);
   const assistant = useUi((s) => s.assistant);
   const linked = useUi((s) => s.link) === 'connected';
-  const result = useUi((s) => s.control);
+  const result = useFresh(useUi((s) => s.control), useUi((s) => s.resultSeq));
   const busy = assistant === 'speaking' || assistant === 'thinking' || assistant === 'searching' || assistant === 'executing';
   return <ControlsView muted={muted} busy={busy} linked={linked} result={result} onDo={(action) => sendRequest({ kind: 'control.do', action })} />;
 }

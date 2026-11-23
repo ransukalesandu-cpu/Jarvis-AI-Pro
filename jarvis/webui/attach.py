@@ -1,6 +1,6 @@
-"""Mounts the web UI over the legacy window's central area when ``JARVIS_UI=web``.
+"""Mounts the web UI over the legacy window's central area (the default; ``JARVIS_UI=legacy`` turns it off).
 
-The legacy HUD stays underneath (the fallback), untouched. Unset or invalid => this does nothing.
+The legacy HUD stays underneath (the fallback), untouched. JARVIS_UI=legacy or an invalid value => this does nothing.
 """
 from __future__ import annotations
 

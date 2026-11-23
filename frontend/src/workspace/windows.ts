@@ -22,6 +22,14 @@ interface WinStore {
 }
 
 const topZ = (ws: WindowRec[]) => ws.reduce((m, w) => Math.max(m, w.z), 0);
+
+/** Stacking order as z = 1..n, with `id` (if given) on top. Keeps z small so windows never climb over the
+ *  nav panel, settings, palette or toasts however often they are focused. */
+export function restack(ws: WindowRec[], id?: string): WindowRec[] {
+  const order = [...ws].sort((a, b) => (a.id === id ? 1 : b.id === id ? -1 : a.z - b.z));
+  const z = new Map(order.map((w, i) => [w.id, i + 1]));
+  return ws.map((w) => (w.z === z.get(w.id) ? w : { ...w, z: z.get(w.id)! }));
+}
 let counter = 0;
 export const titleOf = (w: WindowRec) => TITLES[w.kind];
 
@@ -35,19 +43,19 @@ export const useWindows = create<WinStore>((set, get) => ({
     if (existing) { get().restore(existing.id); get().focus(existing.id); return existing.id; }
     if (s.windows.length >= MAX_WINDOWS) return null;
     const id = `${kind}-${Date.now().toString(36)}-${counter++}`;
-    set({ windows: [...s.windows, { id, kind, ...place(s.windows, s.viewport, kind), z: topZ(s.windows) + 1, state: 'normal' }] });
+    set({ windows: restack([...s.windows, { id, kind, ...place(s.windows, s.viewport, kind), z: topZ(s.windows) + 1, state: 'normal' }], id) });
     return id;
   },
   close: (id) => set((s) => ({ windows: s.windows.filter((w) => w.id !== id) })),
   closeAll: () => set({ windows: [] }),
-  focus: (id) => set((s) => (s.windows.find((w) => w.id === id)?.z === topZ(s.windows) ? s : { windows: s.windows.map((w) => (w.id === id ? { ...w, z: topZ(s.windows) + 1 } : w)) })),
+  focus: (id) => set((s) => (s.windows.find((w) => w.id === id)?.z === topZ(s.windows) ? s : { windows: restack(s.windows, id) })),
   minimize: (id) => set((s) => ({ windows: s.windows.map((w) => (w.id === id ? { ...w, state: 'minimized' } : w)) })),
   minimizeAll: () => set((s) => ({ windows: s.windows.map((w) => ({ ...w, state: 'minimized' as const })) })),
-  restore: (id) => set((s) => ({ windows: s.windows.map((w) => (w.id === id ? { ...w, state: 'normal', z: topZ(s.windows) + 1, ...clampRect(w, s.viewport) } : w)) })),
-  toggleMaximize: (id) => set((s) => ({ windows: s.windows.map((w) => (w.id === id ? { ...w, state: w.state === 'maximized' ? 'normal' : 'maximized', z: topZ(s.windows) + 1 } : w)) })),
+  restore: (id) => set((s) => ({ windows: restack(s.windows.map((w) => (w.id === id ? { ...w, state: 'normal', ...clampRect(w, s.viewport) } : w)), id) })),
+  toggleMaximize: (id) => set((s) => ({ windows: restack(s.windows.map((w) => (w.id === id ? { ...w, state: w.state === 'maximized' ? 'normal' : 'maximized' } : w)), id) })),
   move: (id, x, y) => set((s) => ({ windows: s.windows.map((w) => (w.id === id ? { ...w, ...clampRect(snap({ x, y, w: w.w, h: w.h }, s.viewport), s.viewport) } : w)) })),
   resize: (id, x, y, w, h) => set((s) => ({ windows: s.windows.map((r) => (r.id === id ? { ...r, ...clampRect({ x, y, w: Math.max(MIN_W, w), h: Math.max(MIN_H, h) }, s.viewport) } : r)) })),
   tileAll: () => set((s) => ({ windows: tile(s.windows, s.viewport) })),
-  apply: (layout) => set((s) => ({ windows: layout.windows.map((w) => ({ ...w, ...(w.state === 'maximized' ? {} : clampRect(w, s.viewport)) })) })),
+  apply: (layout) => set((s) => ({ windows: restack(layout.windows.map((w) => ({ ...w, ...(w.state === 'maximized' ? {} : clampRect(w, s.viewport)) }))) })),
   snapshot: (page) => ({ windows: get().windows.map((w) => ({ ...w })), page }),
 }));

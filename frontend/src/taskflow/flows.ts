@@ -56,10 +56,8 @@ interface FlowsState {
   setAutoShow: (v: boolean) => void;
 }
 
-const readAuto = (): boolean => { try { return localStorage.getItem('jarvis.taskflow.autoshow') !== '0'; } catch { return true; } };
-
 export const useFlows = create<FlowsState>((set, get) => ({
-  flows: [], logs: {}, win: { open: false, pinned: false, flowId: null }, selected: null, autoShow: readAuto(), pageRequested: 0,
+  flows: [], logs: {}, win: { open: false, pinned: false, flowId: null }, selected: null, autoShow: true, pageRequested: 0,
   apply: (e, now = Date.now()) => {
     if (e.type === 'task.flow') {
       const s = get();
@@ -84,7 +82,7 @@ export const useFlows = create<FlowsState>((set, get) => ({
   showWindow: (pinned, flowId = null) => set((s) => ({ win: { open: true, pinned, flowId: flowId ?? s.flows[s.flows.length - 1]?.id ?? null } })),
   hideWindow: () => set((s) => ({ win: { ...s.win, open: false, pinned: false } })),
   select: (selected) => set({ selected }),
-  setAutoShow: (autoShow) => { try { localStorage.setItem('jarvis.taskflow.autoshow', autoShow ? '1' : '0'); } catch { /* storage may be off */ } set({ autoShow }); },
+  setAutoShow: (autoShow) => set({ autoShow }),   // saved by Python with the other UI prefs (the page's own storage is off the record)
 }));
 
 /** The flow the window shows: the one it was opened for, else the newest. */

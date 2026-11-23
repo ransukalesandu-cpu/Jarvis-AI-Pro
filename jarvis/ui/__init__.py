@@ -1960,7 +1960,7 @@ class MainWindow(QMainWindow):
         # Quick-access drawer (floating overlay, built after central widget layout is done)
         self._quick_drawer = self._build_quick_drawer()
         QTimer.singleShot(0, self._ensure_island)   # Dynamic Island over the stage
-        QTimer.singleShot(0, self._attach_web_ui)   # opt-in (JARVIS_UI=web); no-op otherwise
+        QTimer.singleShot(0, self._attach_web_ui)   # default; JARVIS_UI=legacy keeps the classic HUD only
         try:
             from jarvis.memory.config_manager import get_perf_tier
             self._perf_choice = get_perf_tier()

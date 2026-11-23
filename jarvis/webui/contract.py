@@ -15,7 +15,7 @@ from jarvis.core.task_flow import FLOW_SOURCES, FLOW_STATES, MAX_STEPS, STEP_STA
 from .command_gate import ACTIONS, AVAILABILITY, MAX_TEXT, REASONS
 from .features_feed import FEATURES, MAX_DETAIL, MAX_ITEMS as FEATURE_MAX_ITEMS, MAX_SUMMARY, MAX_TITLE
 from .redact import KINDS as LOG_KINDS, MAX_LINE
-from .workspace_store import clean_name, validate_layout
+from .workspace_store import clean_name, validate_layout, validate_prefs
 
 MAX_EVENT_CHARS = 16384
 MAX_REQUEST_CHARS = 16384          # upper bound; each request kind has a tighter cap below
@@ -101,6 +101,7 @@ _EVENTS = {
                              and (j["finishedAt"] is None or _num(j["finishedAt"], 0, 4e12)) for j in m["jobs"])),
     "task.flow": ({"flow"}, lambda m: flow_ok(m["flow"])),
     "ui.task_flow": ({"view"}, lambda m: m["view"] in FLOW_VIEWS),
+    "ui.prefs": ({"prefs"}, lambda m: m["prefs"] is None or validate_prefs(m["prefs"]) is not None),
     "hologram.shape": ({"shape", "text"},
                        lambda m: m["shape"] in brain_shapes.SHAPES and brain_shapes.valid_text(m["text"])
                        and (m["text"] != "") == (m["shape"] == "text")),
@@ -154,6 +155,8 @@ _REQUESTS = {
                       and isinstance(m["triangles"], int) and _num(m["triangles"], 0, 1e9)
                       and (m["heapMb"] is None or _num(m["heapMb"], 0, 1e5)) and _num(m["dpr"], 0.25, 4)),
     "feature.refresh": ({"feature"}, lambda m: m["feature"] in FEATURES),
+    "prefs.load": (set(), lambda m: True),
+    "prefs.save": ({"prefs"}, lambda m: validate_prefs(m["prefs"]) is not None),
 }
 
 

@@ -16,7 +16,7 @@ from typing import Any
 
 
 def _prepare_web_ui() -> None:
-    """QtWebEngine must be imported (and GL contexts shared) before QApplication exists. Opt-in only."""
+    """QtWebEngine must be imported (and GL contexts shared) before QApplication exists (skipped when JARVIS_UI=legacy)."""
     try:
         from jarvis.webui import ui_mode
 

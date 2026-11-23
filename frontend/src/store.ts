@@ -40,11 +40,13 @@ export interface UiState {
   centerStyle: CenterStyle;
   brainShape: BrainShapeRequest | null;
   clock24: boolean;
+  prefsLoaded: boolean;           // true once Python answered prefs.load (until then nothing is saved over them)
   workspaceNames: string[];
   paletteOpen: boolean;
   muted: boolean;
   command: { state: CommandState; last: CommandReason | null };
   control: CommandReason | null;
+  resultSeq: number;              // bumped on every command/control result so a repeated reason still shows
   log: LogLine[];
   clearLog: () => void;
   history: { at: number; state: AssistantState }[];
@@ -73,7 +75,7 @@ const prefersReduced = typeof matchMedia === 'function' && matchMedia('(prefers-
 
 export const useUi = create<UiState>((set) => ({
   link: 'connecting', assistant: 'idle', persona: 'jarvis', perfTier: null, news: null, jobs: null, features: {}, outputLevel: 0, inputLevel: 0,
-  series: EMPTY, metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, perfOverlay: false, faceStyle: 'circuit', centerStyle: 'brain', brainShape: null, clock24: true, history: [], workspaceNames: [], paletteOpen: false, muted: false, command: { state: 'unavailable', last: null }, control: null, log: [],
+  series: EMPTY, metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, perfOverlay: false, faceStyle: 'circuit', centerStyle: 'brain', brainShape: null, clock24: true, prefsLoaded: false, history: [], workspaceNames: [], paletteOpen: false, muted: false, command: { state: 'unavailable', last: null }, control: null, resultSeq: 0, log: [],
   setLink: (link) => set({ link }),
   apply: (e) => set((s) => {
     switch (e.type) {
@@ -82,9 +84,9 @@ export const useUi = create<UiState>((set) => ({
       case 'system.metrics_updated': return { series: { cpu: push(s.series.cpu, e.cpu), ram: push(s.series.ram, e.ram), down: e.net ? push(s.series.down, e.net.downKBps) : s.series.down, up: e.net ? push(s.series.up, e.net.upKBps) : s.series.up }, metrics: { cpu: e.cpu, ram: e.ram, disk: e.disk, battery: e.battery, net: e.net } };
       case 'provider.changed': return { provider: { provider: e.provider, model: e.model, connected: e.connected, fallback: e.fallback } };
       case 'command.availability': return { command: { ...s.command, state: e.state } };
-      case 'command.result': return { command: { ...s.command, last: e.reason } };
+      case 'command.result': return { command: { ...s.command, last: e.reason }, resultSeq: s.resultSeq + 1 };
       case 'log.line': return { log: [...s.log.slice(-(LOG_MAX - 1)), { id: ++logId, at: Date.now(), tag: e.tag, text: e.text }] };
-      case 'control.result': return { control: e.reason };
+      case 'control.result': return { control: e.reason, resultSeq: s.resultSeq + 1 };
       case 'assistant.muted': return { muted: e.muted };
       case 'ui.persona': return { persona: e.persona };
       case 'ui.perf': return { perfTier: e.tier };
@@ -98,6 +100,7 @@ export const useUi = create<UiState>((set) => ({
       case 'workspace.list': return { workspaceNames: e.names };
       case 'workspace.loaded': return e.layout ? { page: PAGE_WINDOWS[e.layout.page] ? 'home' as const : e.layout.page } : s;
       case 'host.hello': return { link: 'connected' as const };
+      case 'ui.prefs': return e.prefs ? { prefsLoaded: true, reducedMotion: e.prefs.reducedMotion, clock24: e.prefs.clock24, centerStyle: e.prefs.centerStyle, faceStyle: e.prefs.faceStyle } : { prefsLoaded: true };
       default: return s;
     }
   }),

@@ -49,6 +49,10 @@ class WebUIBridge(QObject):
             self._publish_list()
         elif msg["kind"] == "workspace.list":
             self._publish_list()
+        elif msg["kind"] == "prefs.load":
+            self.publish("ui.prefs", prefs=self.store.load_prefs())
+        elif msg["kind"] == "prefs.save":
+            self.store.save_prefs(msg["prefs"])
         elif msg["kind"] == "control.do":
             self.publish("control.result", reason=self.controls.do(msg["action"]) if self.controls else "unavailable")
         elif msg["kind"] == "job.cancel":

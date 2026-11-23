@@ -1,4 +1,8 @@
-# Web UI parity checklist (before `JARVIS_UI=web` can become the default)
+# Web UI parity checklist
+
+> **Nov 2026:** the owner made the web UI the default (PR #314). `JARVIS_UI=legacy` brings back the classic HUD,
+> and a web start-up failure (no QtWebEngine / WebGL 2) still falls back to it. Gates 1 and 4 below are still to be
+> confirmed on Windows.
 
 Source of truth for "what the classic UI does": `jarvis/core/ui_menus.py` (28 commands feeding the menus and Ctrl+K) and the buttons built in `jarvis/ui/__init__.py`. Status is what is merged on `main` today, nothing aspirational.
 

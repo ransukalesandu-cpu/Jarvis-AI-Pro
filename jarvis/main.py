@@ -167,6 +167,7 @@ from jarvis.core.runtime.live_text import TextCommandMixin
 from jarvis.core.runtime.live_tools import ToolDispatchMixin
 from jarvis.core.runtime.live_briefing import BriefingMixin
 from jarvis.core.runtime.live_services import BackgroundServicesMixin
+from jarvis.core.runtime.live_offline_voice import OfflineVoiceMixin
 from jarvis.core.runtime.live_constants import SEND_SAMPLE_RATE, _BRIEFING_SEARCH_EXECUTOR  # noqa: F401
 
 
@@ -694,6 +695,7 @@ def _contains_cancelled_error(exc: BaseException) -> bool:
 
 class JarvisLive(
     WakeSleepMixin, OwnerIdentityMixin, TextCommandMixin, ToolDispatchMixin, BriefingMixin, BackgroundServicesMixin,
+    OfflineVoiceMixin,
 ):
     def __init__(self, ui: JarvisUI):
         self.ui             = ui
@@ -1223,6 +1225,9 @@ class JarvisLive(
                 if manager_now.is_privacy_lock_active() or manager_now.is_silent() or manager_now.needs_pin():
                     return
                 self.ui.show_content("JARVIS — Brain Engine Text Fallback", answer)
+                # Offline voice loop running: the request was spoken, so speak
+                # the answer too (local TTS; blocking in this worker thread).
+                self._speak_offline(answer)
 
                 # Keep successful fallback turns available for follow-up context.
                 user_entry = f"User: {text.strip()}"
@@ -3116,6 +3121,10 @@ class JarvisLive(
         except Exception as e:
             print(f"[Dashboard] Disabled: {e}")
             self._dashboard = None
+
+        # Local listen/answer loop for when Gemini Live is down (OFFLINE=1,
+        # no network, quota). Stops itself whenever a Live session is open.
+        asyncio.create_task(self._offline_voice_watch())
 
         while not self._shutdown_requested:
             try:

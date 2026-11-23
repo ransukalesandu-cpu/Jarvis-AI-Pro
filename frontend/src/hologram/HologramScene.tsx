@@ -4,7 +4,9 @@ import { useUi } from '../store';
 import { PerfGovernor } from './engine/PerfGovernor';
 import { qualityFor } from './engine/quality';
 import { Head } from './Head';
-import { Backdrop, LAYOUT, Orb, Strands } from './Stage';
+import { MechanicalHead } from './face/MechanicalHead';
+import { NeuralBrain } from './brain/NeuralBrain';
+import { Arcs, Backdrop, LAYOUT, Orb, Particles, Strands } from './Stage';
 
 const FOV = 28;
 const BOUNDS = { halfWidth: 2.2, top: 1.7, bottom: -2.3 };   // room under the orb for the command bar
@@ -45,20 +47,28 @@ function usePageHidden(): boolean {
 export function HologramScene() {
   const q = qualityFor(useUi((s) => s.perfTier));
   const hidden = usePageHidden();
+  const faceStyle = useUi((s) => s.faceStyle);
+  const centerStyle = useUi((s) => s.centerStyle);
+  const frameloop = hidden ? 'never' : q.fpsCap ? 'demand' : 'always';
   return (
     <Canvas
       camera={{ fov: FOV, near: 0.1, far: 50, position: [0, 0, 10] }}
       gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
       dpr={q.dpr}
-      frameloop={hidden ? 'never' : q.fpsCap ? 'demand' : 'always'}
+      frameloop={frameloop}
       onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
     >
       <FitCamera />
       <PerfGovernor quality={q} />
       {q.fpsCap && !hidden && <FrameCap fps={q.fpsCap} />}
       <Backdrop halo={q.backdropHalo} dust={q.dust} />
-      <group position={[LAYOUT.head.x, LAYOUT.head.y, 0]} scale={0.95}><Head /></group>
-      <Strands />
+      {centerStyle === 'brain'
+        ? <NeuralBrain nodes={q.brainNodes} />
+        : <group position={[LAYOUT.head.x, LAYOUT.head.y, 0]} scale={0.95}>{faceStyle === 'mechanical' ? <MechanicalHead /> : <Head />}</group>}
+      {/* With the brain, its own neurons reach the orb; the strands and arcs belong to the head. */}
+      {centerStyle !== 'brain' && <Strands />}
+      <Particles count={q.particles} />
+      {centerStyle !== 'brain' && <Arcs count={q.arcs} />}
       <Orb />
     </Canvas>
   );

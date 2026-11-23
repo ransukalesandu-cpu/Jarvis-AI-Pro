@@ -1,3 +1,4 @@
+import type { ShapeName } from './hologram/brain/shapes';
 import { create } from 'zustand';
 import { usePending } from './ux/pending';
 import { PAGE_WINDOWS } from './workspace/layout';
@@ -34,6 +35,9 @@ export interface UiState {
   settingsOpen: boolean;
   reducedMotion: boolean;
   perfOverlay: boolean;
+  faceStyle: FaceStyle;
+  centerStyle: CenterStyle;
+  brainShape: BrainShapeRequest | null;
   clock24: boolean;
   workspaceNames: string[];
   paletteOpen: boolean;
@@ -50,15 +54,25 @@ export interface UiState {
   toggleSettings: (open?: boolean) => void;
   setReducedMotion: (v: boolean) => void;
   setPerfOverlay: (v: boolean) => void;
+  setFaceStyle: (v: FaceStyle) => void;
+  setCenterStyle: (v: CenterStyle) => void;
+  formShape: (shape: ShapeName, text?: string) => void;
   setClock24: (v: boolean) => void;
   setPalette: (open?: boolean) => void;
 }
+
+/** circuit = the current glass circuit-board head; mechanical = Engine V2 plated head (phase 2, opt-in until approved). */
+export type FaceStyle = 'circuit' | 'mechanical';
+/** What stands at the centre of the stage: the neural brain (default) or the hologram head. */
+export type CenterStyle = 'brain' | 'hologram';
+/** A request (from JARVIS's form_shape tool) for the brain to flow into a shape; seq re-triggers repeats. */
+export interface BrainShapeRequest { shape: ShapeName; text: string; seq: number }
 
 const prefersReduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export const useUi = create<UiState>((set) => ({
   link: 'connecting', assistant: 'idle', persona: 'jarvis', perfTier: null, news: null, jobs: null, outputLevel: 0, inputLevel: 0,
-  series: EMPTY, metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, perfOverlay: false, clock24: true, history: [], workspaceNames: [], paletteOpen: false, muted: false, command: { state: 'unavailable', last: null }, control: null, log: [],
+  series: EMPTY, metrics: null, provider: null, page: 'home', navOpen: false, settingsOpen: false, reducedMotion: prefersReduced, perfOverlay: false, faceStyle: 'circuit', centerStyle: 'brain', brainShape: null, clock24: true, history: [], workspaceNames: [], paletteOpen: false, muted: false, command: { state: 'unavailable', last: null }, control: null, log: [],
   setLink: (link) => set({ link }),
   apply: (e) => set((s) => {
     switch (e.type) {
@@ -95,6 +109,9 @@ export const useUi = create<UiState>((set) => ({
   toggleSettings: (open) => set((s) => ({ settingsOpen: open ?? !s.settingsOpen, navOpen: false })),
   setReducedMotion: (reducedMotion) => set({ reducedMotion }),
   setPerfOverlay: (perfOverlay) => set({ perfOverlay }),
+  setFaceStyle: (faceStyle) => set({ faceStyle }),
+  setCenterStyle: (centerStyle) => set({ centerStyle }),
+  formShape: (shape, text = '') => set((s) => ({ brainShape: { shape, text, seq: (s.brainShape?.seq ?? 0) + 1 } })),
   setClock24: (clock24) => set({ clock24 }),
   setPalette: (open) => set((s) => ({ paletteOpen: open ?? !s.paletteOpen })),
 }));

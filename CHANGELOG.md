@@ -19,6 +19,9 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   New agent tool `remote_access` (`adb tcpip 5555`). See docs/PHONE_REMOTE_ADB.md.
 - **Live phone screen on the laptop** (`laptop_agent/devices/scrcpy.py`): `phone_control` `show_screen` /
   `hide_screen` and agent tool `phone_screen` open/close a scrcpy window (mirror + mouse/keyboard control).
+- **Routines file** (`core/routines_file.py`): owner-written `routines.yaml`/`routines.json` with trigger
+  phrases; an exact phrase ("good morning") runs the steps through the normal tool layer, also offline.
+  The `routine` tool lists/shows/runs them; JARVIS never writes the file. See docs/ROUTINES_FILE.md.
 
 ### Fixed (web UI review)
 - Floating windows no longer climb over the nav menu, settings, command palette and toasts after

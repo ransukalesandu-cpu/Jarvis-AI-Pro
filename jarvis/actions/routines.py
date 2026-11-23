@@ -6,6 +6,7 @@ the normal tool registry. Stored in the owner's SQLite store.
 """
 from __future__ import annotations
 
+from jarvis.core import routines_file
 from jarvis.core.routines import get_routine_store, replay, steps_from_session
 from jarvis.core.tool_runtime import json_object_arg
 
@@ -18,15 +19,25 @@ def routine(parameters: dict, dispatch=None, session_calls=None, cancel_event=No
     action = str(p.get("action") or "list").strip().lower()
     store = get_routine_store()
     name = str(p.get("name") or "").strip()
+    file_routines, file_errors = routines_file.load()
     if action == "list":
         rows = store.list()
-        if not rows:
-            return "No routines saved yet."
-        return "\n".join(f"{r['name']}: " + ", ".join(s["tool"] for s in r["steps"]) for r in rows)
+        known = {r["name"] for r in rows}
+        lines = [f"{r['name']}: " + ", ".join(s["tool"] for s in r["steps"]) for r in rows]
+        for r in file_routines.values():
+            if r["name"] not in known:
+                said = f" (say: {', '.join(r['phrases'])})" if r["phrases"] else ""
+                lines.append(f"{r['name']} [routines file]{said}: " + ", ".join(s["tool"] for s in r["steps"]))
+        lines += [f"Routines file problem: {e}" for e in file_errors]
+        return "\n".join(lines) if lines else "No routines saved yet."
     if action == "delete":
-        return f"Deleted routine '{name}'." if store.delete(name) else f"No routine named '{name}'."
+        if store.delete(name):
+            return f"Deleted routine '{name}'."
+        if routines_file.get(name):
+            return f"'{name}' comes from the owner's routines file; only the owner can edit that file."
+        return f"No routine named '{name}'."
     if action == "show":
-        r = store.get(name)
+        r = store.get(name) or routines_file.get(name)
         if r is None:
             return f"No routine named '{name}'."
         return "\n".join(f"{i}. {s['tool']} {s['args']}" for i, s in enumerate(r["steps"], 1))
@@ -44,12 +55,16 @@ def routine(parameters: dict, dispatch=None, session_calls=None, cancel_event=No
                 + ", ".join(s["tool"] for s in steps) + ".")
     if action == "run":
         r = store.get(name)
+        from_file = r is None
+        if from_file:
+            r = routines_file.get(name)
         if r is None:
             return f"No routine named '{name}'."
         if dispatch is None:
             return "Routines can only run inside a live session."
         lines = replay(r["steps"], dispatch, cancel_event=cancel_event)
-        store.mark_run(name)
+        if not from_file:
+            store.mark_run(name)
         return f"Ran routine '{r['name']}':\n" + "\n".join(lines)
     return "Use action save, run, list, show or delete."
 
@@ -59,7 +74,8 @@ TOOL = {
     "description": (
         "Save and replay routines. action=save with a name stores the tool calls "
         "made since the last save (or pass steps=[{tool, args}]); action=run replays "
-        "a routine by name; list, show and delete manage them."),
+        "a routine by name (saved ones and the owner's routines file, e.g. 'morning', "
+        "'work mode'); list, show and delete manage them."),
     "parameters": {"type": "OBJECT", "properties": {
         "action": {"type": "STRING", "description": "save | edit | run | list | show | delete"},
         "name": {"type": "STRING"},

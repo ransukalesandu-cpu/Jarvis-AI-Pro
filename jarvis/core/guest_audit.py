@@ -8,7 +8,7 @@ command line, a file path, audio or a screenshot cannot end up here.
 
 Retention: every row expires 7 days after it was written. This module enforces
 that locally (``purge_expired`` runs at start-up and before any read); the
-server-side copy and scheduled purge belong to Phase 4. Owners can delete the
+server-side copy (``guest_audit_sync``) expires on the server and is purged hourly by pg_cron. Owners can delete the
 latest Guest session; deletion is verified before it is reported.
 """
 from __future__ import annotations
@@ -181,6 +181,8 @@ class GuestAudit:
         left = self._rows("WHERE guest_session_id=?", (str(session_id),))
         if left:
             raise GuestAuditError("deletion could not be confirmed; some events remain")
+        from jarvis.core import guest_audit_sync      # remove the server copy too (queued if offline)
+        guest_audit_sync.on_local_delete(str(session_id))
         return deleted
 
     # ── human-readable summaries (built only from recorded events) ───────────

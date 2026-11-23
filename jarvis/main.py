@@ -837,6 +837,11 @@ class JarvisLive(
             start_archive()
         except Exception:
             failsoft.suppress("main:conversation_archive")
+        try:                                        # server copy of the Guest audit trail (needs Supabase sign-in)
+            from jarvis.core.guest_audit_sync import start_background_sync
+            start_background_sync()
+        except Exception:
+            failsoft.suppress("main:guest_audit_sync")
         self.ui.on_remote_clicked = self._make_remote_key
         self.ui.on_interrupt      = self.interrupt
         self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session

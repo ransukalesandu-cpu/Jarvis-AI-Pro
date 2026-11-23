@@ -45,6 +45,7 @@ a line here.
 | `generativelanguage.googleapis.com` (embeddings) | knowledge base semantic search (`knowledge/store.py`) | Only with `JARVIS_KB_EMBEDDINGS=1`; keyword search works offline. |
 | any `http(s)` URL the owner names | knowledge base `add` of a web page (`knowledge/extract.py`) | Fetches the page once when the owner asks to index it. |
 | `api.telegram.org` | Telegram channel (`channels/telegram.py`) | Only when `telegram_bot_token` is set; long polling, no inbound port. |
+| `<project>.supabase.co/functions/v1/jarvis-guest-audit` | Guest audit server copy (`core/guest_audit_sync.py`) | Only with Supabase configured and a signed-in identity; allowlisted event fields only; off with `JARVIS_GUEST_AUDIT_SYNC=0` or `OFFLINE=1`. |
 | your WebDAV server | backup upload (`backup/__init__.py`) | Only when a WebDAV URL is configured for backups; https only. |
 
 The dashboard (`dashboard/server.py`) serves CryptoJS from the committed

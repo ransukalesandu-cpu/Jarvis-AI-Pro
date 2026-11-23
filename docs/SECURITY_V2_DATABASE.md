@@ -4,8 +4,8 @@
 | Item | Status |
 |---|---|
 | SQL migration `supabase/migrations/202611050001_security_v2_guest_audit.sql` | **Applied** to the JARVIS-AI-PRO project on 2026-11-24 (migration `security_v2_guest_audit`). Verified: RLS on, `anon`/`authenticated` have no table or purge-function access, `service_role` can write, table empty. Advisors: only the expected INFO "RLS enabled, no policy" (deny-all by design). |
-| Server-side 7-day purge | `jarvis_purge_expired_guest_audit()` is deployed. **No hourly schedule yet:** `pg_cron` is not enabled on the project, so nothing calls it automatically. Enable `pg_cron` and re-run the `do $$ … $$` block, or call it from a scheduled Edge Function. Expired rows still fail the 7-day check and are purged on the next call. |
-| Edge Function / desktop sync client that uploads Guest events | **NOT IMPLEMENTED.** Guest events currently live only in the local `owner.db`. |
+| Server-side 7-day purge | **Active.** `pg_cron` enabled on 2026-11-24; job `jarvis-purge-guest-audit` runs `jarvis_purge_expired_guest_audit()` every hour at :17. |
+| Edge Function / desktop sync client | **Deployed / implemented.** Edge Function `jarvis-guest-audit` (v1, JWT required, nonce + timestamp replay check, all-or-nothing allowlist validation in `domain.ts`, max 100 events) and `jarvis/core/guest_audit_sync.py` (uploads every 10 min when Supabase sign-in is configured and Guest monitoring is ON; local deletions delete the server copy, queued if offline; `JARVIS_GUEST_AUDIT_SYNC=0` disables). Not yet exercised end-to-end from a real signed-in desktop. |
 | Local Security ON/OFF | Implemented and unit tested. |
 | Guest log local expiry (7 days) | Implemented and unit tested. |
 

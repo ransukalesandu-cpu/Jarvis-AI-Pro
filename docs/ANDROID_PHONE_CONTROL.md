@@ -21,6 +21,21 @@ Do not share pairing codes or debugging authorization prompts. Disconnecting fro
 - `wake_screen` (does not bypass the lock screen)
 - `open_dialer` and `open_messages` (opens the app only; does not place calls or send messages)
 
+### Screen elements (UI tree)
+
+Instead of tapping pixels, JARVIS can read Android's own list of what is on screen and act by label:
+
+- `phone_control(action="read_screen")`: buttons, texts and fields with `#index`, id and position
+- `phone_control(action="tap_element", target="Send")` — target is visible text/description, `id:send` or `#12`
+- `phone_control(action="fill_field", target="Message", text="On my way")`
+- `phone_control(action="wait_for", target="Installed", timeout_seconds=60)`
+- `phone_control(action="scroll_to", target="Settings", direction="down")`
+
+Hub mode (laptop agent) has the same as `screen_elements`, `tap_element`, `fill_field`, `wait_for_element`,
+`scroll_to_element`. Optional: `pip install uiautomator2` makes reading the screen faster; without it plain
+`adb shell uiautomator dump` is used. Secure screens (banking apps, lock screen) may refuse to be read.
+Password fields are shown as `[password field]`; their content is never read back.
+
 Supported app aliases: WhatsApp, YouTube, Chrome, Settings, Spotify, Maps, Gmail, Telegram, Messages, Phone.
 
 ## Safety and limitations

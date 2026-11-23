@@ -17,6 +17,8 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 - **Phone control away from home**: `devices.json` accepts `adb.remote_address` (the phone's Tailscale
   address); the agent falls back to it when the home address is unreachable and reports `transport: tailscale`.
   New agent tool `remote_access` (`adb tcpip 5555`). See docs/PHONE_REMOTE_ADB.md.
+- **Live phone screen on the laptop** (`laptop_agent/devices/scrcpy.py`): `phone_control` `show_screen` /
+  `hide_screen` and agent tool `phone_screen` open/close a scrcpy window (mirror + mouse/keyboard control).
 
 ### Fixed (web UI review)
 - Floating windows no longer climb over the nav menu, settings, command palette and toasts after

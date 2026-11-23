@@ -36,6 +36,14 @@ Hub mode (laptop agent) has the same as `screen_elements`, `tap_element`, `fill_
 `adb shell uiautomator dump` is used. Secure screens (banking apps, lock screen) may refuse to be read.
 Password fields are shown as `[password field]`; their content is never read back.
 
+### Live screen on the laptop (scrcpy)
+
+- `phone_control(action="show_screen")` opens the phone's screen in a window on the laptop; the mouse and
+  keyboard work on it. `control=false` is view only. `hide_screen` closes it. Hub mode: `phone_screen`.
+- Install: download the Windows zip from github.com/Genymobile/scrcpy/releases and unzip it to
+  `%LOCALAPPDATA%\scrcpy` (or anywhere on PATH, or set `JARVIS_SCRCPY` to `scrcpy.exe`). It uses the same
+  `adb` and the same authorised connection (USB, Wi-Fi or Tailscale).
+
 Supported app aliases: WhatsApp, YouTube, Chrome, Settings, Spotify, Maps, Gmail, Telegram, Messages, Phone.
 
 ## Safety and limitations

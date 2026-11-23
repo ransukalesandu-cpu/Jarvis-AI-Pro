@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act } from 'react';
-import { createRoot } from 'react-dom/client';
+import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseHostEvent } from '../bridge/contract';
 import { useUi } from '../store';
@@ -8,11 +8,18 @@ import { ACCESS_LABEL, SECTIONS, SettingsPanel, memoryRows, netText } from './Se
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
+let root: Root | null = null;
 beforeEach(() => {
     host = document.createElement('div');
     document.body.appendChild(host);
 });
-afterEach(() => {
+afterEach(async () => {
+    // Unmount first and let pending Radix/Motion timers run while the DOM still exists.
+    act(() => root?.unmount());
+    root = null;
+    await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+    });
     host.remove();
     act(() => useUi.setState({ settingsOpen: false, link: 'detached', memory: null, provider: null }));
 });
@@ -53,7 +60,8 @@ describe('Control Center helpers', () => {
 describe('SettingsPanel', () => {
     function open() {
         act(() => useUi.setState({ settingsOpen: true }));
-        act(() => createRoot(host).render(<SettingsPanel />));
+        root = createRoot(host);
+        act(() => root!.render(<SettingsPanel />));
     }
     const tab = (name: string) => [...host.querySelectorAll<HTMLButtonElement>('[role=tab]')].find((b) => b.textContent === name)!;
     // Radix tabs select on mousedown (a real click starts with one) and on focus.

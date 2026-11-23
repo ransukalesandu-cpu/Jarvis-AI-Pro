@@ -56,17 +56,25 @@ describe('SettingsPanel', () => {
         act(() => createRoot(host).render(<SettingsPanel />));
     }
     const tab = (name: string) => [...host.querySelectorAll<HTMLButtonElement>('[role=tab]')].find((b) => b.textContent === name)!;
+    // Radix tabs select on mousedown (a real click starts with one) and on focus.
+    const pick = (name: string) => act(() => tab(name).dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })));
+    const panel = () => host.querySelector('[role=tabpanel]:not([hidden])')!;
 
-    it('switches sections with the keyboard (arrows wrap)', () => {
+    it('switches sections with the keyboard (arrows wrap)', async () => {
         open();
         expect(tab('General').getAttribute('aria-selected')).toBe('true');
-        act(() => tab('General').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })));
+        tab('General').focus();
+        // Roving focus moves on the next tick; focusing a tab selects it.
+        await act(async () => {
+            tab('General').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+            await new Promise((r) => setTimeout(r, 0));
+        });
         expect(tab('Devices').getAttribute('aria-selected')).toBe('true');
         expect(document.activeElement).toBe(tab('Devices'));
     });
     it('shows real provider and memory values, and nothing invented when offline', () => {
         open();
-        act(() => tab('AI').click());
+        pick('AI');
         expect(host.textContent).toContain('not reported');
         act(() =>
             useUi.setState({
@@ -77,15 +85,15 @@ describe('SettingsPanel', () => {
         );
         expect(host.textContent).toContain('Gemini');
         expect(host.textContent).toContain('connected');
-        act(() => tab('Memory').click());
+        pick('Memory');
         expect(host.textContent).toContain('on (opt-in)');
         act(() => useUi.setState({ link: 'detached' }));
         expect(host.textContent).toContain('not reported yet');
     });
     it('does not claim the microphone is on while the backend is offline', () => {
         open();
-        act(() => tab('Voice').click());
-        const mic = host.querySelector<HTMLButtonElement>('[role=tabpanel] .row button')!;
+        pick('Voice');
+        const mic = panel().querySelector<HTMLButtonElement>('.row button')!;
         expect(mic.textContent).toBe('Unknown');
         expect(mic.disabled).toBe(true);
         act(() => useUi.setState({ link: 'connected', muted: true }));
@@ -94,9 +102,8 @@ describe('SettingsPanel', () => {
     it('shows security as status only, with no control that changes access', () => {
         open();
         act(() => useUi.setState({ link: 'connected', command: { state: 'guest', last: null } }));
-        act(() => tab('Security').click());
-        const panel = host.querySelector('[role=tabpanel]')!;
-        expect(panel.textContent).toContain('Guest mode (limited)');
-        expect(panel.querySelectorAll('button').length).toBe(0);
+        pick('Security');
+        expect(panel().textContent).toContain('Guest mode (limited)');
+        expect(panel().querySelectorAll('button').length).toBe(0);
     });
 });

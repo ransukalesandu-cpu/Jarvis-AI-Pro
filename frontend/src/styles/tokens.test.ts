@@ -25,7 +25,7 @@ describe('design tokens', () => {
                     /:root\s*\{/.test(l) ||
                     /font(-size)?:[^;]*\b[\d.]+px/.test(l) ||
                     /^\s*(padding|margin|gap|row-gap|column-gap)[a-z-]*:[^;]*\b[\d.]*[1-9]px/.test(l) ||
-                    /shadow:[^;]*\d+px/.test(l) ||
+                    /(shadow:|drop-shadow\()[^;]*\d+px/.test(l) ||
                     /border-radius:[^;]*\d+(px|%)/.test(l) ||
                     /(transition|animation)[^;]*\b\d+m?s\b/.test(l),
             );

@@ -16,7 +16,10 @@ body,
 
 /* floating windows */
 .win {
-  background: var(--holo-c-6);
+  background: var(--surface-window);
+}
+.panel.glass {
+  background: var(--surface-panel);
 }
 .win.glass {
   border-color: var(--holo-c-7);
@@ -53,7 +56,7 @@ body,
 .cmdbar.glass {
   border-color: var(--holo-c-20);
   box-shadow: var(--shadow-holo-14);
-  background: var(--holo-c-21);
+  background: var(--surface-bar);
 }
 .cmdbar button {
   background: var(--holo-c-22);
@@ -106,19 +109,19 @@ body,
 .spark[data-tone='amber'] figcaption span:last-child {
   color: var(--amber);
 }
-.spark-line {
+.spark .recharts-area-curve {
   stroke: var(--holo-c-29);
-  filter: drop-shadow(0 0 3px var(--holo-c-30));
+  filter: drop-shadow(var(--glow-line) var(--holo-c-30));
 }
-.spark[data-tone='amber'] .spark-line {
+.spark[data-tone='amber'] .recharts-area-curve {
   stroke: var(--amber);
-  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--warn) 70%, transparent));
+  filter: drop-shadow(var(--glow-line) color-mix(in srgb, var(--warn) 70%, transparent));
 }
-.spark-area {
+.spark .recharts-area-area {
   fill: var(--holo-c-8);
-  stroke: none;
+  fill-opacity: 1;
 }
-.spark[data-tone='amber'] .spark-area {
+.spark[data-tone='amber'] .recharts-area-area {
   fill: color-mix(in srgb, var(--warn) 10%, transparent);
 }
 .row {

@@ -4,6 +4,7 @@ import { sendRequest } from '../bridge/bridge';
 import { COMMAND_MAX, FEATURES, type CommandReason, type Feature, type FeatureSnapshot } from '../bridge/contract';
 import { useUi } from '../store';
 import { RESULT } from './CommandBar';
+import { Button, Input, Tabs } from '../components/ui';
 
 /** One tab of the Features Hub. Buttons and the input only ever submit a typed command (same gate as the command bar). */
 export interface FeatureSpec {
@@ -116,20 +117,18 @@ export function FeaturesView({ tab, onTab, snap, canAsk, result, onSubmit, onRef
     const send = (text: string) => {
         if (text) onSubmit(text);
     };
-    return (
+    const body = (
         <>
-            <div className="seg feature-tabs" role="tablist" aria-label="Features">
-                {FEATURES.map((f) => (
-                    <button key={f} role="tab" className="toggle" aria-selected={f === tab} aria-pressed={f === tab} onClick={() => onTab(f)}>
-                        {SPECS[f].label}
-                    </button>
-                ))}
-            </div>
             <h1 className="feature-title">
                 {spec.label}
-                <button className="toggle" onClick={onRefresh} aria-label={`Refresh ${spec.label}`}>
-                    <RefreshCw size={12} />
-                </button>
+                <Button
+                    variant="ghost"
+                    tone="neutral"
+                    size="sm"
+                    onClick={onRefresh}
+                    aria-label={`Refresh ${spec.label}`}
+                    icon={<RefreshCw size={12} aria-hidden />}
+                />
             </h1>
             <p>{spec.blurb}</p>
             <p className="news-source" role="status">
@@ -137,9 +136,9 @@ export function FeaturesView({ tab, onTab, snap, canAsk, result, onSubmit, onRef
             </p>
             <div className="seg feature-actions">
                 {spec.actions.map((a) => (
-                    <button key={a.label} className="toggle" disabled={!canAsk} onClick={() => send(a.text)}>
+                    <Button key={a.label} variant="outline" tone="neutral" size="sm" disabled={!canAsk} onClick={() => send(a.text)}>
                         {a.label}
-                    </button>
+                    </Button>
                 ))}
             </div>
             {spec.ask && (
@@ -151,17 +150,17 @@ export function FeaturesView({ tab, onTab, snap, canAsk, result, onSubmit, onRef
                         setQ('');
                     }}
                 >
-                    <input
-                        aria-label={spec.ask.placeholder}
+                    <Input
+                        label={spec.ask.placeholder}
+                        hideLabel
+                        size="sm"
                         placeholder={spec.ask.placeholder}
                         value={q}
                         maxLength={400}
                         disabled={!canAsk}
                         onChange={(e) => setQ(e.target.value)}
                     />
-                    <button className="toggle" type="submit" disabled={!canAsk || !q.trim()} aria-label="Send">
-                        <Send size={12} />
-                    </button>
+                    <Button type="submit" size="sm" disabled={!canAsk || !q.trim()} aria-label="Send" icon={<Send size={12} aria-hidden />} />
                 </form>
             )}
             {snap && snap.items.length > 0 ? (
@@ -180,6 +179,14 @@ export function FeaturesView({ tab, onTab, snap, canAsk, result, onSubmit, onRef
                 {result && result !== 'done' ? RESULT[result] : ''}
             </p>
         </>
+    );
+    return (
+        <Tabs
+            label="Features"
+            value={tab}
+            onValueChange={(v) => onTab(v as Feature)}
+            items={FEATURES.map((f) => ({ value: f, label: SPECS[f].label, content: f === tab ? body : null }))}
+        />
     );
 }
 

@@ -499,23 +499,13 @@ button {
   text-transform: uppercase;
   color: var(--text-dim);
 }
-.spark svg {
-  width: 100%;
-  height: 44px;
-  display: block;
-}
-.spark-line {
-  fill: none;
-  stroke: var(--primary-bright);
-  stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
-}
-.spark-base {
-  stroke: var(--ui-c-2);
-  vector-effect: non-scaling-stroke;
+.ui-chart {
+  overflow: hidden;
+  border-bottom: 1px solid var(--ui-c-2);
 }
 .spark-empty {
-  fill: var(--text-faint);
+  margin: 0;
+  color: var(--text-faint);
   font-size: var(--fs-2xs);
 }
 .win-inner:focus-visible {
@@ -1169,15 +1159,15 @@ button {
   gap: var(--space-1-5);
   margin-bottom: var(--space-2);
 }
-.feature-ask input {
+.feature-ask .ui-field {
   flex: 1;
-  background: transparent;
-  color: var(--text);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-1-5) var(--space-2-5);
 }
-.feature-tabs {
-  justify-content: flex-start;
-  margin-bottom: var(--space-2);
+
+/* Without backdrop blur (older GPUs, software rendering) glass must still be readable on its own (audit F1). */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass,
+  .panel,
+  .win {
+    background: var(--surface-window);
+  }
 }

@@ -440,3 +440,78 @@
   gap: var(--space-3);
   color: var(--text);
 }
+
+/* ── switch and segmented ─────────────────────────────────────────── */
+.ui-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  height: var(--control-sm);
+  padding: 0 var(--space-2) 0 var(--space-0-5);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-border);
+  background: var(--glass);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.ui-switch-thumb {
+  display: block;
+  width: calc(var(--control-sm) - var(--space-2));
+  height: calc(var(--control-sm) - var(--space-2));
+  border-radius: var(--radius-round);
+  background: var(--text-faint);
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.ui-switch[data-state='checked'] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+  color: var(--text);
+}
+.ui-switch[data-state='checked'] .ui-switch-thumb {
+  background: var(--primary);
+}
+.ui-switch:focus-visible,
+.ui-seg-item:focus-visible {
+  outline: 2px solid var(--primary-bright);
+  outline-offset: 2px;
+}
+.ui-switch:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.ui-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.ui-seg-item {
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: 0;
+  padding: var(--space-1-5) var(--space-2-5);
+  cursor: pointer;
+}
+.ui-seg-item + .ui-seg-item {
+  border-inline-start: 1px solid var(--glass-border);
+}
+.ui-seg-item:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--glass-highlight);
+}
+.ui-seg-item[data-state='on'] {
+  color: var(--text);
+  background: color-mix(in srgb, var(--primary) 26%, transparent);
+}
+.ui-seg-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

@@ -3,6 +3,7 @@ import { AdditiveBlending, Color, MeshBasicMaterial, RingGeometry, type ShaderMa
 import { COLORS } from '../palette';
 import { MASK_INNER } from './iris';
 import { irisGeometry, irisMaterial, poseIris } from './irisMaterial';
+import { stageColor } from '../stageColor';
 
 /** Eye-space radius 1 = this many world units. */
 export const EYE_SCALE = 0.13;
@@ -27,7 +28,7 @@ export function MechanicalEye({ emission, iris }: { emission: ShaderMaterial; ir
     const ring = useMemo(
         () => ({
             mask: new RingGeometry(MASK_INNER, 1.3, 64),
-            maskMat: new MeshBasicMaterial({ color: new Color('#15171b'), transparent: true, depthTest: false, depthWrite: false }),
+            maskMat: new MeshBasicMaterial({ color: stageColor('stage-eye-mask'), transparent: true, depthTest: false, depthWrite: false }),
             rim: new RingGeometry(MASK_INNER - 0.03, MASK_INNER + 0.01, 64),
             outer: new RingGeometry(1.26, 1.3, 64),
             rimMat: new MeshBasicMaterial({

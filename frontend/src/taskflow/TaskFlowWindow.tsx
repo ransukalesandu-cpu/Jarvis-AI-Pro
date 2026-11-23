@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useUi } from '../store';
 import { FlowCanvas, useNow } from './FlowCanvas';
 import { AUTO_HIDE_MS, counts, elapsed, useFlows, windowFlow, type FlowLogLine } from './flows';
+import { DURATIONS } from '../styles/tokens';
 
 const NO_LOG: FlowLogLine[] = [];
 
@@ -44,7 +45,7 @@ export function TaskFlowWindow() {
                     initial={{ opacity: 0, y: reduced ? 0 : 14, scale: reduced ? 1 : 0.97 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: reduced ? 0 : 10, scale: reduced ? 1 : 0.98 }}
-                    transition={{ duration: reduced ? 0 : 0.25 }}
+                    transition={{ duration: reduced ? 0 : DURATIONS['dur-progress'] / 1000 }}
                 >
                     <header className="tf-hd">
                         <span className="tf-dot" data-state={flow.state} />

@@ -1,0 +1,101 @@
+/* Base Qt theme from the shared tokens. Widgets keep object names; per-widget rules live in jarvis/ui. */
+QWidget {
+  color: {{text}};
+  font-size: {{fs-base}};
+  selection-background-color: {{primary}};
+  selection-color: {{bg}};
+}
+QMainWindow, QDialog, QWidget#Root {
+  background: {{bg}};
+}
+QFrame#Glass, QWidget#Glass {
+  background: {{glass-strong}};
+  border: 1px solid {{glass-border}};
+  border-radius: {{radius-md}};
+}
+QLabel[role="dim"] {
+  color: {{text-dim}};
+}
+QLabel[role="faint"] {
+  color: {{text-faint}};
+  font-size: {{fs-sm}};
+}
+QPushButton {
+  background: {{glass}};
+  border: 1px solid {{glass-border}};
+  border-radius: {{radius-sm}};
+  padding: {{space-2}} {{space-4}};
+}
+QPushButton:hover {
+  border-color: {{primary}};
+}
+QPushButton:pressed {
+  background: {{glass-strong}};
+}
+QPushButton:focus {
+  border: 2px solid {{primary-bright}};
+}
+QPushButton:disabled {
+  color: {{text-faint}};
+  border-color: {{glass-border}};
+}
+QPushButton[variant="primary"] {
+  background: {{primary}};
+  color: {{bg}};
+  border-color: {{primary}};
+}
+QPushButton[tone="danger"] {
+  border-color: {{danger}};
+  color: {{danger}};
+}
+QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox {
+  background: {{glass-strong}};
+  border: 1px solid {{glass-border}};
+  border-radius: {{radius-sm}};
+  padding: {{space-1}} {{space-2}};
+}
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus {
+  border: 2px solid {{primary-bright}};
+}
+QLineEdit[invalid="true"] {
+  border-color: {{danger}};
+}
+QCheckBox::indicator {
+  width: {{space-4}};
+  height: {{space-4}};
+  border: 1px solid {{glass-border}};
+  border-radius: {{radius-xs}};
+  background: {{glass}};
+}
+QCheckBox::indicator:checked {
+  background: {{primary}};
+  border-color: {{primary}};
+}
+QTabBar::tab {
+  padding: {{space-2}} {{space-3}};
+  color: {{text-dim}};
+  border-bottom: 2px solid transparent;
+}
+QTabBar::tab:selected {
+  color: {{text}};
+  border-bottom-color: {{primary}};
+}
+QToolTip {
+  background: {{glass-strong}};
+  color: {{text}};
+  border: 1px solid {{glass-border}};
+  border-radius: {{radius-sm}};
+  padding: {{space-1}} {{space-2}};
+}
+QScrollBar:vertical {
+  width: {{space-2}};
+  background: transparent;
+}
+QScrollBar::handle:vertical {
+  background: {{glass-border}};
+  border-radius: {{radius-xs}};
+  min-height: {{space-6}};
+}
+QScrollBar::add-line, QScrollBar::sub-line {
+  height: 0;
+}

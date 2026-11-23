@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { AdditiveBlending, CanvasTexture, LinearFilter, SRGBColorSpace } from 'three';
 import { useUi } from '../store';
 import { reshape } from './shape';
+import { stageCss } from './stageColor';
 
 const CHIP_TOP_Y = reshape(0, 0.49, 0.45)[1],
     CHIP_LOW_Y = reshape(0, 0.315, 0.5)[1];
@@ -30,7 +31,7 @@ export function chipData(metrics: { cpu: number; ram: number } | null, assistant
     ];
 }
 
-const BLUE = '#3cc4ff';
+const BLUE = stageCss('stage-face-blue');
 
 /** Draws one chip: a dark circuit module with a glowing blue frame, a label, a big value and a meter. */
 export function drawChip(ctx: CanvasRenderingContext2D, w: number, h: number, d: ChipData): void {
@@ -70,11 +71,11 @@ export function drawChip(ctx: CanvasRenderingContext2D, w: number, h: number, d:
     // label + value
     ctx.shadowColor = BLUE;
     ctx.shadowBlur = h * 0.06;
-    ctx.fillStyle = '#9fe3ff';
+    ctx.fillStyle = stageCss('stage-face-glow');
     ctx.font = `600 ${Math.round(h * 0.15)}px "JetBrains Mono", ui-monospace, monospace`;
     ctx.textBaseline = 'top';
     ctx.fillText(d.label, pad * 2.2, pad * 2);
-    ctx.fillStyle = '#e8fbff';
+    ctx.fillStyle = stageCss('stage-face-glow-hi');
     ctx.font = `700 ${Math.round(h * 0.34)}px "JetBrains Mono", ui-monospace, monospace`;
     ctx.textAlign = 'right';
     ctx.fillText(d.value, w - pad * 2.2, pad * 1.6);

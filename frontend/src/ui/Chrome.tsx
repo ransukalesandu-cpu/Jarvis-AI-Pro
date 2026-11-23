@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Island } from './Island';
 import { PAGE_WINDOWS, TITLES, type WinKind } from '../workspace/layout';
 import { useWindows } from '../workspace/windows';
+import { DURATIONS } from '../styles/tokens';
 
 export const PAGES: { id: Page; label: string; icon: React.ReactNode }[] = [
     { id: 'home', label: 'Home', icon: <Home size={16} /> },
@@ -63,7 +64,7 @@ export function NavPanel() {
                     initial={{ opacity: 0, x: reduced ? 0 : -24 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: reduced ? 0 : -24 }}
-                    transition={{ duration: reduced ? 0 : 0.22 }}
+                    transition={{ duration: reduced ? 0 : DURATIONS.dur / 1000 }}
                 >
                     <h2>NAVIGATE</h2>
                     {PAGES.map((p) => (

@@ -9,6 +9,7 @@ import { useFlows } from '../taskflow/flows';
 import { useFresh } from '../ux/useFresh';
 import { useWindows } from '../workspace/windows';
 import { RESULT } from './CommandBar';
+import { DURATIONS } from '../styles/tokens';
 
 const ask = (action: ControlAction) => sendRequest({ kind: 'control.do', action });
 export const PERSONA_OPTS = [
@@ -346,7 +347,7 @@ export function SettingsPanel() {
                     initial={{ opacity: 0, x: reducedMotion ? 0 : 24 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: reducedMotion ? 0 : 24 }}
-                    transition={{ duration: reducedMotion ? 0 : 0.22 }}
+                    transition={{ duration: reducedMotion ? 0 : DURATIONS.dur / 1000 }}
                 >
                     <h2>SYSTEM CONTROL CENTER</h2>
                     <SectionTabs value={section} onChange={setSection} />

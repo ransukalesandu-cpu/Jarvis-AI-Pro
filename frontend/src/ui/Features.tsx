@@ -118,14 +118,14 @@ export function FeaturesView({ tab, onTab, snap, canAsk, result, onSubmit, onRef
     };
     return (
         <>
-            <div className="seg" role="tablist" aria-label="Features" style={{ justifyContent: 'flex-start', marginBottom: 8 }}>
+            <div className="seg feature-tabs" role="tablist" aria-label="Features">
                 {FEATURES.map((f) => (
                     <button key={f} role="tab" className="toggle" aria-selected={f === tab} aria-pressed={f === tab} onClick={() => onTab(f)}>
                         {SPECS[f].label}
                     </button>
                 ))}
             </div>
-            <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h1 className="feature-title">
                 {spec.label}
                 <button className="toggle" onClick={onRefresh} aria-label={`Refresh ${spec.label}`}>
                     <RefreshCw size={12} />
@@ -135,7 +135,7 @@ export function FeaturesView({ tab, onTab, snap, canAsk, result, onSubmit, onRef
             <p className="news-source" role="status">
                 {snap ? snap.summary : 'Loading…'}
             </p>
-            <div className="seg" style={{ justifyContent: 'flex-start', margin: '8px 0' }}>
+            <div className="seg feature-actions">
                 {spec.actions.map((a) => (
                     <button key={a.label} className="toggle" disabled={!canAsk} onClick={() => send(a.text)}>
                         {a.label}
@@ -144,7 +144,7 @@ export function FeaturesView({ tab, onTab, snap, canAsk, result, onSubmit, onRef
             </div>
             {spec.ask && (
                 <form
-                    style={{ display: 'flex', gap: 6, marginBottom: 8 }}
+                    className="feature-ask"
                     onSubmit={(e) => {
                         e.preventDefault();
                         send(askText(spec, q));
@@ -158,14 +158,6 @@ export function FeaturesView({ tab, onTab, snap, canAsk, result, onSubmit, onRef
                         maxLength={400}
                         disabled={!canAsk}
                         onChange={(e) => setQ(e.target.value)}
-                        style={{
-                            flex: 1,
-                            background: 'transparent',
-                            color: 'var(--text)',
-                            border: '1px solid var(--glass-border)',
-                            borderRadius: 8,
-                            padding: '6px 10px',
-                        }}
                     />
                     <button className="toggle" type="submit" disabled={!canAsk || !q.trim()} aria-label="Send">
                         <Send size={12} />

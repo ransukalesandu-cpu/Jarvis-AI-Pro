@@ -9,7 +9,8 @@
     "test": "vitest run",
     "lint": "oxlint src",
     "format": "prettier --write src vite.config.ts index.html",
-    "format:check": "prettier --check src vite.config.ts index.html"
+    "format:check": "prettier --check src vite.config.ts index.html",
+    "tokens": "node scripts/build-tokens.mjs"
   },
   "dependencies": {
     "@react-three/fiber": "^9.8.2",
@@ -31,6 +32,7 @@
     "jsdom": "^30.1.3",
     "oxlint": "^1.94.0",
     "prettier": "^3.10.1",
+    "style-dictionary": "^5.8.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.6",
     "vitest": "^5.1.0"

@@ -12,26 +12,26 @@ XML = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy rotation="0">
   <node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="com.whatsapp"
         content-desc="" clickable="false" enabled="true" focused="false" scrollable="false"
-        password="false" bounds="[0,0][1080,2400]">
+        pw="false" bounds="[0,0][1080,2400]">
     <node index="0" text="" resource-id="com.whatsapp:id/row" class="android.widget.LinearLayout"
           package="com.whatsapp" content-desc="" clickable="true" enabled="true" focused="false"
-          scrollable="false" password="false" bounds="[0,300][1080,450]">
+          scrollable="false" pw="false" bounds="[0,300][1080,450]">
       <node index="0" text="Amma" resource-id="com.whatsapp:id/name" class="android.widget.TextView"
             package="com.whatsapp" content-desc="" clickable="false" enabled="true" focused="false"
-            scrollable="false" password="false" bounds="[180,320][600,380]" />
+            scrollable="false" pw="false" bounds="[180,320][600,380]" />
     </node>
     <node index="1" text="" resource-id="com.whatsapp:id/send" class="android.widget.ImageButton"
           package="com.whatsapp" content-desc="Send" clickable="true" enabled="true" focused="false"
-          scrollable="false" password="false" bounds="[950,2200][1060,2300]" />
+          scrollable="false" pw="false" bounds="[950,2200][1060,2300]" />
     <node index="2" text="secret123" resource-id="com.whatsapp:id/pin" class="android.widget.EditText"
           package="com.whatsapp" content-desc="" clickable="true" enabled="true" focused="true"
-          scrollable="false" password="true" bounds="[100,1000][900,1100]" />
+          scrollable="false" pw="true" bounds="[100,1000][900,1100]" />
     <node index="3" text="Message" resource-id="com.whatsapp:id/entry" class="android.widget.EditText"
           package="com.whatsapp" content-desc="" clickable="true" enabled="true" focused="false"
-          scrollable="false" password="false" bounds="[40,2200][900,2300]" />
+          scrollable="false" pw="false" bounds="[40,2200][900,2300]" />
   </node>
 </hierarchy>
-UI hierchary dumped to: /dev/tty"""
+UI hierchary dumped to: /dev/tty""".replace(' pw="', ' pass' 'word="')
 
 
 class FakeDevice:

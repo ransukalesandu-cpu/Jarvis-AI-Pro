@@ -7,6 +7,7 @@ import { Head } from './Head';
 import { MechanicalHead } from './face/MechanicalHead';
 import { NeuralBrain } from './brain/NeuralBrain';
 import { Arcs, Backdrop, LAYOUT, Orb, Particles, Strands } from './Stage';
+import { stageHex } from './stageColor';
 
 const FOV = 28;
 const BOUNDS = { halfWidth: 2.2, top: 1.7, bottom: -2.3 }; // room under the orb for the command bar
@@ -61,7 +62,7 @@ export function HologramScene({ onContextLost }: { onContextLost?: () => void } 
             dpr={q.dpr}
             frameloop={frameloop}
             onCreated={({ gl }) => {
-                gl.setClearColor(0x000000, 0);
+                gl.setClearColor(stageHex('stage-black'), 0);
                 // A lost GPU context would otherwise leave a frozen or blank stage: report it so a notice and a restart show.
                 gl.domElement.addEventListener(
                     'webglcontextlost',

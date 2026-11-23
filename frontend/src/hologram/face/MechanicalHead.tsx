@@ -19,6 +19,7 @@ import { poseIris } from './irisMaterial';
 import { neckRings } from './neck';
 import { buildMechanicalFace, type Panel } from './panels';
 import { visualState } from '../visualState';
+import { stageCss } from '../stageColor';
 
 const [, PIVOT_Y, PIVOT_Z] = mesh.jawPivot;
 const ACCENT = new Set(['browL', 'browR', 'cheekboneL', 'cheekboneR', 'noseBridge', 'chin', 'crown']); // titanium; the rest black chrome
@@ -156,11 +157,11 @@ export function MechanicalHead() {
         );
         const weave = weaveNormalMap();
         const materials = {
-            chrome: blackChrome({ color: '#14161a' }),
-            metal: titanium({ color: '#4c5058', roughness: 0.32 }),
+            chrome: blackChrome({ color: stageCss('stage-mech-chrome') }),
+            metal: titanium({ color: stageCss('stage-mech-metal'), roughness: 0.32 }),
             carbon: carbon(weave),
             holo: glassMaterial(COLORS.rim, COLORS.skin, { bodyAlpha: 0.03, power: 2.0, scan: 0.25, pulse: 0.25 }),
-            ring: titanium({ color: '#3a3e46', roughness: 0.3 }),
+            ring: titanium({ color: stageCss('stage-mech-ring'), roughness: 0.3 }),
         };
         const rings = neckRings();
         const ringGeo = new CylinderGeometry(1, 1, 1, 48, 1, true);
@@ -254,8 +255,8 @@ export function MechanicalHead() {
     );
     return (
         <group ref={group}>
-            <directionalLight position={[-2.5, 3, 4]} intensity={1.6} color="#fff1e0" />
-            <directionalLight position={[2.5, 1, -3]} intensity={2.4} color="#ff8a2a" />
+            <directionalLight position={[-2.5, 3, 4]} intensity={1.6} color={stageCss('stage-light-key')} />
+            <directionalLight position={[2.5, 1, -3]} intensity={2.4} color={stageCss('stage-light-rim')} />
             {plates(geos.chrome, geos.metal, skull)}
             {lines[0].map((l, i) => (
                 <primitive key={`s${i}`} object={l} />

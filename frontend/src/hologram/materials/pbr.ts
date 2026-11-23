@@ -5,6 +5,7 @@
  */
 import { Color, DataTexture, MeshPhysicalMaterial, PMREMGenerator, RepeatWrapping, RGBAFormat, type Texture, type WebGLRenderer } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { stageCss } from '../stageColor';
 
 export interface MetalParams {
     color?: string;
@@ -16,24 +17,24 @@ export interface MetalParams {
 
 export function titanium(p: MetalParams = {}): MeshPhysicalMaterial {
     return new MeshPhysicalMaterial({
-        color: new Color(p.color ?? '#7d828c'),
+        color: new Color(p.color ?? stageCss('stage-pbr-metal')),
         metalness: 1,
         roughness: p.roughness ?? 0.38,
         clearcoat: p.clearcoat ?? 0.25,
         clearcoatRoughness: 0.4,
-        emissive: new Color(p.emissive ?? '#000000'),
+        emissive: new Color(p.emissive ?? stageCss('stage-black')),
         emissiveIntensity: p.emissiveIntensity ?? 0,
     });
 }
 
 export function blackChrome(p: MetalParams = {}): MeshPhysicalMaterial {
     return new MeshPhysicalMaterial({
-        color: new Color(p.color ?? '#1b1d22'),
+        color: new Color(p.color ?? stageCss('stage-pbr-chrome')),
         metalness: 1,
         roughness: p.roughness ?? 0.16,
         clearcoat: p.clearcoat ?? 1,
         clearcoatRoughness: 0.08,
-        emissive: new Color(p.emissive ?? '#000000'),
+        emissive: new Color(p.emissive ?? stageCss('stage-black')),
         emissiveIntensity: p.emissiveIntensity ?? 0,
     });
 }
@@ -66,7 +67,7 @@ export function weaveNormalMap(size = 64): DataTexture {
 
 export function carbon(normalMap: Texture, p: MetalParams = {}): MeshPhysicalMaterial {
     return new MeshPhysicalMaterial({
-        color: new Color(p.color ?? '#121316'),
+        color: new Color(p.color ?? stageCss('stage-pbr-black')),
         metalness: 0.2,
         roughness: p.roughness ?? 0.45,
         clearcoat: p.clearcoat ?? 0.8,

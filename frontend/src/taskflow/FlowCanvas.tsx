@@ -155,9 +155,9 @@ export function FlowCanvas({ flow, log, whole, reduced }: Props) {
                             <g key={s.id}>
                                 <path id={`tfw-${flow.id}-${s.id}`} className={`tf-wire ${WIRE_STATE[s.status]}`} d={w.d} stroke={col} />
                                 <circle cx={w.x1} cy={w.y1} r={2.6} fill={col} opacity={dim ? 0.25 : 1} />
-                                <circle cx={w.x2} cy={w.y2} r={4} fill="#0a0e18" stroke={col} strokeWidth={2} opacity={dim ? 0.25 : 1} />
+                                <circle cx={w.x2} cy={w.y2} r={4} style={{ fill: 'var(--bg)' }} stroke={col} strokeWidth={2} opacity={dim ? 0.25 : 1} />
                                 {s.status === 'running' && !reduced && (
-                                    <circle r={3.2} fill="#fff" style={{ filter: `drop-shadow(0 0 5px ${col})` }}>
+                                    <circle r={3.2} style={{ fill: 'var(--text)', filter: `drop-shadow(var(--glow-dot) ${col})` }}>
                                         <animateMotion dur="1.1s" repeatCount="indefinite">
                                             <mpath href={`#tfw-${flow.id}-${s.id}`} />
                                         </animateMotion>

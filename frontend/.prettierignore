@@ -1,3 +1,5 @@
 dist
 node_modules
 src/hologram/headMesh.json
+src/styles/tokens.css
+src/styles/tokens.ts

@@ -33,6 +33,12 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npx vitest run
+      # Design tokens are generated from frontend/tokens/core.json (web CSS, 3D stage, Qt tokens.py + QSS).
+      - name: Generated tokens are up to date
+        run: |
+          npm run tokens
+          cd .. && git add -N frontend/src/styles/tokens.css frontend/src/styles/tokens.ts jarvis/ui/theme
+          git diff --exit-code --stat frontend/src/styles/tokens.css frontend/src/styles/tokens.ts jarvis/ui/theme || { echo "::error::Tokens are stale. Run: cd frontend && npm run tokens, then commit."; exit 1; }
       - run: npm run build
       # The built bundle is committed so Windows users need no Node. It must match the source.
       - name: dist/ is up to date

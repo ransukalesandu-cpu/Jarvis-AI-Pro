@@ -1,5 +1,6 @@
 import { Suspense, useEffect } from 'react';
 import { HologramScene } from './hologram/HologramScene';
+import { PerfOverlay } from './hologram/engine/PerfOverlay';
 import { hasWebGL2 } from './hologram/engine/capability';
 import { startBridge, stopBridge } from './bridge/bridge';
 import { useUi } from './store';
@@ -31,11 +32,13 @@ export default function App() {
   const clock24 = useUi((s) => s.clock24);
   const prefsLoaded = useUi((s) => s.prefsLoaded);
   const taskflowAutoShow = useFlows((s) => s.autoShow);
+  const centerStyle = useUi((s) => s.centerStyle);
+  const faceStyle = useUi((s) => s.faceStyle);
   useEffect(() => {                       // save UI prefs in Python: the page's own storage is wiped every launch
     if (link !== 'connected' || !prefsLoaded) return;
-    const id = setTimeout(() => sendRequest({ kind: 'prefs.save', prefs: { reducedMotion, clock24, taskflowAutoShow } }), 300);
+    const id = setTimeout(() => sendRequest({ kind: 'prefs.save', prefs: { reducedMotion, clock24, taskflowAutoShow, centerStyle, faceStyle } }), 300);
     return () => clearTimeout(id);
-  }, [link, prefsLoaded, reducedMotion, clock24, taskflowAutoShow]);
+  }, [link, prefsLoaded, reducedMotion, clock24, taskflowAutoShow, centerStyle, faceStyle]);
   useEffect(() => { if (pageRequested) useUi.getState().go('tasks'); }, [pageRequested]);   // "open the task progress page"
   useEffect(() => {
     const sync = () => useWindows.getState().setViewport({ w: innerWidth, h: innerHeight });
@@ -60,7 +63,7 @@ export default function App() {
   }, [toggleNav, toggleSettings, setPalette]);
   return (
     <div className="app" data-reduced={reducedMotion ? 'true' : 'false'} data-settings={settingsOpen ? 'open' : 'closed'} data-loading={loading ? 'true' : 'false'}>
-      <div className="stage" role="region" aria-label="JARVIS hologram">{hasWebGL2() && <Suspense fallback={null}><HologramScene /></Suspense>}</div>
+      <div className="stage" role="region" aria-label="JARVIS hologram">{hasWebGL2() && <Suspense fallback={null}><HologramScene /></Suspense>}<PerfOverlay /></div>
       <div className="vignette" />
       <TopBar />
       <div className="widgets left"><ClockWidget /><BatteryWidget /><SystemWidget /></div>

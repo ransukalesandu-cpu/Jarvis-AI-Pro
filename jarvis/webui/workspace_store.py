@@ -21,7 +21,9 @@ MAX_WINDOWS = 12
 MAX_WORKSPACES = 24
 LAST = "_last"                      # autosaved layout restored on start; hidden from the user's list
 PREFS = "_prefs"                    # web UI preferences (the page's own storage is off the record)
-PREF_KEYS = frozenset({"reducedMotion", "clock24", "taskflowAutoShow"})
+PREF_BOOLS = frozenset({"reducedMotion", "clock24", "taskflowAutoShow"})
+PREF_CHOICES = {"centerStyle": frozenset({"brain", "hologram"}), "faceStyle": frozenset({"circuit", "mechanical"})}
+PREF_KEYS = PREF_BOOLS | frozenset(PREF_CHOICES)
 _NAME = re.compile(r"^[a-z0-9][a-z0-9 _-]{0,31}$")
 
 
@@ -69,8 +71,12 @@ def validate_layout(layout: Any) -> dict | None:
 
 
 def validate_prefs(prefs: Any) -> dict | None:
-    """Web UI preferences: exactly the known keys, each a bool. Anything else is rejected."""
-    if not isinstance(prefs, dict) or set(prefs) != PREF_KEYS or not all(isinstance(v, bool) for v in prefs.values()):
+    """Web UI preferences: exactly the known keys; booleans, or one of a closed set of choices. Anything else is rejected."""
+    if not isinstance(prefs, dict) or set(prefs) != PREF_KEYS:
+        return None
+    if not all(isinstance(prefs[k], bool) for k in PREF_BOOLS):
+        return None
+    if not all(isinstance(prefs[k], str) and prefs[k] in allowed for k, allowed in PREF_CHOICES.items()):
         return None
     return {k: prefs[k] for k in sorted(PREF_KEYS)}
 

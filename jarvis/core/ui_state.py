@@ -28,6 +28,7 @@ WINDOWS = "windows"                # tuple of open window ids
 FOCUS = "focus"                    # id of the focused window, or ""
 JOBS = "jobs"                      # tuple of job rows (see core.jobs.JobManager.snapshot)
 COMPUTER_CONTROL = "computer_control"  # {status, objective, step, message, active_app, job_id} of the running cc task
+BRAIN_SHAPE = "brain.shape"         # (shape, text, seq): the web UI brain forms a shape (core.brain_shapes)
 NEWS = "news.items"                # (heading, [ {title, source, url}, ... ]) last headlines shown by the HUD
 
 ALL = "*"

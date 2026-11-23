@@ -43,6 +43,89 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 - `NETWORK.md` lists every remaining outbound call. Supabase project ref removed from docs.
 
 ### Added
+- **The brain forms shapes on request** (new `form_shape` tool, SAFE tier):
+  - Ask JARVIS to "turn into a heart", "show a DNA helix", "become a globe" or "write my name". Every
+    neuron of the brain flows into a sphere, cube, torus, helix, heart, globe, star or up to 16
+    letters of text, holds it for 12 seconds, then flows back. "Back to the brain" returns at once.
+  - The shape faces the viewer. Only short synapses stay visible inside it, and the neurons into the
+    orb follow it.
+  - A new shape requested while another is showing first flows back through the brain.
+  - Text is limited to letters, digits and simple punctuation. It is drawn as points, never run or
+    stored.
+  - The shape list and text rules are the same in Python (`core/brain_shapes.py`), the web contract
+    (`hologram.shape`) and the page, and a test keeps them in step.
+- **Neural brain at the centre of the stage** (web UI, now the default; Settings → Hologram → Centre →
+  Hologram head brings the face back):
+  - A procedural 3D brain: two hemispheres with folded cortex, temporal lobes, a cerebellum and a brain
+    stem that runs down into the energy strands. It is made of 4200 / 3000 / 1500 nodes per profile.
+  - The network is live. Nodes fire on their own clocks, and synapses grow out of a node, carry
+    signals and dissolve while new ones form.
+  - Regions light up with the state:
+    - listening: temporal
+    - thinking: frontal
+    - searching: occipital
+    - executing: parietal and cerebellum
+    - speaking: follows the voice
+    - warning: amber
+    - error: red
+    - sleeping: dark
+  - About 30% of the neurons live inside the brain. They drift slowly and rewire faster than the
+    cortex, so the inside of the brain keeps changing.
+  - 36 long neurons leave the brain stem and the brain's underside and curve into the top of the
+    orb, carrying signals down into it. In this mode they replace the head's energy strands and
+    lightning arcs.
+  - The orb and particles stay.
+  - Three draws, all motion on the GPU. Measured 28 draws / 28k triangles, against 54 for the circuit
+    head and 80 for the mechanical head.
+  - The geometry carries a morph target for upcoming "form a shape" commands.
+- **Hologram Engine V2, phase 4: neural energy** (both face styles):
+  - Lightning arcs run from the face to the orb. Their shape and flicker are computed on the GPU, and
+    more arcs are live while JARVIS works or speaks.
+  - GPU particles rise in a helix from the orb up to the neck: 3000 / 1000 / 200 per profile, one
+    draw, all motion in the vertex shader.
+  - Orb v2 has a swirling plasma core tinted by state.
+  - The 28 energy strands are now one draw with light running on the GPU (they were 28 draws plus
+    per-frame CPU work).
+  - The stage moved to `hologram/energy/`.
+  - `frontend/scripts/check_budget.py` measures draw calls and triangles per profile and face style in
+    headless Chromium and fails over budget. Measured: circuit 54 draws / 35k triangles; mechanical
+    80 draws / 49k triangles.
+  - No heart (decision D2).
+- **Hologram Engine V2, phase 3: mechanical eyes** (mechanical face style):
+  - A nine-blade aperture iris like a camera's, built as one mesh per eye. Its central opening follows
+    the aperture exactly (radius = sin φ).
+  - The iris sits over the shader emission, inside a dark socket ring with an orange rim. Blinks close
+    the shutter.
+  - Each eye is driven on its own: listening opens wide; thinking counter-rotates the two scan rings and
+    breathes the eyes out of phase; searching sweeps them alternately; executing narrows; speaking
+    opens and glows with the voice level; warning flickers amber; error narrows red; sleeping nearly
+    shuts.
+  - Changes are eased, so they do not depend on the frame rate.
+- **Hologram Engine V2, phase 2: mechanical face** (web UI, opt-in: Settings → Hologram → Face style →
+  Mechanical; the circuit face stays the default until approved). The head is split into about 25
+  symmetric panels (forehead, brows, temples, sockets, cheekbones, cheeks, nose, muzzle, chin, jaw,
+  skull plates) by a geodesic Voronoi on face landmarks. Each panel is a closed, bevelled plate
+  raised off a carbon-fibre skull, with real grooves between plates and orange emissive engravings in
+  the grooves that carry running current. Plates are black chrome and titanium (MeshPhysicalMaterial,
+  lit by a built-in RoomEnvironment map plus key and rim lights) under an orange holo fresnel. The jaw
+  is a separate rigid part on the existing hinge (output level only, no phoneme lip-sync). The neck is
+  built from segmented rings with glowing seams. Eyes, forehead chips and ears are shared with the
+  circuit face (eye behaviour moved to `face/eyeLife.ts`).
+- **Hologram Engine V2, phase 1 (foundation)** (web UI):
+  - A GLSL shader library (`frontend/src/hologram/shaders/chunks.ts`): fresnel, key light, circuit
+    flow, scanlines, surface pulse, controlled glitch, vertex displacement and eye emission as small
+    composable functions. The glass and eye materials are now built from it, and the glass gains faint
+    projector scanlines and a travelling pulse. `frontend/scripts/check_shaders.py` compiles every
+    material in a real WebGL2 context (headless Chromium) and fails on any compile or link error.
+  - Adaptive resolution: the hologram measures its real frame times and steps the canvas DPR down
+    when frames run over budget and back up when there is room, inside the quality tier's range.
+  - Performance overlay (Settings → Hologram → Performance overlay): measured FPS, frame time, draw
+    calls, triangles, DPR and JS heap from the page, plus the real CPU and RAM of the QtWebEngine
+    processes from the host (new `hologram.perf` request / `hologram.perf_report` event; the page only
+    reports while the overlay is open). Anything not measured shows "--".
+  - A `warning` assistant state: amber orb, blinking amber status dot and rare glitch bands on the
+    glass (error glitches more; never with reduced motion). Nothing in the backend emits it yet;
+    `set_state("warning")` / the ui_state bus now carry it end to end.
 - **Circuit-board hologram face** (web UI): after the owner's reference, the head is a dark glass skin
   with thick glowing orange traces designed on the MediaPipe landmarks (forehead channel, brows,
   cheeks, jaw; mirrored, so the face is symmetric), orange contours on the lips, eyes, brows and face
@@ -286,6 +369,8 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
   requirement files, and cancellation of superseded runs.
 
 ### Fixed
+- Adaptive resolution never lowered the DPR on a machine whose every frame takes over 250 ms (it treated
+  them all as stalls); three slow frames in a row now count.
 
 - **Live playback after an interrupt**: when an interrupt aborted a speaker
   write, the rest of the cancelled answer could play once the stream restarted.

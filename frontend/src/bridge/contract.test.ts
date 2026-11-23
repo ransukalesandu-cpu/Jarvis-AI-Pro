@@ -29,7 +29,7 @@ describe('ui.perf', () => {
 });
 
 describe('ui.prefs', () => {
-  const good = { reducedMotion: true, clock24: false, taskflowAutoShow: true };
+  const good = { reducedMotion: true, clock24: false, taskflowAutoShow: true, centerStyle: 'brain', faceStyle: 'circuit' };
   it('accepts exactly the three boolean prefs, or null', () => {
     expect(parseHostEvent(j({ type: 'ui.prefs', prefs: good }))).toEqual({ type: 'ui.prefs', prefs: good });
     expect(parseHostEvent(j({ type: 'ui.prefs', prefs: null }))).toEqual({ type: 'ui.prefs', prefs: null });
@@ -38,5 +38,19 @@ describe('ui.prefs', () => {
     expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { ...good, x: true } }))).toBeNull();
     expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { clock24: true } }))).toBeNull();
     expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { ...good, clock24: 1 } }))).toBeNull();
+    expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { ...good, centerStyle: 'evil' } }))).toBeNull();
+  });
+});
+
+describe('hologram engine v2 phase 1 messages', () => {
+  it('accepts the warning state', () => {
+    expect(parseHostEvent(JSON.stringify({ type: 'assistant.state_changed', state: 'warning' }))).toEqual({ type: 'assistant.state_changed', state: 'warning' });
+  });
+  it('accepts a bounded perf report and rejects bad values', () => {
+    const ok = { type: 'hologram.perf_report', cpu: 12.5, ramMb: 410, processes: 3 };
+    expect(parseHostEvent(JSON.stringify(ok))).toEqual(ok);
+    expect(parseHostEvent(JSON.stringify({ ...ok, cpu: 140 }))).toBeNull();
+    expect(parseHostEvent(JSON.stringify({ ...ok, processes: 1.5 }))).toBeNull();
+    expect(parseHostEvent(JSON.stringify({ ...ok, ramMb: -1 }))).toBeNull();
   });
 });

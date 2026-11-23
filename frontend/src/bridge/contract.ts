@@ -1,9 +1,10 @@
+import { SHAPES, type ShapeName, validText } from '../hologram/brain/shapes';
 // Typed message contract between the Python host (jarvis/webui/contract.py) and the page.
 // Both sides validate: anything outside this closed set, or out of range, is dropped, never coerced.
 
 import { validateLayout, type Layout } from '../workspace/layout';
 
-export const ASSISTANT_STATES = ['idle', 'sleeping', 'listening', 'thinking', 'searching', 'executing', 'speaking', 'error'] as const;
+export const ASSISTANT_STATES = ['idle', 'sleeping', 'listening', 'thinking', 'searching', 'executing', 'speaking', 'warning', 'error'] as const;
 export type AssistantState = (typeof ASSISTANT_STATES)[number];
 export const PERSONAS = ['jarvis', 'bihansa'] as const;
 export type Persona = (typeof PERSONAS)[number];
@@ -37,14 +38,21 @@ export const FEATURE_MAX_ITEMS = 30;
 export interface FeatureItem { title: string; detail: string }
 export interface FeatureSnapshot { summary: string; items: FeatureItem[] }
 
-/** Web UI preferences, saved by Python (jarvis/webui/workspace_store.validate_prefs): exactly these keys, all booleans. */
-export const PREF_KEYS = ['reducedMotion', 'clock24', 'taskflowAutoShow'] as const;
-export type Prefs = Record<(typeof PREF_KEYS)[number], boolean>;
+/** Web UI preferences, saved by Python (jarvis/webui/workspace_store.validate_prefs): exactly these keys. */
+export const CENTER_STYLES = ['brain', 'hologram'] as const;
+export const FACE_STYLES = ['circuit', 'mechanical'] as const;
+export interface Prefs {
+  reducedMotion: boolean; clock24: boolean; taskflowAutoShow: boolean;
+  centerStyle: (typeof CENTER_STYLES)[number]; faceStyle: (typeof FACE_STYLES)[number];
+}
+const PREF_KEYS = ['reducedMotion', 'clock24', 'taskflowAutoShow', 'centerStyle', 'faceStyle'] as const;
 export function validatePrefs(p: unknown): Prefs | null {
   if (p === null || typeof p !== 'object' || Array.isArray(p)) return null;
   const o = p as Record<string, unknown>;
-  if (Object.keys(o).length !== PREF_KEYS.length || !PREF_KEYS.every((k) => typeof o[k] === 'boolean')) return null;
-  return { reducedMotion: o.reducedMotion as boolean, clock24: o.clock24 as boolean, taskflowAutoShow: o.taskflowAutoShow as boolean };
+  if (Object.keys(o).length !== PREF_KEYS.length || !PREF_KEYS.every((k) => k in o)) return null;
+  if (typeof o.reducedMotion !== 'boolean' || typeof o.clock24 !== 'boolean' || typeof o.taskflowAutoShow !== 'boolean') return null;
+  if (!(CENTER_STYLES as readonly unknown[]).includes(o.centerStyle) || !(FACE_STYLES as readonly unknown[]).includes(o.faceStyle)) return null;
+  return { reducedMotion: o.reducedMotion, clock24: o.clock24, taskflowAutoShow: o.taskflowAutoShow, centerStyle: o.centerStyle as Prefs['centerStyle'], faceStyle: o.faceStyle as Prefs['faceStyle'] };
 }
 
 export type HostEvent =
@@ -65,6 +73,8 @@ export type HostEvent =
   | { type: 'log.line'; tag: LogTag; text: string }
   | { type: 'task.flow'; flow: Flow }
   | { type: 'ui.task_flow'; view: FlowView }
+  | { type: 'hologram.shape'; shape: ShapeName; text: string }
+  | { type: 'hologram.perf_report'; cpu: number; ramMb: number; processes: number }
   | { type: 'host.hello'; version: number }
   | { type: 'ui.prefs'; prefs: Prefs | null }
   | { type: 'feature.snapshot'; feature: Feature; summary: string; items: FeatureItem[] };
@@ -79,6 +89,7 @@ export type UiRequest =
   | { kind: 'job.cancel'; id: string }
   | { kind: 'control.do'; action: ControlAction }
   | { kind: 'hologram.capability'; webgl2: boolean }
+  | { kind: 'hologram.perf'; fps: number; frameMs: number; drawCalls: number; triangles: number; heapMb: number | null; dpr: number }
   | { kind: 'feature.refresh'; feature: Feature }
   | { kind: 'prefs.load' } | { kind: 'prefs.save'; prefs: Prefs };
 
@@ -194,6 +205,10 @@ export function parseHostEvent(raw: unknown): HostEvent | null {
       const flow = parseFlow(m.flow);
       return flow ? { type: m.type, flow } : null;
     }
+    case 'hologram.shape':
+      return typeof m.shape === 'string' && (SHAPES as readonly string[]).includes(m.shape) && typeof m.text === 'string'
+        && validText(m.text) && (m.text !== '') === (m.shape === 'text')
+        ? { type: m.type, shape: m.shape as ShapeName, text: m.text } : null;
     case 'ui.task_flow':
       return (FLOW_VIEWS as readonly unknown[]).includes(m.view) ? { type: m.type, view: m.view as FlowView } : null;
     case 'ui.prefs': {
@@ -201,6 +216,9 @@ export function parseHostEvent(raw: unknown): HostEvent | null {
       const prefs = validatePrefs(m.prefs);
       return prefs ? { type: m.type, prefs } : null;
     }
+    case 'hologram.perf_report':
+      return num(m.cpu, 0, 100) && num(m.ramMb, 0, 1e6) && Number.isInteger(m.processes) && num(m.processes, 0, 64)
+        ? { type: m.type, cpu: m.cpu, ramMb: m.ramMb, processes: m.processes as number } : null;
     case 'host.hello':
       return num(m.version, 0, 1000) ? { type: m.type, version: m.version } : null;
     case 'feature.snapshot': {

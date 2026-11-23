@@ -83,17 +83,18 @@ def test_contract_requests():
 def test_prefs_roundtrip_and_validation(tmp_path):
     from jarvis.webui.workspace_store import validate_prefs
     store = WorkspaceStore(tmp_path / "ws.json")
-    good = {"reducedMotion": True, "clock24": False, "taskflowAutoShow": True}
+    good = {"reducedMotion": True, "clock24": False, "taskflowAutoShow": True, "centerStyle": "brain", "faceStyle": "circuit"}
     assert store.load_prefs() is None
     assert store.save_prefs(good) and store.load_prefs() == good
     assert "_prefs" not in store.names()                      # never listed as a workspace
     assert store.load("_prefs") is None                        # and never loadable as one
-    for bad in (None, [], {}, {**good, "x": True}, {**good, "clock24": 1}, {"clock24": True}):
+    for bad in (None, [], {}, {**good, "x": True}, {**good, "clock24": 1}, {"clock24": True},
+                {**good, "centerStyle": "evil"}, {**good, "faceStyle": True}):
         assert validate_prefs(bad) is None and not store.save_prefs(bad)
 
 
 def test_prefs_messages():
-    good = {"reducedMotion": False, "clock24": True, "taskflowAutoShow": False}
+    good = {"reducedMotion": False, "clock24": True, "taskflowAutoShow": False, "centerStyle": "hologram", "faceStyle": "mechanical"}
     assert contract.parse_request(json.dumps({"kind": "prefs.save", "prefs": good}))
     assert contract.parse_request(json.dumps({"kind": "prefs.save", "prefs": {**good, "evil": True}})) is None
     assert contract.parse_request('{"kind":"prefs.load"}') == {"kind": "prefs.load"}
@@ -110,7 +111,7 @@ def test_bridge_saves_and_loads_prefs(tmp_path):
     b.event.connect(lambda s: got.append(json.loads(s)))
     b.request('{"kind":"prefs.load"}')
     assert got[-1] == {"type": "ui.prefs", "prefs": None}
-    good = {"reducedMotion": True, "clock24": True, "taskflowAutoShow": False}
+    good = {"reducedMotion": True, "clock24": True, "taskflowAutoShow": False, "centerStyle": "brain", "faceStyle": "circuit"}
     b.request(json.dumps({"kind": "prefs.save", "prefs": good}))
     b.request('{"kind":"prefs.load"}')
     assert got[-1] == {"type": "ui.prefs", "prefs": good}

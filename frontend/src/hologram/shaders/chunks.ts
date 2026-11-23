@@ -95,5 +95,5 @@ export type ChunkName = keyof typeof CHUNKS;
 
 /** Joins chunks (each once, in order) ahead of a shader body. */
 export function compose(chunks: string[], body: string): string {
-  return [...new Set(chunks)].join('\n') + '\n' + body;
+    return [...new Set(chunks)].join('\n') + '\n' + body;
 }

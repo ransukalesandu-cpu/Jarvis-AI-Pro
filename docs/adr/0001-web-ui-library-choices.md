@@ -21,7 +21,7 @@ one is needed. The web UI already ships a working React 19 + TypeScript + Vite +
 | Apache ECharts | Not added | Charts are small real-time sparklines (`ui/Spark.tsx`, SVG). ECharts would add ~1 MB to a page that runs next to the voice pipeline. Revisit if a page needs zooming, legends or long history. |
 | WebGPU | Not used | WebGL 2 is the baseline in Qt WebEngine; the no-WebGL path is the classic HUD plus the renderer notice. |
 | ESLint | Replaced by oxlint | `typescript-eslint` 8.x only supports TypeScript < 6.1, and the project is on TypeScript 7. oxlint parses TS/TSX itself and has the React hooks rules. `npm run lint` runs in `webui-checks.yml`: correctness rules and rules-of-hooks are errors. The React-Compiler rules (`immutability`, `use-memo`, `purity`, `set-state-in-effect`) are off: they flag the normal React Three Fiber pattern of updating uniforms in `useFrame`, and the project does not use the React Compiler. |
-| Prettier | Added, not enforced yet | `.prettierrc.json` matches the house style (160 columns, single quotes). New files are formatted; 112 existing files are not, because reformatting them all would bury real changes in one huge diff. `npm run format:check` is not in CI until the owner chooses a one-time reformat commit. |
+| Prettier | Added and enforced | `.prettierrc.json` matches the house style (160 columns, single quotes). The whole frontend was reformatted once in its own commit (formatting only, no logic changes), and `npm run format:check` runs in `webui-checks.yml`. |
 | Playwright | Not added | Playwright against QWebEngine is covered by `python -m jarvis.webui.selfcheck` instead. |
 
 ## Consequences

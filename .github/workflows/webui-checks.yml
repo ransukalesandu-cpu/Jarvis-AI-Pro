@@ -31,6 +31,7 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run lint
+      - run: npm run format:check
       - run: npx vitest run
       - run: npm run build
       # The built bundle is committed so Windows users need no Node. It must match the source.

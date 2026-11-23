@@ -8,8 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "lint": "oxlint src",
-    "format": "prettier --write",
-    "format:check": "prettier --check"
+    "format": "prettier --write src vite.config.ts index.html",
+    "format:check": "prettier --check src vite.config.ts index.html"
   },
   "dependencies": {
     "@react-three/fiber": "^9.8.2",

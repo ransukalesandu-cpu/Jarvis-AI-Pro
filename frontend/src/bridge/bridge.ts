@@ -8,71 +8,101 @@ import { useFlows } from '../taskflow/flows';
 import { hasWebGL2 } from '../hologram/engine/capability';
 import { usePerf } from '../hologram/engine/perf';
 
-interface QtChannelObject { event: { connect: (fn: (s: string) => void) => void; disconnect?: (fn: (s: string) => void) => void }; request: (s: string) => void }
-declare global { interface Window { qt?: { webChannelTransport?: unknown }; QWebChannel?: new (t: unknown, cb: (c: { objects: Record<string, QtChannelObject> }) => void) => unknown } }
+interface QtChannelObject {
+    event: { connect: (fn: (s: string) => void) => void; disconnect?: (fn: (s: string) => void) => void };
+    request: (s: string) => void;
+}
+declare global {
+    interface Window {
+        qt?: { webChannelTransport?: unknown };
+        QWebChannel?: new (t: unknown, cb: (c: { objects: Record<string, QtChannelObject> }) => void) => unknown;
+    }
+}
 
 let started = false;
-let generation = 0;                    // bumped by stopBridge: a start that was stopped mid-way must not connect
+let generation = 0; // bumped by stopBridge: a start that was stopped mid-way must not connect
 let channelObj: QtChannelObject | null = null;
 let onEvent: ((s: string) => void) | null = null;
 
 function loadChannelScript(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (window.QWebChannel) return resolve();
-    const s = document.createElement('script');
-    s.src = 'qrc:///qtwebchannel/qwebchannel.js';
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error('qwebchannel.js unavailable'));
-    document.head.appendChild(s);
-  });
+    return new Promise((resolve, reject) => {
+        if (window.QWebChannel) return resolve();
+        const s = document.createElement('script');
+        s.src = 'qrc:///qtwebchannel/qwebchannel.js';
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('qwebchannel.js unavailable'));
+        document.head.appendChild(s);
+    });
 }
 
 /** Connect to the Python host. Outside Qt (plain browser, tests) the link stays 'detached' and no data is invented. */
 export async function startBridge(): Promise<void> {
-  if (started) return; // never register listeners twice
-  started = true;
-  const gen = ++generation;
-  const store = useUi.getState();
-  if (!window.qt?.webChannelTransport) { store.setLink('detached'); return; }
-  usePending.getState().begin('startup', 'startup', 'Connecting to JARVIS');
-  setResync(() => sendRequest({ kind: 'workspace.list' }));
-  try {
-    await loadChannelScript();
-    if (gen !== generation) return;       // stopped while loading (React StrictMode mounts twice in dev)
-    const obj = await new Promise<QtChannelObject | null>((resolve) => {
-      new window.QWebChannel!(window.qt!.webChannelTransport, (ch) => resolve(ch.objects.jarvis ?? null));
-    });
-    if (gen !== generation) return;
-    channelObj = obj;
-    if (!channelObj) { store.setLink('detached'); usePending.getState().end('startup', false); return; }
-    onEvent = (raw: string) => { const ev = parseHostEvent(raw); if (!ev) return;
-      useUi.getState().apply(ev);
-      if (ev.type === 'task.flow' || ev.type === 'ui.task_flow') useFlows.getState().apply(ev);
-      if (ev.type === 'ui.prefs' && ev.prefs) useFlows.getState().setAutoShow(ev.prefs.taskflowAutoShow);
-      if (ev.type === 'hologram.shape') useUi.getState().formShape(ev.shape, ev.text);
-      if (ev.type === 'hologram.perf_report') usePerf.getState().setHost({ cpu: ev.cpu, ramMb: ev.ramMb, processes: ev.processes });
-      onHostEvent(ev);
-      if (ev.type === 'workspace.loaded' && ev.layout) {
-        useWindows.getState().apply(ev.layout);
-        const kind = PAGE_WINDOWS[ev.layout.page];      // an old layout saved with a side-panel page reopens it as a window
-        if (kind) useWindows.getState().open(kind);
-      }
-      if (ev.type === 'host.hello') { sendRequest({ kind: 'prefs.load' }); sendRequest({ kind: 'workspace.list' }); sendRequest({ kind: 'workspace.load', name: '_last' }); } };
-    channelObj.event.connect(onEvent);
-    sendRequest({ kind: 'ready' });
-    sendRequest({ kind: 'hologram.capability', webgl2: hasWebGL2() });   // false => Python shows the classic HUD
-  } catch {
-    store.setLink('detached');
-    usePending.getState().end('startup', false);
-  }
+    if (started) return; // never register listeners twice
+    started = true;
+    const gen = ++generation;
+    const store = useUi.getState();
+    if (!window.qt?.webChannelTransport) {
+        store.setLink('detached');
+        return;
+    }
+    usePending.getState().begin('startup', 'startup', 'Connecting to JARVIS');
+    setResync(() => sendRequest({ kind: 'workspace.list' }));
+    try {
+        await loadChannelScript();
+        if (gen !== generation) return; // stopped while loading (React StrictMode mounts twice in dev)
+        const obj = await new Promise<QtChannelObject | null>((resolve) => {
+            new window.QWebChannel!(window.qt!.webChannelTransport, (ch) => resolve(ch.objects.jarvis ?? null));
+        });
+        if (gen !== generation) return;
+        channelObj = obj;
+        if (!channelObj) {
+            store.setLink('detached');
+            usePending.getState().end('startup', false);
+            return;
+        }
+        onEvent = (raw: string) => {
+            const ev = parseHostEvent(raw);
+            if (!ev) return;
+            useUi.getState().apply(ev);
+            if (ev.type === 'task.flow' || ev.type === 'ui.task_flow') useFlows.getState().apply(ev);
+            if (ev.type === 'ui.prefs' && ev.prefs) useFlows.getState().setAutoShow(ev.prefs.taskflowAutoShow);
+            if (ev.type === 'hologram.shape') useUi.getState().formShape(ev.shape, ev.text);
+            if (ev.type === 'hologram.perf_report') usePerf.getState().setHost({ cpu: ev.cpu, ramMb: ev.ramMb, processes: ev.processes });
+            onHostEvent(ev);
+            if (ev.type === 'workspace.loaded' && ev.layout) {
+                useWindows.getState().apply(ev.layout);
+                const kind = PAGE_WINDOWS[ev.layout.page]; // an old layout saved with a side-panel page reopens it as a window
+                if (kind) useWindows.getState().open(kind);
+            }
+            if (ev.type === 'host.hello') {
+                sendRequest({ kind: 'prefs.load' });
+                sendRequest({ kind: 'workspace.list' });
+                sendRequest({ kind: 'workspace.load', name: '_last' });
+            }
+        };
+        channelObj.event.connect(onEvent);
+        sendRequest({ kind: 'ready' });
+        sendRequest({ kind: 'hologram.capability', webgl2: hasWebGL2() }); // false => Python shows the classic HUD
+    } catch {
+        store.setLink('detached');
+        usePending.getState().end('startup', false);
+    }
 }
 
 export function sendRequest(r: UiRequest): void {
-  if (channelObj) onRequest(r);
-  try { channelObj?.request(encodeRequest(r)); } catch { /* host gone; the heartbeat in Python will reload the page */ }
+    if (channelObj) onRequest(r);
+    try {
+        channelObj?.request(encodeRequest(r));
+    } catch {
+        /* host gone; the heartbeat in Python will reload the page */
+    }
 }
 
 export function stopBridge(): void {
-  if (channelObj && onEvent) channelObj.event.disconnect?.(onEvent);
-  channelObj = null; onEvent = null; started = false; generation++; resetActions();
+    if (channelObj && onEvent) channelObj.event.disconnect?.(onEvent);
+    channelObj = null;
+    onEvent = null;
+    started = false;
+    generation++;
+    resetActions();
 }

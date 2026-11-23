@@ -303,6 +303,8 @@ _TIERS: dict[str, str] = {
     # Visible UI clicks are locally constrained to unique controls; high-impact labels prompt inside the action.
     "ui_interaction":     TIER_SAFE,
     "dev_agent":          TIER_DANGEROUS,
+    # Aider edits the owner's own projects and commits (never pushes, never on main).
+    "aider_agent":        TIER_DANGEROUS,
     "game_updater":       TIER_DANGEROUS,
     "phone_call":         TIER_DANGEROUS,
     "shutdown_jarvis":    TIER_DANGEROUS,
@@ -322,6 +324,8 @@ _CONFIRMATION_LABELS = {
     "file_controller": "File access or changes",
     "computer_control": "Computer control",
     "dev_agent": "Developer tools",
+    "aider_agent": "Edit a code project with Aider",
+    "aider_projects": "Change Aider project settings or undo",
     "game_updater": "Game update",
     "phone_call": "Place a phone call",
     "shutdown_jarvis": "Close Jarvis",
@@ -622,6 +626,11 @@ def tier_for(name: str, params: dict | None = None) -> str:
                 info = None
             return TIER_SENSITIVE if info is not None and info.read_only else TIER_DANGEROUS
         return TIER_SENSITIVE
+    if name == "aider_projects":
+        # Reading status/history is free; undo and registering a folder change state.
+        if action in {"status", "list", "list_projects", "changes", "diff", "history"}:
+            return TIER_SAFE
+        return TIER_SENSITIVE if action == "undo" else TIER_DANGEROUS
     if name == "jarvis_settings":
         # Changing a setting can weaken protections; reading one only discloses state.
         return TIER_DANGEROUS if operation == "set" else TIER_SENSITIVE

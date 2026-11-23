@@ -22,6 +22,7 @@ a line here.
 |---|---|---|
 | `generativelanguage.googleapis.com` (Gemini / Gemini Live) | primary voice + vision (`core/gemini.py`, `main.py`) | The realtime voice brain; JARVIS cannot speak without it unless a local LLM is configured. |
 | `api.anthropic.com` | `ask_claude`, text fallback (`core/ai_providers.py`, `core/hybrid_llm_router.py`) | Optional reasoning provider, only when an Anthropic key is set. |
+| `api.anthropic.com` (via the separately installed Aider CLI) | `aider_agent` (`actions/aider_agent.py`) | Claude edits the owner's local projects; only when the owner asks and an Anthropic key is set. Aider analytics and update checks are switched off. |
 | `api.openai.com` | optional provider / fallback (`core/ai_providers.py`) | Only when an OpenAI key is set. |
 | `api.groq.com` | optional fast fallback (`core/hybrid_llm_router.py`) | Only when a Groq key is set. |
 | `127.0.0.1:11434` (Ollama) / LM Studio | local LLM (`core/llm_client.py`) | Local inference — stays on the machine. |

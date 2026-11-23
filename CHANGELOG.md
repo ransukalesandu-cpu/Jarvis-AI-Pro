@@ -22,6 +22,9 @@ use [semantic versioning](https://semver.org/spec/v2.0.0.html).
 - **Routines file** (`core/routines_file.py`): owner-written `routines.yaml`/`routines.json` with trigger
   phrases; an exact phrase ("good morning") runs the steps through the normal tool layer, also offline.
   The `routine` tool lists/shows/runs them; JARVIS never writes the file. See docs/ROUTINES_FILE.md.
+- **Piper TTS engine** (`tts_engine: piper`, `core/tts.py`): fast CPU voice from OHF-Voice/piper1-gpl
+  (also works with piper-tts 1.2). Optional install (GPL-3.0, not vendored); the offline voice loop prefers it
+  when a voice is downloaded. Never downloads voices by itself.
 
 ### Fixed (web UI review)
 - Floating windows no longer climb over the nav menu, settings, command palette and toasts after

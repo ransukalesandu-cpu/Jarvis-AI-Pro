@@ -394,6 +394,77 @@ class ElevenLabsTTSEngine:
 # Thread-safe player wrapper
 # ---------------------------------------------------------------------------
 
+class PiperTTSEngine:
+    """Fast local TTS with Piper (pip install piper-tts; github.com/OHF-Voice/piper1-gpl).
+
+    Lighter than Kokoro on a CPU. ``voice`` is a voice name such as
+    ``en_US-lessac-medium`` looked up in ``<user data>/models/piper`` (download it
+    once with ``python -m piper.download_voices en_US-lessac-medium --download-dir
+    <that folder>``) or a full path to a ``.onnx`` voice file. Never downloads by itself.
+    """
+
+    DEFAULT_VOICE = "en_US-lessac-medium"
+
+    def __init__(self, voice: str = DEFAULT_VOICE, speed: float = 1.0):
+        self.voice = voice or self.DEFAULT_VOICE
+        self.speed = float(speed or 1.0)
+        self._voice = None
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def voices_dir():
+        from jarvis.core.user_data import user_data_dir
+        d = user_data_dir() / "models" / "piper"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def model_path(self):
+        from pathlib import Path
+        p = Path(os.path.expandvars(os.path.expanduser(self.voice)))
+        if p.suffix == ".onnx":
+            return p
+        return self.voices_dir() / f"{self.voice}.onnx"
+
+    def _load(self):
+        if self._voice is None:
+            path = self.model_path()
+            if not path.exists():
+                raise RuntimeError(
+                    f"Piper voice not found: {path}. Run: python -m piper.download_voices "
+                    f"{self.voice} --download-dir \"{self.voices_dir()}\"")
+            from piper import PiperVoice
+            self._voice = PiperVoice.load(str(path))
+        return self._voice
+
+    def _chunks(self, text: str):
+        """Yield (float32 array, sample_rate) across piper-tts 1.2 and 1.3+ APIs."""
+        voice = self._load()
+        length_scale = 1.0 / max(0.5, min(2.0, self.speed))
+        if hasattr(voice, "synthesize_stream_raw"):            # piper-tts 1.2.x
+            rate = int(voice.config.sample_rate)
+            for raw in voice.synthesize_stream_raw(text, length_scale=length_scale):
+                yield np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0, rate
+            return
+        syn_config = None
+        try:
+            from piper import SynthesisConfig
+            syn_config = SynthesisConfig(length_scale=length_scale)
+        except Exception:
+            syn_config = None
+        chunks = voice.synthesize(text, syn_config=syn_config) if syn_config else voice.synthesize(text)
+        for chunk in chunks:                                     # piper1-gpl (1.3+)
+            arr = getattr(chunk, "audio_float_array", None)
+            if arr is None:
+                arr = np.frombuffer(chunk.audio_int16_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+            yield np.asarray(arr, dtype=np.float32), int(chunk.sample_rate)
+
+    def speak(self, text: str) -> None:
+        with self._lock:
+            for arr, rate in self._chunks(text):
+                if arr.size:
+                    _play_np(arr, rate)
+
+
 class TTSPlayer:
     """
     Wraps any *Engine. Exposes a blocking speak() method
@@ -447,6 +518,9 @@ def create_tts_player(config: dict) -> TTSPlayer:
         voice  = config.get("tts_voice", "af_heart")
         speed  = float(config.get("tts_speed", 1.0))
         engine = KokoroTTSEngine(voice=voice, speed=speed)
+    elif engine_name == "piper":
+        engine = PiperTTSEngine(voice=config.get("tts_voice", PiperTTSEngine.DEFAULT_VOICE),
+                                speed=float(config.get("tts_speed", 1.0)))
     elif engine_name == "elevenlabs":
         api_key  = config.get("elevenlabs_api_key", "")
         voice_id = config.get("tts_voice", "pNInz6obpgDQGcFmaJgB")

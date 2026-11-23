@@ -4,6 +4,7 @@ import App from './App';
 import './styles/app.css';
 import './styles/taskflow.css';
 import './styles/holo-theme.css';
+import './styles/components.css';
 
 createRoot(document.getElementById('root')!).render(
     <StrictMode>

@@ -436,6 +436,35 @@
     "stage-black": {
       "$value": "#000000",
       "$type": "color"
+    },
+    "dur-toast": {
+      "$value": "5000ms",
+      "$type": "duration",
+      "$description": "how long a non-error toast stays"
+    },
+    "control-sm": {
+      "$value": "28px",
+      "$type": "dimension"
+    },
+    "control-md": {
+      "$value": "34px",
+      "$type": "dimension"
+    },
+    "control-lg": {
+      "$value": "40px",
+      "$type": "dimension"
+    },
+    "dialog-w": {
+      "$value": "480px",
+      "$type": "dimension"
+    },
+    "sheet-w": {
+      "$value": "380px",
+      "$type": "dimension"
+    },
+    "toast-w": {
+      "$value": "360px",
+      "$type": "dimension"
     }
   },
   "themes": {
@@ -788,6 +817,10 @@
       "amber": {
         "$value": "#ffb347",
         "$type": "color"
+      },
+      "scrim": {
+        "$value": "rgba(2, 6, 13, 0.6)",
+        "$type": "color"
       }
     },
     "light": {
@@ -886,6 +919,10 @@
       "amber": {
         "$value": "#9a4f00",
         "$type": "color"
+      },
+      "scrim": {
+        "$value": "rgba(11, 23, 38, 0.35)",
+        "$type": "color"
       }
     },
     "hc": {
@@ -975,6 +1012,10 @@
       },
       "edge": {
         "$value": "rgba(255, 255, 255, 0.85)",
+        "$type": "color"
+      },
+      "scrim": {
+        "$value": "rgba(0, 0, 0, 0.85)",
         "$type": "color"
       }
     }

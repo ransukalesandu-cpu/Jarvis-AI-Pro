@@ -40,6 +40,8 @@ jobs:
           cd .. && git add -N frontend/src/styles/tokens.css frontend/src/styles/tokens.ts jarvis/ui/theme
           git diff --exit-code --stat frontend/src/styles/tokens.css frontend/src/styles/tokens.ts jarvis/ui/theme || { echo "::error::Tokens are stale. Run: cd frontend && npm run tokens, then commit."; exit 1; }
       - run: npm run build
+      # Every UI primitive has Storybook stories for its states; they must keep compiling.
+      - run: npm run build-storybook -- -o /tmp/storybook
       # The built bundle is committed so Windows users need no Node. It must match the source.
       - name: dist/ is up to date
         working-directory: .

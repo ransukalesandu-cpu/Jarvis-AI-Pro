@@ -46,7 +46,8 @@ async function main() {
         const names = new Set(Object.keys(core.themes[theme]));
         return web[theme].filter((r) => names.has(r.name));
     };
-    const durations = web.dark.filter((r) => r.type === 'duration');
+    // Only motion durations drop to 0 for reduced motion; how long a toast stays is not motion.
+    const durations = web.dark.filter((r) => r.type === 'duration' && r.name !== 'dur-toast');
 
     // ── web CSS ──────────────────────────────────────────────────────────────
     const css =

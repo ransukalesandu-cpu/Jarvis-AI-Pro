@@ -1,9 +1,10 @@
+import { SHAPES, type ShapeName, validText } from '../hologram/brain/shapes';
 // Typed message contract between the Python host (jarvis/webui/contract.py) and the page.
 // Both sides validate: anything outside this closed set, or out of range, is dropped, never coerced.
 
 import { validateLayout, type Layout } from '../workspace/layout';
 
-export const ASSISTANT_STATES = ['idle', 'sleeping', 'listening', 'thinking', 'searching', 'executing', 'speaking', 'error'] as const;
+export const ASSISTANT_STATES = ['idle', 'sleeping', 'listening', 'thinking', 'searching', 'executing', 'speaking', 'warning', 'error'] as const;
 export type AssistantState = (typeof ASSISTANT_STATES)[number];
 export const PERSONAS = ['jarvis', 'bihansa'] as const;
 export type Persona = (typeof PERSONAS)[number];
@@ -55,6 +56,8 @@ export type HostEvent =
   | { type: 'log.line'; tag: LogTag; text: string }
   | { type: 'task.flow'; flow: Flow }
   | { type: 'ui.task_flow'; view: FlowView }
+  | { type: 'hologram.shape'; shape: ShapeName; text: string }
+  | { type: 'hologram.perf_report'; cpu: number; ramMb: number; processes: number }
   | { type: 'host.hello'; version: number }
   | { type: 'feature.snapshot'; feature: Feature; summary: string; items: FeatureItem[] };
 
@@ -68,6 +71,7 @@ export type UiRequest =
   | { kind: 'job.cancel'; id: string }
   | { kind: 'control.do'; action: ControlAction }
   | { kind: 'hologram.capability'; webgl2: boolean }
+  | { kind: 'hologram.perf'; fps: number; frameMs: number; drawCalls: number; triangles: number; heapMb: number | null; dpr: number }
   | { kind: 'feature.refresh'; feature: Feature };
 
 export const COMMAND_MAX = 500;
@@ -182,8 +186,15 @@ export function parseHostEvent(raw: unknown): HostEvent | null {
       const flow = parseFlow(m.flow);
       return flow ? { type: m.type, flow } : null;
     }
+    case 'hologram.shape':
+      return typeof m.shape === 'string' && (SHAPES as readonly string[]).includes(m.shape) && typeof m.text === 'string'
+        && validText(m.text) && (m.text !== '') === (m.shape === 'text')
+        ? { type: m.type, shape: m.shape as ShapeName, text: m.text } : null;
     case 'ui.task_flow':
       return (FLOW_VIEWS as readonly unknown[]).includes(m.view) ? { type: m.type, view: m.view as FlowView } : null;
+    case 'hologram.perf_report':
+      return num(m.cpu, 0, 100) && num(m.ramMb, 0, 1e6) && Number.isInteger(m.processes) && num(m.processes, 0, 64)
+        ? { type: m.type, cpu: m.cpu, ramMb: m.ramMb, processes: m.processes as number } : null;
     case 'host.hello':
       return num(m.version, 0, 1000) ? { type: m.type, version: m.version } : null;
     case 'feature.snapshot': {

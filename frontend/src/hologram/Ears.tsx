@@ -32,7 +32,7 @@ export function Ears() {
     const outline = earOutline();
     const shape = new Shape(outline.map(([u, v]) => ({ x: u, y: v }) as never));
     const geo = new ShapeGeometry(shape);
-    const glass = glassMaterial(COLORS.rim, COLORS.skin, 0.12, 1.2, 0.4);
+    const glass = glassMaterial(COLORS.rim, COLORS.skin, { bodyAlpha: 0.12, power: 1.2, shade: 0.4 });
     glass.side = DoubleSide;             // one shape serves both ears (the left one is mirrored)
     glass.depthTest = false;             // the ears sit on the skull's edge; its depth must not clip them (the head only sways a little)
     const lg = new LineSegmentsGeometry();

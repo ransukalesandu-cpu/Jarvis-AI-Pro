@@ -11,7 +11,7 @@ const LATER = ['Voice & Audio', 'AI Provider', 'Notifications', 'Privacy & Secur
 
 /** Only settings that actually do something are interactive; the rest are listed as not yet connected. */
 export function SettingsPanel() {
-  const { settingsOpen, reducedMotion, setReducedMotion, clock24, setClock24, persona, perfTier, link, control } = useUi();
+  const { settingsOpen, reducedMotion, setReducedMotion, clock24, setClock24, persona, perfTier, link, control, perfOverlay, setPerfOverlay, faceStyle, setFaceStyle, centerStyle, setCenterStyle } = useUi();
   return (
     <AnimatePresence>
       {settingsOpen && (
@@ -29,6 +29,15 @@ export function SettingsPanel() {
             <span className="seg" role="group" aria-label="Performance tier">
               {PERF_OPTS.map((o) => <button key={o.action} className="toggle" disabled={link !== 'connected'} onClick={() => ask(o.action)}>{o.label}</button>)}
             </span></div>
+          <div className="row"><span>Centre</span>
+            <span className="seg" role="group" aria-label="Centre">
+              {(['brain', 'hologram'] as const).map((c) => <button key={c} className="toggle" aria-pressed={centerStyle === c} onClick={() => setCenterStyle(c)}>{c === 'brain' ? 'Neural brain' : 'Hologram head'}</button>)}
+            </span></div>
+          {centerStyle === 'hologram' && <div className="row"><span>Face style</span>
+            <span className="seg" role="group" aria-label="Face style">
+              {(['circuit', 'mechanical'] as const).map((f) => <button key={f} className="toggle" aria-pressed={faceStyle === f} onClick={() => setFaceStyle(f)}>{f === 'circuit' ? 'Circuit' : 'Mechanical'}</button>)}
+            </span></div>}
+          <div className="row"><span>Performance overlay <small>(measured FPS, frame time, draw calls, memory)</small></span><button className="toggle" aria-pressed={perfOverlay} onClick={() => setPerfOverlay(!perfOverlay)}>{perfOverlay ? 'On' : 'Off'}</button></div>
           <p className="settings-note" role="status" aria-live="polite">{control && control !== 'done' ? RESULT[control] : ''}</p>
           <h2>CONNECTION</h2>
           <div className="row"><span>Backend link</span><span>{link}</span></div>

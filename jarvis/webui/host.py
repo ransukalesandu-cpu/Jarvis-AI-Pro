@@ -15,6 +15,7 @@ from . import fallback
 from .bridge import WebUIBridge
 from .command_gate import safe_link
 from .navigation import is_allowed_url
+from .render_perf import RenderPerf
 from .telemetry import Telemetry
 from .workspace_store import WorkspaceStore
 
@@ -63,6 +64,8 @@ class WebUIHost(QWidget):
         self._page.setWebChannel(self._channel)
         self.bridge.ready.connect(self._on_page_ready)
         self.bridge.capability.connect(self._on_capability)
+        self.render_perf = RenderPerf()
+        self.bridge.perf.connect(self._on_perf)
         self.fell_back = False
 
         self._view = QWebEngineView(self)
@@ -90,6 +93,12 @@ class WebUIHost(QWidget):
     def _on_capability(self, webgl2: bool) -> None:
         """No WebGL2 => the page cannot draw the hologram: step aside so the classic HUD underneath shows."""
         fallback.on_capability(self, webgl2)
+
+    def _on_perf(self, perf: dict) -> None:
+        """The page measured itself; answer with the web engine processes' real CPU and RAM."""
+        report = self.render_perf.on_page(perf)
+        if report is not None:
+            self.bridge.publish("hologram.perf_report", **report)
 
     def _on_process_gone(self, *_a) -> None:
         self._timer.stop()
@@ -148,6 +157,9 @@ class WebUIHost(QWidget):
         jobs = [{"id": r[0], "name": r[1], "status": r[2], "startedAt": int(r[3] * 1000), "finishedAt": int(r[4] * 1000) if r[4] else None}
                 for r in list(rows)[:20]]
         self.bridge.publish("jobs.updated", jobs=jobs)
+
+    def set_shape(self, shape: str, text: str = "") -> None:
+        self.bridge.publish("hologram.shape", shape=shape, text=text)
 
     def set_perf_tier(self, tier: str) -> None:
         self.bridge.publish("ui.perf", tier=tier)

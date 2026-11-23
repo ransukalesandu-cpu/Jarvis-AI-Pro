@@ -22,6 +22,9 @@ button { font: inherit; color: inherit; }
 .dot[data-state='speaking'] { background: var(--primary); color: var(--primary); }
 .dot[data-state='thinking'], .dot[data-state='searching'], .dot[data-state='executing'] { background: var(--warn); color: var(--warn); }
 .dot[data-state='error'] { background: var(--danger); color: var(--danger); }
+.dot[data-state='warning'] { background: var(--warn); color: var(--warn); animation: dot-blink 1s steps(2, jump-none) infinite; }
+@keyframes dot-blink { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .dot[data-state='warning'] { animation: none; } }
 .dot[data-state='idle'] { background: var(--ok); color: var(--ok); }
 
 .widgets { position: absolute; z-index: var(--z-hud); display: flex; flex-direction: column; gap: var(--space-3); top: 72px; width: 188px; }
@@ -184,3 +187,9 @@ button { font: inherit; color: inherit; }
 .news-title { grid-column: 1; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
 .news-source { grid-column: 1; font-size: 11px; opacity: .6; }
 .news-item .toggle { grid-column: 2; grid-row: 1 / span 2; }
+
+/* Hologram performance overlay (Settings → Performance overlay): measured numbers only. */
+.perf-overlay { position: absolute; left: 16px; bottom: 16px; display: grid; grid-template-columns: repeat(2, auto); gap: 2px 14px;
+  padding: 6px 12px; font: 11px/1.4 var(--font-mono, ui-monospace, monospace); color: var(--text, #cfe9ff); background: rgba(5, 8, 13, 0.72);
+  border: 1px solid rgba(255, 138, 42, 0.35); border-radius: 6px; pointer-events: none; z-index: 2; }
+.perf-overlay b { color: #ff9d4a; font-weight: 600; margin-right: 4px; }

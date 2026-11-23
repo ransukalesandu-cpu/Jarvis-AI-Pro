@@ -230,6 +230,8 @@ _TIERS: dict[str, str] = {
     "battery_status":   TIER_SAFE,
     # Reads back the latest task title (the owner's own words), so not SAFE.
     "show_task_progress": TIER_SENSITIVE,
+    # Only changes what the brain on screen looks like; the text is drawn, never executed or stored.
+    "form_shape":       TIER_SAFE,
     "system_status":    TIER_SAFE,
     "system_monitor":   TIER_SAFE,
     "recall_memory":    TIER_SAFE,

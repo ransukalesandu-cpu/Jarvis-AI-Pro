@@ -12,6 +12,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
+from jarvis.core import redaction
 from jarvis.core.hybrid_llm_router import HybridLLMRouter
 
 _MAX_TRACEBACK_CHARS = 12_000
@@ -48,7 +49,7 @@ def redact_secrets(text: str) -> str:
     result = str(text or "")
     for pattern, replacement in _SECRET_PATTERNS:
         result = pattern.sub(replacement, result)
-    return result
+    return redaction.redact_secrets(result)   # every other known shape (core/redaction.py)
 
 
 def _load_keys(config_path: str | Path | None = None) -> dict[str, str]:

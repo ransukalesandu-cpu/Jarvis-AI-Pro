@@ -12,6 +12,14 @@ import sys
 import uuid
 
 from jarvis.core import failsoft
+# Redaction patterns are defined once in core/redaction.py so every redaction path shares them.
+from jarvis.core.redaction import (
+    EMAIL as _EMAIL_RE,
+    LABELED_SENSITIVE as _LABELED_SENSITIVE_RE,
+    PHONE as _PHONE_RE,
+    redact_secrets as _redact_secrets,
+    redact_token_shapes as _redact_token_shapes,
+)
 
 
 def get_base_dir() -> Path:
@@ -1104,30 +1112,7 @@ def save_session_summary(summary: str, language: str = "", memory_ids: list[str]
 
 _EPISODE_MAX = 160
 
-_LABELED_SENSITIVE_RE = re.compile(
-    r"(?im)\b(api[_ -]?key|private key|key|password|passphrase|secret|"
-    r"(?:access|refresh|auth|session)[_ -]?token|token|"
-    r"auth(?:orization)?|client[_ -]?secret|otp|one[- ]time code|verification code|"
-    r"credit card|card number|cvv|ssn|social security|national id|driver'?s license|passport|NIC|"
-    r"bank account|account number|routing number|IBAN|SWIFT|home address|address|"
-    r"date of birth|birth date|birthday|date of birth|email|e-mail|phone|mobile)\b"
-    r"\s*(?:is|[:=])\s*[^\r\n,;]+",
-    re.IGNORECASE,
-)
-_SENSITIVE_TOKEN_RES = (
-    re.compile(r"\bAIza[0-9A-Za-z_-]{20,}\b"),
-    re.compile(r"\bsk-(?:ant-)?[A-Za-z0-9_-]{16,}\b"),
-    re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
-    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
-    re.compile(r"\bAC[0-9a-fA-F]{32}\b"),
-    re.compile(r"\beyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
-    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
-    re.compile(r"\bya29\.[A-Za-z0-9_-]{20,}\b"),
-    re.compile(r"\bIGQV[A-Za-z0-9_-]{16,}\b"),
-    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*"),
-)
-_EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
-_PHONE_RE = re.compile(r"(?<!\w)\+?\d[\d(). -]{7,}\d(?!\w)")
+_BEARER_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*")
 
 
 def redact_sensitive_content(text: str) -> str:
@@ -1149,9 +1134,9 @@ def redact_sensitive_content(text: str) -> str:
         else "[REDACTED_NUMBER]",
         value,
     )
-    for pattern in _SENSITIVE_TOKEN_RES:
-        value = pattern.sub("[REDACTED_CREDENTIAL]", value)
-    return value
+    value = _redact_token_shapes(value, placeholder="[REDACTED_CREDENTIAL]")
+    value = _BEARER_RE.sub("[REDACTED_CREDENTIAL]", value)
+    return _redact_secrets(value, placeholder="[REDACTED_CREDENTIAL]")
 
 
 def _as_text_list(value, limit: int = 8, item_chars: int = 180) -> list[str]:

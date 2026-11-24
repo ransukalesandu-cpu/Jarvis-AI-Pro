@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
-from jarvis.core import failsoft
+from jarvis.core import failsoft, redaction
 
 T = TypeVar("T")
 
@@ -39,7 +39,7 @@ def redact_secrets(value: object) -> str:
     text = _SECRET_PATTERNS[0].sub(r"\1\2[REDACTED]", text)
     text = _SECRET_PATTERNS[1].sub("Bearer [REDACTED]", text)
     text = _SECRET_PATTERNS[2].sub("[REDACTED_API_KEY]", text)
-    return text[:6000]
+    return redaction.redact_secrets(text)[:6000]   # every other known shape (core/redaction.py)
 
 
 def classify_error(exc: BaseException) -> dict[str, str]:

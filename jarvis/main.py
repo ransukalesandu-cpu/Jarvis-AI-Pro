@@ -34,7 +34,7 @@ if not __package__ and str(_ROOT_DIR) not in sys.path:
 
 import sys as _sys
 
-from jarvis.core import audio_debug, failsoft
+from jarvis.core import audio_debug, failsoft, latency_trace
 
 for _stream in ("stdout", "stderr"):
     try:
@@ -2203,6 +2203,8 @@ class JarvisLive(
                     self.out_queue,
                     {"data": data, "mime_type": "audio/pcm;rate=16000"},
                 )
+                if latency_trace.ACTIVE:         # opt-in; off = one attribute read
+                    latency_trace.mic_frame(_pcm_level(indata))
                 # Feed the live mic level to the HUD so the waveform reacts to
                 # the user's actual voice while listening. Purely cosmetic — any
                 # failure here must never disturb the mic.
@@ -2590,6 +2592,8 @@ class JarvisLive(
                             audio_fragment_buffer.clear()
                         else:
                             receive_diagnostics.record_output_audio_bytes(event_bytes)
+                            if latency_trace.ACTIVE:
+                                latency_trace.server_audio()
                             audio_fragment_buffer.extend(b"".join(_audio_chunks))
                             # Keep PCM samples aligned and enqueue only full 50 ms
                             # slices while streaming. Any partial tail stays buffered

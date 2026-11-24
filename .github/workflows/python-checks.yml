@@ -161,6 +161,8 @@ jobs:
             jarvis/tests/test_audio_capture.py `
             jarvis/tests/test_audio_playback.py `
             jarvis/tests/test_live_audio_helpers.py `
+            jarvis/tests/test_latency_trace.py `
+            jarvis/tests/test_baseline_tool.py `
             jarvis/tests/test_playback_interrupt.py `
             jarvis/tests/test_ui_import_smoke.py `
             jarvis/tests/test_lazy_ui_imports.py `
@@ -250,6 +252,8 @@ jobs:
           jarvis/tests/test_audio_capture.py
           jarvis/tests/test_audio_playback.py
           jarvis/tests/test_live_audio_helpers.py
+          jarvis/tests/test_latency_trace.py
+          jarvis/tests/test_baseline_tool.py
           jarvis/tests/test_playback_interrupt.py
           jarvis/tests/test_ui_import_smoke.py
           jarvis/tests/test_lazy_ui_imports.py

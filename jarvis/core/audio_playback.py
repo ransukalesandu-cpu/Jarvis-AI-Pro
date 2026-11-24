@@ -20,7 +20,7 @@ from jarvis.core.live_audio import (
     _pcm_level,
 )
 
-from jarvis.core import audio_debug, failsoft
+from jarvis.core import audio_debug, failsoft, latency_trace
 
 
 @dataclass(frozen=True)
@@ -616,6 +616,8 @@ async def run_audio_playback(
                             f"({len(batch)} bytes)."
                         )
                         first_output_write_started = True
+                    if latency_trace.ACTIVE:
+                        latency_trace.device_write(getattr(host, "_out_latency", 0.0))
                     write_started = time.perf_counter()
                     await asyncio.get_running_loop().run_in_executor(
                         output_executor, stream.write, bytes(batch)

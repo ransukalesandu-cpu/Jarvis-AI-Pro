@@ -112,6 +112,24 @@ Use harmless, reversible actions first. Never use important files or accounts fo
 - [ ] A spoken request is transcribed, answered and spoken back; JARVIS does not react to its own voice.
 - [ ] Reconnecting the network brings Gemini Live back and the log shows "Offline voice stopped".
 
+## Performance baseline (production-architecture upgrade)
+
+These numbers are the "before" for the engine split (docs/plans/PROD_ARCH_UPGRADE_PLAN.md §4). Take them
+once now and again after each milestone that touches the engine, audio or packaging. They contain timings and
+memory sizes only, so they are safe to paste.
+
+- [ ] Import and eval numbers: `python -m jarvis.tools.baseline all --save` from the repository folder. Paste the
+      printed JSON (it is also saved under `%LOCALAPPDATA%\jarvis\baselines\`).
+- [ ] Idle RAM: start JARVIS normally, wait until it is listening, find the PID (Task Manager → Details →
+      `python.exe`), then run `python jarvis/tools/profile_ram.py --pid <PID> --duration 120 --label idle`.
+      Paste the summary line.
+- [ ] Live RAM: start a Gemini Live conversation and, while talking, run
+      `python jarvis/tools/profile_ram.py --pid <PID> --duration 60 --label voice --append`. Paste the summary line.
+- [ ] Voice latency: close JARVIS, start it again with the trace on (PowerShell: `$env:JARVIS_LATENCY_TRACE=1`,
+      then the usual launch command from the same window). In a quiet room, say ten short phrases ("what time is
+      it", "hello"), waiting for each answer. Paste the last `[LatencyTrace] turn 10: ...` line, or run
+      `python -m jarvis.tools.baseline latency` afterwards and paste its JSON.
+
 ## Sign-off
 
 - [ ] All required checks passed on the target Windows machine.

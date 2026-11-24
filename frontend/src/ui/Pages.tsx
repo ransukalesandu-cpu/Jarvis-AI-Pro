@@ -2,16 +2,32 @@ import { useEffect, useRef } from 'react';
 import { Spark } from './Spark';
 import type { LogTag } from '../bridge/contract';
 import { useUi } from '../store';
+import { Button, StateView } from '../components/ui';
+
+/** Whether live data can arrive: 'wait' while connecting, 'offline' with no backend, else 'ok'. */
+export function useLink(): 'wait' | 'offline' | 'ok' {
+    const link = useUi((s) => s.link);
+    return link === 'connected' ? 'ok' : link === 'connecting' ? 'wait' : 'offline';
+}
+
+/** Shown instead of live data while there is none to show. */
+export function NoData({ link, what }: { link: 'wait' | 'offline' | 'ok'; what: string }) {
+    if (link === 'offline') return <StateView kind="offline" title="JARVIS is not connected" message={`${what} appears when JARVIS is running.`} />;
+    if (link === 'ok') return <StateView kind="empty" title="Not reported yet" message={`${what} shows here as soon as JARVIS reports it.`} />;
+    return <StateView kind="loading" title={`Loading ${what.toLowerCase()}`} />;
+}
 
 const fmt = (n: number | undefined | null, unit = '%') => (n === undefined || n === null ? '--' : `${Math.round(n)}${unit}`);
 
 export function MonitorContent() {
     const m = useUi((s) => s.metrics);
     const sr = useUi((s) => s.series);
+    const link = useLink();
+    if (!m) return <NoData link={link} what="Live system data" />;
     return (
         <>
-            <h1>System Monitor</h1>
-            <p>Live values from the Python backend (psutil), last two minutes.</p>
+            <h1 className="ui-sr-only">System Monitor</h1>
+            <p>This computer, live. Charts show the last two minutes.</p>
             <Spark label="CPU" data={sr.cpu} unit="%" max={100} />
             <Spark label="RAM" data={sr.ram} unit="%" max={100} tone="amber" />
             <Spark label="Network ↓" data={sr.down} unit=" KB/s" />
@@ -42,28 +58,27 @@ export function MonitorContent() {
 
 export function ModelsContent() {
     const p = useUi((s) => s.provider);
+    const link = useLink();
+    if (!p) return <NoData link={link} what="The AI model in use" />;
     return (
         <>
-            <h1>AI Models</h1>
-            <p>
-                Read-only. Live voice always runs on Gemini Live. This is the one-shot text provider chosen in the classic settings; switching it stays there
-                until a safe, authorised request exists for it.
-            </p>
+            <h1 className="ui-sr-only">AI Models</h1>
+            <p>Voice always runs on Gemini Live. Typed requests use the text model below; change it in the classic settings.</p>
             <div className="row">
                 <span>Text provider</span>
-                <span>{p?.provider ?? 'not reported'}</span>
+                <span>{p.provider}</span>
             </div>
             <div className="row">
                 <span>Model</span>
-                <span>{p?.model ?? '--'}</span>
+                <span>{p.model}</span>
             </div>
             <div className="row">
                 <span>API key</span>
-                <span>{p ? (p.connected ? 'configured' : 'missing') : '--'}</span>
+                <span>{p.connected ? 'configured' : 'missing'}</span>
             </div>
             <div className="row">
                 <span>Fallback active</span>
-                <span>{p ? (p.fallback ? 'yes' : 'no') : '--'}</span>
+                <span>{p.fallback ? 'yes' : 'no'}</span>
             </div>
         </>
     );
@@ -74,8 +89,8 @@ export function ActivityContent() {
     const a = useUi((s) => s.assistant);
     return (
         <>
-            <h1>Activity Center</h1>
-            <p>Assistant state changes reported by the backend this session. Task progress and cancellation arrive with the task events in Phase 3.</p>
+            <h1 className="ui-sr-only">Activity Center</h1>
+            <p>What JARVIS has been doing this session. Step-by-step task progress is in Task Progress.</p>
             <div className="row">
                 <span>Current</span>
                 <span>{a}</span>
@@ -86,7 +101,7 @@ export function ActivityContent() {
                     <span>{h.state}</span>
                 </div>
             ))}
-            {history.length === 0 && <p>No state changes yet.</p>}
+            {history.length === 0 && <StateView kind="empty" title="Nothing yet" message="Talk to JARVIS or give it a task; each change shows here." />}
         </>
     );
 }
@@ -103,8 +118,8 @@ export function LogView({ lines, onClear }: { lines: { id: number; at: number; t
     }, [lines]);
     return (
         <>
-            <h1>Conversation Log</h1>
-            <p>Read-only. Sensitive values are redacted, and nothing is shown while JARVIS is locked or asking for a PIN.</p>
+            <h1 className="ui-sr-only">Conversation Log</h1>
+            <p>Read-only. Sensitive values are hidden, and nothing shows while JARVIS is locked or asking for a PIN.</p>
             <div
                 className="logbox"
                 ref={box}
@@ -117,7 +132,7 @@ export function LogView({ lines, onClear }: { lines: { id: number; at: number; t
                     stick.current = t.scrollHeight - t.scrollTop - t.clientHeight < 24;
                 }}
             >
-                {lines.length === 0 && <div className="log-empty">No messages yet this session.</div>}
+                {lines.length === 0 && <StateView kind="empty" title="No messages yet" message="What you and JARVIS say this session appears here." />}
                 {lines.map((l) => (
                     <div key={l.id} className={`log-line log-${l.tag}`}>
                         <span className="log-tag">{TAG_LABEL[l.tag]}</span>
@@ -125,9 +140,9 @@ export function LogView({ lines, onClear }: { lines: { id: number; at: number; t
                     </div>
                 ))}
             </div>
-            <button className="toggle" onClick={onClear} disabled={lines.length === 0}>
+            <Button variant="outline" tone="neutral" size="sm" onClick={onClear} disabled={lines.length === 0}>
                 Clear view
-            </button>
+            </Button>
         </>
     );
 }

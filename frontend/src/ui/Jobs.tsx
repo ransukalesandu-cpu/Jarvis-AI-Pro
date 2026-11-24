@@ -4,7 +4,8 @@ import type { CommandReason, JobRow } from '../bridge/contract';
 import { useUi } from '../store';
 import { format } from '../timer/timer';
 import { useNow } from '../ux/usePhase';
-import { RESULT } from './CommandBar';
+import { ResultNote } from './CommandBar';
+import { Button, StateView } from '../components/ui';
 
 const LABEL = { running: 'Running', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' } as const;
 
@@ -20,12 +21,16 @@ export interface JobsProps {
 export function JobsView({ jobs, now, linked, result, onCancel }: JobsProps) {
     return (
         <>
-            <h1>Background Jobs</h1>
+            <h1 className="ui-sr-only">Background Jobs</h1>
             <p>Long tasks JARVIS runs in the background. Finished jobs show a notice here.</p>
             {jobs === null ? (
-                <p>Not reported yet.</p>
+                linked ? (
+                    <StateView kind="loading" title="Loading background jobs" />
+                ) : (
+                    <StateView kind="offline" title="JARVIS is not connected" message="Background jobs appear when JARVIS is running." />
+                )
             ) : jobs.length === 0 ? (
-                <p>No background jobs.</p>
+                <StateView kind="empty" title="No background jobs" message="Long tasks you give JARVIS show up here." />
             ) : (
                 <ul className="news-list">
                     {jobs.map((j) => {
@@ -37,18 +42,24 @@ export function JobsView({ jobs, now, linked, result, onCancel }: JobsProps) {
                                     {LABEL[j.status]} · {format(secs)}
                                 </span>
                                 {j.status === 'running' && (
-                                    <button className="toggle" disabled={!linked} onClick={() => onCancel(j.id)} aria-label={`Cancel job ${j.name}`}>
-                                        <X size={12} /> Cancel
-                                    </button>
+                                    <Button
+                                        variant="outline"
+                                        tone="danger"
+                                        size="sm"
+                                        disabled={!linked}
+                                        onClick={() => onCancel(j.id)}
+                                        aria-label={`Cancel job ${j.name}`}
+                                        icon={<X size={12} aria-hidden />}
+                                    >
+                                        Cancel
+                                    </Button>
                                 )}
                             </li>
                         );
                     })}
                 </ul>
             )}
-            <p className="settings-note" role="status" aria-live="polite">
-                {result && result !== 'done' ? RESULT[result] : ''}
-            </p>
+            <ResultNote result={result} />
         </>
     );
 }

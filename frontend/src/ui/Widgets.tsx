@@ -101,11 +101,18 @@ export function SystemWidget() {
 
 export function BrainWidget() {
     const p = useUi((s) => s.provider);
+    const link = useUi((s) => s.link);
+    const waiting =
+        link === 'detached'
+            ? ['Offline', 'JARVIS is not running']
+            : link === 'connected'
+              ? ['Not reported', 'no text model reported yet']
+              : ['Connecting…', 'waiting for the backend'];
     return (
         <Widget
             label="AI Brain"
-            value={p ? p.provider : 'Unknown'}
-            sub={p ? `${p.model} · ${p.connected ? 'connected' : 'offline'}${p.fallback ? ' · fallback' : ''}` : 'no provider reported'}
+            value={p ? p.provider : waiting[0]}
+            sub={p ? `${p.model} · ${p.connected ? 'connected' : 'offline'}${p.fallback ? ' · fallback' : ''}` : waiting[1]}
             icon={<Brain size={12} />}
             to="models"
         />

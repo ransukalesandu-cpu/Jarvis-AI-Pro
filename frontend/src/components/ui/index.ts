@@ -11,3 +11,4 @@ export { Table, type Column, type TableProps } from './Table';
 export { Toaster, toast, useToasts, type ToastMsg } from './Toast';
 export { Switch, Segmented, type SwitchProps, type SegmentedProps, type SegmentOption } from './Switch';
 export { SparkChart, type SparkChartProps } from './Chart';
+export { StateView, type StateViewProps, type ViewState } from './StateView';

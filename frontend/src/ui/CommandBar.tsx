@@ -27,6 +27,18 @@ export const RESULT: Record<CommandReason, string> = {
     unavailable: BLOCKED.unavailable,
 };
 
+const OK_RESULTS: CommandReason[] = ['sent', 'done', 'noop'];
+
+/** Outcome of the last button action in a window: success in green, a refusal in amber, nothing while idle. */
+export function ResultNote({ result }: { result: CommandReason | null }) {
+    const ok = result !== null && OK_RESULTS.includes(result);
+    return (
+        <p className="settings-note result-note" role="status" aria-live="polite" data-tone={result ? (ok ? 'ok' : 'warn') : undefined}>
+            {result ? RESULT[result] : ''}
+        </p>
+    );
+}
+
 export interface ViewProps {
     state: CommandState;
     last: CommandReason | null;

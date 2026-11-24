@@ -41,7 +41,10 @@ describe('JobsView', () => {
     it('distinguishes not reported, none, and a list with Cancel only for running jobs', () => {
         const v = (jobs: JobRow[] | null, result: JobsViewResult = null) =>
             renderToStaticMarkup(createElement(JobsView, { jobs, now: 61_000, linked: true, result, onCancel: noop }));
-        expect(v(null)).toContain('Not reported yet');
+        expect(v(null)).toContain('Loading background jobs');
+        expect(renderToStaticMarkup(createElement(JobsView, { jobs: null, now: 0, linked: false, result: null, onCancel: noop }))).toContain(
+            'JARVIS is not connected',
+        );
         expect(v([])).toContain('No background jobs');
         const h = v([row('a', 'running'), row('b', 'done')]);
         expect(h.match(/Cancel job/g)).toHaveLength(1);

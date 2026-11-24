@@ -314,6 +314,15 @@ button {
 .app[data-settings='open'] .widgets.right {
   display: none;
 }
+/* A window in a widget column hides that column, so text never stacks on text (audit F2/F3). */
+.app[data-left-covered='true'] .widgets.left,
+.app[data-right-covered='true'] .widgets.right {
+  visibility: hidden;
+}
+/* The settings drawer stops above the bottom dock, so stop / mic / fullscreen stay reachable (audit F4). */
+.panel.right.settings {
+  bottom: calc(var(--control-lg) + var(--space-6));
+}
 
 /* Floating windows */
 .win {
@@ -1183,4 +1192,11 @@ button {
   .win {
     background: var(--surface-window);
   }
+}
+
+.result-note[data-tone='ok'] {
+  color: var(--ok);
+}
+.result-note[data-tone='warn'] {
+  color: var(--warn);
 }

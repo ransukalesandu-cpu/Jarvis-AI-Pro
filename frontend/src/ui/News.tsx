@@ -2,7 +2,8 @@ import { ExternalLink } from 'lucide-react';
 import { sendRequest } from '../bridge/bridge';
 import type { CommandReason, NewsItem } from '../bridge/contract';
 import { useUi } from '../store';
-import { RESULT } from './CommandBar';
+import { ResultNote } from './CommandBar';
+import { Button, StateView } from '../components/ui';
 
 export interface NewsProps {
     heading: string | null;
@@ -17,10 +18,10 @@ export interface NewsProps {
 export function NewsView({ heading, items, linked, result, onOpen }: NewsProps) {
     return (
         <>
-            <h1>News</h1>
-            <p>{heading ? heading : 'Headlines appear here when you ask JARVIS for the news.'}</p>
+            <h1 className="ui-sr-only">News</h1>
+            {heading && <p>{heading}</p>}
             {items.length === 0 ? (
-                <p>No headlines yet.</p>
+                <StateView kind="empty" title="No headlines yet" message='Say "Jarvis, what is the news?" and the headlines show here.' />
             ) : (
                 <ul className="news-list">
                     {items.map((n, i) => (
@@ -28,17 +29,23 @@ export function NewsView({ heading, items, linked, result, onOpen }: NewsProps) 
                             <span className="news-title">{n.title}</span>
                             {n.source && <span className="news-source">{n.source}</span>}
                             {n.link && (
-                                <button className="toggle" disabled={!linked} onClick={() => onOpen(i)} aria-label={`Open article in your browser: ${n.title}`}>
-                                    <ExternalLink size={12} /> Open
-                                </button>
+                                <Button
+                                    variant="outline"
+                                    tone="neutral"
+                                    size="sm"
+                                    disabled={!linked}
+                                    onClick={() => onOpen(i)}
+                                    aria-label={`Open article in your browser: ${n.title}`}
+                                    icon={<ExternalLink size={12} aria-hidden />}
+                                >
+                                    Open
+                                </Button>
                             )}
                         </li>
                     ))}
                 </ul>
             )}
-            <p className="settings-note" role="status" aria-live="polite">
-                {result && result !== 'done' ? RESULT[result] : ''}
-            </p>
+            <ResultNote result={result} />
         </>
     );
 }

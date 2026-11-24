@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Callable, Iterable, Sequence
 
 from PyQt6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, Qt, pyqtSignal
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -43,6 +44,26 @@ def _repolish(w: QWidget) -> None:
 
 
 # ── Button ──────────────────────────────────────────────────────────────────
+_FS = {"sm": "fs-sm", "md": "fs-md", "lg": "fs-base"}
+
+
+def _tone_style(button: QWidget, variant: str, tone: str) -> None:
+    """Fluent buttons style themselves; layer the tone colours on top (theme-aware) with setCustomStyleSheet."""
+    cls = type(button).__name__
+    if tone in ("primary", "neutral") and variant != "solid" or tone == "primary":
+        return
+    c = token("text-dim" if tone == "neutral" else tone)
+    if variant == "solid":
+        qss = (f"{cls} {{ background-color: {c}; border-color: {c}; color: {token('bg')}; }}"
+               f"{cls}:hover {{ background-color: {c}; border-color: {token('text')}; }}"
+               f"{cls}:pressed {{ background-color: {c}; color: {token('glass-strong')}; }}")
+    elif variant == "outline":
+        qss = f"{cls} {{ border: 1px solid {c}; color: {c}; }}"
+    else:
+        qss = f"{cls} {{ color: {c}; }}"
+    fluent.setCustomStyleSheet(button, qss, qss)
+
+
 class Button(QWidget):
     """PrimaryPushButton for variant=solid, PushButton for outline, TransparentPushButton for ghost.
 
@@ -59,6 +80,7 @@ class Button(QWidget):
         self.button = cls(text, self) if icon is None else cls(icon, text, self)
         _props(self.button, variant, size, tone)
         self.button.setMinimumHeight(px(_HEIGHT[size]))
+        _tone_style(self.button, variant, tone)
         self.button.setAccessibleName(accessible_name or text)
         self.button.clicked.connect(self.clicked.emit)
         self.spinner = fluent.IndeterminateProgressRing(self, start=False)
@@ -110,6 +132,7 @@ class _Field(QWidget):
         lay.addWidget(self.label)
         lay.addWidget(control)
         lay.addWidget(self.message)
+        lay.addStretch(1)
         self.hint = hint
         self.set_error(error)
 
@@ -119,11 +142,15 @@ class _Field(QWidget):
         self.control.setProperty("invalid", invalid)
         if hasattr(self.control, "setError"):
             self.control.setError(invalid)
+        cls = type(self.control).__name__
+        border = f"{cls} {{ border: 1px solid {token('danger')}; }}" if invalid else ""
+        fluent.setCustomStyleSheet(self.control, border, border)
         text = self.error or self.hint
         self.message.setText(text)
         self.message.setVisible(bool(text))
         self.message.setProperty("role", "error" if invalid else "faint")
-        self.message.setStyleSheet(f"color: {token('danger') if invalid else token('text-faint')};")
+        colour = QColor(token("danger") if invalid else token("text-faint"))
+        self.message.setTextColor(colour, colour)      # Fluent labels ignore QSS colour
         self.control.setAccessibleDescription(text)
         _repolish(self.control)
 
@@ -324,7 +351,8 @@ class Table(QWidget):
             self.ring.stop()
         self.retry.setVisible(self.mode == "error" and self.on_retry is not None)
         self.state_text.setText({"error": error, "loading": "Loading…", "empty": self.empty_text}.get(self.mode, ""))
-        self.state_text.setStyleSheet(f"color: {token('danger') if self.mode == 'error' else token('text-dim')};")
+        colour = QColor(token("danger") if self.mode == "error" else token("text-dim"))
+        self.state_text.setTextColor(colour, colour)
         self.setAccessibleDescription(self.state_text.text())
 
 
@@ -340,7 +368,7 @@ class Dialog(fluent.MessageBoxBase):
         if description:
             d = fluent.BodyLabel(description, self)
             d.setWordWrap(True)
-            d.setStyleSheet(f"color: {token('text-dim')};")
+            d.setTextColor(QColor(token("text-dim")), QColor(token("text-dim")))
             self.viewLayout.addWidget(d)
         if body is not None:
             self.viewLayout.addWidget(body)
@@ -442,7 +470,9 @@ class SparkChart(QWidget):
         import pyqtgraph as pg
 
         self.label, self.unit = label, unit
-        self.plot = pg.PlotWidget(self, background=None)
+        self.plot = pg.PlotWidget(self)
+        self.plot.setBackground(None)
+        self.plot.setStyleSheet("background: transparent; border: none;")
         self.plot.hideAxis("left")
         self.plot.hideAxis("bottom")
         self.plot.setMouseEnabled(False, False)

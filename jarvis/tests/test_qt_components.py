@@ -37,6 +37,21 @@ def describe(w: QWidget) -> dict:
     return {"class": type(w).__name__, "controls": controls}
 
 
+@pytest.fixture(autouse=True)
+def _delete_leftovers():
+    """Delete every top-level widget a test created, so later tests (style changes) never meet them."""
+    from PyQt6.QtCore import QCoreApplication, QEvent
+    from PyQt6.QtWidgets import QApplication
+    before = set(map(id, QApplication.topLevelWidgets()))
+    yield
+    for w in QApplication.topLevelWidgets():
+        if id(w) not in before:
+            w.close()
+            w.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
+    QCoreApplication.processEvents()
+
+
 @pytest.fixture
 def root(qtbot):
     w = QWidget()
@@ -79,7 +94,12 @@ def build(root: QWidget) -> dict[str, QWidget]:
 
 
 def test_snapshots(root):
-    got = {k: describe(w) for k, w in build(root).items()}
+    built = build(root)
+    holder = QWidget(root)               # parent everything so it is deleted with the root
+    for w in built.values():
+        if w.parent() is None:
+            w.setParent(holder)
+    got = {k: describe(w) for k, w in built.items()}
     if os.environ.get("JARVIS_UPDATE_SNAPSHOTS") == "1" or not SNAP.exists():
         SNAP.write_text(json.dumps(got, indent=1, sort_keys=True, default=str) + "\n", encoding="utf-8")
         if os.environ.get("JARVIS_UPDATE_SNAPSHOTS") != "1":
@@ -168,3 +188,61 @@ def test_palette_parity_with_tokens(qtbot, theme):
     assert THEMES[theme]["bg"] in w.styleSheet()
     assert ui.token("text") == THEMES[theme]["text"]
     ui.apply_theme(None, "dark")
+
+
+# ── P3b: shell, qasync, gallery ────────────────────────────────────────────
+def test_window_effect_choice(monkeypatch):
+    from jarvis.ui.components import shell
+    monkeypatch.setenv("JARVIS_WINDOW_EFFECT", "off")
+    assert shell.window_effect() == "off"
+    monkeypatch.setenv("JARVIS_WINDOW_EFFECT", "acrylic")
+    assert shell.window_effect() == "acrylic"
+    monkeypatch.delenv("JARVIS_WINDOW_EFFECT")
+    expected = "off" if __import__("sys").platform != "win32" else shell.window_effect()
+    assert shell.window_effect() == expected
+
+
+def test_window_chrome_is_a_noop_off_windows(qtbot):
+    import sys
+
+    from jarvis.ui.components import shell
+    w = QWidget()
+    qtbot.addWidget(w)
+    if sys.platform != "win32":
+        assert shell.apply_window_chrome(w) is False
+    assert shell._colorref("#102030") == 0x302010
+
+
+def test_run_async_reports_result_and_error(qtbot):
+    import asyncio
+
+    from PyQt6.QtWidgets import QApplication
+
+    from jarvis.ui.components.shell import qt_event_loop, run_async
+    loop = qt_event_loop(QApplication.instance())
+    got = []
+
+    async def ok():
+        await asyncio.sleep(0.01)
+        return 42
+
+    async def bad():
+        raise ValueError("nope")
+
+    run_async(ok(), lambda r, e: got.append((r, e)))
+    run_async(bad(), lambda r, e: got.append((r, type(e).__name__)))
+    loop.run_until_complete(asyncio.sleep(0.05))
+    assert (42, None) in got and (None, "ValueError") in got
+    loop.close()
+    asyncio.set_event_loop(None)
+
+
+def test_gallery_builds_with_every_section(qtbot):
+    from jarvis.ui.components.gallery import build
+    from jarvis.ui.components.shell import JarvisShell
+    w = build("hc")
+    qtbot.addWidget(w)
+    assert isinstance(w, JarvisShell)
+    tabs = w.findChildren(ui.Tabs)[0]
+    assert set(tabs._pages) == {"buttons", "fields", "data", "overlays"}
+    assert len(w.findChildren(ui.Table)) == 3

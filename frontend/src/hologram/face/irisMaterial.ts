@@ -5,6 +5,7 @@
  */
 import { BufferAttribute, BufferGeometry, NormalBlending, ShaderMaterial } from 'three';
 import { BLADES, BLADE_LEN, BLADE_W, bladePose } from './iris';
+import { GLSL } from '../shaders/glsl.generated';
 
 const STEPS = 16;
 const PER_BLADE = (STEPS + 1) * 2;
@@ -66,22 +67,8 @@ export function poseIris(g: BufferGeometry, aperture: number): void {
 export function irisMaterial(): ShaderMaterial {
     return new ShaderMaterial({
         uniforms: { glow: { value: 0.3 }, tint: { value: [1, 1, 1] } },
-        vertexShader: /* glsl */ `
-      attribute float edge; attribute float blade;
-      varying float vEdge; varying float vBlade; varying vec2 vEye;
-      void main() { vEdge = edge; vBlade = blade; vEye = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-        fragmentShader: /* glsl */ `
-      uniform float glow; uniform vec3 tint;
-      varying float vEdge; varying float vBlade; varying vec2 vEye;
-      void main() {
-        if (length(vEye) > 1.28) discard;                         // under the socket ring
-        float shade = 0.10 + 0.05 * fract(vBlade * 0.37) + 0.10 * (1.0 - vEdge);
-        vec3 metal = vec3(0.16, 0.17, 0.20) * (0.6 + shade * 3.0);
-        float lip = smoothstep(0.10, 0.0, vEdge);                 // glowing inner edge
-        vec3 c = metal + vec3(1.0, 0.45, 0.08) * tint * lip * (0.5 + 0.8 * glow);
-        float shadow = smoothstep(0.75, 1.0, vEdge) * 0.6;        // the next blade's shadow line
-        gl_FragColor = vec4(c * (1.0 - shadow), 1.0);
-      }`,
+        vertexShader: GLSL['iris.vert'],
+        fragmentShader: GLSL['iris.frag'],
         transparent: true, // drawn in the transparent pass, after the emission (renderOrder decides)
         depthTest: false,
         depthWrite: false,

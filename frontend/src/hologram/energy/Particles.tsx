@@ -6,6 +6,7 @@ import { COLORS } from '../palette';
 import { LAYOUT, particleSeeds } from './paths';
 import { busyState } from './Strands';
 import { visualState } from '../visualState';
+import { GLSL } from '../shaders/glsl.generated';
 
 /**
  * Neural energy particles rising in a helix from the orb up the strands to the neck. One Points
@@ -32,27 +33,8 @@ export function Particles({ count }: { count: number }) {
                 y0: { value: LAYOUT.orb.y },
                 y1: { value: LAYOUT.neckY + 0.05 },
             },
-            vertexShader: /* glsl */ `
-        attribute float phase; attribute float radius; attribute float speed; attribute float spin;
-        uniform float time; uniform float scale; uniform float size; uniform float y0; uniform float y1;
-        varying float vA;
-        void main() {
-          float life = fract(time * speed + phase);
-          float ang = time * spin + phase * 6.2831853;
-          float rad = radius * sin(3.14159 * life) * (0.55 + 0.45 * life);
-          vec3 p = vec3(cos(ang) * rad, mix(y0, y1, life), sin(ang) * rad * 0.6 + 0.1);
-          vec4 mv = modelViewMatrix * vec4(p, 1.0);
-          vA = sin(3.14159 * life);
-          gl_PointSize = size * scale / -mv.z;
-          gl_Position = projectionMatrix * mv;
-        }`,
-            fragmentShader: /* glsl */ `
-        uniform vec3 color; varying float vA;
-        void main() {
-          float d = length(gl_PointCoord - 0.5);
-          float a = smoothstep(0.5, 0.0, d) * vA;
-          gl_FragColor = vec4(color * a, a);
-        }`,
+            vertexShader: GLSL['particles.vert'],
+            fragmentShader: GLSL['particles.frag'],
             transparent: true,
             depthWrite: false,
             blending: AdditiveBlending,

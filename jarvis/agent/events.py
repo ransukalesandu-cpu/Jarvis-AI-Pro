@@ -27,6 +27,7 @@ class AgentEvent:
 
     kind: str                      # task_started | planning | step | progress | waiting | finished
     task_id: str = ""
+    correlation_id: str = ""
     state: TaskState = TaskState.PENDING
     progress: float = 0.0
     message: str = ""
@@ -38,6 +39,7 @@ class AgentEvent:
         return {
             "kind": self.kind,
             "task_id": self.task_id,
+            "correlation_id": self.correlation_id,
             "state": self.state.value,
             "progress": self.progress,
             "message": self.message,
@@ -52,6 +54,7 @@ def event_from_task(kind: str, task: Task, *, message: str = "",
     return AgentEvent(
         kind=kind,
         task_id=task.id,
+        correlation_id=task.correlation_id,
         state=task.state,
         progress=task.progress(),
         message=message,
@@ -105,6 +108,7 @@ class EventBus:
             AgentEvent(
                 kind="finished",
                 task_id=task.id,
+                correlation_id=task.correlation_id,
                 state=report.state,
                 progress=1.0,
                 message=report.headline(),

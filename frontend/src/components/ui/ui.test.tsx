@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { Button, Checkbox, Input, Select, Table, Tabs, Textarea } from '.';
+import { Button, Checkbox, Input, Select, StateView, Table, Tabs, Textarea } from '.';
 
 const html = (el: React.ReactElement) => renderToStaticMarkup(el);
 
@@ -57,6 +57,18 @@ describe('Table states', () => {
     });
 });
 
+describe('StateView', () => {
+    it('loading is a busy status with skeleton lines; error is an alert with retry', () => {
+        const l = html(<StateView kind="loading" title="Jobs" />);
+        expect(l).toContain('aria-busy="true"');
+        expect(l.match(/ui-skeleton/g)?.length).toBe(3);
+        const e = html(<StateView kind="error" title="Broken" onRetry={() => {}} />);
+        expect(e).toContain('role="alert"');
+        expect(e).toContain('Try again');
+        expect(html(<StateView kind="offline" title="Offline" />)).toContain('data-kind="offline"');
+    });
+});
+
 describe('Tabs', () => {
     it('renders a labelled tablist', () => {
         const h = html(<Tabs label="Sections" items={[{ value: 'a', label: 'A', content: 'one' }]} />);
@@ -77,6 +89,7 @@ describe('every primitive has a story covering its states', () => {
         Tabs: ['Default', 'Disabled'],
         Table: ['Default', 'Loading', 'Empty', 'Error'],
         Toast: ['Default'],
+        StateView: ['Loading', 'Empty', 'Error', 'Offline', 'Success'],
     };
     const stories = readdirSync(dir).filter((f) => f.endsWith('.stories.tsx'));
     it.each(Object.entries(required))('%s', (name, exports) => {

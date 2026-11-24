@@ -515,3 +515,45 @@
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+/* ── state view (loading / empty / error / offline / success) ─────── */
+.ui-state {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-3);
+  text-align: center;
+  color: var(--text-dim);
+}
+.ui-state[data-kind='loading'] {
+  justify-items: stretch;
+  padding: var(--space-3) 0;
+}
+.ui-state[data-kind='loading'] .ui-skeleton[data-line='1'] {
+  width: 80%;
+}
+.ui-state[data-kind='loading'] .ui-skeleton[data-line='2'] {
+  width: 60%;
+}
+.ui-state-title {
+  margin: 0;
+  color: var(--text);
+  font-weight: 600;
+  font-size: var(--fs-md);
+}
+.ui-state-icon {
+  color: var(--text-faint);
+}
+.ui-state[data-kind='error'] .ui-state-icon {
+  color: var(--danger);
+}
+.ui-state[data-kind='offline'] .ui-state-icon {
+  color: var(--warn);
+}
+.ui-state[data-kind='success'] .ui-state-icon {
+  color: var(--ok);
+}
+.ui-state-actions {
+  display: flex;
+  gap: var(--space-2);
+}

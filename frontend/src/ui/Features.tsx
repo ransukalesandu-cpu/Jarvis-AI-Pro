@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react';
 import { sendRequest } from '../bridge/bridge';
 import { COMMAND_MAX, FEATURES, type CommandReason, type Feature, type FeatureSnapshot } from '../bridge/contract';
 import { useUi } from '../store';
-import { RESULT } from './CommandBar';
-import { Button, Input, Tabs } from '../components/ui';
+import { ResultNote } from './CommandBar';
+import { Button, Input, StateView, Tabs } from '../components/ui';
 
 /** One tab of the Features Hub. Buttons and the input only ever submit a typed command (same gate as the command bar). */
 export interface FeatureSpec {
@@ -131,9 +131,13 @@ export function FeaturesView({ tab, onTab, snap, canAsk, result, onSubmit, onRef
                 />
             </h1>
             <p>{spec.blurb}</p>
-            <p className="news-source" role="status">
-                {snap ? snap.summary : 'Loading…'}
-            </p>
+            {snap ? (
+                <p className="news-source" role="status">
+                    {snap.summary}
+                </p>
+            ) : (
+                <StateView kind="loading" title={`Loading ${spec.label}`} lines={2} />
+            )}
             <div className="seg feature-actions">
                 {spec.actions.map((a) => (
                     <Button key={a.label} variant="outline" tone="neutral" size="sm" disabled={!canAsk} onClick={() => send(a.text)}>
@@ -173,11 +177,9 @@ export function FeaturesView({ tab, onTab, snap, canAsk, result, onSubmit, onRef
                     ))}
                 </ul>
             ) : snap ? (
-                <p>Nothing here yet.</p>
+                <StateView kind="empty" title="Nothing here yet" message="Use the buttons above or ask JARVIS." />
             ) : null}
-            <p className="settings-note" role="status" aria-live="polite">
-                {result && result !== 'done' ? RESULT[result] : ''}
-            </p>
+            <ResultNote result={result} />
         </>
     );
     return (

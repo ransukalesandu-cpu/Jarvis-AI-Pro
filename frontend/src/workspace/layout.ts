@@ -105,6 +105,15 @@ export function clampRect(r: Pick<WindowRec, 'x' | 'y' | 'w' | 'h'>, vp: Viewpor
     return { x, y, w, h };
 }
 
+/** Width of the status-widget columns (widgets.left / widgets.right in app.css). */
+export const WIDGET_COLUMN = 188 + MARGIN;
+
+/** Is a status-widget column under an open window? Then the app hides that column instead of drawing both. */
+export function gutterCovered(windows: WindowRec[], vp: Viewport, side: 'left' | 'right'): boolean {
+    const col = { x: side === 'left' ? 0 : vp.w - WIDGET_COLUMN, y: TOP, w: WIDGET_COLUMN, h: vp.h - TOP };
+    return windows.some((w) => w.state === 'maximized' || (w.state === 'normal' && overlaps(col, w)));
+}
+
 /** The central band where the hologram lives. New windows are placed in the side gutters first. */
 export function hologramZone(vp: Viewport) {
     return { x: vp.w * 0.32, y: TOP, w: vp.w * 0.36, h: vp.h - TOP };

@@ -15,6 +15,7 @@ import { ReplyPanel } from './ui/Reply';
 import { Controls } from './ui/Controls';
 import { PendingWatch, StartupSkeleton, useStartupLoading, SyncStatus, Toast } from './ui/Feedback';
 import { useWindows } from './workspace/windows';
+import { gutterCovered } from './workspace/layout';
 import { sendRequest } from './bridge/bridge';
 import { TaskFlowWindow } from './taskflow/TaskFlowWindow';
 import { useFlows } from './taskflow/flows';
@@ -30,6 +31,10 @@ export default function App() {
     const loading = useStartupLoading();
     const pageRequested = useFlows((s) => s.pageRequested);
     const reducedMotion = useUi((s) => s.reducedMotion);
+    const gutters = {
+        left: useWindows((s) => gutterCovered(s.windows, s.viewport, 'left')),
+        right: useWindows((s) => gutterCovered(s.windows, s.viewport, 'right')),
+    };
     const clock24 = useUi((s) => s.clock24);
     const prefsLoaded = useUi((s) => s.prefsLoaded);
     const taskflowAutoShow = useFlows((s) => s.autoShow);
@@ -81,6 +86,8 @@ export default function App() {
             className="app"
             data-reduced={reducedMotion ? 'true' : 'false'}
             data-settings={settingsOpen ? 'open' : 'closed'}
+            data-left-covered={gutters.left ? 'true' : 'false'}
+            data-right-covered={gutters.right ? 'true' : 'false'}
             data-loading={loading ? 'true' : 'false'}
         >
             <div className="stage" role="region" aria-label="JARVIS hologram">

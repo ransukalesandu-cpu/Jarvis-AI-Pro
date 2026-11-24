@@ -21,7 +21,7 @@ export function TaskProgressPage() {
         <div className="tf-page">
             <div className="tf-page-hd">
                 <div>
-                    <h1>Task Progress</h1>
+                    <h1 className="ui-sr-only">Task Progress</h1>
                     <p>What JARVIS did for each command and task this session, step by step. Read-only; say “stop” to stop a task.</p>
                 </div>
                 <label className="tf-switch" title={`Pop up the task window for ${AUTO_HIDE_MS / 1000} s when a task starts`}>

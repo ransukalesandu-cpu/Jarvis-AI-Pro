@@ -33,12 +33,13 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npx vitest run
-      # Design tokens are generated from frontend/tokens/core.json (web CSS, 3D stage, Qt tokens.py + QSS).
-      - name: Generated tokens are up to date
+      # Design tokens come from frontend/tokens/core.json; hologram GLSL from src/hologram/shaders/**/*.glsl (+ LYGIA).
+      - name: Generated tokens and shaders are up to date
         run: |
           npm run tokens
-          cd .. && git add -N frontend/src/styles/tokens.css frontend/src/styles/tokens.ts jarvis/ui/theme
-          git diff --exit-code --stat frontend/src/styles/tokens.css frontend/src/styles/tokens.ts jarvis/ui/theme || { echo "::error::Tokens are stale. Run: cd frontend && npm run tokens, then commit."; exit 1; }
+          npm run shaders
+          cd .. && git add -N frontend/src/styles/tokens.css frontend/src/styles/tokens.ts jarvis/ui/theme frontend/src/hologram/shaders/glsl.generated.ts
+          git diff --exit-code --stat frontend/src/styles/tokens.css frontend/src/styles/tokens.ts jarvis/ui/theme frontend/src/hologram/shaders/glsl.generated.ts || { echo "::error::Generated files are stale. Run: cd frontend && npm run tokens && npm run shaders, then commit."; exit 1; }
       - run: npm run build
       # Every UI primitive has Storybook stories for its states; they must keep compiling.
       - run: npm run build-storybook -- -o /tmp/storybook

@@ -47,7 +47,7 @@ async def measure() -> list[tuple[str, str, int, int]]:
     async with async_playwright() as p:
         browser = await p.chromium.launch(args=["--use-gl=swiftshader", "--enable-webgl", "--ignore-gpu-blocklist"])
         page = await browser.new_page(viewport={"width": 1280, "height": 720})
-        await page.goto(f"http://localhost:{PORT}/")
+        await page.goto(f"http://localhost:{PORT}/?budget")
         await page.wait_for_function("globalThis.__jarvisUi !== undefined", timeout=30000)
         for style in ("brain", "circuit", "mechanical"):
             for tier in ("full", "balanced", "lite"):

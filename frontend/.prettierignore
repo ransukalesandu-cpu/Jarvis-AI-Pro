@@ -3,3 +3,4 @@ node_modules
 src/hologram/headMesh.json
 src/styles/tokens.css
 src/styles/tokens.ts
+src/hologram/shaders/glsl.generated.ts

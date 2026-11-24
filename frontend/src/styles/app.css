@@ -29,6 +29,19 @@ button {
 .stage canvas {
   display: block;
 }
+.stage-canvas {
+  position: absolute;
+  inset: 0;
+}
+.stage-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-md);
+}
 .vignette {
   position: absolute;
   inset: 0;

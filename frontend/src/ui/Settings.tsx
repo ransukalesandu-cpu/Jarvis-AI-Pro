@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Presence } from '../motion/Presence';
 import { sendRequest } from '../bridge/bridge';
 import type { CommandState, ControlAction, MemoryStatus, Net } from '../bridge/contract';
 import { visualState } from '../hologram/visualState';
@@ -9,7 +9,7 @@ import { useFlows } from '../taskflow/flows';
 import { useFresh } from '../ux/useFresh';
 import { useWindows } from '../workspace/windows';
 import { RESULT } from './CommandBar';
-import { DURATIONS } from '../styles/tokens';
+import { SPACE } from '../styles/tokens';
 import { Button, Segmented, Switch, Tabs } from '../components/ui';
 
 const ask = (action: ControlAction) => sendRequest({ kind: 'control.do', action });
@@ -300,17 +300,9 @@ export function SettingsPanel() {
     };
 
     return (
-        <AnimatePresence>
-            {settingsOpen && (
-                <motion.aside
-                    id="settings-panel"
-                    className="panel right glass settings"
-                    aria-label="System Control Center"
-                    initial={{ opacity: 0, x: reducedMotion ? 0 : 24 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: reducedMotion ? 0 : 24 }}
-                    transition={{ duration: reducedMotion ? 0 : DURATIONS.dur / 1000 }}
-                >
+        <Presence<HTMLElement> show={settingsOpen} reduced={reducedMotion} offset={{ x: SPACE['space-5'] }}>
+            {(ref) => (
+                <aside ref={ref} id="settings-panel" className="panel right glass settings" aria-label="System Control Center">
                     <h2>SYSTEM CONTROL CENTER</h2>
                     <Tabs
                         label="Settings sections"
@@ -321,8 +313,8 @@ export function SettingsPanel() {
                     <p className="settings-note" role="status" aria-live="polite">
                         {control && control !== 'done' ? RESULT[control] : ''}
                     </p>
-                </motion.aside>
+                </aside>
             )}
-        </AnimatePresence>
+        </Presence>
     );
 }

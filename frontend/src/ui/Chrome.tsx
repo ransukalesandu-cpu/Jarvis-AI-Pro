@@ -1,10 +1,10 @@
 import { Bot, Boxes, Brain, Home, LayoutDashboard, Menu, MonitorCog, Network, Newspaper, Settings, Sparkles, Timer, Workflow, X } from 'lucide-react';
 import { useUi, type Page } from '../store';
-import { motion, AnimatePresence } from 'motion/react';
+import { Presence } from '../motion/Presence';
 import { Island } from './Island';
 import { PAGE_WINDOWS, TITLES, type WinKind } from '../workspace/layout';
 import { useWindows } from '../workspace/windows';
-import { DURATIONS } from '../styles/tokens';
+import { SPACE } from '../styles/tokens';
 
 export const PAGES: { id: Page; label: string; icon: React.ReactNode }[] = [
     { id: 'home', label: 'Home', icon: <Home size={16} /> },
@@ -55,17 +55,9 @@ export function NavPanel() {
         return k ? kinds.includes(k) : page === id;
     };
     return (
-        <AnimatePresence>
-            {navOpen && (
-                <motion.nav
-                    id="nav-panel"
-                    className="panel left glass"
-                    aria-label="Pages"
-                    initial={{ opacity: 0, x: reduced ? 0 : -24 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: reduced ? 0 : -24 }}
-                    transition={{ duration: reduced ? 0 : DURATIONS.dur / 1000 }}
-                >
+        <Presence<HTMLElement> show={navOpen} reduced={reduced} offset={{ x: -SPACE['space-5'] }}>
+            {(ref) => (
+                <nav ref={ref} id="nav-panel" className="panel left glass" aria-label="Pages">
                     <h2>NAVIGATE</h2>
                     {PAGES.map((p) => (
                         <button key={p.id} className="nav-item" aria-current={isOpen(p.id) ? 'page' : undefined} onClick={() => go(p.id)}>
@@ -88,8 +80,8 @@ export function NavPanel() {
                             <span>{TITLES[t.kind]}</span>
                         </button>
                     ))}
-                </motion.nav>
+                </nav>
             )}
-        </AnimatePresence>
+        </Presence>
     );
 }

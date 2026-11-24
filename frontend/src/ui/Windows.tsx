@@ -1,4 +1,7 @@
+import { useRef } from 'react';
 import { Maximize2, Minimize2, Minus, X } from 'lucide-react';
+import { useLenis } from '../motion/useLenis';
+import { SPACE } from '../styles/tokens';
 import { Rnd } from 'react-rnd';
 import { JobsContent } from './Jobs';
 import { FeaturesContent } from './Features';
@@ -24,7 +27,18 @@ const CONTENT: Record<WinKind, () => React.ReactElement> = {
     features: FeaturesContent,
 };
 
-const STEP = 16;
+/** Scrollable window body; wheel scrolling is smoothed by Lenis (off with reduced motion). */
+function WinBody({ reduced, children }: { reduced: boolean; children: React.ReactNode }) {
+    const ref = useRef<HTMLDivElement>(null);
+    useLenis(ref, reduced);
+    return (
+        <div className="win-body" tabIndex={0} ref={ref}>
+            <div className="win-scroll">{children}</div>
+        </div>
+    );
+}
+
+const STEP = SPACE['space-4'];
 /** Keyboard equivalent of drag/resize: Alt+arrows move, Alt+Shift+arrows resize (when the window itself has focus). */
 function keyboard(e: React.KeyboardEvent, id: string, x: number, y: number, w: number, h: number) {
     if (!e.altKey || e.target !== e.currentTarget) return;
@@ -89,9 +103,9 @@ export function Windows() {
                                         </button>
                                     </span>
                                 </div>
-                                <div className="win-body" tabIndex={0}>
+                                <WinBody reduced={reduced}>
                                     <Body />
-                                </div>
+                                </WinBody>
                             </section>
                         </Rnd>
                     );

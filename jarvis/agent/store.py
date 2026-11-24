@@ -84,8 +84,17 @@ def redact(text: str, limit: int = _MAX_OUTPUT_CHARS) -> str:
     return value
 
 
-def _redact_value(value: Any, *, depth: int = 0) -> Any:
+_SENSITIVE_EVENT_KEYS = {
+    "api_key", "apikey", "access_token", "refresh_token", "token",
+    "password", "passwd", "secret", "client_secret", "credential",
+    "credentials", "authorization", "private_key",
+}
+
+
+def _redact_value(value: Any, *, depth: int = 0, sensitive: bool = False) -> Any:
     """Recursively scrub event payloads before they enter the journal."""
+    if sensitive:
+        return "[REDACTED]"
     if depth >= 12:
         return "[TRUNCATED]"
     if isinstance(value, str):
@@ -93,8 +102,16 @@ def _redact_value(value: Any, *, depth: int = 0) -> Any:
     if isinstance(value, dict):
         cleaned: dict[str, Any] = {}
         for key, item in list(value.items())[:256]:
-            safe_key = redact(str(key), 256)
-            cleaned[safe_key] = _redact_value(item, depth=depth + 1)
+            raw_key = str(key)
+            safe_key = redact(raw_key, 256)
+            normalized_key = raw_key.casefold().replace("-", "_").strip()
+            is_sensitive = (
+                normalized_key in _SENSITIVE_EVENT_KEYS
+                or normalized_key.endswith(("_api_key", "_token", "_password", "_secret"))
+            )
+            cleaned[safe_key] = _redact_value(
+                item, depth=depth + 1, sensitive=is_sensitive
+            )
         return cleaned
     if isinstance(value, (list, tuple)):
         return [_redact_value(item, depth=depth + 1) for item in value[:256]]

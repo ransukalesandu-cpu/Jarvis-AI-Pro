@@ -337,7 +337,6 @@ class Task:
     criteria: list[str] = field(default_factory=list)
     steps: list[TaskStep] = field(default_factory=list)
     id: str = field(default_factory=lambda: new_id("task"))
-    correlation_id: str = field(default_factory=lambda: new_id("corr"))
     state: TaskState = TaskState.PENDING
     cursor: int = 0
     source: str = "voice"
@@ -355,6 +354,8 @@ class Task:
     report: TaskReport | None = None
     version: int = 1
     journal: list[dict[str, Any]] = field(default_factory=list)
+    # Appended to preserve the positional constructor contract for older callers.
+    correlation_id: str = field(default_factory=lambda: new_id("corr"))
 
     # -- planning ----------------------------------------------------------
     def set_plan(self, steps: Iterable[TaskStep], criteria: Iterable[str] | None = None) -> None:

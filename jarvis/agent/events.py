@@ -27,13 +27,14 @@ class AgentEvent:
 
     kind: str                      # task_started | planning | step | progress | waiting | finished
     task_id: str = ""
-    correlation_id: str = ""
     state: TaskState = TaskState.PENDING
     progress: float = 0.0
     message: str = ""
     at: float = field(default_factory=time.time)
     data: dict[str, Any] = field(default_factory=dict)
     sequence: int = 0
+    # Appended to preserve the positional constructor contract for older callers.
+    correlation_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {

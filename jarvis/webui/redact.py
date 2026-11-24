@@ -7,22 +7,18 @@ from __future__ import annotations
 
 import re
 
+from jarvis.core.redaction import HOME_PATHS, LONG_OPAQUE, redact_secrets, redact_token_shapes
+
 MAX_LINE = 400
 KINDS = ("you", "ai", "sys", "err", "file")
 
+# Token shapes, long opaque tokens and home-folder paths are defined once in core/redaction.py.
+# The two below are kept here because they replace the label too ("token: x" -> "[redacted]").
 _SECRETS = [
-    re.compile(r"AIza[0-9A-Za-z_\-]{20,}"),                         # Google API keys
-    re.compile(r"\b(?:sk|pk|rk)-[A-Za-z0-9_\-]{12,}"),              # OpenAI/Anthropic/Stripe style
-    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}"),                    # GitHub tokens
-    re.compile(r"\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{5,}"),   # JWT
     re.compile(r"(?i)\b(bearer|token|api[_-]?key|secret|password|passwd|pin)\b\s*[:=]\s*\S+"),
     re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{12,}"),
-    re.compile(r"\b[A-Za-z0-9_\-]{40,}\b"),                          # any other long opaque token
 ]
-_HOME = [
-    (re.compile(r"(?i)([A-Z]:\\Users\\)[^\\\s]+"), r"\1~"),
-    (re.compile(r"(/home/|/Users/)[^/\s]+"), r"\1~"),
-]
+_HOME = HOME_PATHS
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 _CREDENTIAL = re.compile(r"^\s*/(owner|pin|auth|login|password)\b", re.IGNORECASE)
 _PREFIX = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_ ]{0,20}):\s?(.*)$", re.DOTALL)
@@ -54,8 +50,11 @@ def classify(line: str) -> tuple[str, str] | None:
 
 
 def scrub(text: str) -> str:
+    text = redact_token_shapes(text, placeholder="[redacted]")
     for rx in _SECRETS:
         text = rx.sub("[redacted]", text)
+    text = redact_secrets(text, placeholder="[redacted]")
+    text = LONG_OPAQUE.sub("[redacted]", text)
     for rx, rep in _HOME:
         text = rx.sub(rep, text)
     text = " ".join(text.split())

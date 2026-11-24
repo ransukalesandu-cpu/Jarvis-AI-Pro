@@ -2,7 +2,7 @@
 
 import unittest
 
-from jarvis.agent.events import EventBus, event_from_task
+from jarvis.agent.events import AgentEvent, EventBus, event_from_task
 from jarvis.agent.models import Task, TaskState
 from jarvis.agent.runner import RunnerConfig, TaskRunner
 
@@ -16,10 +16,20 @@ class CorrelationIdTests(unittest.TestCase):
 
         self.assertEqual(restored.correlation_id, task.correlation_id)
 
+    def test_task_positional_constructor_remains_compatible(self):
+        task = Task("legacy", [], [], "task-legacy", TaskState.PENDING)
+        self.assertEqual(task.state, TaskState.PENDING)
+        self.assertTrue(task.correlation_id.startswith("corr-"))
+
     def test_legacy_task_payload_gets_a_correlation_id(self):
         restored = Task.from_dict({"objective": "legacy"})
 
         self.assertTrue(restored.correlation_id.startswith("corr-"))
+
+    def test_event_positional_constructor_remains_compatible(self):
+        event = AgentEvent("progress", "task-legacy", TaskState.RUNNING)
+        self.assertEqual(event.state, TaskState.RUNNING)
+        self.assertEqual(event.correlation_id, "")
 
     def test_event_carries_task_correlation_id(self):
         task = Task(objective="trace events")

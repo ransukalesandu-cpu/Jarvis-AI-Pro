@@ -1,0 +1,467 @@
+{
+ "button_disabled": {
+  "class": "Button",
+  "controls": [
+   {
+    "class": "Button",
+    "description": "",
+    "enabled": true,
+    "name": "",
+    "tone": "primary",
+    "uiSize": "md",
+    "variant": "solid"
+   },
+   {
+    "busy": false,
+    "class": "PrimaryPushButton",
+    "description": "",
+    "enabled": false,
+    "name": "Locked",
+    "tone": "primary",
+    "uiSize": "md",
+    "variant": "solid"
+   }
+  ]
+ },
+ "button_ghost": {
+  "class": "Button",
+  "controls": [
+   {
+    "class": "Button",
+    "description": "",
+    "enabled": true,
+    "name": "",
+    "tone": "neutral",
+    "uiSize": "lg",
+    "variant": "ghost"
+   },
+   {
+    "busy": false,
+    "class": "TransparentPushButton",
+    "description": "",
+    "enabled": true,
+    "name": "More",
+    "tone": "neutral",
+    "uiSize": "lg",
+    "variant": "ghost"
+   }
+  ]
+ },
+ "button_loading": {
+  "class": "Button",
+  "controls": [
+   {
+    "class": "Button",
+    "description": "",
+    "enabled": true,
+    "name": "",
+    "tone": "primary",
+    "uiSize": "md",
+    "variant": "solid"
+   },
+   {
+    "busy": true,
+    "class": "PrimaryPushButton",
+    "description": "busy",
+    "enabled": false,
+    "name": "Saving",
+    "tone": "primary",
+    "uiSize": "md",
+    "variant": "solid"
+   }
+  ]
+ },
+ "button_outline_danger": {
+  "class": "Button",
+  "controls": [
+   {
+    "class": "Button",
+    "description": "",
+    "enabled": true,
+    "name": "",
+    "tone": "danger",
+    "uiSize": "sm",
+    "variant": "outline"
+   },
+   {
+    "busy": false,
+    "class": "PushButton",
+    "description": "",
+    "enabled": true,
+    "name": "Delete",
+    "tone": "danger",
+    "uiSize": "sm",
+    "variant": "outline"
+   }
+  ]
+ },
+ "button_solid": {
+  "class": "Button",
+  "controls": [
+   {
+    "class": "Button",
+    "description": "",
+    "enabled": true,
+    "name": "",
+    "tone": "primary",
+    "uiSize": "md",
+    "variant": "solid"
+   },
+   {
+    "busy": false,
+    "class": "PrimaryPushButton",
+    "description": "",
+    "enabled": true,
+    "name": "Save",
+    "tone": "primary",
+    "uiSize": "md",
+    "variant": "solid"
+   }
+  ]
+ },
+ "checkbox": {
+  "class": "Checkbox",
+  "controls": [
+   {
+    "class": "CheckBox",
+    "description": "",
+    "enabled": true,
+    "invalid": false,
+    "name": "Show Task Flow"
+   }
+  ]
+ },
+ "checkbox_invalid": {
+  "class": "Checkbox",
+  "controls": [
+   {
+    "class": "CheckBox",
+    "description": "Required.",
+    "enabled": true,
+    "invalid": true,
+    "name": "Agree"
+   }
+  ]
+ },
+ "collapsible": {
+  "class": "Collapsible",
+  "controls": []
+ },
+ "dialog": {
+  "class": "Dialog",
+  "controls": [
+   {
+    "class": "Dialog",
+    "description": "",
+    "enabled": true,
+    "name": "Rename routine"
+   }
+  ]
+ },
+ "input": {
+  "class": "Input",
+  "controls": [
+   {
+    "busy": false,
+    "class": "LineEdit",
+    "description": "Shown in Task Progress.",
+    "enabled": true,
+    "invalid": false,
+    "name": "Task name",
+    "tone": "neutral",
+    "uiSize": "md",
+    "variant": "outline"
+   }
+  ]
+ },
+ "input_disabled": {
+  "class": "Input",
+  "controls": [
+   {
+    "busy": false,
+    "class": "LineEdit",
+    "description": "",
+    "enabled": false,
+    "invalid": false,
+    "name": "Task name",
+    "tone": "neutral",
+    "uiSize": "md",
+    "variant": "outline"
+   }
+  ]
+ },
+ "input_invalid": {
+  "class": "Input",
+  "controls": [
+   {
+    "busy": false,
+    "class": "LineEdit",
+    "description": "Give the task a name.",
+    "enabled": true,
+    "invalid": true,
+    "name": "Task name",
+    "tone": "neutral",
+    "uiSize": "md",
+    "variant": "outline"
+   }
+  ]
+ },
+ "segmented": {
+  "class": "Segmented",
+  "controls": [
+   {
+    "class": "SegmentedWidget",
+    "description": "",
+    "enabled": true,
+    "name": "Centre"
+   }
+  ]
+ },
+ "select": {
+  "class": "Select",
+  "controls": [
+   {
+    "class": "ComboBox",
+    "description": "",
+    "enabled": true,
+    "invalid": false,
+    "name": "Text brain"
+   }
+  ]
+ },
+ "select_empty": {
+  "class": "Select",
+  "controls": [
+   {
+    "class": "ComboBox",
+    "description": "",
+    "enabled": false,
+    "invalid": false,
+    "name": "Text brain"
+   }
+  ]
+ },
+ "sheet": {
+  "class": "Sheet",
+  "controls": [
+   {
+    "class": "Sheet",
+    "description": "",
+    "enabled": true,
+    "name": "Phone"
+   },
+   {
+    "class": "TransparentToolButton",
+    "description": "",
+    "enabled": true,
+    "name": "Close"
+   }
+  ]
+ },
+ "spark": {
+  "class": "SparkChart",
+  "controls": [
+   {
+    "class": "SparkChart",
+    "description": "CPU: now 30%, min 10, max 50 over 3 s",
+    "enabled": true,
+    "name": ""
+   }
+  ]
+ },
+ "spark_empty": {
+  "class": "SparkChart",
+  "controls": [
+   {
+    "class": "SparkChart",
+    "description": "CPU: no samples yet",
+    "enabled": true,
+    "name": ""
+   }
+  ]
+ },
+ "switch": {
+  "class": "Switch",
+  "controls": [
+   {
+    "class": "SwitchButton",
+    "description": "",
+    "enabled": true,
+    "name": "Reduced motion"
+   }
+  ]
+ },
+ "table": {
+  "class": "Table",
+  "controls": [
+   {
+    "class": "TableWidget",
+    "description": "",
+    "enabled": true,
+    "name": "Jobs"
+   },
+   {
+    "class": "Button",
+    "description": "",
+    "enabled": true,
+    "name": "",
+    "tone": "neutral",
+    "uiSize": "sm",
+    "variant": "outline"
+   },
+   {
+    "busy": false,
+    "class": "PushButton",
+    "description": "",
+    "enabled": true,
+    "name": "Try again",
+    "tone": "neutral",
+    "uiSize": "sm",
+    "variant": "outline"
+   }
+  ]
+ },
+ "table_empty": {
+  "class": "Table",
+  "controls": [
+   {
+    "class": "Table",
+    "description": "No jobs this session.",
+    "enabled": true,
+    "name": ""
+   },
+   {
+    "class": "TableWidget",
+    "description": "",
+    "enabled": true,
+    "name": "Jobs"
+   },
+   {
+    "class": "Button",
+    "description": "",
+    "enabled": true,
+    "name": "",
+    "tone": "neutral",
+    "uiSize": "sm",
+    "variant": "outline"
+   },
+   {
+    "busy": false,
+    "class": "PushButton",
+    "description": "",
+    "enabled": true,
+    "name": "Try again",
+    "tone": "neutral",
+    "uiSize": "sm",
+    "variant": "outline"
+   }
+  ]
+ },
+ "table_error": {
+  "class": "Table",
+  "controls": [
+   {
+    "class": "Table",
+    "description": "Could not read jobs.",
+    "enabled": true,
+    "name": ""
+   },
+   {
+    "class": "TableWidget",
+    "description": "",
+    "enabled": true,
+    "name": "Jobs"
+   },
+   {
+    "class": "Button",
+    "description": "",
+    "enabled": true,
+    "name": "",
+    "tone": "neutral",
+    "uiSize": "sm",
+    "variant": "outline"
+   },
+   {
+    "busy": false,
+    "class": "PushButton",
+    "description": "",
+    "enabled": true,
+    "name": "Try again",
+    "tone": "neutral",
+    "uiSize": "sm",
+    "variant": "outline"
+   }
+  ]
+ },
+ "table_loading": {
+  "class": "Table",
+  "controls": [
+   {
+    "class": "Table",
+    "description": "Loading\u2026",
+    "enabled": true,
+    "name": ""
+   },
+   {
+    "class": "TableWidget",
+    "description": "",
+    "enabled": true,
+    "name": "Jobs"
+   },
+   {
+    "class": "Button",
+    "description": "",
+    "enabled": true,
+    "name": "",
+    "tone": "neutral",
+    "uiSize": "sm",
+    "variant": "outline"
+   },
+   {
+    "busy": false,
+    "class": "PushButton",
+    "description": "",
+    "enabled": true,
+    "name": "Try again",
+    "tone": "neutral",
+    "uiSize": "sm",
+    "variant": "outline"
+   }
+  ]
+ },
+ "tabs": {
+  "class": "Tabs",
+  "controls": [
+   {
+    "class": "Pivot",
+    "description": "",
+    "enabled": true,
+    "name": "Settings sections"
+   },
+   {
+    "class": "QLabel",
+    "description": "",
+    "enabled": true,
+    "name": "Voice"
+   },
+   {
+    "class": "QLabel",
+    "description": "",
+    "enabled": true,
+    "name": "General"
+   }
+  ]
+ },
+ "textarea": {
+  "class": "Textarea",
+  "controls": [
+   {
+    "class": "PlainTextEdit",
+    "description": "",
+    "enabled": true,
+    "invalid": false,
+    "name": "Notes"
+   }
+  ]
+ }
+}

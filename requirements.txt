@@ -12,6 +12,15 @@
 # package, no OpenGL and no GPU. Nothing below was added for it.
 PyQt6>=6.6,<7
 PyQt6-WebEngine>=6.6,<7
+# Qt component set (jarvis/ui/components), the desktop twin of the web UI primitives.
+# PyQt-Fluent-Widgets and PyQt-Frameless-Window are GPLv3 like PyQt6 itself: fine for
+# private/open-source use; a closed-source commercial build needs their commercial licences.
+PyQt6-Fluent-Widgets>=1.11,<2
+PyQt6-Frameless-Window>=0.8,<1
+QtAwesome>=1.4,<2          # icon fonts for the Qt components
+pyqtgraph>=0.14,<1         # realtime charts (SparkChart)
+superqt>=0.9,<1            # collapsible sections
+qasync>=0.28,<1            # asyncio <-> Qt event loop for component IO
 sounddevice>=0.4,<1
 webrtcvad-wheels>=2.0.14,<3  # lightweight speech/noise gate for voice barge-in
 edge-tts>=7,<8             # default cloud TTS engine

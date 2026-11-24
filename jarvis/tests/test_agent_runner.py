@@ -464,6 +464,21 @@ class RunnerExecutionTests(unittest.TestCase):
         self.assertEqual(runner.status()["queue_depth"], 1)
         self.assertEqual(runner.status()["queued"], [first.id])
 
+class ResumeTaskDuplicateGuardTests(unittest.TestCase):
+    def test_resume_rejects_task_that_is_already_active(self):
+        runner, _, _ = make_runner(self, steps=[])
+        task = Task(objective="already running")
+        task.transition(TaskState.PLANNING, "queued")
+        task.transition(TaskState.RUNNING, "worker started")
+        runner.store.save(task)
+        runner._active = task
+
+        with self.assertRaisesRegex(RuntimeError, "already active"):
+            runner.resume_task(task.id, background=True)
+
+        self.assertEqual(runner.status()["queued"], [])
+
+
 class ExecutorTests(unittest.TestCase):
     def _context(self, task=None, **kwargs) -> ExecutionContext:
         task = task or Task(objective="t")

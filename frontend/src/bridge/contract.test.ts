@@ -33,7 +33,9 @@ describe('ui.perf', () => {
 describe('ui.prefs', () => {
     const good = { reducedMotion: true, clock24: false, taskflowAutoShow: true, centerStyle: 'brain', faceStyle: 'circuit' };
     it('accepts exactly the three boolean prefs, or null', () => {
-        expect(parseHostEvent(j({ type: 'ui.prefs', prefs: good }))).toEqual({ type: 'ui.prefs', prefs: good });
+        // prefs saved before the language setting existed load as English
+        expect(parseHostEvent(j({ type: 'ui.prefs', prefs: good }))).toEqual({ type: 'ui.prefs', prefs: { ...good, lang: 'en' } });
+        expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { ...good, lang: 'si' } }))).toEqual({ type: 'ui.prefs', prefs: { ...good, lang: 'si' } });
         expect(parseHostEvent(j({ type: 'ui.prefs', prefs: null }))).toEqual({ type: 'ui.prefs', prefs: null });
     });
     it('rejects extra keys, missing keys and non-booleans', () => {
@@ -41,6 +43,7 @@ describe('ui.prefs', () => {
         expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { clock24: true } }))).toBeNull();
         expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { ...good, clock24: 1 } }))).toBeNull();
         expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { ...good, centerStyle: 'evil' } }))).toBeNull();
+        expect(parseHostEvent(j({ type: 'ui.prefs', prefs: { ...good, lang: 'fr' } }))).toBeNull();
     });
 });
 

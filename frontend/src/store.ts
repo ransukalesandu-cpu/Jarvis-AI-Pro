@@ -72,6 +72,7 @@ export interface UiState {
     centerStyle: CenterStyle;
     brainShape: BrainShapeRequest | null;
     clock24: boolean;
+    lang: 'en' | 'si';
     prefsLoaded: boolean; // true once Python answered prefs.load (until then nothing is saved over them)
     workspaceNames: string[];
     paletteOpen: boolean;
@@ -93,6 +94,7 @@ export interface UiState {
     setCenterStyle: (v: CenterStyle) => void;
     formShape: (shape: ShapeName, text?: string) => void;
     setClock24: (v: boolean) => void;
+    setLang: (l: 'en' | 'si') => void;
     setPalette: (open?: boolean) => void;
 }
 
@@ -132,6 +134,7 @@ export const useUi = create<UiState>((set) => ({
     centerStyle: 'brain',
     brainShape: null,
     clock24: true,
+    lang: 'en',
     prefsLoaded: false,
     history: [],
     workspaceNames: [],
@@ -203,6 +206,7 @@ export const useUi = create<UiState>((set) => ({
                               clock24: e.prefs.clock24,
                               centerStyle: e.prefs.centerStyle,
                               faceStyle: e.prefs.faceStyle,
+                              lang: e.prefs.lang,
                           }
                         : { prefsLoaded: true };
                 default:
@@ -226,6 +230,7 @@ export const useUi = create<UiState>((set) => ({
     setCenterStyle: (centerStyle) => set({ centerStyle }),
     formShape: (shape, text = '') => set((s) => ({ brainShape: { shape, text, seq: (s.brainShape?.seq ?? 0) + 1 } })),
     setClock24: (clock24) => set({ clock24 }),
+    setLang: (lang) => set({ lang }),
     setPalette: (open) => set((s) => ({ paletteOpen: open ?? !s.paletteOpen })),
 }));
 

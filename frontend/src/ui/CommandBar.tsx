@@ -4,6 +4,7 @@ import { COMMAND_MAX, type CommandReason, type CommandState } from '../bridge/co
 import { sendRequest } from '../bridge/bridge';
 import { useUi } from '../store';
 import { useFresh } from '../ux/useFresh';
+import { useT } from '../i18n';
 
 export const BLOCKED: Record<Exclude<CommandState, 'ok'>, string> = {
     locked: 'JARVIS is locked. Unlock it with the native prompt.',
@@ -29,12 +30,20 @@ export const RESULT: Record<CommandReason, string> = {
 
 const OK_RESULTS: CommandReason[] = ['sent', 'done', 'noop'];
 
+/** A command/control outcome in the current language (RESULT / BLOCKED above stay the English originals). */
+export function useResultText() {
+    const T = useT();
+    return (r: CommandReason) =>
+        r in BLOCKED ? T(`blocked.${r as keyof typeof BLOCKED}`) : T(`result.${r as Exclude<CommandReason, keyof typeof BLOCKED>}`, { max: COMMAND_MAX });
+}
+
 /** Outcome of the last button action in a window: success in green, a refusal in amber, nothing while idle. */
 export function ResultNote({ result }: { result: CommandReason | null }) {
+    const text = useResultText();
     const ok = result !== null && OK_RESULTS.includes(result);
     return (
         <p className="settings-note result-note" role="status" aria-live="polite" data-tone={result ? (ok ? 'ok' : 'warn') : undefined}>
-            {result ? RESULT[result] : ''}
+            {result ? text(result) : ''}
         </p>
     );
 }
@@ -52,23 +61,25 @@ export interface ViewProps {
 /** Pure view: everything it shows comes from props, so it is easy to test. */
 export function CommandBarView({ state, last, linked, text, onText, onSubmit, inputRef }: ViewProps) {
     const ok = state === 'ok' && linked;
-    const note = ok ? (last ? RESULT[last] : '') : state === 'ok' ? 'Connecting…' : BLOCKED[state];
+    const T = useT();
+    const text_ = useResultText();
+    const note = ok ? (last ? text_(last) : '') : state === 'ok' ? T('w.connecting') : T(`blocked.${state}`);
     return (
-        <form className="cmdbar glass" onSubmit={onSubmit} role="search" aria-label="Ask JARVIS">
+        <form className="cmdbar glass" onSubmit={onSubmit} role="search" aria-label={T('cmd.ask')}>
             <input
                 ref={inputRef}
                 value={text}
                 onChange={(e) => onText(e.target.value)}
                 maxLength={COMMAND_MAX}
                 disabled={!ok}
-                placeholder={ok ? 'Ask JARVIS…  (Ctrl+L)' : 'Typing is unavailable'}
-                aria-label="Command for JARVIS"
+                placeholder={ok ? T('cmd.placeholder') : T('cmd.unavailable')}
+                aria-label={T('cmd.label')}
                 autoComplete="off"
                 spellCheck={false}
                 type="text"
                 name="jarvis-command"
             />
-            <button type="submit" disabled={!ok || !text.trim()} aria-label="Send">
+            <button type="submit" disabled={!ok || !text.trim()} aria-label={T('cmd.send')}>
                 <SendHorizonal size={16} />
             </button>
             <span className="cmdbar-note" role="status" aria-live="polite">

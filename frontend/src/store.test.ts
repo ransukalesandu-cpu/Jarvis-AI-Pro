@@ -86,9 +86,10 @@ describe('ui.prefs and result notes', () => {
         expect(useUi.getState()).toMatchObject({ prefsLoaded: true, reducedMotion: false, clock24: true });
         useUi.getState().apply({
             type: 'ui.prefs',
-            prefs: { reducedMotion: true, clock24: false, taskflowAutoShow: false, centerStyle: 'hologram', faceStyle: 'mechanical' },
+            prefs: { reducedMotion: true, clock24: false, taskflowAutoShow: false, centerStyle: 'hologram', faceStyle: 'mechanical', lang: 'si' },
         });
-        expect(useUi.getState()).toMatchObject({ reducedMotion: true, clock24: false, centerStyle: 'hologram', faceStyle: 'mechanical' });
+        expect(useUi.getState()).toMatchObject({ reducedMotion: true, clock24: false, centerStyle: 'hologram', faceStyle: 'mechanical', lang: 'si' });
+        useUi.setState({ lang: 'en' });
     });
     it('counts every result so the same reason twice is shown again', () => {
         const before = useUi.getState().resultSeq;

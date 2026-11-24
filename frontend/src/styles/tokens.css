@@ -31,7 +31,7 @@
   --fs-2xl: 20px;
   --radius-xs: 3px;
   --radius-round: 50%; /* Surface-specific colours (Task Flow canvas, holo backdrop, accents) */
-  --font: 'Segoe UI', 'Inter', 'Nirmala UI', 'Iskoola Pota', 'Noto Sans Sinhala', system-ui, -apple-system, sans-serif;
+  --font: 'Segoe UI', 'Inter', 'Noto Sans Sinhala', 'Nirmala UI', 'Iskoola Pota', system-ui, -apple-system, sans-serif; /* Noto Sans Sinhala is bundled (fontsource), so Sinhala looks the same on every PC; its files load only when Sinhala text is shown (unicode-range). */
   --mono: 'Cascadia Mono', 'JetBrains Mono', Consolas, monospace;
   --dur-none: 0ms;
   --dur-stagger: 150ms;

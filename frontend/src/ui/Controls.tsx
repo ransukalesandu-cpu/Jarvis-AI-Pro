@@ -2,7 +2,8 @@ import { Maximize, Mic, MicOff, Square } from 'lucide-react';
 import { sendRequest } from '../bridge/bridge';
 import type { ControlAction, CommandReason } from '../bridge/contract';
 import { useUi } from '../store';
-import { RESULT } from './CommandBar';
+import { useResultText } from './CommandBar';
+import { useT } from '../i18n';
 import { useFresh } from '../ux/useFresh';
 
 export interface ControlsProps {
@@ -16,26 +17,28 @@ export interface ControlsProps {
 /** Interrupt / mic / fullscreen. Python decides; the buttons only ask. Unmuting is refused while locked or in guest mode. */
 export function ControlsView({ muted, busy, linked, result, onDo }: ControlsProps) {
     const off = !linked;
+    const T = useT();
+    const text = useResultText();
     return (
-        <section className="region-wrap" aria-label="Assistant controls panel">
-            <div className="controls glass" role="toolbar" aria-label="Assistant controls">
-                <button disabled={off || !busy} onClick={() => onDo('interrupt')} aria-label="Interrupt JARVIS" title="Interrupt">
+        <section className="region-wrap" aria-label={T('dock.panel')}>
+            <div className="controls glass" role="toolbar" aria-label={T('dock.toolbar')}>
+                <button disabled={off || !busy} onClick={() => onDo('interrupt')} aria-label={T('dock.interrupt')} title={T('dock.interrupt')}>
                     <Square size={15} />
                 </button>
                 <button
                     disabled={off}
                     onClick={() => onDo(muted ? 'unmute' : 'mute')}
                     aria-pressed={muted}
-                    aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
-                    title={muted ? 'Unmute' : 'Mute'}
+                    aria-label={muted ? T('dock.unmute') : T('dock.mute')}
+                    title={muted ? T('dock.unmute') : T('dock.mute')}
                 >
                     {muted ? <MicOff size={15} /> : <Mic size={15} />}
                 </button>
-                <button disabled={off} onClick={() => onDo('fullscreen')} aria-label="Toggle fullscreen" title="Fullscreen">
+                <button disabled={off} onClick={() => onDo('fullscreen')} aria-label={T('dock.fullscreen')} title={T('dock.fullscreen')}>
                     <Maximize size={15} />
                 </button>
                 <span className="controls-note" role="status" aria-live="polite">
-                    {result && result !== 'done' ? RESULT[result] : ''}
+                    {result && result !== 'done' ? text(result) : ''}
                 </span>
             </div>
         </section>

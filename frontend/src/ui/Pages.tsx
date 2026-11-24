@@ -3,6 +3,7 @@ import { Spark } from './Spark';
 import type { LogTag } from '../bridge/contract';
 import { useUi } from '../store';
 import { Button, StateView } from '../components/ui';
+import { useT } from '../i18n';
 
 /** Whether live data can arrive: 'wait' while connecting, 'offline' with no backend, else 'ok'. */
 export function useLink(): 'wait' | 'offline' | 'ok' {
@@ -12,9 +13,10 @@ export function useLink(): 'wait' | 'offline' | 'ok' {
 
 /** Shown instead of live data while there is none to show. */
 export function NoData({ link, what }: { link: 'wait' | 'offline' | 'ok'; what: string }) {
-    if (link === 'offline') return <StateView kind="offline" title="JARVIS is not connected" message={`${what} appears when JARVIS is running.`} />;
-    if (link === 'ok') return <StateView kind="empty" title="Not reported yet" message={`${what} shows here as soon as JARVIS reports it.`} />;
-    return <StateView kind="loading" title={`Loading ${what.toLowerCase()}`} />;
+    const T = useT();
+    if (link === 'offline') return <StateView kind="offline" title={T('s.notConnected')} message={T('s.appearsWhenRunning', { what })} />;
+    if (link === 'ok') return <StateView kind="empty" title={T('s.notReported')} message={T('s.showsWhenReported', { what })} />;
+    return <StateView kind="loading" title={T('s.loading', { what: what.toLowerCase() })} />;
 }
 
 const fmt = (n: number | undefined | null, unit = '%') => (n === undefined || n === null ? '--' : `${Math.round(n)}${unit}`);
@@ -23,11 +25,12 @@ export function MonitorContent() {
     const m = useUi((s) => s.metrics);
     const sr = useUi((s) => s.series);
     const link = useLink();
-    if (!m) return <NoData link={link} what="Live system data" />;
+    const T = useT();
+    if (!m) return <NoData link={link} what={T('monitor.what')} />;
     return (
         <>
-            <h1 className="ui-sr-only">System Monitor</h1>
-            <p>This computer, live. Charts show the last two minutes.</p>
+            <h1 className="ui-sr-only">{T('win.monitor')}</h1>
+            <p>{T('monitor.intro')}</p>
             <Spark label="CPU" data={sr.cpu} unit="%" max={100} />
             <Spark label="RAM" data={sr.ram} unit="%" max={100} tone="amber" />
             <Spark label="Network ↓" data={sr.down} unit=" KB/s" />
@@ -59,25 +62,26 @@ export function MonitorContent() {
 export function ModelsContent() {
     const p = useUi((s) => s.provider);
     const link = useLink();
-    if (!p) return <NoData link={link} what="The AI model in use" />;
+    const T = useT();
+    if (!p) return <NoData link={link} what={T('models.what')} />;
     return (
         <>
-            <h1 className="ui-sr-only">AI Models</h1>
-            <p>Voice always runs on Gemini Live. Typed requests use the text model below; change it in the classic settings.</p>
+            <h1 className="ui-sr-only">{T('win.models')}</h1>
+            <p>{T('models.intro')}</p>
             <div className="row">
-                <span>Text provider</span>
+                <span>{T('models.provider')}</span>
                 <span>{p.provider}</span>
             </div>
             <div className="row">
-                <span>Model</span>
+                <span>{T('models.model')}</span>
                 <span>{p.model}</span>
             </div>
             <div className="row">
-                <span>API key</span>
+                <span>{T('models.key')}</span>
                 <span>{p.connected ? 'configured' : 'missing'}</span>
             </div>
             <div className="row">
-                <span>Fallback active</span>
+                <span>{T('models.fallback')}</span>
                 <span>{p.fallback ? 'yes' : 'no'}</span>
             </div>
         </>
@@ -87,12 +91,13 @@ export function ModelsContent() {
 export function ActivityContent() {
     const history = useUi((s) => s.history);
     const a = useUi((s) => s.assistant);
+    const T = useT();
     return (
         <>
-            <h1 className="ui-sr-only">Activity Center</h1>
-            <p>What JARVIS has been doing this session. Step-by-step task progress is in Task Progress.</p>
+            <h1 className="ui-sr-only">{T('win.activity')}</h1>
+            <p>{T('activity.intro')}</p>
             <div className="row">
-                <span>Current</span>
+                <span>{T('activity.current')}</span>
                 <span>{a}</span>
             </div>
             {[...history].reverse().map((h, i) => (
@@ -101,7 +106,7 @@ export function ActivityContent() {
                     <span>{h.state}</span>
                 </div>
             ))}
-            {history.length === 0 && <StateView kind="empty" title="Nothing yet" message="Talk to JARVIS or give it a task; each change shows here." />}
+            {history.length === 0 && <StateView kind="empty" title={T('activity.emptyTitle')} message={T('activity.empty')} />}
         </>
     );
 }
@@ -112,14 +117,15 @@ const TAG_LABEL: Record<LogTag, string> = { you: 'You', ai: 'JARVIS', sys: 'Syst
 export function LogView({ lines, onClear }: { lines: { id: number; at: number; tag: LogTag; text: string }[]; onClear: () => void }) {
     const box = useRef<HTMLDivElement>(null);
     const stick = useRef(true);
+    const T = useT();
     useEffect(() => {
         const el = box.current;
         if (el && stick.current) el.scrollTop = el.scrollHeight;
     }, [lines]);
     return (
         <>
-            <h1 className="ui-sr-only">Conversation Log</h1>
-            <p>Read-only. Sensitive values are hidden, and nothing shows while JARVIS is locked or asking for a PIN.</p>
+            <h1 className="ui-sr-only">{T('win.log')}</h1>
+            <p>{T('log.intro')}</p>
             <div
                 className="logbox"
                 ref={box}
@@ -132,7 +138,7 @@ export function LogView({ lines, onClear }: { lines: { id: number; at: number; t
                     stick.current = t.scrollHeight - t.scrollTop - t.clientHeight < 24;
                 }}
             >
-                {lines.length === 0 && <StateView kind="empty" title="No messages yet" message="What you and JARVIS say this session appears here." />}
+                {lines.length === 0 && <StateView kind="empty" title={T('log.emptyTitle')} message={T('log.empty')} />}
                 {lines.map((l) => (
                     <div key={l.id} className={`log-line log-${l.tag}`}>
                         <span className="log-tag">{TAG_LABEL[l.tag]}</span>
@@ -141,7 +147,7 @@ export function LogView({ lines, onClear }: { lines: { id: number; at: number; t
                 ))}
             </div>
             <Button variant="outline" tone="neutral" size="sm" onClick={onClear} disabled={lines.length === 0}>
-                Clear view
+                {T('log.clear')}
             </Button>
         </>
     );

@@ -142,7 +142,7 @@ class TaskRunner:
         return self._active
 
     def submit(self, objective: str, *, criteria: list[str] | None = None,
-               source: str = "voice") -> Task:
+               source: str = "voice", correlation_id: str | None = None) -> Task:
         """Create a pending task, reserving bounded capacity before cloud I/O."""
         text = str(objective or "").strip()
         if not text:
@@ -151,6 +151,7 @@ class TaskRunner:
             objective=text[:1200],
             criteria=[str(item) for item in (criteria or [])][:6],
             source=source,
+            correlation_id=str(correlation_id or "").strip() or __import__("uuid").uuid4().hex,
             max_runtime_s=float(self.config.max_runtime_s),
             retry_budget=int(self.config.retry_budget),
         )

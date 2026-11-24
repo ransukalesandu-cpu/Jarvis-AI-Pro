@@ -70,6 +70,11 @@ def attach(window):
         host._jobs_feed = JobsFeed(mgr)
     except (ImportError, RuntimeError):
         host.bridge.jobs = None
+    try:   # Windows: title bar in the token colours, so the native frame matches the web UI
+        from jarvis.ui.components.shell import apply_window_chrome
+        apply_window_chrome(window)
+    except ImportError:
+        pass   # Qt component deps not installed: keep the system frame
     host.setGeometry(cw.rect())
     cw.installEventFilter(_Fit(cw, host))
     host.show()

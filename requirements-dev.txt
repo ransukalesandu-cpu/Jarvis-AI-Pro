@@ -9,6 +9,7 @@
 
 pytest>=8,<10
 pytest-cov>=5,<8
+pytest-qt>=4.4,<5       # Qt component tests (jarvis/tests/test_qt_components.py)
 ruff>=0.9,<1
 pre-commit>=3.7,<5
 # Transitive (pre-commit -> virtualenv). Floored so the resolved version includes the filelock security fixes.

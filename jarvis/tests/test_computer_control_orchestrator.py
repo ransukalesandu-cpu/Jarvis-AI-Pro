@@ -345,6 +345,38 @@ class TestAgents:
         with pytest.raises(ValueError):
             custom.register(AppAgent("b", "", frozenset({"t1"})))
 
+    def test_registry_rejects_invalid_descriptors_without_partial_registration(self):
+        reg = AgentRegistry()
+        invalid = (
+            AppAgent("", "", frozenset({"tool"})),
+            AppAgent("empty", "", frozenset()),
+            AppAgent("blank-tool", "", frozenset({" "})),
+            AppAgent("bad-recovery", "", frozenset({"tool"}), recover="not-callable"),
+        )
+        for agent in invalid:
+            with pytest.raises((TypeError, ValueError)):
+                reg.register(agent)
+        assert reg.names() == []
+        assert reg.for_tool("tool") is None
+
+    def test_registry_ownership_index_is_stable_and_constant_lookup(self):
+        reg = AgentRegistry()
+        tools = {"alpha", "beta"}
+        agent = AppAgent("owner", "test", tools)
+        reg.register(agent)
+        tools.add("gamma")
+        assert reg.for_tool("alpha") is agent
+        assert reg.for_tool("beta") is agent
+        assert reg.for_tool("gamma") is None
+        assert reg.all() == [agent]
+
+    def test_registry_reports_conflicting_owner(self):
+        reg = AgentRegistry()
+        reg.register(AppAgent("desktop", "", frozenset({"cc_window"})))
+        with pytest.raises(ValueError, match="cc_window.*desktop"):
+            reg.register(AppAgent("other", "", frozenset({"cc_window", "cc_other"})))
+        assert reg.for_tool("cc_other") is None
+
 
 # ── jobs integration ─────────────────────────────────────────────────────────
 class TestJobs:

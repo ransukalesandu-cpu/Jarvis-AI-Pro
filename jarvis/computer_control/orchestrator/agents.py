@@ -24,24 +24,50 @@ class AppAgent:
 
 
 class AgentRegistry:
+    """Validate agent descriptors and provide constant-time tool ownership lookup."""
+
     def __init__(self) -> None:
         self._agents: dict[str, AppAgent] = {}
+        self._tool_owners: dict[str, AppAgent] = {}
 
     def register(self, agent: AppAgent) -> AppAgent:
+        if not isinstance(agent, AppAgent):
+            raise TypeError("agent must be an AppAgent")
+        if not isinstance(agent.name, str) or not agent.name.strip():
+            raise ValueError("agent name must be a non-empty string")
         if agent.name in self._agents:
             raise ValueError(f"agent {agent.name!r} already registered")
-        for other in self._agents.values():
-            clash = other.tools & agent.tools
-            if clash:
-                raise ValueError(f"tools {sorted(clash)} already owned by {other.name}")
+        if not isinstance(agent.tools, (set, frozenset, tuple, list)):
+            raise TypeError("agent tools must be a collection of tool identifiers")
+        tools = frozenset(agent.tools)
+        if not tools:
+            raise ValueError(f"agent {agent.name!r} must own at least one tool")
+        if any(not isinstance(tool, str) or not tool.strip() for tool in tools):
+            raise ValueError("tool identifiers must be non-empty strings")
+        if not isinstance(agent.description, str):
+            raise TypeError("agent description must be a string")
+        if agent.recover is not None and not callable(agent.recover):
+            raise TypeError("agent recovery hook must be callable")
+        if not isinstance(agent.apps, (tuple, list)) or any(
+            not isinstance(app, str) or not app.strip() for app in agent.apps
+        ):
+            raise ValueError("agent apps must be a sequence of non-empty strings")
+
+        clashes = {tool: self._tool_owners[tool].name for tool in tools
+                   if tool in self._tool_owners}
+        if clashes:
+            details = ", ".join(f"{tool!r} ({owner})" for tool, owner in sorted(clashes.items()))
+            raise ValueError(f"tool ownership conflict: {details}")
+
+        # Store a normalized immutable tool set so callers cannot mutate registry
+        # ownership after registration.
+        agent.tools = tools
         self._agents[agent.name] = agent
+        self._tool_owners.update({tool: agent for tool in tools})
         return agent
 
     def for_tool(self, tool: str) -> Optional[AppAgent]:
-        for agent in self._agents.values():
-            if tool in agent.tools:
-                return agent
-        return None
+        return self._tool_owners.get(tool)
 
     def names(self) -> list[str]:
         return list(self._agents)

@@ -201,6 +201,13 @@ class TaskRunner:
         if task.state.terminal:
             raise ValueError(f"Task {task_id} already finished ({task.state.value}).")
         enqueue = False
+        with self._lock:
+            if self._active is not None and self._active.id == task.id:
+                raise RuntimeError(f"Task {task.id} is already active.")
+            if background and (
+                task.id in self._queue or task.id in self._queue_reservations
+            ):
+                raise RuntimeError(f"Task {task.id} is already queued.")
         if background:
             with self._lock:
                 if task.id not in self._queue and task.id not in self._queue_reservations:

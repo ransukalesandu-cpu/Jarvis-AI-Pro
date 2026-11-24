@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { clampRect, MAX_WINDOWS, MIN_H, MIN_W, place, snap, tile, TITLES, type Layout, type Viewport, type WinKind, type WindowRec } from './layout';
 import type { Page } from '../store';
+import { t } from '../i18n';
+import { useUi } from '../store';
 
 interface WinStore {
     windows: WindowRec[];
@@ -31,7 +33,8 @@ export function restack(ws: WindowRec[], id?: string): WindowRec[] {
     return ws.map((w) => (w.z === z.get(w.id) ? w : { ...w, z: z.get(w.id)! }));
 }
 let counter = 0;
-export const titleOf = (w: WindowRec) => TITLES[w.kind];
+/** Window title in the current UI language (English stays in TITLES for tests and logs). */
+export const titleOf = (w: WindowRec) => (useUi.getState().lang === 'en' ? TITLES[w.kind] : t(`win.${w.kind}`));
 
 export const useWindows = create<WinStore>((set, get) => ({
     windows: [],

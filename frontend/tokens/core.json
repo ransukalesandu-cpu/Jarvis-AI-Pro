@@ -128,8 +128,9 @@
       "$description": "Surface-specific colours (Task Flow canvas, holo backdrop, accents)"
     },
     "font": {
-      "$value": "'Segoe UI', 'Inter', 'Nirmala UI', 'Iskoola Pota', 'Noto Sans Sinhala', system-ui, -apple-system, sans-serif",
-      "$type": "fontFamily"
+      "$value": "'Segoe UI', 'Inter', 'Noto Sans Sinhala', 'Nirmala UI', 'Iskoola Pota', system-ui, -apple-system, sans-serif",
+      "$type": "fontFamily",
+      "$description": "Noto Sans Sinhala is bundled (fontsource), so Sinhala looks the same on every PC; its files load only when Sinhala text is shown (unicode-range)."
     },
     "mono": {
       "$value": "'Cascadia Mono', 'JetBrains Mono', Consolas, monospace",

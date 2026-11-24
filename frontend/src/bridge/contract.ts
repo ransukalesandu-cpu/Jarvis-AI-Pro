@@ -85,18 +85,23 @@ export interface MemoryStatus {
 }
 export const CENTER_STYLES = ['brain', 'hologram'] as const;
 export const FACE_STYLES = ['circuit', 'mechanical'] as const;
+export const UI_LANGS = ['en', 'si'] as const;
 export interface Prefs {
     reducedMotion: boolean;
     clock24: boolean;
     taskflowAutoShow: boolean;
     centerStyle: (typeof CENTER_STYLES)[number];
     faceStyle: (typeof FACE_STYLES)[number];
+    /** UI language. Optional on the wire: prefs saved before it existed load as English. */
+    lang: (typeof UI_LANGS)[number];
 }
 const PREF_KEYS = ['reducedMotion', 'clock24', 'taskflowAutoShow', 'centerStyle', 'faceStyle'] as const;
 export function validatePrefs(p: unknown): Prefs | null {
     if (p === null || typeof p !== 'object' || Array.isArray(p)) return null;
     const o = p as Record<string, unknown>;
-    if (Object.keys(o).length !== PREF_KEYS.length || !PREF_KEYS.every((k) => k in o)) return null;
+    const extra = Object.keys(o).filter((k) => !(PREF_KEYS as readonly string[]).includes(k));
+    if (!PREF_KEYS.every((k) => k in o) || extra.some((k) => k !== 'lang')) return null;
+    if ('lang' in o && !(UI_LANGS as readonly unknown[]).includes(o.lang)) return null;
     if (typeof o.reducedMotion !== 'boolean' || typeof o.clock24 !== 'boolean' || typeof o.taskflowAutoShow !== 'boolean') return null;
     if (!(CENTER_STYLES as readonly unknown[]).includes(o.centerStyle) || !(FACE_STYLES as readonly unknown[]).includes(o.faceStyle)) return null;
     return {
@@ -105,6 +110,7 @@ export function validatePrefs(p: unknown): Prefs | null {
         taskflowAutoShow: o.taskflowAutoShow,
         centerStyle: o.centerStyle as Prefs['centerStyle'],
         faceStyle: o.faceStyle as Prefs['faceStyle'],
+        lang: (o.lang ?? 'en') as Prefs['lang'],
     };
 }
 

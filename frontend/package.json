@@ -16,6 +16,7 @@
     "shaders": "node scripts/build-shaders.mjs"
   },
   "dependencies": {
+    "@fontsource/noto-sans-sinhala": "^5.3.0",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.2",
     "cmdk": "^1.1.1",
@@ -43,11 +44,11 @@
     "leva": "^0.10.1",
     "oxlint": "^1.94.0",
     "prettier": "^3.10.1",
+    "r3f-perf": "^7.2.3",
     "storybook": "^10.6.8",
     "style-dictionary": "^5.8.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.6",
-    "vitest": "^5.1.0",
-    "r3f-perf": "^7.2.3"
+    "vitest": "^5.1.0"
   }
 }

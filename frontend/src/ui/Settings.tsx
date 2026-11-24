@@ -8,7 +8,8 @@ import { useUi } from '../store';
 import { useFlows } from '../taskflow/flows';
 import { useFresh } from '../ux/useFresh';
 import { useWindows } from '../workspace/windows';
-import { RESULT } from './CommandBar';
+import { useResultText } from './CommandBar';
+import { LANGS, LANG_NAMES, useT, type Lang } from '../i18n';
 import { SPACE } from '../styles/tokens';
 import { Button, Segmented, Switch, Tabs } from '../components/ui';
 
@@ -131,41 +132,53 @@ export function SettingsPanel() {
     const control = useFresh(rawControl, resultSeq);
     const autoShow = useFlows((s) => s.autoShow);
     const up = link === 'connected';
-    const saved = up ? 'Saved on this PC' : 'Not saved: backend not connected';
     const vs = visualState({ assistant, link, muted });
+    const T = useT();
+    const saved = up ? T('set.saved') : T('set.notSaved');
+    const resultText = useResultText();
+    const lang = useUi((s) => s.lang);
+    const setLang = useUi((s) => s.setLang);
 
     const body: Record<Section, ReactNode> = {
         general: (
             <>
-                <Row label="Reduced motion">
-                    <Toggle label="Reduced motion" on={reducedMotion} onClick={() => setReducedMotion(!reducedMotion)} />
-                </Row>
-                <Row label="24-hour clock">
-                    <Toggle label="24-hour clock" on={clock24} onClick={() => setClock24(!clock24)} />
-                </Row>
-                <Row label="Show Task Flow on new tasks">
-                    <Toggle label="Show Task Flow on new tasks" on={autoShow} onClick={() => useFlows.getState().setAutoShow(!autoShow)} />
-                </Row>
-                <Row label="Centre">
+                <Row label={T('set.language')}>
                     <Segmented
-                        label="Centre"
+                        label={T('set.language')}
+                        value={lang}
+                        onValueChange={(v) => setLang(v as Lang)}
+                        options={LANGS.map((l) => ({ value: l, label: LANG_NAMES[l] }))}
+                    />
+                </Row>
+                <Row label={T('set.reducedMotion')}>
+                    <Toggle label={T('set.reducedMotion')} on={reducedMotion} onClick={() => setReducedMotion(!reducedMotion)} />
+                </Row>
+                <Row label={T('set.clock24')}>
+                    <Toggle label={T('set.clock24')} on={clock24} onClick={() => setClock24(!clock24)} />
+                </Row>
+                <Row label={T('set.taskflow')}>
+                    <Toggle label={T('set.taskflow')} on={autoShow} onClick={() => useFlows.getState().setAutoShow(!autoShow)} />
+                </Row>
+                <Row label={T('set.centre')}>
+                    <Segmented
+                        label={T('set.centre')}
                         value={centerStyle}
                         onValueChange={(v) => setCenterStyle(v as typeof centerStyle)}
                         options={[
-                            { value: 'brain', label: 'Neural brain' },
-                            { value: 'hologram', label: 'Hologram head' },
+                            { value: 'brain', label: T('set.brain') },
+                            { value: 'hologram', label: T('set.head') },
                         ]}
                     />
                 </Row>
                 {centerStyle === 'hologram' && (
-                    <Row label="Face style">
+                    <Row label={T('set.faceStyle')}>
                         <Segmented
-                            label="Face style"
+                            label={T('set.faceStyle')}
                             value={faceStyle}
                             onValueChange={(v) => setFaceStyle(v as typeof faceStyle)}
                             options={[
-                                { value: 'circuit', label: 'Circuit' },
-                                { value: 'mechanical', label: 'Mechanical' },
+                                { value: 'circuit', label: T('set.circuit') },
+                                { value: 'mechanical', label: T('set.mechanical') },
                             ]}
                         />
                     </Row>
@@ -302,16 +315,16 @@ export function SettingsPanel() {
     return (
         <Presence<HTMLElement> show={settingsOpen} reduced={reducedMotion} offset={{ x: SPACE['space-5'] }}>
             {(ref) => (
-                <aside ref={ref} id="settings-panel" className="panel right glass settings" aria-label="System Control Center">
-                    <h2>SYSTEM CONTROL CENTER</h2>
+                <aside ref={ref} id="settings-panel" className="panel right glass settings" aria-label={T('set.panel')}>
+                    <h2>{T('set.title')}</h2>
                     <Tabs
-                        label="Settings sections"
+                        label={T('set.sections')}
                         value={section}
                         onValueChange={(v) => setSection(v as Section)}
-                        items={SECTIONS.map((sec) => ({ value: sec, label: SECTION_LABEL[sec], content: body[sec] }))}
+                        items={SECTIONS.map((sec) => ({ value: sec, label: T(`set.${sec}`), content: body[sec] }))}
                     />
                     <p className="settings-note" role="status" aria-live="polite">
-                        {control && control !== 'done' ? RESULT[control] : ''}
+                        {control && control !== 'done' ? resultText(control) : ''}
                     </p>
                 </aside>
             )}

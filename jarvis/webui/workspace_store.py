@@ -24,6 +24,8 @@ PREFS = "_prefs"                    # web UI preferences (the page's own storage
 PREF_BOOLS = frozenset({"reducedMotion", "clock24", "taskflowAutoShow"})
 PREF_CHOICES = {"centerStyle": frozenset({"brain", "hologram"}), "faceStyle": frozenset({"circuit", "mechanical"})}
 PREF_KEYS = PREF_BOOLS | frozenset(PREF_CHOICES)
+# Optional choices: prefs saved before they existed still load, with the default filled in.
+PREF_OPTIONAL = {"lang": (frozenset({"en", "si"}), "en")}
 _NAME = re.compile(r"^[a-z0-9][a-z0-9 _-]{0,31}$")
 
 
@@ -72,13 +74,19 @@ def validate_layout(layout: Any) -> dict | None:
 
 def validate_prefs(prefs: Any) -> dict | None:
     """Web UI preferences: exactly the known keys; booleans, or one of a closed set of choices. Anything else is rejected."""
-    if not isinstance(prefs, dict) or set(prefs) != PREF_KEYS:
+    if not isinstance(prefs, dict) or not PREF_KEYS <= set(prefs) or set(prefs) - PREF_KEYS - set(PREF_OPTIONAL):
         return None
     if not all(isinstance(prefs[k], bool) for k in PREF_BOOLS):
         return None
     if not all(isinstance(prefs[k], str) and prefs[k] in allowed for k, allowed in PREF_CHOICES.items()):
         return None
-    return {k: prefs[k] for k in sorted(PREF_KEYS)}
+    out = {k: prefs[k] for k in PREF_KEYS}
+    for k, (allowed, default) in PREF_OPTIONAL.items():
+        v = prefs.get(k, default)
+        if not isinstance(v, str) or v not in allowed:
+            return None
+        out[k] = v
+    return dict(sorted(out.items()))
 
 
 class WorkspaceStore:

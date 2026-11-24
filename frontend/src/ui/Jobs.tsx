@@ -6,6 +6,7 @@ import { format } from '../timer/timer';
 import { useNow } from '../ux/usePhase';
 import { ResultNote } from './CommandBar';
 import { Button, StateView } from '../components/ui';
+import { useT } from '../i18n';
 
 const LABEL = { running: 'Running', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' } as const;
 
@@ -19,18 +20,19 @@ export interface JobsProps {
 
 /** Background jobs reported by Python (no results or descriptions are sent). Cancel asks Python to stop a job it lists as running. */
 export function JobsView({ jobs, now, linked, result, onCancel }: JobsProps) {
+    const T = useT();
     return (
         <>
-            <h1 className="ui-sr-only">Background Jobs</h1>
-            <p>Long tasks JARVIS runs in the background. Finished jobs show a notice here.</p>
+            <h1 className="ui-sr-only">{T('win.jobs')}</h1>
+            <p>{T('jobs.intro')}</p>
             {jobs === null ? (
                 linked ? (
-                    <StateView kind="loading" title="Loading background jobs" />
+                    <StateView kind="loading" title={T('s.loading', { what: T('jobs.what') })} />
                 ) : (
-                    <StateView kind="offline" title="JARVIS is not connected" message="Background jobs appear when JARVIS is running." />
+                    <StateView kind="offline" title={T('s.notConnected')} message={T('jobs.offline')} />
                 )
             ) : jobs.length === 0 ? (
-                <StateView kind="empty" title="No background jobs" message="Long tasks you give JARVIS show up here." />
+                <StateView kind="empty" title={T('jobs.emptyTitle')} message={T('jobs.empty')} />
             ) : (
                 <ul className="news-list">
                     {jobs.map((j) => {
@@ -51,7 +53,7 @@ export function JobsView({ jobs, now, linked, result, onCancel }: JobsProps) {
                                         aria-label={`Cancel job ${j.name}`}
                                         icon={<X size={12} aria-hidden />}
                                     >
-                                        Cancel
+                                        {T('jobs.cancel')}
                                     </Button>
                                 )}
                             </li>

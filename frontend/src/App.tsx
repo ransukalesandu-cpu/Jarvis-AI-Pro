@@ -40,12 +40,19 @@ export default function App() {
     const taskflowAutoShow = useFlows((s) => s.autoShow);
     const centerStyle = useUi((s) => s.centerStyle);
     const faceStyle = useUi((s) => s.faceStyle);
+    const lang = useUi((s) => s.lang);
+    useEffect(() => {
+        document.documentElement.lang = lang; // screen readers pick the right voice
+    }, [lang]);
     useEffect(() => {
         // save UI prefs in Python: the page's own storage is wiped every launch
         if (link !== 'connected' || !prefsLoaded) return;
-        const id = setTimeout(() => sendRequest({ kind: 'prefs.save', prefs: { reducedMotion, clock24, taskflowAutoShow, centerStyle, faceStyle } }), 300);
+        const id = setTimeout(
+            () => sendRequest({ kind: 'prefs.save', prefs: { reducedMotion, clock24, taskflowAutoShow, centerStyle, faceStyle, lang } }),
+            300,
+        );
         return () => clearTimeout(id);
-    }, [link, prefsLoaded, reducedMotion, clock24, taskflowAutoShow, centerStyle, faceStyle]);
+    }, [link, prefsLoaded, reducedMotion, clock24, taskflowAutoShow, centerStyle, faceStyle, lang]);
     useEffect(() => {
         if (pageRequested) useUi.getState().go('tasks');
     }, [pageRequested]); // "open the task progress page"

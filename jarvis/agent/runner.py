@@ -201,19 +201,22 @@ class TaskRunner:
         if task.state.terminal:
             raise ValueError(f"Task {task_id} already finished ({task.state.value}).")
         enqueue = False
-        if background:
-            with self._lock:
-                if task.id not in self._queue and task.id not in self._queue_reservations:
-                    queue_limit = max(1, min(int(self.config.max_queue_size), 128))
-                    active_count = 1 if self._active and not self._active.state.terminal else 0
-                    occupied = len(self._queue) + len(self._queue_reservations) + active_count
-                    if occupied >= queue_limit:
-                        raise RuntimeError(
-                            f"JARVIS task queue is full ({queue_limit}). "
-                            "Wait for a task to finish before resuming another."
-                        )
-                    self._queue_reservations.add(task.id)
-                    enqueue = True
+        with self._lock:
+            if self._active is not None and self._active.id == task.id:
+                raise RuntimeError(f"Task {task.id} is already active.")
+            if background:
+                if task.id in self._queue or task.id in self._queue_reservations:
+                    raise RuntimeError(f"Task {task.id} is already queued.")
+                queue_limit = max(1, min(int(self.config.max_queue_size), 128))
+                active_count = 1 if self._active and not self._active.state.terminal else 0
+                occupied = len(self._queue) + len(self._queue_reservations) + active_count
+                if occupied >= queue_limit:
+                    raise RuntimeError(
+                        f"JARVIS task queue is full ({queue_limit}). "
+                        "Wait for a task to finish before resuming another."
+                    )
+                self._queue_reservations.add(task.id)
+                enqueue = True
         if task.state in (TaskState.PAUSED, TaskState.WAITING):
             task.state = TaskState.PENDING
         if task.state is TaskState.PENDING:

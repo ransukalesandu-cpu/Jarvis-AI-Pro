@@ -89,6 +89,12 @@ async function main() {
             .filter((r) => r.type === 'duration')
             .map((r) => `    '${r.name}': ${parseFloat(r.raw)},`)
             .join('\n') +
+        `\n} as const;\n` +
+        `\n/** Spacing in pixels, for JS-driven offsets. Same values as the --space-* CSS variables. */\nexport const SPACE = {\n` +
+        raw.dark
+            .filter((r) => r.name.startsWith('space-'))
+            .map((r) => `    '${r.name}': ${parseFloat(r.raw)},`)
+            .join('\n') +
         `\n} as const;\n`;
     writeFileSync(join(root, 'src', 'styles', 'tokens.ts'), ts);
 

@@ -408,3 +408,18 @@ export const DURATIONS = {
     'dur-loop-slow': 1400,
     'dur-toast': 5000,
 } as const;
+
+/** Spacing in pixels, for JS-driven offsets. Same values as the --space-* CSS variables. */
+export const SPACE = {
+    'space-1': 4,
+    'space-2': 8,
+    'space-3': 12,
+    'space-4': 16,
+    'space-5': 24,
+    'space-6': 32,
+    'space-px': 1,
+    'space-0-5': 2,
+    'space-1-5': 6,
+    'space-2-5': 10,
+    'space-3-5': 14,
+} as const;

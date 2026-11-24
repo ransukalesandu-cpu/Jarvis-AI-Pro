@@ -681,11 +681,11 @@
   flex-direction: column;
   overflow: hidden;
 }
-.win-body > .tf-page h1 {
+.win-scroll > .tf-page h1 {
   font-size: var(--fs-lg);
   margin: 0 0 var(--space-0-5);
 }
-.win-body > .tf-page p {
+.win-scroll > .tf-page p {
   font-size: var(--fs-sm);
 }
 .win-body .tf-page-body {

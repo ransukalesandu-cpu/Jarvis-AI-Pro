@@ -33,11 +33,14 @@ class AgentEvent:
     at: float = field(default_factory=time.time)
     data: dict[str, Any] = field(default_factory=dict)
     sequence: int = 0
+    # Appended to preserve the positional constructor contract for older callers.
+    correlation_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "kind": self.kind,
             "task_id": self.task_id,
+            "correlation_id": self.correlation_id,
             "state": self.state.value,
             "progress": self.progress,
             "message": self.message,
@@ -52,6 +55,7 @@ def event_from_task(kind: str, task: Task, *, message: str = "",
     return AgentEvent(
         kind=kind,
         task_id=task.id,
+        correlation_id=task.correlation_id,
         state=task.state,
         progress=task.progress(),
         message=message,
@@ -105,6 +109,7 @@ class EventBus:
             AgentEvent(
                 kind="finished",
                 task_id=task.id,
+                correlation_id=task.correlation_id,
                 state=report.state,
                 progress=1.0,
                 message=report.headline(),

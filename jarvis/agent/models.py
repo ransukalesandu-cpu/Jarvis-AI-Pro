@@ -354,6 +354,8 @@ class Task:
     report: TaskReport | None = None
     version: int = 1
     journal: list[dict[str, Any]] = field(default_factory=list)
+    # Appended to preserve the positional constructor contract for older callers.
+    correlation_id: str = field(default_factory=lambda: new_id("corr"))
 
     # -- planning ----------------------------------------------------------
     def set_plan(self, steps: Iterable[TaskStep], criteria: Iterable[str] | None = None) -> None:
@@ -437,6 +439,7 @@ class Task:
         return {
             "version": self.version,
             "id": self.id,
+            "correlation_id": self.correlation_id,
             "objective": self.objective,
             "criteria": list(self.criteria),
             "state": self.state.value,
@@ -467,6 +470,7 @@ class Task:
             criteria=[str(x) for x in data.get("criteria") or []],
             steps=[TaskStep.from_dict(item) for item in data.get("steps") or []],
             id=str(data.get("id") or new_id("task")),
+            correlation_id=str(data.get("correlation_id") or new_id("corr")),
             state=_coerce_enum(TaskState, data.get("state"), TaskState.PENDING),
             cursor=_int(data.get("cursor"), 0),
             source=str(data.get("source") or "voice"),

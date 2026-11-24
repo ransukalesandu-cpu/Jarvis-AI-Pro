@@ -84,6 +84,25 @@ def redact(text: str, limit: int = _MAX_OUTPUT_CHARS) -> str:
     return value
 
 
+def _redact_value(value: Any, *, depth: int = 0) -> Any:
+    """Recursively scrub event payloads before they enter the journal."""
+    if depth >= 12:
+        return "[TRUNCATED]"
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for key, item in list(value.items())[:256]:
+            safe_key = redact(str(key), 256)
+            cleaned[safe_key] = _redact_value(item, depth=depth + 1)
+        return cleaned
+    if isinstance(value, (list, tuple)):
+        return [_redact_value(item, depth=depth + 1) for item in value[:256]]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return redact(str(value), 2000)
+
+
 class TaskStore:
     """Snapshot + journal persistence with a small, bounded task history."""
 
@@ -155,8 +174,7 @@ class TaskStore:
         record = {
             "at": self._clock(),
             "task": task_id,
-            **{key: (redact(value) if isinstance(value, str) else value)
-               for key, value in event.items()},
+            **_redact_value(event),
         }
         with self._lock:
             try:

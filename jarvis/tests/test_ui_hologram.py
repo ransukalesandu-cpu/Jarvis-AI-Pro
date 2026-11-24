@@ -22,7 +22,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from PyQt6.QtCore import QSettings, QEvent, QTimer, Qt, QPoint, QPropertyAnimation
-from PyQt6.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton, QWidget
+from PyQt6.QtWidgets import QApplication, QLineEdit, QWidget
 from PyQt6.QtTest import QTest
 
 # Ensure QApplication exists before testing Qt widgets
@@ -628,18 +628,13 @@ class TestUIHologram(unittest.TestCase):
                 self.assertTrue(hud_ui._ready)
                 self.assertIsNone(hud_ui._setup_controller._overlay)
 
-    def test_hologram_first_run_requires_and_saves_owner_pin_before_starting(self):
-        """Gemini setup must flow into owner PIN enrollment on the same HUD."""
+    def test_hologram_first_run_starts_after_the_api_key_without_a_pin_step(self):
+        """Saving the Gemini key starts JARVIS directly: no owner PIN/password dialog follows."""
         with tempfile.TemporaryDirectory() as directory:
             config_dir = Path(directory) / "config"
             config_path = config_dir / "api_keys.json"
             auth = Mock()
             auth.is_pin_enrolled.return_value = False
-
-            def save_master_pin(pin):
-                auth.is_pin_enrolled.return_value = True
-
-            auth.set_master_pin.side_effect = save_master_pin
             with (
                 patch("jarvis.memory.config_manager.CONFIG_DIR", config_dir),
                 patch("jarvis.memory.config_manager.CONFIG_FILE", config_path),
@@ -656,60 +651,24 @@ class TestUIHologram(unittest.TestCase):
                 self.assertIsInstance(overlay, SetupOverlay)
                 overlay._key_field.setText("AIzaSyLongEnoughTestGeminiApiKey123")
 
-                attempts = [0]
-                pin_dialog_seen = []
-                readiness_before_pin_saved = []
-                unexpected_dialog = []
+                dialogs = []
 
-                def fill_owner_pin_dialog():
-                    attempts[0] += 1
+                def note_dialog():
                     dialog = app.activeModalWidget()
-                    if dialog is None:
-                        if attempts[0] < 30:
-                            QTimer.singleShot(10, fill_owner_pin_dialog)
-                        return
-                    if not isinstance(dialog, QDialog):
-                        unexpected_dialog.append(type(dialog).__name__)
+                    if dialog is not None:
+                        dialogs.append(type(dialog).__name__)
                         dialog.reject()
-                        return
 
-                    # The assistant must remain blocked while PIN enrollment is pending.
-                    pin_dialog_seen.append(True)
-                    readiness_before_pin_saved.append(hud_ui._win._ready)
-                    fields = dialog.findChildren(QLineEdit)
-                    save_button = next(
-                        (
-                            button for button in dialog.findChildren(QPushButton)
-                            if button.text() == "SAVE PIN & CONTINUE"
-                        ),
-                        None,
-                    )
-                    if len(fields) < 2 or save_button is None:
-                        unexpected_dialog.append("PIN dialog missing expected fields/save button")
-                        dialog.reject()
-                        return
-                    fields[0].setText("test-owner-pin")
-                    fields[1].setText("test-owner-pin")
-                    save_button.click()
-
-                # The key callback schedules the modal PIN dialog on the Qt loop.
-                QTimer.singleShot(0, fill_owner_pin_dialog)
+                QTimer.singleShot(50, note_dialog)
                 overlay._submit()
-                QTest.qWait(400)
+                QTest.qWait(200)
 
-                self.assertEqual(unexpected_dialog, [])
-                self.assertEqual(pin_dialog_seen, [True], "Owner PIN dialog did not appear")
-                self.assertEqual(
-                    readiness_before_pin_saved,
-                    [False],
-                    "JARVIS became ready before owner PIN enrollment completed",
-                )
-                auth.set_master_pin.assert_called_once_with("test-owner-pin")
+                self.assertEqual(dialogs, [], "a dialog (PIN/password) appeared after the API key")
+                auth.set_master_pin.assert_not_called()
                 self.assertTrue(hud_ui._win.isVisible())
                 self.assertTrue(hud_ui._win._ready)
                 self.assertTrue(hud_ui._ready)
                 self.assertIsNone(hud_ui._setup_controller._overlay)
-                self.assertGreater(attempts[0], 0)
 
     def test_hologram_api_reconfiguration_keeps_the_same_hud_window(self):
         """An invalid key opens the Gemini form on top of the current HUD."""

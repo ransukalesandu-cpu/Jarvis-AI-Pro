@@ -1000,14 +1000,13 @@ class _RootShim:
 
 
 class _HudSetupController(QObject):
-    """Keeps first-run credentials and owner-PIN enrollment inside the hologram HUD."""
+    """Keeps first-run credentials (the Gemini API key) inside the hologram HUD."""
 
     def __init__(self, ui, window: HUDMainWindow):
         super().__init__(window)
         self._ui = ui
         self._win = window
         self._overlay = None
-        self._pending_voice_enrollment = False
         self._win.sig_setup_requested.connect(self.show_gemini_setup)
 
     def _api_configured(self) -> bool:
@@ -1032,7 +1031,7 @@ class _HudSetupController(QObject):
         if not self._api_configured():
             self.show_gemini_setup()
             return
-        self._show_owner_pin_setup_if_needed()
+        self._finish_setup()
 
     @pyqtSlot()
     def show_gemini_setup(self) -> None:
@@ -1118,154 +1117,24 @@ class _HudSetupController(QObject):
             self._overlay.hide()
             self._overlay.deleteLater()
             self._overlay = None
-        self._win._lbl_hud_status.setText("● GEMINI KEY SAVED — CHECKING OWNER SECURITY")
+        self._win._lbl_hud_status.setText("● GEMINI KEY SAVED")
         self._win._lbl_hud_status.setStyleSheet("color: #71d4c2;")
-        QTimer.singleShot(0, self._show_owner_pin_setup_if_needed)
+        QTimer.singleShot(0, self._finish_setup)
 
     @pyqtSlot()
-    def _show_owner_pin_setup_if_needed(self) -> None:
+    def _finish_setup(self) -> None:
+        """API key in place: JARVIS starts. No owner PIN/password step here (the owner removed it);
+        a PIN can still be set later from the Security settings."""
         if not self._api_configured():
             self.show_gemini_setup()
             return
-        try:
-            auth = getattr(self._win, "_auth_manager", None)
-            if auth is None:
-                from jarvis.core.security import get_auth_manager
-                auth = get_auth_manager()
-            if auth.is_pin_enrolled():
-                self._mark_ready()
-                return
-        except Exception as exc:
-            self._win._lbl_hud_status.setText("● SETUP ERROR — OWNER SECURITY UNAVAILABLE")
-            self._win._lbl_hud_status.setStyleSheet("color: #e97869;")
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.critical(
-                self._win,
-                "JARVIS owner security",
-                "Owner security could not be initialized. JARVIS will not start without "
-                "the existing PIN setup. The Hologram HUD remains active.\n\n"
-                f"Details: {type(exc).__name__}: {exc}",
-            )
-            return
-        self._show_owner_pin_setup(auth)
-
-    def _show_owner_pin_setup(self, auth) -> None:
-        from PyQt6.QtWidgets import (
-            QDialog, QVBoxLayout, QFormLayout, QCheckBox, QMessageBox,
-            QLabel, QLineEdit, QPushButton,
-        )
-
-        dialog = QDialog(self._win)
-        dialog.setWindowTitle("JARVIS — Privacy & Owner Security")
-        dialog.setMinimumWidth(470)
-        dialog.setModal(True)
-        dialog.setStyleSheet("""
-            QDialog { background: #080e12; color: #c8d9d5; }
-            QLabel { color: #c8d9d5; }
-            QLineEdit { color: #edf3e8; background: #151f22; padding: 9px;
-                        border: 1px solid #34464a; border-radius: 5px; }
-            QPushButton { padding: 9px 14px; border-radius: 5px; }
-            QCheckBox { color: #9aafaa; spacing: 8px; }
-        """)
-        layout = QVBoxLayout(dialog)
-        heading = QLabel("PRIVACY & OWNER SECURITY")
-        heading.setStyleSheet("color: #71d4c2; font-size: 16px; font-weight: bold;")
-        layout.addWidget(heading)
-        explanation = QLabel(
-            "Create your owner PIN/password. It is hashed and stored locally, never sent "
-            "to Gemini. This step is required before JARVIS starts. The Hologram HUD stays open."
-        )
-        explanation.setWordWrap(True)
-        layout.addWidget(explanation)
-
-        form = QFormLayout()
-        pin_edit = QLineEdit(dialog)
-        pin_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        pin_edit.setPlaceholderText("4–64 characters")
-        confirm_edit = QLineEdit(dialog)
-        confirm_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        confirm_edit.setPlaceholderText("Repeat PIN/password")
-        form.addRow("Owner PIN / password", pin_edit)
-        form.addRow("Confirm PIN / password", confirm_edit)
-        layout.addLayout(form)
-
-        voice_check = QCheckBox("Enroll my voice after JARVIS starts (optional)", dialog)
-        voice_check.setToolTip("Voice ID enrollment begins after the live assistant is initialized.")
-        layout.addWidget(voice_check)
-
-        save_button = QPushButton("SAVE PIN & CONTINUE", dialog)
-        save_button.setStyleSheet("background: #71d4c2; color: #061018; font-weight: bold;")
-        layout.addWidget(save_button)
-
-        def save_pin() -> None:
-            pin = pin_edit.text()
-            confirm = confirm_edit.text()
-            if not 4 <= len(pin) <= 64:
-                QMessageBox.warning(dialog, "Invalid PIN", "Use 4–64 characters for the PIN/password.")
-                return
-            if pin != confirm:
-                QMessageBox.warning(dialog, "Does not match", "The two PIN/password entries do not match.")
-                return
-            try:
-                auth.set_master_pin(pin)
-            except Exception as exc:
-                QMessageBox.critical(
-                    dialog, "Setup failed",
-                    f"Owner PIN could not be saved: {type(exc).__name__}: {exc}",
-                )
-                return
-            pin_edit.clear()
-            confirm_edit.clear()
-            self._pending_voice_enrollment = voice_check.isChecked()
-            dialog.accept()
-
-        save_button.clicked.connect(save_pin)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self._mark_ready()
-            if self._pending_voice_enrollment:
-                QTimer.singleShot(500, self._try_pending_voice_enrollment)
-        else:
-            self._win._lbl_hud_status.setText("● SETUP INCOMPLETE — OWNER PIN REQUIRED")
-            self._win._lbl_hud_status.setStyleSheet("color: #d7bd7b;")
+        self._mark_ready()
 
     def _mark_ready(self) -> None:
         self._win._ready = True
         self._ui._ready = True
         self._win._lbl_hud_status.setText("● SYSTEM STANDBY")
         self._win._lbl_hud_status.setStyleSheet("color: #00e5ff;")
-
-    def _try_pending_voice_enrollment(self, attempt: int = 0) -> None:
-        if not self._pending_voice_enrollment:
-            return
-        callback = getattr(self._ui, "on_voice_id_action", None)
-        if callable(callback):
-            self._pending_voice_enrollment = False
-            try:
-                result = callback("enroll_owner")
-                from PyQt6.QtWidgets import QMessageBox
-                QMessageBox.information(
-                    self._win,
-                    "Voice ID enrollment",
-                    str(result or "Voice ID enrollment started.")
-                    + "\n\nIf secure live-speaker verification is unavailable, "
-                      "JARVIS will fall back to your PIN/password.",
-                )
-            except Exception as exc:
-                self._win._lbl_hud_status.setText("● VOICE ID SETUP FAILED — PIN REMAINS ACTIVE")
-                self._win._lbl_hud_status.setStyleSheet("color: #d7bd7b;")
-                self.write_log(f"Voice ID enrollment could not start: {type(exc).__name__}")
-            return
-        if attempt < 40:
-            QTimer.singleShot(250, lambda: self._try_pending_voice_enrollment(attempt + 1))
-        else:
-            self._pending_voice_enrollment = False
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.information(
-                self._win,
-                "Voice ID enrollment",
-                "JARVIS is running with PIN protection. You can retry Voice ID enrollment "
-                "from the Security controls.",
-            )
 
     def write_log(self, text: str) -> None:
         print(f"[HUDSetup] {text}")

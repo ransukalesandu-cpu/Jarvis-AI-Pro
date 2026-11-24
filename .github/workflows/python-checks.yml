@@ -12,6 +12,7 @@ on:
       - "setup.py"
       - "pyproject.toml"
       - "requirements*.txt"
+      - "requirements*.lock"
       - ".editorconfig"
       - ".pre-commit-config.yaml"
       - "supabase/**"
@@ -26,6 +27,7 @@ on:
       - "setup.py"
       - "pyproject.toml"
       - "requirements*.txt"
+      - "requirements*.lock"
       - ".editorconfig"
       - ".pre-commit-config.yaml"
       - "supabase/**"
@@ -72,20 +74,19 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
+          cache-dependency-path: requirements-dev.lock
 
       # PortAudio for the audio modules; libgl1/libegl1 so PyQt6 can load and
       # the UI tests run here instead of being skipped by conftest.py.
       - name: Install audio and Qt system libraries
         run: sudo apt-get install -y libportaudio2 libgl1 libegl1
 
-      - name: Install project and test dependencies
+      # Every package is pinned and hash-checked (docs/DEVELOPMENT.md, "Lockfiles"):
+      # nothing unpinned or unhashed reaches the test run.
+      - name: Install project and test dependencies (hash-checked lockfile)
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install -r requirements-dev.txt
+          python -m pip install --require-hashes -r requirements-dev.lock
 
       - name: Compile Python files
         run: python -m compileall -q .
@@ -137,14 +138,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: |
-            requirements.txt
+          cache-dependency-path: requirements-dev.lock
 
-      - name: Install declared runtime dependencies
+      - name: Install pinned dependencies (hash-checked lockfile)
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install pytest
+          python -m pip install --require-hashes -r requirements-dev.lock
 
       - name: Compile project on Windows
         run: python -m compileall -q .

@@ -37,6 +37,7 @@ from jarvis.agent.models import (
     TaskReport,
     TaskState,
     TaskStep,
+    new_id,
 )
 from jarvis.agent.planner import PlanError, TaskPlanner
 from jarvis.agent.parallel_engine import ParallelStepEngine
@@ -151,7 +152,7 @@ class TaskRunner:
             objective=text[:1200],
             criteria=[str(item) for item in (criteria or [])][:6],
             source=source,
-            correlation_id=str(correlation_id or "").strip() or __import__("uuid").uuid4().hex,
+            correlation_id=str(correlation_id or "").strip() or new_id("corr"),
             max_runtime_s=float(self.config.max_runtime_s),
             retry_budget=int(self.config.retry_budget),
         )

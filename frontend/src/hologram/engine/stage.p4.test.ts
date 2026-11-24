@@ -34,7 +34,11 @@ describe('3D layer', () => {
                 let depth = 1,
                     i = (m.index ?? 0) + m[0].length;
                 const start = i;
-                while (depth && i < src.length) ((depth += src[i] === '{' ? 1 : src[i] === '}' ? -1 : 0), i++);
+                while (depth && i < src.length) {
+                    if (src[i] === '{') depth++;
+                    else if (src[i] === '}') depth--;
+                    i++;
+                }
                 const body = src.slice(start, i);
                 if (/\bnew [A-Z]\w*\(|\.clone\(\)|\[\.\.\.|\{\s*\.\.\./.test(body)) bad.push(f.replace(HOLO, ''));
             }

@@ -161,6 +161,24 @@ class TaskStoreTests(unittest.TestCase):
         raw = self.store.journal_path(task.id).read_text(encoding="utf-8")
         self.assertNotIn("SECRETVALUE", raw)
 
+    def test_nested_event_payload_secrets_are_redacted(self):
+        task = Task(objective="nested journal")
+        self.store.save(task)
+        self.store.append_event(task.id, {
+            "kind": "report",
+            "report": {
+                "summary": "safe",
+                "details": ["password=INNERSECRET", {"token": "TOKENSECRET"}],
+            },
+        })
+        raw = self.store.journal_path(task.id).read_text(encoding="utf-8")
+        self.assertNotIn("INNERSECRET", raw)
+        self.assertNotIn("TOKENSECRET", raw)
+        event = self.store.read_events(task.id)[0]
+        self.assertEqual(event["report"]["summary"], "safe")
+        self.assertIn("[REDACTED]", event["report"]["details"][0])
+        self.assertIn("[REDACTED]", event["report"]["details"][1]["token"])
+
     def test_unfinished_and_prune(self):
         done = Task(objective="done")
         done.set_plan([TaskStep(title="a")])

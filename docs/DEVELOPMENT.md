@@ -27,6 +27,37 @@ python -m pip install -r requirements.txt -r requirements-dev.txt
 install. `requirements-dev.txt` adds the tools you need while *working on* it
 (pytest, coverage, ruff, pre-commit) and is never pulled into a user install.
 
+### Lockfiles
+
+`requirements*.txt` say which versions are acceptable; the lockfiles say exactly
+which ones CI tested, with a sha256 hash for every file:
+
+* `requirements-dev.lock`: runtime + developer tools, resolved together. CI
+  installs it with `pip install --require-hashes`, so nothing unpinned or
+  unhashed reaches the test run.
+* `requirements.lock`: runtime only, pinned to the same versions.
+
+Both are universal: one file covers Windows, macOS and Linux on Python 3.11+,
+with markers for platform-only packages. To reproduce CI exactly:
+
+```bash
+python -m pip install --require-hashes -r requirements-dev.lock
+```
+
+When you change a `requirements*.txt` file, regenerate both locks (needs
+[uv](https://docs.astral.sh/uv/)) and commit them with the change. A dependency
+change is owner-approved only (production-architecture plan, rule 3):
+
+```bash
+uv pip compile --universal --python-version 3.11 --generate-hashes --no-header \
+    --annotation-style line requirements.txt requirements-dev.txt -o requirements-dev.lock
+uv pip compile --universal --python-version 3.11 --generate-hashes --no-header \
+    --annotation-style line requirements.txt -c requirements-dev.lock -o requirements.lock
+```
+
+`python -m jarvis.scripts.check_lockfile` (also a test) fails when a lock no
+longer satisfies its `requirements*.txt` or a pin has no hashes.
+
 > **Linux desktop users:** PyQt6 needs `libgl1` and `libegl1`
 > (`sudo apt-get install libgl1 libegl1 libportaudio2`). Without them, importing
 > PyQt6 fails with `libGL.so.1: cannot open shared object file`. The test suite
@@ -153,11 +184,11 @@ When a name is imported only for its side effect (a re-export, a probe, or
 `.github/workflows/python-checks.yml`:
 
 1. **lint** — `ruff check jarvis` on Python 3.12. Seconds, no dependencies.
-2. **checks** — installs the runtime requirements plus the Qt system libraries,
+2. **checks** — installs `requirements-dev.lock` (hash-checked) plus the Qt system libraries,
    `compileall`, runs `diagnose.py` in CI mode, then the full `pytest` suite
    (including the UI import smoke test); also type-checks and tests the Deno
    Supabase function when it changed.
-3. **windows-ui-smoke** — installs the Windows-only extras and runs the
+3. **windows-ui-smoke** — installs `requirements-dev.lock` (hash-checked, with the Windows-only extras) and runs the
    launch/hologram/auth/audio tests on `windows-latest`. This is the only job
    that can catch Windows-specific regressions in Qt, `pycaw`, `winrt`, or
    `comtypes`.

@@ -31,6 +31,8 @@ google-genai>=2.8.0,<3
 openai>=1.68,<3
 anthropic>=1.17,<2  # output_config and server-side fallbacks (ask_claude)
 mcp>=1.2,<3  # Model Context Protocol client (core/mcp_client.py)
+pydantic>=2.7,<3  # typed schemas for the host<->engine IPC, the web bridge and update manifests;
+                  # already installed through fastapi, mcp and google-genai, declared because JARVIS uses it directly
 
 # ── Web search & browser control ──────────────────────────────────────────────
 curl_cffi>=0.7,<1  # HTTP client with browser impersonation support
